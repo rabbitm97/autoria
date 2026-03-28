@@ -26,8 +26,11 @@ export async function proxy(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // Em desenvolvimento, permite acesso sem autenticação para preview
+  const isDev = process.env.NODE_ENV === "development";
+
   // Sem sessão → redireciona para /login preservando o destino original
-  if (!session) {
+  if (!session && !isDev) {
     const loginUrl = new URL("/login", req.nextUrl);
     loginUrl.searchParams.set("next", req.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
