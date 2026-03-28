@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
+import { EtapasProgress } from "@/components/etapas-progress";
 import type { DiagnosticoResult } from "@/app/api/diagnostico/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -23,8 +24,6 @@ const COMPLEXIDADE_LABEL: Record<string, Complexidade> = {
   médio:    { label: "Médio",    color: "text-amber-700",   bg: "bg-amber-50 border-amber-200"     },
   complexo: { label: "Complexo", color: "text-violet-700",  bg: "bg-violet-50 border-violet-200"   },
 };
-
-const STEPS = ["Upload", "Diagnóstico", "Revisão", "Capa", "Diagramação", "Publicação"];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -136,40 +135,7 @@ function DiagnosticoView({
         </div>
       </header>
 
-      {/* Step indicator */}
-      <div className="bg-brand-primary border-b border-white/5">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <ol className="flex items-center overflow-x-auto">
-            {STEPS.map((step, i) => {
-              const done   = i === 0;
-              const active = i === 1;
-              return (
-                <li key={step} className="flex items-center shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-                      ${done   ? "bg-emerald-500 text-white" :
-                        active ? "bg-brand-gold text-brand-primary" :
-                                 "bg-white/10 text-white/30"}`}
-                    >
-                      {done ? "✓" : i + 1}
-                    </span>
-                    <span className={`text-xs
-                      ${done   ? "text-emerald-400" :
-                        active ? "text-brand-gold font-medium" :
-                                 "text-white/30"}`}
-                    >
-                      {step}
-                    </span>
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <span className="mx-3 text-white/10 text-xs">›</span>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      </div>
+      <EtapasProgress currentStep={0} />
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-10">

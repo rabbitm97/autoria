@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { EtapasProgress } from "@/components/etapas-progress";
 import type { SugestaoRevisao, RevisaoResult } from "@/app/api/revisao/route";
 import { supabase } from "@/lib/supabase";
 
@@ -15,8 +16,6 @@ const TIPO_LABEL: Record<SugestaoRevisao["tipo"], { label: string; color: string
   coesao:      { label: "Coesão",      color: "text-blue-700",   bg: "bg-blue-50 border-blue-200"     },
   clareza:     { label: "Clareza",     color: "text-amber-700",  bg: "bg-amber-50 border-amber-200"   },
 };
-
-const STEPS = ["Upload", "Diagnóstico", "Revisão", "Capa", "Diagramação", "Publicação"];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -220,40 +219,7 @@ export default function RevisaoPage() {
         </div>
       </header>
 
-      {/* Step indicator */}
-      <div className="bg-brand-primary border-b border-white/5">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <ol className="flex items-center overflow-x-auto">
-            {STEPS.map((step, i) => {
-              const done   = i < 2;
-              const active = i === 2;
-              return (
-                <li key={step} className="flex items-center shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-                      ${done   ? "bg-emerald-500 text-white" :
-                        active ? "bg-brand-gold text-brand-primary" :
-                                 "bg-white/10 text-white/30"}`}
-                    >
-                      {done ? "✓" : i + 1}
-                    </span>
-                    <span className={`text-xs
-                      ${done   ? "text-emerald-400" :
-                        active ? "text-brand-gold font-medium" :
-                                 "text-white/30"}`}
-                    >
-                      {step}
-                    </span>
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <span className="mx-3 text-white/10 text-xs">›</span>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      </div>
+      <EtapasProgress currentStep={1} />
 
       <main className="max-w-4xl mx-auto px-4 py-10">
         {loading ? (
