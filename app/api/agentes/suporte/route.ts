@@ -1,0 +1,202 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface Ticket {
+  id: string;
+  project_id: string | null;
+  pergunta: string;
+  resposta_ia: string | null;
+  resolvido: boolean;
+  criado_em: string;
+}
+
+// ─── Base de conhecimento da plataforma ──────────────────────────────────────
+
+const KNOWLEDGE_BASE = `
+Você é o assistente de suporte N1 da Autoria — plataforma de publicação de livros com IA.
+Responda em português, de forma clara, direta e amigável. Máximo de 3 parágrafos.
+Se não souber a resposta com certeza, oriente o autor a entrar em contato pelo e-mail suporte@autoria.com.br.
+
+## O que é a Autoria?
+Plataforma SaaS que transforma manuscritos em livros publicados usando IA. O fluxo é:
+Upload do manuscrito → Diagnóstico → Revisão → Elementos editoriais → Capa → Diagramação (PDF + EPUB) → QA → Publicação.
+
+## Formatos aceitos para upload
+.docx (Word), .pdf e .txt. Tamanho máximo: 50MB.
+
+## Quanto tempo leva cada etapa?
+- Upload e parse: até 30 segundos
+- Diagnóstico (IA): 15–30 segundos
+- Revisão (IA): 30–60 segundos dependendo do tamanho
+- Geração de capa (Nano Banana Pro): 20–40 segundos por opção
+- Geração de PDF: 10–20 segundos
+- Geração de EPUB: 5–10 segundos
+- Audiolivro por capítulo (ElevenLabs): 10–30 segundos
+
+## Planos disponíveis
+- Essencial (R$197): diagnóstico + revisão + elementos + PDF
+- Completo (R$397): tudo do Essencial + capa IA + EPUB + audiolivro
+- Pro (R$697): tudo do Completo + suporte prioritário + distribuição em 5 plataformas
+
+## Publicação e distribuição
+Os livros são distribuídos via Draft2Digital para Amazon KDP, Apple Books, Kobo, Barnes & Noble e Google Play Books.
+O processo de publicação leva 24–72 horas para aprovação das plataformas.
+
+## Royalties
+Amazon KDP: 70% (preço entre $2,99–$9,99) ou 35%.
+Apple Books / Kobo: 70%.
+Google Play: 52%.
+Draft2Digital (outros): 60%.
+Os pagamentos são processados mensalmente pelas plataformas. A Autoria não retém royalties.
+
+## Audiolivro
+Gerado com ElevenLabs eleven_multilingual_v2. Plano gratuito ElevenLabs: 10K caracteres/mês (~2 capítulos curtos). Plano Creator: 100K/mês.
+Os arquivos MP3 ficam disponíveis por 1 hora via link assinado. Para download permanente, acesse a página de audiolivro.
+
+## Problemas comuns
+- "Manuscrito sem texto": execute o parse novamente ou verifique se o arquivo não está protegido por senha.
+- "Capa não gerada": verifique se a GOOGLE_AI_API_KEY está configurada no Vercel.
+- "Erro no upload de arquivo": verifique se o bucket do Supabase Storage está criado com as policies corretas.
+- "Link expirado": links de download expiram em 1 hora. Acesse a página de diagramação ou audiolivro para regenerar.
+- "PDF com formatação incorreta": verifique se o manuscrito usa marcações claras de capítulo (ex: "CAPÍTULO 1" em maiúsculas).
+
+## ISBN e ficha catalográfica
+A Autoria gera uma ficha catalográfica sugerida, mas o ISBN oficial deve ser obtido junto à Biblioteca Nacional (www.bn.gov.br) — gratuito para autores brasileiros.
+
+## Contato humano
+Para questões não resolvidas: suporte@autoria.com.br. SLA: 24h úteis (plano Pro: 4h úteis).
+`.trim();
+
+// ─── POST /api/agentes/suporte ────────────────────────────────────────────────
+// Body: { pergunta, project_id? }
+// Retorna: { resposta, ticket_id }
+
+export async function POST(req: NextRequest) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+
+  let userId: string;
+  if (process.env.NODE_ENV === "development") {
+    userId = "dev-user";
+  } else {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    userId = user.id;
+  }
+
+  let body: { pergunta: string; project_id?: string };
+  try { body = await req.json(); } catch {
+    return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
+  }
+
+  const { pergunta, project_id = null } = body;
+  if (!pergunta?.trim()) {
+    return NextResponse.json({ error: "pergunta é obrigatória" }, { status: 400 });
+  }
+
+  // ── Context: load project state if provided ───────────────────────────────
+  let contextoProj = "";
+  if (project_id && process.env.NODE_ENV !== "development") {
+    const { data } = await supabase
+      .from("projects")
+      .select("etapa_atual, dados_diagnostico, manuscript:manuscript_id(nome)")
+      .eq("id", project_id)
+      .single();
+
+    if (data) {
+      const ms = data.manuscript as { nome?: string } | null;
+      contextoProj = `\nContexto do projeto atual: título "${ms?.nome ?? "N/A"}", etapa atual: "${data.etapa_atual}".`;
+    }
+  }
+
+  // ── Call Claude ───────────────────────────────────────────────────────────
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+
+  const res = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 500,
+    system: KNOWLEDGE_BASE + contextoProj,
+    messages: [{ role: "user", content: pergunta }],
+  });
+
+  const resposta = (res.content[0] as { text: string }).text.trim();
+
+  // ── Save ticket ───────────────────────────────────────────────────────────
+  let ticketId: string | null = null;
+  if (process.env.NODE_ENV !== "development") {
+    const { data } = await supabase
+      .from("tickets")
+      .insert({ user_id: userId, project_id, pergunta, resposta_ia: resposta })
+      .select("id")
+      .single();
+    ticketId = data?.id ?? null;
+  } else {
+    ticketId = "dev-ticket-" + Date.now();
+  }
+
+  return NextResponse.json({ resposta, ticket_id: ticketId });
+}
+
+// ─── PATCH /api/agentes/suporte?id=... ───────────────────────────────────────
+// Marca ticket como resolvido
+
+export async function PATCH(req: NextRequest) {
+  if (process.env.NODE_ENV === "development") {
+    return NextResponse.json({ ok: true });
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+  await supabase.from("tickets").update({ resolvido: true }).eq("id", id).eq("user_id", user.id);
+  return NextResponse.json({ ok: true });
+}
+
+// ─── GET /api/agentes/suporte ─────────────────────────────────────────────────
+// Histórico de tickets do usuário
+
+export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === "development") {
+    return NextResponse.json([
+      { id: "d1", project_id: null, pergunta: "Como faço para gerar o EPUB?", resposta_ia: "Para gerar o EPUB, acesse a página de Diagramação do seu projeto e clique em 'Gerar EPUB' após gerar o PDF.", resolvido: true,  criado_em: new Date(Date.now() - 86400000).toISOString() },
+      { id: "d2", project_id: null, pergunta: "Quanto tempo demora a publicação na Amazon?", resposta_ia: "Após o envio, a Amazon leva entre 24 e 72 horas para revisar e publicar seu livro.", resolvido: false, criado_em: new Date(Date.now() - 3600000).toISOString() },
+    ] satisfies Ticket[]);
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll() } }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const { data } = await supabase
+    .from("tickets")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("criado_em", { ascending: false })
+    .limit(50);
+
+  return NextResponse.json(data ?? []);
+}

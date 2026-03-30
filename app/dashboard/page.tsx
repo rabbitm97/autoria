@@ -216,6 +216,13 @@ export default async function DashboardPage() {
             Royalties
           </Link>
           <Link
+            href="/dashboard/suporte"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm text-zinc-600 hover:border-brand-gold/30 hover:text-brand-primary transition-all"
+          >
+            <SupportIcon />
+            Suporte
+          </Link>
+          <Link
             href="/dashboard/perfil"
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm text-zinc-600 hover:border-brand-gold/30 hover:text-brand-primary transition-all"
           >
@@ -272,6 +279,17 @@ function PlansIcon() {
       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23"/>
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  );
+}
+
+function SupportIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
     </svg>
   );
 }
