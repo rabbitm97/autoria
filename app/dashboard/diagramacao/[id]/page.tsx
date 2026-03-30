@@ -6,6 +6,7 @@ import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { PdfResult, Formato } from "@/app/api/agentes/gerar-pdf/route";
+import type { EpubResult } from "@/app/api/agentes/gerar-epub/route";
 
 // ─── Format options ────────────────────────────────────────────────────────────
 
@@ -24,21 +25,22 @@ export default function DiagramacaoPage() {
   const [formato, setFormato] = useState<Formato>("kdp_6x9");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingEpub, setGeneratingEpub] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PdfResult | null>(null);
+  const [epubResult, setEpubResult] = useState<EpubResult | null>(null);
 
-  // ── Load existing PDF ────────────────────────────────────────────────────
+  // ── Load existing PDF + EPUB ─────────────────────────────────────────────
   const loadExisting = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/agentes/gerar-pdf?project_id=${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data) setResult(data as PdfResult);
-      }
-    } catch {
-      // no existing PDF, fine
-    } finally {
+      const [pdfRes, epubRes] = await Promise.all([
+        fetch(`/api/agentes/gerar-pdf?project_id=${id}`),
+        fetch(`/api/agentes/gerar-epub?project_id=${id}`),
+      ]);
+      if (pdfRes.ok)  { const d = await pdfRes.json();  if (d) setResult(d as PdfResult); }
+      if (epubRes.ok) { const d = await epubRes.json(); if (d) setEpubResult(d as EpubResult); }
+    } catch { /* no existing files */ } finally {
       setLoading(false);
     }
   }, [id]);
@@ -62,6 +64,26 @@ export default function DiagramacaoPage() {
       setError(e instanceof Error ? e.message : "Erro desconhecido");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  // ── Generate EPUB ────────────────────────────────────────────────────────
+  async function handleGerarEpub() {
+    setGeneratingEpub(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agentes/gerar-epub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar EPUB");
+      setEpubResult(data as EpubResult);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setGeneratingEpub(false);
     }
   }
 
@@ -157,7 +179,7 @@ export default function DiagramacaoPage() {
             )}
 
             {/* Result */}
-            {result ? (
+            {result && (
               <div className="bg-white rounded-2xl border border-zinc-100 p-6 mb-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
@@ -195,15 +217,81 @@ export default function DiagramacaoPage() {
                   <p className="text-xs text-zinc-400 mb-3">
                     O link de download expira em 1 hora. Baixe agora ou regenere depois.
                   </p>
-                  <button
-                    onClick={handleContinuar}
-                    className="w-full py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm hover:bg-brand-gold/90 transition-colors"
-                  >
-                    Continuar → QA
-                  </button>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {/* EPUB card — shown once PDF exists */}
+            {result && (
+              <div className="bg-white rounded-2xl border border-zinc-100 p-6 mb-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
+                    <EpubIcon />
+                  </div>
+                  <div>
+                    <p className="font-medium text-brand-primary text-sm">EPUB — e-readers e Kindle</p>
+                    <p className="text-xs text-zinc-400">
+                      {epubResult
+                        ? `${epubResult.capitulos} capítulo${epubResult.capitulos !== 1 ? "s" : ""} · Gerado em ${new Date(epubResult.gerado_em).toLocaleString("pt-BR")}`
+                        : "Gera um arquivo compatível com Amazon Kindle, Apple Books e Kobo."}
+                    </p>
+                  </div>
+                </div>
+
+                {epubResult ? (
+                  <div className="flex gap-3">
+                    <a
+                      href={epubResult.url_download}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-violet-600 text-white font-medium text-sm hover:bg-violet-700 transition-colors"
+                    >
+                      <DownloadIcon />
+                      Baixar EPUB
+                    </a>
+                    <button
+                      onClick={handleGerarEpub}
+                      disabled={generatingEpub}
+                      className="px-6 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-violet-300 transition-colors disabled:opacity-50"
+                    >
+                      Regenerar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleGerarEpub}
+                    disabled={generatingEpub}
+                    className="w-full py-3 rounded-xl border border-violet-200 text-violet-700 font-medium text-sm hover:bg-violet-50 transition-colors disabled:opacity-50"
+                  >
+                    {generatingEpub ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-4 h-4 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+                        Gerando EPUB…
+                      </span>
+                    ) : "Gerar EPUB"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Continue button — shows when PDF exists */}
+            {result && (
+              <div className="bg-white rounded-2xl border border-zinc-100 p-4">
+                <p className="text-xs text-zinc-400 mb-3 text-center">
+                  Links expiram em 1 hora. Você pode regenerar a qualquer momento.
+                </p>
+                <button
+                  onClick={handleContinuar}
+                  className="w-full py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm hover:bg-brand-gold/90 transition-colors"
+                >
+                  Continuar → QA
+                </button>
+              </div>
+            )}
+
+            {/* Generate PDF button — shows when no PDF yet */}
+            {!result && (
               <button
                 onClick={handleGerar}
                 disabled={generating}
@@ -250,6 +338,19 @@ function DownloadIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  );
+}
+
+function EpubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className="text-violet-600">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      <line x1="9" y1="7" x2="15" y2="7"/>
+      <line x1="9" y1="11" x2="15" y2="11"/>
     </svg>
   );
 }
