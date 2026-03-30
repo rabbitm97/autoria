@@ -1,25 +1,25 @@
-import OpenAI from "openai";
+import { GoogleGenAI, type Part } from "@google/genai";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface OpcaoCapa {
-  url: string;
-  revised_prompt: string;
+  url: string;           // Supabase Storage public URL
+  storage_path: string;  // e.g. "{user_id}/{project_id}/capa_0.png"
 }
 
 export interface CapaResult {
   project_id: string;
   prompt_usado: string;
-  opcoes: OpcaoCapa[];       // up to 3 options
+  opcoes: OpcaoCapa[];
   url_escolhida: string | null;
 }
 
 // ─── POST /api/agentes/gerar-capa ─────────────────────────────────────────────
-// Body: { project_id: string, titulo: string, sinopse: string, genero?: string, qtd?: 1|2|3 }
-// Returns: CapaResult
+// Body: { project_id, titulo, sinopse, genero?, qtd?: 1|2|3 }
 
 export async function POST(req: NextRequest) {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -42,9 +42,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Validate env ──────────────────────────────────────────────────────────
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GOOGLE_AI_API_KEY) {
     return NextResponse.json(
-      { error: "OPENAI_API_KEY não configurada. Configure no Vercel ou .env.local." },
+      { error: "GOOGLE_AI_API_KEY não configurada. Configure no Vercel ou .env.local." },
       { status: 503 }
     );
   }
@@ -66,65 +66,91 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Build prompt ──────────────────────────────────────────────────────────
-  // Prompt engineered for book covers suitable for CMYK printing
   const prompt = [
     `Book cover design for a ${genero} book titled "${titulo}".`,
     `Story: ${sinopse.slice(0, 300)}.`,
     "Professional editorial design. No text, no letters, no words on the image.",
-    "High contrast, suitable for CMYK print. Vertical orientation (6x9 inches book cover ratio).",
+    "High contrast, suitable for CMYK print. Vertical portrait orientation.",
     "Cinematic lighting, rich colors, publishing industry quality.",
   ].join(" ");
 
-  // ── Call DALL-E 3 ─────────────────────────────────────────────────────────
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  // ── Supabase Storage client (service role para upload server-side) ─────────
+  const storageClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
-  const count = Math.min(Math.max(1, qtd), 3) as 1 | 2 | 3;
+  // ── Call Nano Banana Pro ──────────────────────────────────────────────────
+  const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+  const count = Math.min(Math.max(1, qtd), 3);
   const opcoes: OpcaoCapa[] = [];
 
-  // DALL-E 3 only supports n=1 per request; loop for multiple options
   for (let i = 0; i < count; i++) {
-    const response = await openai.images.generate({
-      model: "dall-e-3",
-      prompt,
-      n: 1,
-      size: "1024x1792",   // closest to 6×9 book ratio
-      quality: "hd",
-      response_format: "url",
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-image-preview",
+      contents: prompt,
+      config: {
+        responseModalities: ["IMAGE"],
+        imageConfig: {
+          aspectRatio: "2:3",   // proporção livro 6×9
+          imageSize: "2K",
+        },
+      },
     });
-    const img = response.data?.[0];
-    opcoes.push({
-      url: img?.url ?? "",
-      revised_prompt: img?.revised_prompt ?? prompt,
-    });
+
+    // Extract base64 image from response
+    const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
+    const imgPart = parts.find((p) => p.inlineData);
+    if (!imgPart?.inlineData?.data) continue;
+
+    const base64 = imgPart.inlineData.data;
+    const mimeType = imgPart.inlineData.mimeType ?? "image/png";
+    const ext = mimeType.includes("png") ? "png" : "jpg";
+    const storagePath = `${userId}/${project_id}/capa_${i}.${ext}`;
+    const buffer = Buffer.from(base64, "base64");
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await storageClient.storage
+      .from("capas")
+      .upload(storagePath, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError.message);
+      continue;
+    }
+
+    const { data: { publicUrl } } = storageClient.storage
+      .from("capas")
+      .getPublicUrl(storagePath);
+
+    opcoes.push({ url: publicUrl, storage_path: storagePath });
+  }
+
+  if (opcoes.length === 0) {
+    return NextResponse.json({ error: "Nenhuma imagem foi gerada" }, { status: 500 });
   }
 
   // ── Persist to Supabase ───────────────────────────────────────────────────
-  const dados_capa = {
-    prompt_usado: prompt,
-    opcoes,
-    url_escolhida: opcoes[0]?.url ?? null,
-  };
-
-  if (process.env.NODE_ENV !== "development") {
-    await supabase
-      .from("projects")
-      .update({ dados_capa, etapa_atual: "capa" })
-      .eq("id", project_id)
-      .eq("user_id", userId);
-  }
-
-  const result: CapaResult = {
+  const dados_capa: CapaResult = {
     project_id,
     prompt_usado: prompt,
     opcoes,
     url_escolhida: opcoes[0]?.url ?? null,
   };
 
-  return NextResponse.json(result);
+  await supabase
+    .from("projects")
+    .update({ dados_capa, etapa_atual: "capa" })
+    .eq("id", project_id)
+    .eq("user_id", userId);
+
+  return NextResponse.json(dados_capa);
 }
 
 // ─── GET /api/agentes/gerar-capa?project_id=... ───────────────────────────────
-// Retrieve saved cover data for a project
 
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies();
@@ -145,11 +171,11 @@ export async function GET(req: NextRequest) {
       prompt_usado: "Mock prompt para ambiente de dev",
       opcoes: [
         {
-          url: "https://placehold.co/1024x1792/1a1a2e/e8c97b?text=Capa+Mock",
-          revised_prompt: "Mock DALL-E prompt",
+          url: "https://placehold.co/683x1024/1a1a2e/e8c97b?text=Capa+Mock",
+          storage_path: "dev-user/mock/capa_0.png",
         },
       ],
-      url_escolhida: "https://placehold.co/1024x1792/1a1a2e/e8c97b?text=Capa+Mock",
+      url_escolhida: "https://placehold.co/683x1024/1a1a2e/e8c97b?text=Capa+Mock",
     } satisfies CapaResult);
   }
 
