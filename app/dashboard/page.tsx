@@ -192,6 +192,15 @@ export default async function DashboardPage() {
             <ToolsIcon />
             Ferramentas
           </Link>
+          {temProjetos && (
+            <Link
+              href={`/dashboard/audiolivro/${projetos[0].id}`}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm text-zinc-600 hover:border-brand-gold/30 hover:text-brand-primary transition-all"
+            >
+              <AudioIcon />
+              Audiolivro
+            </Link>
+          )}
           <Link
             href="/dashboard/planos"
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm text-zinc-600 hover:border-brand-gold/30 hover:text-brand-primary transition-all"
@@ -256,6 +265,16 @@ function PlansIcon() {
       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23"/>
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  );
+}
+
+function AudioIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13"/>
+      <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
     </svg>
   );
 }
