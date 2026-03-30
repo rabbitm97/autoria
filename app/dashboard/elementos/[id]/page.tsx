@@ -102,7 +102,7 @@ export default function ElementosPage() {
         .eq("id", projectId);
 
       if (saveErr) throw saveErr;
-      router.push(`/dashboard`);
+      router.push(`/dashboard/capa/${projectId}`);
     } catch {
       setError("Falha ao salvar. Tente novamente.");
     } finally {
