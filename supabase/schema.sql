@@ -1,5 +1,5 @@
 -- =============================================================
--- Autoria — Schema inicial
+-- Autoria — Schema inicial (idempotente — pode re-executar)
 -- Rodar no Supabase: Dashboard → SQL Editor → New query
 -- =============================================================
 
@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS public.users (
 );
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users: leitura própria"    ON public.users;
+DROP POLICY IF EXISTS "users: atualização própria" ON public.users;
 
 CREATE POLICY "users: leitura própria"
   ON public.users FOR SELECT
@@ -35,7 +38,8 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
@@ -60,6 +64,8 @@ CREATE TABLE IF NOT EXISTS public.manuscripts (
 );
 
 ALTER TABLE public.manuscripts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "manuscripts: acesso próprio" ON public.manuscripts;
 
 CREATE POLICY "manuscripts: acesso próprio"
   ON public.manuscripts FOR ALL
@@ -91,6 +97,8 @@ CREATE TABLE IF NOT EXISTS public.projects (
 
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "projects: acesso próprio" ON public.projects;
+
 CREATE POLICY "projects: acesso próprio"
   ON public.projects FOR ALL
   USING (auth.uid() = user_id);
@@ -106,12 +114,13 @@ CREATE TABLE IF NOT EXISTS public.waitlist (
 
 ALTER TABLE public.waitlist ENABLE ROW LEVEL SECURITY;
 
--- Qualquer visitante pode inserir o próprio e-mail
+DROP POLICY IF EXISTS "waitlist: insert público"    ON public.waitlist;
+DROP POLICY IF EXISTS "waitlist: leitura restrita"  ON public.waitlist;
+
 CREATE POLICY "waitlist: insert público"
   ON public.waitlist FOR INSERT
   WITH CHECK (true);
 
--- Somente service_role lê a lista (admin)
 CREATE POLICY "waitlist: leitura restrita"
   ON public.waitlist FOR SELECT
   USING (false);

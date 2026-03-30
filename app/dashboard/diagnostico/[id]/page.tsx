@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { DiagnosticoResult } from "@/app/api/diagnostico/route";
+import type { DiagnosticoResult } from "@/app/api/agentes/diagnostico/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

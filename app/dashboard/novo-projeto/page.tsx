@@ -226,7 +226,7 @@ export default function NovoProjetoPage() {
         ? textoExtraido
         : `Manuscrito: ${file.name.replace(/\.[^/.]+$/, "")}`;
 
-      const diagRes = await fetch("/api/diagnostico", {
+      const diagRes = await fetch("/api/agentes/diagnostico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

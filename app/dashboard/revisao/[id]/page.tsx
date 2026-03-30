@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { SugestaoRevisao, RevisaoResult } from "@/app/api/revisao/route";
+import type { SugestaoRevisao, RevisaoResult } from "@/app/api/agentes/revisao/route";
 import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ export default function RevisaoPage() {
     setTriggering(true);
     setError(null);
     try {
-      const res = await fetch("/api/revisao", {
+      const res = await fetch("/api/agentes/revisao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId }),

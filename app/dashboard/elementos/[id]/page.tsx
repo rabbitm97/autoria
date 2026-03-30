@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { ElementosEditoriais } from "@/app/api/elementos-editoriais/route";
+import type { ElementosEditoriais } from "@/app/api/agentes/elementos-editoriais/route";
 import { supabase } from "@/lib/supabase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ export default function ElementosPage() {
     setTriggering(true);
     setError(null);
     try {
-      const res = await fetch("/api/elementos-editoriais", {
+      const res = await fetch("/api/agentes/elementos-editoriais", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId }),
