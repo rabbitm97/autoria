@@ -71,7 +71,7 @@ export default function DiagramacaoPage() {
       .from("projects")
       .update({ etapa_atual: "preview" })
       .eq("id", id);
-    router.push(`/dashboard`);
+    router.push(`/dashboard/qa/${id}`);
   }
 
   // ── Format label ─────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ export default function DiagramacaoPage() {
                     onClick={handleContinuar}
                     className="w-full py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm hover:bg-brand-gold/90 transition-colors"
                   >
-                    Continuar → Publicação
+                    Continuar → QA
                   </button>
                 </div>
               </div>
