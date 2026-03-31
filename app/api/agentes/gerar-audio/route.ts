@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { VOZES } from "@/lib/voices";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,15 +19,6 @@ export interface AudioResult {
   project_id: string;
   capitulos: CapituloAudio[];
 }
-
-// ElevenLabs voices with good PT-BR quality
-export const VOZES = [
-  { id: "21m00Tcm4TlvDq8ikWAM", nome: "Rachel",  desc: "Narradora feminina — clara e expressiva" },
-  { id: "AZnzlk1XvdvUeBnXmlld", nome: "Domi",    desc: "Voz feminina — energética" },
-  { id: "ErXwobaYiN019PkySvjV", nome: "Antoni",  desc: "Narrador masculino — suave" },
-  { id: "VR6AewLTigWG4xSOukaG", nome: "Arnold",  desc: "Narrador masculino — grave e forte" },
-  { id: "pNInz6obpgDQGcFmaJgB", nome: "Adam",    desc: "Narrador masculino — profissional" },
-];
 
 // ─── Text parsing ─────────────────────────────────────────────────────────────
 

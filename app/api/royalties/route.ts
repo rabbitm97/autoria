@@ -23,7 +23,7 @@ export interface Royalty {
   manuscript_nome?: string;
 }
 
-export const PLATAFORMA_INFO: Record<Plataforma, { label: string; royalty_padrao: number; cor: string }> = {
+const PLATAFORMA_INFO: Record<Plataforma, { label: string; royalty_padrao: number; cor: string }> = {
   amazon_kdp:    { label: "Amazon KDP",     royalty_padrao: 70, cor: "text-orange-600" },
   draft2digital: { label: "Draft2Digital",  royalty_padrao: 60, cor: "text-blue-600"   },
   kobo:          { label: "Kobo",           royalty_padrao: 70, cor: "text-red-600"    },
