@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ElementosFerramenta } from "@/app/api/ferramentas/elementos/route";
+import { ManuscriptUpload } from "@/components/manuscript-upload";
 
 export default function ElementosPage() {
   const [texto, setTexto] = useState("");
@@ -49,11 +50,14 @@ export default function ElementosPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-zinc-100 p-6 mb-6">
-        <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Manuscrito ou trecho</label>
+        <div className="flex items-center justify-between mb-3">
+          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Manuscrito ou trecho</label>
+          <ManuscriptUpload onText={setTexto} />
+        </div>
         <textarea
           value={texto}
           onChange={e => setTexto(e.target.value)}
-          placeholder="Cole um trecho representativo do seu livro (mínimo 300 palavras para melhor resultado)..."
+          placeholder="Cole um trecho representativo ou envie um arquivo PDF, DOCX ou TXT acima..."
           rows={10}
           className="w-full resize-none rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-gold/30 font-mono leading-relaxed"
         />

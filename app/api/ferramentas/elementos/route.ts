@@ -1,5 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,7 +13,6 @@ export interface ElementosFerramenta {
 
 // ─── Claude ───────────────────────────────────────────────────────────────────
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `\
 Você é um editor especialista em marketing editorial brasileiro.
@@ -63,14 +62,19 @@ export async function POST(req: NextRequest) {
   const { texto } = body;
   if (!texto?.trim()) return NextResponse.json({ error: "Texto obrigatório" }, { status: 400 });
 
-  const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: `Manuscrito:\n\n${texto.slice(0, 10000)}` }],
-  });
-
-  const raw = msg.content[0].type === "text" ? msg.content[0].text : "{}";
-  const json = raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
-  return NextResponse.json(JSON.parse(json));
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Manuscrito:\n\n${texto.slice(0, 10000)}` }],
+    });
+    return NextResponse.json(parseLLMJson<ElementosFerramenta>(extractText(msg.content)));
+  } catch (e) {
+    console.error("[ferramenta/elementos] Erro Claude:", e);
+    return NextResponse.json(
+      { error: "Erro ao gerar elementos editoriais. Tente novamente." },
+      { status: 502 }
+    );
+  }
 }

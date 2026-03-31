@@ -31,11 +31,11 @@ function devMock(qtd: number): CapaFerramenta {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  let body: { titulo: string; sinopse: string; genero?: string; qtd?: number };
+  let body: { titulo: string; sinopse: string; genero?: string; qtd?: number; imagemRef?: string };
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }
 
-  const { titulo, sinopse, genero = "literatura", qtd = 2 } = body;
+  const { titulo, sinopse, genero = "literatura", qtd = 2, imagemRef } = body;
   if (!titulo?.trim() || !sinopse?.trim())
     return NextResponse.json({ error: "titulo e sinopse são obrigatórios" }, { status: 400 });
 
@@ -52,11 +52,25 @@ export async function POST(req: NextRequest) {
   const imagens: { dataUrl: string }[] = [];
   const count = Math.min(Number(qtd) || 2, 3);
 
+  // Build multimodal contents — include reference image when provided
+  function buildContents(withRef: string | undefined): Part[] {
+    if (withRef) {
+      const match = withRef.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        return [
+          { text: prompt + "\nUse the provided reference image as a style and composition guide. Do not copy it literally — adapt its mood, color palette, and visual style for this new book cover." } as Part,
+          { inlineData: { mimeType: match[1], data: match[2] } } as Part,
+        ];
+      }
+    }
+    return [{ text: prompt } as Part];
+  }
+
   for (let i = 0; i < count; i++) {
     try {
       const resp = await ai.models.generateContent({
         model: "gemini-3-pro-image-preview",
-        contents: prompt,
+        contents: [{ role: "user", parts: buildContents(imagemRef) }],
         config: {
           responseModalities: ["IMAGE"],
           imageConfig: { aspectRatio: "2:3", imageSize: "2K" },

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import type { CapaFerramenta } from "@/app/api/ferramentas/capa/route";
+import { ImageUploadRef } from "@/components/image-upload-ref";
 
 const GENEROS = ["Literatura", "Romance", "Ficção científica", "Fantasia", "Suspense/Thriller", "Terror", "Autoajuda", "Biografia", "Não-ficção", "Infantil"];
 
@@ -11,6 +12,7 @@ export default function CapaIAPage() {
   const [sinopse, setSinopse] = useState("");
   const [genero, setGenero] = useState("Literatura");
   const [qtd, setQtd] = useState<1 | 2 | 3>(2);
+  const [imagemRef, setImagemRef] = useState<string | null>(null);
   const [result, setResult] = useState<CapaFerramenta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,7 @@ export default function CapaIAPage() {
       const res = await fetch("/api/ferramentas/capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titulo, sinopse, genero, qtd }),
+        body: JSON.stringify({ titulo, sinopse, genero, qtd, imagemRef }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Erro");
       setResult(await res.json());
@@ -95,6 +97,13 @@ export default function CapaIAPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+            Imagem de referência <span className="text-zinc-300 normal-case font-normal">(opcional)</span>
+          </label>
+          <ImageUploadRef onImage={setImagemRef} />
         </div>
 
         <div className="flex justify-end pt-2">

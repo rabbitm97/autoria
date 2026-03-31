@@ -1,36 +1,32 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function proxy(req: NextRequest) {
+export default async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
-  // Lê a sessão dos cookies (verificação otimista — sem round-trip ao servidor)
+  // Dev: skip auth so local preview works without credentials
+  if (process.env.NODE_ENV === "development") return res;
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
+        getAll: () => req.cookies.getAll(),
+        setAll: (cookiesToSet) =>
           cookiesToSet.forEach(({ name, value, options }) =>
             res.cookies.set(name, value, options)
-          );
-        },
+          ),
       },
     }
   );
 
+  // getUser() validates the JWT server-side — more secure than getSession()
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  // Em desenvolvimento, permite acesso sem autenticação para preview
-  const isDev = process.env.NODE_ENV === "development";
-
-  // Sem sessão → redireciona para /login preservando o destino original
-  if (!session && !isDev) {
+  if (!user) {
     const loginUrl = new URL("/login", req.nextUrl);
     loginUrl.searchParams.set("next", req.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
@@ -40,6 +36,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Aplica apenas a rotas dentro de /dashboard
   matcher: ["/dashboard/:path*"],
 };

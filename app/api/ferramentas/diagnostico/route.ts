@@ -1,5 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -13,9 +13,7 @@ export interface DiagnosticoFerramenta {
   pontos_melhorar: string[];
 }
 
-// ─── Claude ───────────────────────────────────────────────────────────────────
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// ─── System prompt ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `\
 Você é um editor literário brasileiro sênior com 20 anos de experiência.
@@ -63,20 +61,32 @@ export async function POST(req: NextRequest) {
   }
 
   let body: { texto: string };
-  try { body = await req.json(); }
-  catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 });
+  }
 
   const { texto } = body;
-  if (!texto?.trim()) return NextResponse.json({ error: "Texto obrigatório" }, { status: 400 });
+  if (!texto?.trim()) {
+    return NextResponse.json({ error: "Texto obrigatório" }, { status: 400 });
+  }
 
-  const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: `Manuscrito:\n\n${texto.slice(0, 10000)}` }],
-  });
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Manuscrito:\n\n${texto.slice(0, 10000)}` }],
+    });
 
-  const raw = msg.content[0].type === "text" ? msg.content[0].text : "";
-  const json = raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
-  return NextResponse.json(JSON.parse(json));
+    const result = parseLLMJson<DiagnosticoFerramenta>(extractText(msg.content));
+    return NextResponse.json(result);
+  } catch (e) {
+    console.error("[ferramenta/diagnostico] Erro Claude:", e);
+    return NextResponse.json(
+      { error: "Erro ao processar o diagnóstico com IA. Tente novamente." },
+      { status: 502 }
+    );
+  }
 }

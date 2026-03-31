@@ -1,7 +1,6 @@
 import JSZip from "jszip";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 
@@ -62,7 +61,7 @@ function esc(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function chapterXhtml(chapter: Chapter, idx: number): string {
+function chapterXhtml(chapter: Chapter, _idx: number): string {
   const paras = chapter.paragraphs
     .map((p, i) => `    <p class="${i === 0 ? "first" : "body"}">${esc(p)}</p>`)
     .join("\n");
@@ -167,12 +166,7 @@ ${spine}
 // Body: { project_id }
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const supabase = await createSupabaseServerClient();
 
   let userId: string;
   if (process.env.NODE_ENV === "development") {
@@ -317,12 +311,7 @@ export async function POST(req: NextRequest) {
 // ─── GET /api/agentes/gerar-epub?project_id=... ───────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const supabase = await createSupabaseServerClient();
 
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });

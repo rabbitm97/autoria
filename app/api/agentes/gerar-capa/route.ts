@@ -1,8 +1,7 @@
 import { GoogleGenAI, type Part } from "@google/genai";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,20 +17,29 @@ export interface CapaResult {
   url_escolhida: string | null;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildContents(textPrompt: string, ref: string | undefined): Part[] {
+  if (ref) {
+    const match = ref.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      return [
+        { text: textPrompt + "\nUse the provided reference image as a style and composition guide. Do not copy it literally — adapt its mood, color palette, and visual style for this new book cover." } as Part,
+        { inlineData: { mimeType: match[1], data: match[2] } } as Part,
+      ];
+    }
+  }
+  return [{ text: textPrompt } as Part];
+}
+
 // ─── POST /api/agentes/gerar-capa ─────────────────────────────────────────────
-// Body: { project_id, titulo, sinopse, genero?, qtd?: 1|2|3 }
 
 export async function POST(req: NextRequest) {
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const isDev = process.env.NODE_ENV === "development";
+  const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (process.env.NODE_ENV === "development") {
+  if (isDev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -41,7 +49,6 @@ export async function POST(req: NextRequest) {
     userId = user.id;
   }
 
-  // ── Validate env ──────────────────────────────────────────────────────────
   if (!process.env.GOOGLE_AI_API_KEY) {
     return NextResponse.json(
       { error: "GOOGLE_AI_API_KEY não configurada. Configure no Vercel ou .env.local." },
@@ -49,15 +56,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { project_id: string; titulo: string; sinopse: string; genero?: string; qtd?: number };
+  let body: { project_id: string; titulo: string; sinopse: string; genero?: string; qtd?: number; imagemRef?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const { project_id, titulo, sinopse, genero = "literatura", qtd = 3 } = body;
+  const { project_id, titulo, sinopse, genero = "literatura", qtd = 3, imagemRef } = body;
   if (!project_id || !titulo || !sinopse) {
     return NextResponse.json(
       { error: "project_id, titulo e sinopse são obrigatórios" },
@@ -65,7 +71,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Build prompt ──────────────────────────────────────────────────────────
   const prompt = [
     `Book cover design for a ${genero} book titled "${titulo}".`,
     `Story: ${sinopse.slice(0, 300)}.`,
@@ -74,13 +79,12 @@ export async function POST(req: NextRequest) {
     "Cinematic lighting, rich colors, publishing industry quality.",
   ].join(" ");
 
-  // ── Supabase Storage client (service role para upload server-side) ─────────
+  // Service-role client for server-side Storage uploads
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // ── Call Nano Banana Pro ──────────────────────────────────────────────────
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
   const count = Math.min(Math.max(1, qtd), 3);
   const opcoes: OpcaoCapa[] = [];
@@ -88,17 +92,13 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < count; i++) {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-image-preview",
-      contents: prompt,
+      contents: [{ role: "user", parts: buildContents(prompt, imagemRef) }],
       config: {
         responseModalities: ["IMAGE"],
-        imageConfig: {
-          aspectRatio: "2:3",   // proporção livro 6×9
-          imageSize: "2K",
-        },
+        imageConfig: { aspectRatio: "2:3", imageSize: "2K" },
       },
     });
 
-    // Extract base64 image from response
     const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
     const imgPart = parts.find((p) => p.inlineData);
     if (!imgPart?.inlineData?.data) continue;
@@ -109,16 +109,12 @@ export async function POST(req: NextRequest) {
     const storagePath = `${userId}/${project_id}/capa_${i}.${ext}`;
     const buffer = Buffer.from(base64, "base64");
 
-    // Upload to Supabase Storage
     const { error: uploadError } = await storageClient.storage
       .from("capas")
-      .upload(storagePath, buffer, {
-        contentType: mimeType,
-        upsert: true,
-      });
+      .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
 
     if (uploadError) {
-      console.error("Upload error:", uploadError.message);
+      console.error("[gerar-capa] upload error:", uploadError.message);
       continue;
     }
 
@@ -133,7 +129,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nenhuma imagem foi gerada" }, { status: 500 });
   }
 
-  // ── Persist to Supabase ───────────────────────────────────────────────────
   const dados_capa: CapaResult = {
     project_id,
     prompt_usado: prompt,
@@ -153,13 +148,6 @@ export async function POST(req: NextRequest) {
 // ─── GET /api/agentes/gerar-capa?project_id=... ───────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
@@ -178,6 +166,8 @@ export async function GET(req: NextRequest) {
       url_escolhida: "https://placehold.co/683x1024/1a1a2e/e8c97b?text=Capa+Mock",
     } satisfies CapaResult);
   }
+
+  const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase
     .from("projects")

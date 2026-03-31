@@ -1,33 +1,16 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
+import { requireAuth } from "@/lib/supabase-server";
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  // 1. Auth
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) =>
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          ),
-      },
-    }
-  );
+  let user: { id: string };
+  let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) {
-    return Response.json({ error: "Não autorizado." }, { status: 401 });
+  try {
+    ({ user, supabase } = await requireAuth());
+  } catch (res) {
+    return res as Response;
   }
 
   // 2. Parse body

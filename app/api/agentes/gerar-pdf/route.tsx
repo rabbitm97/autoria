@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Document,
   Page,
@@ -7,9 +6,8 @@ import {
   StyleSheet,
   renderToBuffer,
 } from "@react-pdf/renderer";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -192,7 +190,7 @@ function BookDocument({ titulo, autor, blocks, formato }: BookDocProps) {
         {/* Page numbers */}
         <Text
           style={styles.footer}
-          render={({ pageNumber, totalPages }) =>
+          render={({ pageNumber }) =>
             pageNumber > 1 ? `${pageNumber - 1}` : ""
           }
           fixed
@@ -207,12 +205,7 @@ function BookDocument({ titulo, autor, blocks, formato }: BookDocProps) {
 
 export async function POST(req: NextRequest) {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const supabase = await createSupabaseServerClient();
 
   let userId: string;
   if (process.env.NODE_ENV === "development") {
@@ -334,12 +327,7 @@ export async function POST(req: NextRequest) {
 // Returns saved PDF metadata + fresh signed URL
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const supabase = await createSupabaseServerClient();
 
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) {

@@ -1,7 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import type { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { requireAuth } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,12 +13,6 @@ export interface DiagnosticoResult {
   mercado_alvo: string;
   complexidade: "simples" | "médio" | "complexo";
 }
-
-// ─── Claude client (singleton) ────────────────────────────────────────────────
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
@@ -60,55 +53,38 @@ Diretrizes:
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  // 1. Autenticação via Supabase SSR
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) =>
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          ),
-      },
-    }
-  );
+  let user: { id: string };
+  let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) {
-    return Response.json({ error: "Não autorizado." }, { status: 401 });
+  try {
+    ({ user, supabase } = await requireAuth());
+  } catch (res) {
+    return res as Response;
   }
 
-  // 2. Parse e validação do body
   let body: { texto: string; project_id: string };
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Body JSON inválido." }, { status: 400 });
+    return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
 
   const { texto, project_id } = body;
 
   if (!texto || typeof texto !== "string" || texto.trim().length < 50) {
-    return Response.json(
+    return NextResponse.json(
       { error: "Campo 'texto' obrigatório (mínimo 50 caracteres)." },
       { status: 400 }
     );
   }
   if (!project_id || typeof project_id !== "string") {
-    return Response.json(
+    return NextResponse.json(
       { error: "Campo 'project_id' obrigatório." },
       { status: 400 }
     );
   }
 
-  // 3. Verifica que o projeto pertence ao usuário
+  // Verify project ownership
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select("id")
@@ -117,16 +93,16 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (projErr || !project) {
-    return Response.json({ error: "Projeto não encontrado." }, { status: 404 });
+    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
 
-  // 4. Contagem real de palavras + truncagem para a API
-  //    Limita a ~50k caracteres (~8.000 palavras) — suficiente para diagnóstico
-  //    e mantém o custo de tokens controlado
+  // Actual word count + truncate to ~50k chars for cost control
   const numPalavras = texto.trim().split(/\s+/).filter(Boolean).length;
-  const textoCortado = texto.length > 50_000 ? texto.slice(0, 50_000) + "\n\n[...trecho truncado para análise]" : texto;
+  const textoCortado =
+    texto.length > 50_000
+      ? texto.slice(0, 50_000) + "\n\n[...trecho truncado para análise]"
+      : texto;
 
-  // 5. Chama Claude Sonnet
   let diagnostico: DiagnosticoResult;
   try {
     const message = await anthropic.messages.create({
@@ -141,60 +117,39 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const rawText =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    diagnostico = parseLLMJson<DiagnosticoResult>(extractText(message.content));
+    diagnostico.num_palavras = numPalavras; // override with real count
 
-    // Remove possíveis marcadores de código (```json ... ```)
-    const cleanJson = rawText
-      .replace(/^```(?:json)?\s*/im, "")
-      .replace(/\s*```$/im, "")
-      .trim();
-
-    diagnostico = JSON.parse(cleanJson) as DiagnosticoResult;
-
-    // Sobrescreve num_palavras com a contagem real
-    diagnostico.num_palavras = numPalavras;
-
-    // Valida campos obrigatórios
-    const campos: (keyof DiagnosticoResult)[] = [
-      "genero_provavel",
-      "num_capitulos",
-      "num_palavras",
-      "pontos_fortes",
-      "pontos_melhorar",
-      "mercado_alvo",
-      "complexidade",
+    const requiredFields: (keyof DiagnosticoResult)[] = [
+      "genero_provavel", "num_capitulos", "num_palavras",
+      "pontos_fortes", "pontos_melhorar", "mercado_alvo", "complexidade",
     ];
-    for (const campo of campos) {
+    for (const campo of requiredFields) {
       if (diagnostico[campo] === undefined) {
         throw new Error(`Campo ausente na resposta da IA: ${campo}`);
       }
     }
   } catch (e) {
     console.error("[diagnostico] Erro Claude:", e);
-    return Response.json(
+    return NextResponse.json(
       { error: "Erro ao processar o diagnóstico com IA. Tente novamente." },
       { status: 502 }
     );
   }
 
-  // 6. Persiste na tabela projects
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({
-      diagnostico,
-      etapa_atual: "diagnostico",
-    })
+    .update({ diagnostico, etapa_atual: "diagnostico" })
     .eq("id", project_id)
     .eq("user_id", user.id);
 
   if (updateErr) {
     console.error("[diagnostico] Erro ao salvar:", updateErr);
-    return Response.json(
+    return NextResponse.json(
       { error: "Diagnóstico gerado, mas falha ao salvar no banco." },
       { status: 500 }
     );
   }
 
-  return Response.json({ ok: true, diagnostico });
+  return NextResponse.json({ ok: true, diagnostico });
 }

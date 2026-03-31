@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { EtapasProgress } from "@/components/etapas-progress";
+import { ImageUploadRef } from "@/components/image-upload-ref";
 import { supabase } from "@/lib/supabase";
 import type { CapaResult, OpcaoCapa } from "@/app/api/agentes/gerar-capa/route";
 
@@ -17,6 +18,8 @@ export default function CapaPage() {
   const [sinopse, setSinopse] = useState("");
   const [genero, setGenero] = useState("ficção");
   const [qtd, setQtd] = useState<1 | 2 | 3>(3);
+
+  const [imagemRef, setImagemRef] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -64,7 +67,7 @@ export default function CapaPage() {
       const res = await fetch("/api/agentes/gerar-capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: id, titulo, sinopse, genero, qtd }),
+        body: JSON.stringify({ project_id: id, titulo, sinopse, genero, qtd, imagemRef }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar capa");
@@ -199,6 +202,13 @@ export default function CapaPage() {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">
+                  Imagem de referência <span className="text-zinc-400 normal-case font-normal">(opcional)</span>
+                </label>
+                <ImageUploadRef onImage={setImagemRef} />
               </div>
 
               {error && (

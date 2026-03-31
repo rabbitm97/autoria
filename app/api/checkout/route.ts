@@ -1,6 +1,5 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
-import type { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/supabase-server";
 
 // ─── Plans ────────────────────────────────────────────────────────────────────
 
@@ -15,40 +14,22 @@ type PlanId = keyof typeof PLANS;
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) =>
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          ),
-      },
-    }
-  );
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) {
-    return Response.json({ error: "Não autorizado." }, { status: 401 });
+  try {
+    await requireAuth();
+  } catch (res) {
+    return res as Response;
   }
 
   let body: { plan: PlanId; project_id?: string };
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Body JSON inválido." }, { status: 400 });
+    return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
 
   const { plan } = body;
   if (!plan || !PLANS[plan]) {
-    return Response.json(
+    return NextResponse.json(
       { error: `Plano inválido. Escolha: ${Object.keys(PLANS).join(", ")}.` },
       { status: 400 }
     );
@@ -56,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   // Stripe not yet configured — return informative response
   if (!process.env.STRIPE_SECRET_KEY) {
-    return Response.json(
+    return NextResponse.json(
       {
         error: "Pagamentos ainda não configurados.",
         info: `Plano ${PLANS[plan].nome} (R$ ${(PLANS[plan].preco / 100).toFixed(2).replace(".", ",")}) selecionado. Configure STRIPE_SECRET_KEY para ativar o checkout.`,
@@ -67,9 +48,5 @@ export async function POST(request: NextRequest) {
   }
 
   // TODO: create Stripe checkout session
-  // const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-12-18.acacia" });
-  // const session = await stripe.checkout.sessions.create({ ... });
-  // return Response.json({ ok: true, url: session.url });
-
-  return Response.json({ error: "Stripe não configurado." }, { status: 503 });
+  return NextResponse.json({ error: "Stripe não configurado." }, { status: 503 });
 }

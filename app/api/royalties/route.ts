@@ -1,6 +1,5 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,20 +15,19 @@ export interface Royalty {
   unidades: number;
   preco_venda: number | null;
   royalty_pct: number;
-  valor_recebido: number;   // computed by DB
+  valor_recebido: number;
   moeda: string;
   criado_em: string;
-  // joined
   manuscript_nome?: string;
 }
 
 const PLATAFORMA_INFO: Record<Plataforma, { label: string; royalty_padrao: number; cor: string }> = {
-  amazon_kdp:    { label: "Amazon KDP",     royalty_padrao: 70, cor: "text-orange-600" },
-  draft2digital: { label: "Draft2Digital",  royalty_padrao: 60, cor: "text-blue-600"   },
-  kobo:          { label: "Kobo",           royalty_padrao: 70, cor: "text-red-600"    },
-  apple_books:   { label: "Apple Books",    royalty_padrao: 70, cor: "text-zinc-600"   },
-  google_play:   { label: "Google Play",    royalty_padrao: 52, cor: "text-green-600"  },
-  outros:        { label: "Outros",         royalty_padrao: 50, cor: "text-zinc-500"   },
+  amazon_kdp:    { label: "Amazon KDP",    royalty_padrao: 70, cor: "text-orange-600" },
+  draft2digital: { label: "Draft2Digital", royalty_padrao: 60, cor: "text-blue-600"   },
+  kobo:          { label: "Kobo",          royalty_padrao: 70, cor: "text-red-600"    },
+  apple_books:   { label: "Apple Books",   royalty_padrao: 70, cor: "text-zinc-600"   },
+  google_play:   { label: "Google Play",   royalty_padrao: 52, cor: "text-green-600"  },
+  outros:        { label: "Outros",        royalty_padrao: 50, cor: "text-zinc-500"   },
 };
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
@@ -43,22 +41,14 @@ const MOCK: Royalty[] = [
 ];
 
 // ─── GET /api/royalties ───────────────────────────────────────────────────────
-// Query params: project_id? periodo? (YYYY-MM)
 
 export async function GET(req: NextRequest) {
   if (process.env.NODE_ENV === "development") {
     const project_id = req.nextUrl.searchParams.get("project_id");
-    const data = project_id ? MOCK.filter(r => r.project_id === project_id) : MOCK;
-    return NextResponse.json(data);
+    return NextResponse.json(project_id ? MOCK.filter(r => r.project_id === project_id) : MOCK);
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-
+  const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
@@ -81,20 +71,13 @@ export async function GET(req: NextRequest) {
 }
 
 // ─── POST /api/royalties ──────────────────────────────────────────────────────
-// Body: { project_id, plataforma, periodo, unidades, preco_venda, royalty_pct?, moeda? }
 
 export async function POST(req: NextRequest) {
   if (process.env.NODE_ENV === "development") {
     return NextResponse.json({ error: "Mock mode: use a produção para criar lançamentos" }, { status: 400 });
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-
+  const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
@@ -133,13 +116,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-
+  const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 

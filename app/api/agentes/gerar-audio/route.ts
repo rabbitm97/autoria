@@ -1,7 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VOZES } from "@/lib/voices";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -82,12 +81,7 @@ async function textToSpeech(text: string, voiceId: string, apiKey: string): Prom
 // Generates audio for ONE chapter (to preserve ElevenLabs credits)
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const supabase = await createSupabaseServerClient();
 
   let userId: string;
   if (process.env.NODE_ENV === "development") {
@@ -209,12 +203,7 @@ export async function POST(req: NextRequest) {
 // Returns list of chapters (from text) + which ones have audio generated
 
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const supabase = await createSupabaseServerClient();
 
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });

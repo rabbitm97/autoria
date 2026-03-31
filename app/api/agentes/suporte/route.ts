@@ -1,7 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { anthropic, extractText } from "@/lib/anthropic";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,7 +13,7 @@ export interface Ticket {
   criado_em: string;
 }
 
-// ─── Base de conhecimento da plataforma ──────────────────────────────────────
+// ─── Knowledge base ───────────────────────────────────────────────────────────
 
 const KNOWLEDGE_BASE = `
 Você é o assistente de suporte N1 da Autoria — plataforma de publicação de livros com IA.
@@ -32,7 +31,7 @@ Upload do manuscrito → Diagnóstico → Revisão → Elementos editoriais → 
 - Upload e parse: até 30 segundos
 - Diagnóstico (IA): 15–30 segundos
 - Revisão (IA): 30–60 segundos dependendo do tamanho
-- Geração de capa (Nano Banana Pro): 20–40 segundos por opção
+- Geração de capa: 20–40 segundos por opção
 - Geração de PDF: 10–20 segundos
 - Geração de EPUB: 5–10 segundos
 - Audiolivro por capítulo (ElevenLabs): 10–30 segundos
@@ -72,19 +71,13 @@ Para questões não resolvidas: suporte@autoria.com.br. SLA: 24h úteis (plano P
 `.trim();
 
 // ─── POST /api/agentes/suporte ────────────────────────────────────────────────
-// Body: { pergunta, project_id? }
-// Retorna: { resposta, ticket_id }
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
+  const isDev = process.env.NODE_ENV === "development";
+  const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (process.env.NODE_ENV === "development") {
+  if (isDev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -93,7 +86,9 @@ export async function POST(req: NextRequest) {
   }
 
   let body: { pergunta: string; project_id?: string };
-  try { body = await req.json(); } catch {
+  try {
+    body = await req.json();
+  } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
@@ -102,9 +97,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "pergunta é obrigatória" }, { status: 400 });
   }
 
-  // ── Context: load project state if provided ───────────────────────────────
+  // Load project context if provided
   let contextoProj = "";
-  if (project_id && process.env.NODE_ENV !== "development") {
+  if (project_id && !isDev) {
     const { data } = await supabase
       .from("projects")
       .select("etapa_atual, dados_diagnostico, manuscript:manuscript_id(nome)")
@@ -117,9 +112,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Call Claude ───────────────────────────────────────────────────────────
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-
   const res = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 500,
@@ -127,11 +119,10 @@ export async function POST(req: NextRequest) {
     messages: [{ role: "user", content: pergunta }],
   });
 
-  const resposta = (res.content[0] as { text: string }).text.trim();
+  const resposta = extractText(res.content).trim();
 
-  // ── Save ticket ───────────────────────────────────────────────────────────
   let ticketId: string | null = null;
-  if (process.env.NODE_ENV !== "development") {
+  if (!isDev) {
     const { data } = await supabase
       .from("tickets")
       .insert({ user_id: userId, project_id, pergunta, resposta_ia: resposta })
@@ -146,20 +137,13 @@ export async function POST(req: NextRequest) {
 }
 
 // ─── PATCH /api/agentes/suporte?id=... ───────────────────────────────────────
-// Marca ticket como resolvido
 
 export async function PATCH(req: NextRequest) {
   if (process.env.NODE_ENV === "development") {
     return NextResponse.json({ ok: true });
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-
+  const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
@@ -171,9 +155,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 // ─── GET /api/agentes/suporte ─────────────────────────────────────────────────
-// Histórico de tickets do usuário
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   if (process.env.NODE_ENV === "development") {
     return NextResponse.json([
       { id: "d1", project_id: null, pergunta: "Como faço para gerar o EPUB?", resposta_ia: "Para gerar o EPUB, acesse a página de Diagramação do seu projeto e clique em 'Gerar EPUB' após gerar o PDF.", resolvido: true,  criado_em: new Date(Date.now() - 86400000).toISOString() },
@@ -181,13 +164,7 @@ export async function GET(req: NextRequest) {
     ] satisfies Ticket[]);
   }
 
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll() } }
-  );
-
+  const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 

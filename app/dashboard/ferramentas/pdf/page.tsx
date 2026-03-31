@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ManuscriptUpload } from "@/components/manuscript-upload";
 
 type Formato = "kdp_6x9" | "a5" | "letter";
 
@@ -88,11 +89,14 @@ export default function PdfPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Manuscrito</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide">Manuscrito</label>
+            <ManuscriptUpload onText={setTexto} />
+          </div>
           <textarea
             value={texto}
             onChange={e => setTexto(e.target.value)}
-            placeholder="Cole o texto completo do seu livro aqui. Títulos de capítulos em LETRAS MAIÚSCULAS ou com prefixo 'Capítulo 1'..."
+            placeholder="Cole o texto completo ou envie um arquivo PDF, DOCX ou TXT acima. Títulos de capítulos em LETRAS MAIÚSCULAS..."
             rows={12}
             className="w-full resize-none px-4 py-3 rounded-xl border border-zinc-200 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-gold/30 font-mono leading-relaxed"
           />
