@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { SugestaoRevisao, RevisaoResult } from "@/app/api/agentes/revisao/route";
 import { supabase } from "@/lib/supabase";
@@ -204,20 +203,7 @@ export default function RevisaoPage() {
   const totalCount = revisao?.sugestoes.length ?? 0;
 
   return (
-    <div className="min-h-screen bg-brand-surface">
-
-      {/* Header */}
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-brand-gold/60 hover:text-brand-gold transition-colors">
-            Dashboard
-          </Link>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-surface/50 max-w-[160px] truncate">{manuscritoNome}</span>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-gold/80">Revisão</span>
-        </div>
-      </header>
+    <div>
 
       <EtapasProgress currentStep={1} />
 

@@ -115,25 +115,7 @@ function DiagnosticoView({
   projectId: string;
 }) {
   return (
-    <div className="min-h-screen bg-brand-surface">
-
-      {/* Header */}
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center gap-3 text-sm">
-          <Link
-            href="/dashboard"
-            className="text-brand-gold/60 hover:text-brand-gold transition-colors"
-          >
-            Dashboard
-          </Link>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-surface/50 max-w-[180px] truncate">
-            {manuscritoNome}
-          </span>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-gold/80">Diagnóstico</span>
-        </div>
-      </header>
+    <div>
 
       <EtapasProgress currentStep={0} />
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
 import type { Ticket } from "@/app/api/agentes/suporte/route";
 
 // ─── FAQ rápido ───────────────────────────────────────────────────────────────
@@ -71,19 +70,9 @@ export default function SuportePage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-surface">
+    <div>
 
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-brand-gold/60 hover:text-brand-gold transition-colors">
-            Dashboard
-          </Link>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-gold/80">Suporte</span>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-10">
+      <main className="max-w-4xl mx-auto px-8 py-10">
 
         <div className="mb-8">
           <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">

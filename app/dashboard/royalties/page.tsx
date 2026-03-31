@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import type { Royalty, Plataforma } from "@/app/api/royalties/route";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -136,33 +135,23 @@ export default function RoyaltiesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-surface">
+    <div>
 
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-sm">
-            <Link href="/dashboard" className="text-brand-gold/60 hover:text-brand-gold transition-colors">
-              Dashboard
-            </Link>
-            <span className="text-white/20">/</span>
-            <span className="text-brand-gold/80">Royalties</span>
+      <main className="max-w-5xl mx-auto px-8 py-10">
+
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Financeiro</p>
+            <h1 className="font-heading text-3xl text-brand-primary">Painel de Royalties</h1>
+            <p className="text-zinc-500 mt-1 text-sm">Acompanhe vendas e receitas por plataforma e período.</p>
           </div>
           <button
             onClick={() => setShowForm(v => !v)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-gold text-brand-primary text-sm font-medium hover:bg-brand-gold/90 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-gold text-brand-primary text-sm font-medium hover:bg-brand-gold/90 transition-colors shrink-0 mt-1"
           >
             <PlusIcon />
             Novo lançamento
           </button>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-10">
-
-        <div className="mb-8">
-          <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Financeiro</p>
-          <h1 className="font-heading text-3xl text-brand-primary">Painel de Royalties</h1>
-          <p className="text-zinc-500 mt-1 text-sm">Acompanhe vendas e receitas por plataforma e período.</p>
         </div>
 
         {loading ? (

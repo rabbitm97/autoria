@@ -82,20 +82,9 @@ export default function PerfilPage() {
   const planoInfo = PLANO_LABEL[plano] ?? PLANO_LABEL["gratuito"];
 
   return (
-    <div className="min-h-screen bg-brand-surface">
+    <div>
 
-      {/* Header */}
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-brand-gold/60 hover:text-brand-gold transition-colors">
-            Dashboard
-          </Link>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-gold/80">Perfil</span>
-        </div>
-      </header>
-
-      <main className="max-w-2xl mx-auto px-4 py-10">
+      <main className="max-w-2xl mx-auto px-8 py-10">
 
         <div className="mb-8">
           <h1 className="font-heading text-3xl text-brand-primary">Meu perfil</h1>

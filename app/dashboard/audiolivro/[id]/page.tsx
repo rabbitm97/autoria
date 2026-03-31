@@ -2,15 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
-import { EtapasProgress } from "@/components/etapas-progress";
-import type { CapituloAudio, VOZES } from "@/app/api/agentes/gerar-audio/route";
+import type { CapituloAudio } from "@/app/api/agentes/gerar-audio/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CapituloTexto { index: number; titulo: string; caracteres: number }
-
-type VozInfo = (typeof VOZES)[number];
 
 // ─── Audio Player ─────────────────────────────────────────────────────────────
 
@@ -125,17 +121,7 @@ export default function AudiolivroPage() {
   const vozInfo = VOZES_UI.find(v => v.id === voz);
 
   return (
-    <div className="min-h-screen bg-brand-surface">
-
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="text-brand-gold/60 hover:text-brand-gold transition-colors">
-            Dashboard
-          </Link>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-gold/80">Audiolivro</span>
-        </div>
-      </header>
+    <div>
 
       {/* EtapasProgress is outside the editorial pipeline — audiolivro is a feature extra */}
       <div className="bg-brand-primary border-b border-white/5">

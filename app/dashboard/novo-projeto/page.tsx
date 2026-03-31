@@ -276,21 +276,7 @@ export default function NovoProjetoPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-brand-surface">
-
-      {/* Top nav */}
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-3xl mx-auto px-4 h-16 flex items-center gap-3 text-sm">
-          <a
-            href="/dashboard"
-            className="text-brand-gold/60 hover:text-brand-gold transition-colors"
-          >
-            Dashboard
-          </a>
-          <span className="text-white/20">/</span>
-          <span className="text-brand-surface/70">Novo projeto</span>
-        </div>
-      </header>
+    <div>
 
       {/* Step indicator */}
       <div className="bg-brand-primary border-b border-white/5">

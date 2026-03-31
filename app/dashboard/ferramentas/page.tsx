@@ -55,23 +55,9 @@ const TOOLS = [
 
 export default function FerramentasPage() {
   return (
-    <div className="min-h-screen bg-brand-surface">
+    <div>
 
-      {/* Header */}
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-sm">
-            <Link href="/dashboard" className="text-brand-gold/60 hover:text-brand-gold transition-colors">
-              Dashboard
-            </Link>
-            <span className="text-white/20">/</span>
-            <span className="text-brand-gold/80">Ferramentas</span>
-          </div>
-          <h1 className="font-heading text-xl text-brand-gold">Autoria</h1>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-12">
+      <main className="max-w-5xl mx-auto px-8 py-10">
         <div className="mb-10">
           <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
             Caixa de ferramentas

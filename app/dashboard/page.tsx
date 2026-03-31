@@ -73,29 +73,9 @@ export default async function DashboardPage() {
   const temProjetos = projetos.length > 0;
 
   return (
-    <div className="min-h-screen bg-brand-surface">
+    <div>
 
-      {/* Header */}
-      <header className="bg-brand-primary border-b border-white/10">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <h1 className="font-heading text-2xl text-brand-gold">Autoria</h1>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dashboard/perfil"
-              className="flex items-center gap-2 text-sm text-brand-surface/60 hover:text-brand-gold transition-colors"
-            >
-              <div className="w-8 h-8 rounded-full bg-brand-gold/20 flex items-center justify-center">
-                <span className="text-brand-gold text-xs font-bold">
-                  {userName.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <span className="hidden sm:block">{userName}</span>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-12">
+      <main className="max-w-5xl mx-auto px-8 py-10">
 
         {/* Boas-vindas + CTA */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-10">
