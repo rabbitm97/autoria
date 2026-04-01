@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 const ITEMS = [
   {
@@ -17,7 +17,7 @@ const ITEMS = [
   },
   {
     q: "A revisão da IA substitui um revisor humano?",
-    a: "A IA faz uma revisão gramatical, ortográfica e de estilo muito precisa para o português brasileiro, capturando a maioria dos erros. Para obras literárias de maior exigência, recomendamos usar a revisão da IA como primeira passagem e complementar com um olhar humano se desejado. O plano Pro inclui suporte dedicado nessa etapa.",
+    a: "A IA faz uma revisão gramatical, ortográfica e de estilo muito precisa para o português brasileiro, capturando a maioria dos erros. Para obras literárias de maior exigência, recomendamos usar a revisão da IA como primeira passagem e complementar com um olhar humano se desejado.",
   },
   {
     q: "Quem fica com os direitos do meu livro?",
@@ -25,7 +25,7 @@ const ITEMS = [
   },
   {
     q: "Como funciona o audiolivro com IA?",
-    a: "Usamos a tecnologia ElevenLabs — a mesma usada por grandes produtoras de conteúdo — para narrar seu livro com voz neural em português. O resultado soa natural, com entonação e ritmo adequados. No plano Pro, é possível clonar sua própria voz para narrar o audiolivro.",
+    a: "Usamos tecnologia de voz neural de última geração para narrar seu livro em português com entonação e ritmo adequados. No plano Pro, é possível clonar sua própria voz para narrar o audiolivro.",
   },
   {
     q: "Em quais plataformas meu livro será publicado?",
@@ -33,26 +33,68 @@ const ITEMS = [
   },
   {
     q: "Posso usar a Autoria para publicar mais de um livro?",
-    a: "Sim. Cada obra é um projeto independente. Você pode publicar quantos livros quiser — cada um paga o plano correspondente ao formato desejado.",
+    a: "Sim. Cada obra é um projeto independente. Você pode publicar quantos livros quiser — cada um paga o plano correspondente ao formato desejado. Para volume alto de publicações, entre em contato para condições especiais.",
   },
 ];
 
+function AccordionItem({ q, a, isOpen, onToggle }: { q: string; a: string; isOpen: boolean; onToggle: () => void }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="border-b border-zinc-100 last:border-0">
+      <button
+        onClick={onToggle}
+        className="w-full text-left py-6 flex items-start justify-between gap-6 group"
+        aria-expanded={isOpen}
+      >
+        <span className={`font-semibold text-base leading-snug transition-colors ${isOpen ? "text-brand-primary" : "text-zinc-700 group-hover:text-brand-primary"}`}>
+          {q}
+        </span>
+        <span
+          className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all duration-300 ${
+            isOpen
+              ? "bg-brand-gold border-brand-gold text-brand-primary rotate-45"
+              : "border-zinc-200 text-zinc-400 group-hover:border-brand-gold/50"
+          }`}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+            <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+          </svg>
+        </span>
+      </button>
+
+      <div
+        ref={contentRef}
+        className="overflow-hidden transition-all duration-300 ease-in-out"
+        style={{
+          maxHeight: isOpen ? `${contentRef.current?.scrollHeight ?? 200}px` : "0px",
+          opacity: isOpen ? 1 : 0,
+        }}
+      >
+        <div className="pb-6 pr-14">
+          <p className="text-zinc-500 text-base leading-relaxed">{a}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FAQ() {
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(0);
 
   return (
     <section id="faq" className="bg-brand-surface py-28">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-[1fr_2fr] gap-20 items-start">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-12 lg:gap-20 items-start">
 
-          {/* Left: title */}
-          <div className="sticky top-28">
+          {/* Left */}
+          <div className="lg:sticky lg:top-24">
             <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">FAQ</p>
-            <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
+            <h2 className="font-heading text-4xl lg:text-5xl text-brand-primary leading-tight mb-5">
               Perguntas<br />frequentes
             </h2>
             <p className="text-zinc-500 text-base leading-relaxed mb-8">
-              Ainda tem dúvidas? Fale com a nossa equipe.
+              Ainda tem dúvidas? Fale com a nossa equipe — respondemos em menos de 24 horas.
             </p>
             <a
               href="mailto:oi@autoria.app"
@@ -62,34 +104,19 @@ export default function FAQ() {
             </a>
           </div>
 
-          {/* Right: accordion */}
-          <div className="space-y-0 divide-y divide-zinc-100 border-t border-zinc-100">
+          {/* Right */}
+          <div className="border-t border-zinc-100">
             {ITEMS.map((item, i) => (
-              <div key={i}>
-                <button
-                  onClick={() => setOpen(open === i ? null : i)}
-                  className="w-full text-left py-6 flex items-start justify-between gap-6 group"
-                  aria-expanded={open === i}
-                >
-                  <span className="font-semibold text-zinc-800 text-base leading-snug group-hover:text-brand-primary transition-colors">
-                    {item.q}
-                  </span>
-                  <span
-                    className={`text-brand-gold text-xl font-light shrink-0 mt-0.5 transition-transform duration-200 ${
-                      open === i ? "rotate-45" : ""
-                    }`}
-                  >
-                    +
-                  </span>
-                </button>
-                {open === i && (
-                  <div className="pb-6 pr-12">
-                    <p className="text-zinc-500 text-base leading-relaxed">{item.a}</p>
-                  </div>
-                )}
-              </div>
+              <AccordionItem
+                key={i}
+                q={item.q}
+                a={item.a}
+                isOpen={open === i}
+                onToggle={() => setOpen(open === i ? null : i)}
+              />
             ))}
           </div>
+
         </div>
       </div>
     </section>

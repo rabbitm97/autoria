@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 
 const STEPS = [
   {
@@ -67,7 +68,21 @@ const STEPS = [
 
 export default function HowItWorks() {
   const [active, setActive] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const step = STEPS[active];
+
+  function changeTab(i: number) {
+    if (i === active) return;
+    setVisible(false);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setActive(i);
+      setVisible(true);
+    }, 160);
+  }
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   return (
     <section id="como-funciona" className="bg-zinc-50 py-28">
@@ -92,7 +107,7 @@ export default function HowItWorks() {
             {STEPS.map((s, i) => (
               <button
                 key={i}
-                onClick={() => setActive(i)}
+                onClick={() => changeTab(i)}
                 className={`text-left px-7 py-5 border-b-2 transition-all ${
                   active === i
                     ? "border-brand-gold"
@@ -117,8 +132,11 @@ export default function HowItWorks() {
             ))}
           </div>
 
-          {/* Content — fixed height, no reflow */}
-          <div className="grid grid-cols-[1fr_1.3fr] h-[420px]">
+          {/* Content — fixed height, fade transition */}
+          <div
+            className="grid grid-cols-[1fr_1.3fr] h-[420px] transition-opacity duration-150"
+            style={{ opacity: visible ? 1 : 0 }}
+          >
 
             {/* Left */}
             <div className="flex flex-col justify-between p-10 border-r border-zinc-100">
@@ -137,12 +155,12 @@ export default function HowItWorks() {
                   ))}
                 </ul>
               </div>
-              <a
+              <Link
                 href="/login"
-                className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary text-sm font-bold px-6 py-3 rounded-lg hover:bg-brand-gold/90 transition-colors w-fit"
+                className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary text-sm font-bold px-6 py-3 rounded-lg hover:bg-brand-gold/90 active:scale-95 transition-all w-fit"
               >
                 Começar agora →
-              </a>
+              </Link>
             </div>
 
             {/* Right — browser mockup, fixed height */}

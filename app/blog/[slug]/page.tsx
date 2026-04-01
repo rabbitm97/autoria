@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { POSTS, type Block } from "@/lib/blog";
 import type { Metadata } from "next";
+import PublicNavbar from "@/app/_components/public-navbar";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -32,6 +33,7 @@ export default async function PostPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-zinc-50">
+      <PublicNavbar />
 
       {/* Hero */}
       <div className={`bg-gradient-to-br ${post.coverColor} pt-32 pb-20 px-8`}>

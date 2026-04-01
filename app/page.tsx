@@ -4,6 +4,7 @@ import Link from "next/link";
 import WaitlistForm from "./_components/waitlist-form";
 import FAQ from "./_components/faq";
 import HowItWorks from "./_components/how-it-works";
+import PublicNavbar from "./_components/public-navbar";
 
 export const metadata: Metadata = {
   title: "Autoria — Publique seu livro com IA, do manuscrito ao leitor",
@@ -28,13 +29,6 @@ const jsonLd = {
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const NAV_LINKS = [
-  { label: "Como funciona", href: "#como-funciona" },
-  { label: "Serviços",      href: "#servicos"      },
-  { label: "Preços",        href: "#precos"        },
-  { label: "FAQ",           href: "#faq"           },
-  { label: "Blog",          href: "/blog"          },
-];
 
 const PLATFORMS = [
   "Amazon KDP", "Kobo", "Apple Books", "Google Play", "Spotify Audiobooks",
@@ -166,47 +160,11 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
     <Image
       src={src}
       alt="Autoria"
-      width={480}
-      height={120}
-      className="h-[108px] w-auto object-contain"
+      width={160}
+      height={40}
+      className="h-10 w-auto object-contain"
       priority
     />
-  );
-}
-
-// ─── Sections ─────────────────────────────────────────────────────────────────
-
-function Navbar() {
-  return (
-    <header className="fixed top-0 inset-x-0 z-50 bg-brand-primary/95 backdrop-blur-md border-b border-white/5">
-      <nav className="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between gap-8" aria-label="Navegação principal">
-        <Link href="/" aria-label="Autoria — página inicial">
-          <Logo variant="gold" />
-        </Link>
-
-        <ul className="flex items-center gap-8 text-sm text-white/55">
-          {NAV_LINKS.map(({ label, href }) => (
-            <li key={href}>
-              <a href={href} className="hover:text-white transition-colors tracking-wide">
-                {label}
-              </a>
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-white/55 hover:text-white transition-colors px-3 py-1.5">
-            Entrar
-          </Link>
-          <Link
-            href="/login"
-            className="bg-brand-gold text-brand-primary text-sm font-bold px-6 py-2.5 rounded-lg hover:bg-brand-gold-light active:scale-95 transition-all tracking-wide"
-          >
-            Começar grátis
-          </Link>
-        </div>
-      </nav>
-    </header>
   );
 }
 
@@ -382,18 +340,31 @@ function Hero() {
 }
 
 function PlatformBar() {
+  const platforms = [
+    { name: "Amazon KDP",    letter: "A", color: "bg-orange-100 text-orange-600" },
+    { name: "Apple Books",   letter: "🍎", color: "bg-zinc-100 text-zinc-600" },
+    { name: "Kobo",          letter: "K", color: "bg-blue-100 text-blue-600" },
+    { name: "Google Play",   letter: "G", color: "bg-green-100 text-green-600" },
+    { name: "Spotify",       letter: "S", color: "bg-emerald-100 text-emerald-600" },
+    { name: "Scribd",        letter: "Sc", color: "bg-red-100 text-red-600" },
+    { name: "Barnes & Noble",letter: "B&N", color: "bg-indigo-100 text-indigo-600" },
+    { name: "Rakuten",       letter: "R", color: "bg-rose-100 text-rose-600" },
+    { name: "+ 7 mais",      letter: "…", color: "bg-zinc-100 text-zinc-400" },
+  ];
   return (
-    <div className="bg-white border-b border-zinc-100 py-5">
-      <div className="max-w-7xl mx-auto px-8 flex items-center gap-10">
-        <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest shrink-0">
-          Distribua em
-        </p>
-        <div className="w-px h-4 bg-zinc-200 shrink-0" />
-        <div className="flex items-center gap-10 overflow-x-auto scrollbar-none">
-          {PLATFORMS.map((p) => (
-            <span key={p} className="text-zinc-400 text-sm font-medium whitespace-nowrap hover:text-zinc-600 transition-colors">
-              {p}
-            </span>
+    <div className="bg-white border-b border-zinc-100 py-6">
+      <div className="max-w-7xl mx-auto px-8">
+        <div className="flex items-center gap-4 flex-wrap justify-center">
+          <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mr-2">
+            Distribua em
+          </p>
+          {platforms.map((p) => (
+            <div key={p.name} className="flex items-center gap-2 text-sm text-zinc-500 font-medium">
+              <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${p.color}`}>
+                {p.letter}
+              </span>
+              <span className="hidden sm:inline">{p.name}</span>
+            </div>
           ))}
         </div>
       </div>
@@ -1099,7 +1070,7 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <Navbar />
+      <PublicNavbar />
       <main>
         <Hero />
         <PlatformBar />
