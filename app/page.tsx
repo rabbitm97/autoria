@@ -33,6 +33,7 @@ const NAV_LINKS = [
   { label: "Serviços",      href: "#servicos"      },
   { label: "Preços",        href: "#precos"        },
   { label: "FAQ",           href: "#faq"           },
+  { label: "Blog",          href: "/blog"          },
 ];
 
 const PLATFORMS = [
