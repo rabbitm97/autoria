@@ -59,58 +59,57 @@ export default function HowItWorks() {
 
   return (
     <section id="como-funciona" className="bg-zinc-50 py-28">
-      <div className="max-w-7xl mx-auto px-8">
+      <div className="max-w-6xl mx-auto px-8">
 
         {/* Header */}
-        <div className="text-center max-w-2xl mx-auto mb-16">
+        <div className="text-center mb-12">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
             Processo
           </p>
-          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
-            Do manuscrito ao leitor<br />em 4 etapas
+          <h2 className="font-heading text-4xl text-brand-primary leading-tight mb-4">
+            Do manuscrito ao leitor em 4 etapas
           </h2>
-          <p className="text-zinc-500 text-lg leading-relaxed">
+          <p className="text-zinc-500 text-base leading-relaxed">
             Sem precisar entender de editoração. Você escreve — nós cuidamos de tudo.
           </p>
         </div>
 
-        {/* Step tabs */}
-        <div className="flex border-b border-zinc-200 mb-10">
-          {STEPS.map((s, i) => (
-            <button
-              key={s.num}
-              onClick={() => setActive(i)}
-              className={`flex items-center gap-2.5 px-6 py-4 text-sm font-semibold border-b-2 transition-all -mb-px ${
-                active === i
-                  ? "border-brand-gold text-brand-primary"
-                  : "border-transparent text-zinc-400 hover:text-zinc-600 hover:border-zinc-300"
-              }`}
-            >
-              <span
-                className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold transition-colors ${
-                  active === i ? "bg-brand-gold text-brand-primary" : "bg-zinc-200 text-zinc-500"
+        {/* Box with tabs inside */}
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+
+          {/* Tabs row — inside the box, centered */}
+          <div className="border-b border-zinc-100 px-6 flex justify-center">
+            {STEPS.map((s, i) => (
+              <button
+                key={s.num}
+                onClick={() => setActive(i)}
+                className={`flex items-center gap-2 px-5 py-4 text-sm font-semibold border-b-2 transition-all -mb-px ${
+                  active === i
+                    ? "border-brand-gold text-brand-primary"
+                    : "border-transparent text-zinc-400 hover:text-zinc-600 hover:border-zinc-200"
                 }`}
               >
-                {i + 1}
-              </span>
-              <span>
-                <span className="text-zinc-400 font-normal mr-1 hidden xl:inline">Etapa {i + 1} —</span>
-                {s.label}
-              </span>
-            </button>
-          ))}
-        </div>
+                <span
+                  className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold shrink-0 transition-colors ${
+                    active === i ? "bg-brand-gold text-brand-primary" : "bg-zinc-100 text-zinc-500"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
 
-        {/* Content */}
-        <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-          <div className="grid grid-cols-[1fr_1.2fr] min-h-[420px]">
+          {/* Content */}
+          <div className="grid grid-cols-[1fr_1.2fr] min-h-[400px]">
 
             {/* Left: text */}
-            <div className="p-12 flex flex-col justify-center border-r border-zinc-100">
-              <div className="font-heading text-6xl text-zinc-100 leading-none mb-6 select-none">
+            <div className="p-10 flex flex-col justify-center border-r border-zinc-100">
+              <div className="font-heading text-6xl text-zinc-100 leading-none mb-5 select-none">
                 {step.num}
               </div>
-              <h3 className="font-heading text-2xl text-brand-primary leading-snug mb-6">
+              <h3 className="font-heading text-2xl text-brand-primary leading-snug mb-5">
                 {step.title}
               </h3>
               <ul className="space-y-3">
@@ -127,7 +126,7 @@ export default function HowItWorks() {
               </ul>
               <a
                 href="/login"
-                className="mt-8 inline-flex items-center gap-2 bg-brand-gold text-brand-primary text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-gold/90 transition-colors w-fit"
+                className="mt-7 inline-flex items-center gap-2 bg-brand-gold text-brand-primary text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-gold/90 transition-colors w-fit"
               >
                 Começar agora →
               </a>
