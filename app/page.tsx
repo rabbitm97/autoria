@@ -165,9 +165,9 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
     <Image
       src={src}
       alt="Autoria"
-      width={480}
-      height={104}
-      className="h-24 w-auto object-contain"
+      width={160}
+      height={40}
+      className="h-9 w-auto object-contain"
       priority
     />
   );
@@ -178,7 +178,7 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
 function Navbar() {
   return (
     <header className="fixed top-0 inset-x-0 z-50 bg-brand-primary/95 backdrop-blur-md border-b border-white/5">
-      <nav className="max-w-7xl mx-auto px-8 h-28 flex items-center justify-between gap-8" aria-label="Navegação principal">
+      <nav className="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between gap-8" aria-label="Navegação principal">
         <Link href="/" aria-label="Autoria — página inicial">
           <Logo variant="gold" />
         </Link>
