@@ -14,14 +14,48 @@ const ACCEPTED_MIME = [
 ];
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
 
-const STEPS = [
-  "Upload",
-  "Diagnóstico",
-  "Revisão",
-  "Capa",
-  "Diagramação",
-  "Publicação",
-];
+const AUTHOR_TITLES = ["Sr.", "Sra.", "Dr.", "Dra.", "Prof.", "Profa.", "Rev."];
+
+const GENRES: Record<string, Record<string, string[]>> = {
+  "Ficção": {
+    "Romance": ["Romance Contemporâneo", "Romance Histórico", "Romance Suspense", "Romance Paranormal", "Chick Lit"],
+    "Thriller e Suspense": ["Thriller Policial", "Thriller Psicológico", "Suspense", "Crime"],
+    "Terror e Horror": ["Terror Sobrenatural", "Horror Psicológico", "Terror Gótico"],
+    "Ficção Científica": ["Space Opera", "Distopia", "Cyberpunk", "Hard Sci-Fi", "Ficção Científica Soft"],
+    "Fantasia": ["Fantasia Épica", "Fantasia Urbana", "Dark Fantasy", "Steampunk"],
+    "Mistério": ["Mistério Policial", "Cozy Mystery", "Noir"],
+    "Aventura": ["Aventura de Ação", "Aventura Histórica"],
+    "Ficção Literária": ["Ficção Contemporânea", "Ficção Histórica"],
+    "Humor e Sátira": ["Humor", "Sátira"],
+  },
+  "Não Ficção": {
+    "Autoajuda e Desenvolvimento Pessoal": ["Autoajuda", "Motivação", "Mindfulness", "Produtividade", "Coaching"],
+    "Negócios e Empreendedorismo": ["Empreendedorismo", "Marketing", "Finanças Pessoais", "Liderança", "Gestão"],
+    "Biografia e Memórias": ["Autobiografia", "Biografia", "Memórias", "Diário"],
+    "História": ["História do Brasil", "História Mundial", "História Regional"],
+    "Ciência e Natureza": ["Ciência Popular", "Física", "Biologia", "Astronomia", "Meio Ambiente"],
+    "Saúde e Bem-estar": ["Saúde", "Nutrição", "Fitness", "Medicina Alternativa"],
+    "Espiritualidade e Religião": ["Espiritualidade", "Religião", "Esoterismo"],
+    "Filosofia": ["Filosofia Geral", "Filosofia Prática", "Ética"],
+  },
+  "Infantil e Juvenil": {
+    "Infantil": ["Livro Ilustrado", "Conto Infantil", "Fábula", "Livro de Atividades"],
+    "Jovem Adulto (YA)": ["YA Romance", "YA Fantasia", "YA Ficção Científica", "YA Contemporâneo"],
+  },
+  "Poesia e Literatura": {
+    "Poesia": ["Poesia Lírica", "Poesia Épica", "Haiku", "Poesia Contemporânea"],
+    "Contos": ["Contos Literários", "Contos de Terror", "Contos Românticos", "Contos de Ficção Científica"],
+    "Crônicas": ["Crônicas Literárias", "Crônicas Humorísticas"],
+  },
+  "Arte e Fotografia": {
+    "Arte": ["Arte Visual", "Arquitetura", "Design", "Moda e Estilo"],
+    "Fotografia": ["Fotografia Artística", "Fotografia Documental"],
+  },
+  "Culinária e Estilo de Vida": {
+    "Culinária": ["Receitas Gerais", "Cozinha Regional Brasileira", "Culinária Internacional", "Vegano e Vegetariano"],
+    "Estilo de Vida": ["Casa e Jardim", "Viagem", "Artesanato"],
+  },
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +67,13 @@ type Status =
   | "analyzing"
   | "done"
   | "error";
+
+interface CoAuthor {
+  titulo: string;
+  primeiro_nome: string;
+  nome_meio: string;
+  sobrenome: string;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -50,7 +91,6 @@ function validateFile(file: File): string | null {
   return null;
 }
 
-// XHR upload com progresso real — @supabase/storage-js não expõe onUploadProgress
 function uploadWithProgress(
   storagePath: string,
   file: File,
@@ -84,12 +124,34 @@ function uploadWithProgress(
   });
 }
 
+const fieldClass =
+  "w-full border border-zinc-200 rounded-lg px-3 py-2.5 text-sm text-zinc-800 placeholder:text-zinc-400 bg-white focus:outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold/30 transition";
+
+const labelClass =
+  "block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mb-1.5";
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function NovoProjetoPage() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ── Form state ──────────────────────────────────────────────────────────────
+  const [titulo, setTitulo] = useState("");
+  const [subtitulo, setSubtitulo] = useState("");
+  const [generoPrincipal, setGeneroPrincipal] = useState("");
+  const [generoSub, setGeneroSub] = useState("");
+  const [generoDetalhe, setGeneroDetalhe] = useState("");
+  const [autorTitulo, setAutorTitulo] = useState("");
+  const [autorPrimeiro, setAutorPrimeiro] = useState("");
+  const [autorMeio, setAutorMeio] = useState("");
+  const [autorSobrenome, setAutorSobrenome] = useState("");
+  const [coautores, setCoautores] = useState<CoAuthor[]>([]);
+
+  // ── Services state ──────────────────────────────────────────────────────────
+  const [usarRevisao, setUsarRevisao] = useState<boolean | null>(null);
+
+  // ── Upload state ────────────────────────────────────────────────────────────
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
@@ -127,13 +189,40 @@ export default function NovoProjetoPage() {
     if (f) pickFile(f);
   }
 
-  // ── Upload flow ─────────────────────────────────────────────────────────────
+  // ── Co-author helpers ───────────────────────────────────────────────────────
 
-  async function handleUpload() {
-    if (!file) return;
+  function addCoAuthor() {
+    setCoautores([...coautores, { titulo: "", primeiro_nome: "", nome_meio: "", sobrenome: "" }]);
+  }
+
+  function removeCoAuthor(idx: number) {
+    setCoautores(coautores.filter((_, i) => i !== idx));
+  }
+
+  function updateCoAuthor(idx: number, field: keyof CoAuthor, value: string) {
+    setCoautores(coautores.map((ca, i) => i === idx ? { ...ca, [field]: value } : ca));
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────────
+
+  async function handleNext() {
+    setError(null);
+
+    if (!titulo.trim()) {
+      setError("O título do livro é obrigatório.");
+      return;
+    }
+    if (usarRevisao === null) {
+      setError("Informe se deseja ou não a revisão textual do seu manuscrito.");
+      return;
+    }
+    if (!file) {
+      setError("Selecione o arquivo do manuscrito.");
+      return;
+    }
+
     setStatus("uploading");
     setProgress(0);
-    setError(null);
 
     // 1. Get session
     const { data: { session }, error: authErr } = await supabase.auth.getSession();
@@ -157,12 +246,22 @@ export default function NovoProjetoPage() {
 
     setStatus("creating");
 
-    // 3. Create manuscript record
+    // 3. Create manuscript record with metadata
     const { data: manuscript, error: msErr } = await supabase
       .from("manuscripts")
       .insert({
         user_id: session.user.id,
         nome: file.name.replace(/\.[^/.]+$/, ""),
+        titulo: titulo.trim(),
+        subtitulo: subtitulo.trim() || null,
+        genero_principal: generoPrincipal || null,
+        genero_sub: generoSub || null,
+        genero_detalhe: generoDetalhe || null,
+        autor_titulo: autorTitulo || null,
+        autor_primeiro_nome: autorPrimeiro.trim() || null,
+        autor_nome_meio: autorMeio.trim() || null,
+        autor_sobrenome: autorSobrenome.trim() || null,
+        coautores,
         status: "em_diagnostico",
       })
       .select("id")
@@ -182,6 +281,7 @@ export default function NovoProjetoPage() {
         manuscript_id: manuscript.id,
         plano: "basico",
         etapa_atual: "upload",
+        usar_revisao: usarRevisao,
       })
       .select("id")
       .single();
@@ -207,12 +307,8 @@ export default function NovoProjetoPage() {
         }),
       });
       const parseData = await parseRes.json();
-      if (!parseRes.ok) {
-        // Non-fatal: continue to diagnostico without extracted text
-        console.warn("[upload] Parse falhou:", parseData.error);
-      } else {
-        textoExtraido = parseData.texto ?? "";
-      }
+      if (parseRes.ok) textoExtraido = parseData.texto ?? "";
+      else console.warn("[upload] Parse falhou:", parseData.error);
     } catch (e) {
       console.warn("[upload] Erro na chamada de parse:", e);
     }
@@ -221,274 +317,476 @@ export default function NovoProjetoPage() {
     setStatus("analyzing");
 
     try {
-      // Use extracted text or fall back to filename as minimal context
       const textoParaDiagnostico = textoExtraido.trim().length >= 50
         ? textoExtraido
-        : `Manuscrito: ${file.name.replace(/\.[^/.]+$/, "")}`;
+        : `Manuscrito: ${titulo.trim()}`;
 
       const diagRes = await fetch("/api/agentes/diagnostico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          texto: textoParaDiagnostico,
-          project_id: project.id,
-        }),
+        body: JSON.stringify({ texto: textoParaDiagnostico, project_id: project.id }),
       });
 
       if (!diagRes.ok) {
         const diagData = await diagRes.json();
         console.warn("[upload] Diagnóstico falhou:", diagData.error);
-        // Non-fatal: redirect to diagnostico page which handles pending state
       }
     } catch (e) {
       console.warn("[upload] Erro na chamada de diagnóstico:", e);
     }
 
-    // 7. Redirect to diagnostico page regardless
     setStatus("done");
     router.push(`/dashboard/diagnostico/${project.id}`);
   }
 
   // ── Derived state ───────────────────────────────────────────────────────────
 
-  const isProcessing = [
-    "uploading",
-    "creating",
-    "parsing",
-    "analyzing",
-  ].includes(status);
-
+  const isProcessing = ["uploading", "creating", "parsing", "analyzing"].includes(status);
   const fileExt = file?.name.split(".").pop()?.toUpperCase() ?? "";
 
   const statusLabel =
     status === "uploading"  ? `Enviando… ${progress}%` :
-    status === "creating"   ? "Criando projeto…"        :
-    status === "parsing"    ? "Extraindo texto…"        :
-    status === "analyzing"  ? "Analisando com IA…"      :
-    status === "done"       ? "Redirecionando…"         : null;
+    status === "creating"   ? "Criando projeto…" :
+    status === "parsing"    ? "Extraindo texto…" :
+    status === "analyzing"  ? "Analisando com IA…" :
+    status === "done"       ? "Redirecionando…" : "Próximo →";
 
-  const progressPct =
-    status === "uploading"  ? progress :
-    status === "creating"   ? 100 :
-    status === "parsing"    ? 100 :
-    status === "analyzing"  ? 100 : 0;
+  const subcats = generoPrincipal ? Object.keys(GENRES[generoPrincipal]) : [];
+  const details = generoSub && generoPrincipal ? GENRES[generoPrincipal][generoSub] : [];
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div>
+    <div className="min-h-screen bg-zinc-50">
+      <main className="max-w-2xl mx-auto px-4 py-10">
 
-      {/* Step indicator */}
-      <div className="bg-brand-primary border-b border-white/5">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <ol className="flex items-center gap-0 overflow-x-auto">
-            {STEPS.map((step, i) => {
-              const active = i === 0;
-              return (
-                <li key={step} className="flex items-center shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                        active
-                          ? "bg-brand-gold text-brand-primary"
-                          : "bg-white/10 text-white/30"
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <span
-                      className={`text-xs ${
-                        active ? "text-brand-gold font-medium" : "text-white/30"
-                      }`}
-                    >
-                      {step}
-                    </span>
-                  </div>
-                  {i < STEPS.length - 1 && (
-                    <span className="mx-3 text-white/10 text-xs">›</span>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      </div>
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-zinc-100 overflow-hidden">
 
-      {/* Content */}
-      <main className="max-w-3xl mx-auto px-4 py-12">
-        <div className="mb-8">
-          <h1 className="font-heading text-3xl text-brand-primary mb-2">
-            Envie seu manuscrito
-          </h1>
-          <p className="text-zinc-500">
-            Aceitos: <strong>.docx</strong>, <strong>.pdf</strong> ou{" "}
-            <strong>.txt</strong> — até 50 MB.
-          </p>
-        </div>
+          {/* Card header */}
+          <div className="bg-brand-primary px-8 py-5">
+            <p className="text-brand-gold text-[11px] font-semibold uppercase tracking-widest mb-0.5">
+              Novo Projeto
+            </p>
+            <h1 className="text-white font-heading text-lg">
+              Informações do Livro
+            </h1>
+          </div>
 
-        {/* Drop zone */}
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          onClick={() => !file && !isProcessing && inputRef.current?.click()}
-          className={`relative rounded-2xl border-2 border-dashed transition-all ${
-            isProcessing
-              ? "border-brand-gold/30 bg-brand-primary/5 cursor-default"
-              : file
-              ? "border-brand-gold/40 bg-white cursor-default"
-              : isDragging
-              ? "border-brand-gold bg-brand-gold/5 cursor-copy scale-[1.01]"
-              : "border-zinc-200 bg-white hover:border-brand-gold/40 hover:bg-zinc-50 cursor-pointer"
-          }`}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".docx,.pdf,.txt"
-            className="sr-only"
-            onChange={onInputChange}
-            disabled={isProcessing}
-          />
+          <div className="px-8 py-8 space-y-7">
 
-          {/* Empty state */}
-          {!file && !isProcessing && (
-            <div className="flex flex-col items-center justify-center gap-4 py-16 px-8 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-brand-primary/5 flex items-center justify-center">
-                <UploadIcon />
-              </div>
+            {/* ── Title + Subtitle ── */}
+            <div className="space-y-4">
               <div>
-                <p className="font-medium text-zinc-700 mb-1">
-                  {isDragging
-                    ? "Solte o arquivo aqui"
-                    : "Arraste o arquivo ou clique para selecionar"}
-                </p>
-                <p className="text-zinc-400 text-sm">.docx · .pdf · .txt · até 50 MB</p>
-              </div>
-            </div>
-          )}
-
-          {/* File selected */}
-          {file && !isProcessing && (
-            <div className="flex items-center gap-4 p-6">
-              <div className="w-12 h-12 rounded-xl bg-brand-primary flex items-center justify-center shrink-0">
-                <span className="text-brand-gold text-xs font-bold">{fileExt}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-zinc-800 truncate">{file.name}</p>
-                <p className="text-zinc-400 text-sm mt-0.5">{formatBytes(file.size)}</p>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setFile(null); setError(null); }}
-                className="text-zinc-300 hover:text-zinc-500 transition-colors p-1"
-                aria-label="Remover arquivo"
-              >
-                <RemoveIcon />
-              </button>
-            </div>
-          )}
-
-          {/* Processing state */}
-          {isProcessing && (
-            <div className="p-8">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-12 h-12 rounded-xl bg-brand-primary flex items-center justify-center shrink-0">
-                  <span className="text-brand-gold text-xs font-bold">{fileExt}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-zinc-800 truncate">{file?.name}</p>
-                  <p className="text-zinc-400 text-sm mt-0.5">{statusLabel}</p>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ease-out ${
-                    status === "analyzing"
-                      ? "bg-brand-gold animate-pulse"
-                      : "bg-brand-gold"
-                  }`}
-                  style={{ width: status === "uploading" ? `${progressPct}%` : "100%" }}
+                <label className={labelClass}>
+                  Título do livro <span className="text-red-400 normal-case font-normal">*</span>
+                </label>
+                <input
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  placeholder="Ex.: O Último Horizonte"
+                  disabled={isProcessing}
+                  className={fieldClass}
                 />
               </div>
-
-              {/* Steps */}
-              <div className="flex gap-4 mt-4">
-                {(
-                  [
-                    { s: "uploading", label: "Upload" },
-                    { s: "creating",  label: "Projeto" },
-                    { s: "parsing",   label: "Texto" },
-                    { s: "analyzing", label: "IA" },
-                  ] as { s: Status; label: string }[]
-                ).map(({ s, label }, i) => {
-                  const steps: Status[] = ["uploading", "creating", "parsing", "analyzing"];
-                  const currentIdx = steps.indexOf(status);
-                  const thisIdx = steps.indexOf(s);
-                  const done = thisIdx < currentIdx;
-                  const active = thisIdx === currentIdx;
-                  return (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <span
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                          done   ? "bg-emerald-500 text-white" :
-                          active ? "bg-brand-gold text-brand-primary" :
-                                   "bg-zinc-100 text-zinc-300"
-                        }`}
-                      >
-                        {done ? "✓" : i + 1}
-                      </span>
-                      <span
-                        className={`text-xs ${
-                          done   ? "text-emerald-600" :
-                          active ? "text-brand-gold font-medium" :
-                                   "text-zinc-300"
-                        }`}
-                      >
-                        {label}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div>
+                <label className={labelClass}>Subtítulo</label>
+                <input
+                  value={subtitulo}
+                  onChange={(e) => setSubtitulo(e.target.value)}
+                  placeholder="Opcional"
+                  disabled={isProcessing}
+                  className={fieldClass}
+                />
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Error */}
-        {error && (
-          <div className="mt-4 flex items-start gap-3 bg-red-50 border border-red-100 rounded-xl p-4">
-            <span className="text-red-500 mt-0.5 shrink-0">⚠</span>
+            <Divider />
+
+            {/* ── Author Name ── */}
             <div>
-              <p className="text-red-700 text-sm font-medium">{error}</p>
-              {status === "error" && (
-                <button
-                  onClick={() => { setStatus("idle"); setError(null); setFile(null); setProgress(0); }}
-                  className="text-red-500 text-xs underline underline-offset-2 mt-1 hover:text-red-700"
+              <label className={labelClass}>Nome do autor</label>
+              <AuthorRow
+                titulo={autorTitulo}
+                primeiro={autorPrimeiro}
+                meio={autorMeio}
+                sobrenome={autorSobrenome}
+                disabled={isProcessing}
+                onTitulo={setAutorTitulo}
+                onPrimeiro={setAutorPrimeiro}
+                onMeio={setAutorMeio}
+                onSobrenome={setAutorSobrenome}
+              />
+
+              {/* Co-authors */}
+              {coautores.map((ca, i) => (
+                <div key={i} className="mt-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                      Co-autor {i + 1}
+                    </span>
+                    <button
+                      onClick={() => removeCoAuthor(i)}
+                      className="text-zinc-300 hover:text-red-400 transition-colors text-xs"
+                      disabled={isProcessing}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                  <AuthorRow
+                    titulo={ca.titulo}
+                    primeiro={ca.primeiro_nome}
+                    meio={ca.nome_meio}
+                    sobrenome={ca.sobrenome}
+                    disabled={isProcessing}
+                    onTitulo={(v) => updateCoAuthor(i, "titulo", v)}
+                    onPrimeiro={(v) => updateCoAuthor(i, "primeiro_nome", v)}
+                    onMeio={(v) => updateCoAuthor(i, "nome_meio", v)}
+                    onSobrenome={(v) => updateCoAuthor(i, "sobrenome", v)}
+                  />
+                </div>
+              ))}
+
+              <button
+                onClick={addCoAuthor}
+                disabled={isProcessing}
+                className="mt-3 text-brand-gold text-xs font-semibold uppercase tracking-wider hover:underline disabled:opacity-40"
+              >
+                + Adicionar Co-Autor
+              </button>
+            </div>
+
+            <Divider />
+
+            {/* ── Genre ── */}
+            <div>
+              <label className={labelClass}>Gênero</label>
+              <div className="space-y-2">
+                <select
+                  value={generoPrincipal}
+                  onChange={(e) => {
+                    setGeneroPrincipal(e.target.value);
+                    setGeneroSub("");
+                    setGeneroDetalhe("");
+                  }}
+                  disabled={isProcessing}
+                  className={fieldClass}
                 >
-                  Tentar novamente
+                  <option value="">Selecione o gênero principal</option>
+                  {Object.keys(GENRES).map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+
+                {subcats.length > 0 && (
+                  <select
+                    value={generoSub}
+                    onChange={(e) => {
+                      setGeneroSub(e.target.value);
+                      setGeneroDetalhe("");
+                    }}
+                    disabled={isProcessing}
+                    className={fieldClass}
+                  >
+                    <option value="">Selecione a subcategoria</option>
+                    {subcats.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                )}
+
+                {details.length > 0 && (
+                  <select
+                    value={generoDetalhe}
+                    onChange={(e) => setGeneroDetalhe(e.target.value)}
+                    disabled={isProcessing}
+                    className={fieldClass}
+                  >
+                    <option value="">Selecione o subgênero</option>
+                    {details.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            <Divider />
+
+            {/* ── Etapas do projeto ── */}
+            <div>
+              <label className={labelClass}>
+                Revisão textual <span className="text-red-400 normal-case font-normal">*</span>
+              </label>
+              <p className="text-xs text-zinc-400 mb-3">
+                Deseja que nossa IA revise ortografia, gramática e estilo antes de prosseguir?
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Sim */}
+                <button
+                  type="button"
+                  onClick={() => setUsarRevisao(true)}
+                  disabled={isProcessing}
+                  className={`text-left rounded-xl border-2 p-4 transition-all ${
+                    usarRevisao === true
+                      ? "border-brand-gold bg-brand-gold/5"
+                      : "border-zinc-200 bg-white hover:border-zinc-300"
+                  } disabled:opacity-40`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      usarRevisao === true ? "border-brand-gold" : "border-zinc-300"
+                    }`}>
+                      {usarRevisao === true && (
+                        <span className="w-2 h-2 rounded-full bg-brand-gold block" />
+                      )}
+                    </span>
+                    <span className="text-sm font-semibold text-zinc-800">Sim, quero revisão</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 pl-6">
+                    A IA sugere melhorias de escrita antes de avançar para a capa.
+                  </p>
                 </button>
+
+                {/* Não */}
+                <button
+                  type="button"
+                  onClick={() => setUsarRevisao(false)}
+                  disabled={isProcessing}
+                  className={`text-left rounded-xl border-2 p-4 transition-all ${
+                    usarRevisao === false
+                      ? "border-brand-gold bg-brand-gold/5"
+                      : "border-zinc-200 bg-white hover:border-zinc-300"
+                  } disabled:opacity-40`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      usarRevisao === false ? "border-brand-gold" : "border-zinc-300"
+                    }`}>
+                      {usarRevisao === false && (
+                        <span className="w-2 h-2 rounded-full bg-brand-gold block" />
+                      )}
+                    </span>
+                    <span className="text-sm font-semibold text-zinc-800">Não, manter como está</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 pl-6">
+                    Pule a revisão e avance direto para capa e diagramação.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            <Divider />
+
+            {/* ── File Upload ── */}
+            <div>
+              <label className={labelClass}>Manuscrito</label>
+
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".docx,.pdf,.txt"
+                className="sr-only"
+                onChange={onInputChange}
+                disabled={isProcessing}
+              />
+
+              {/* Drop zone */}
+              {!file && !isProcessing && (
+                <div
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                  onClick={() => inputRef.current?.click()}
+                  className={`rounded-xl border-2 border-dashed transition-all cursor-pointer ${
+                    isDragging
+                      ? "border-brand-gold bg-brand-gold/5 scale-[1.01]"
+                      : "border-zinc-200 hover:border-brand-gold/40 hover:bg-zinc-50"
+                  }`}
+                >
+                  <div className="flex flex-col items-center justify-center gap-3 py-10 px-8 text-center">
+                    <div className="w-12 h-12 rounded-xl bg-brand-primary/5 flex items-center justify-center">
+                      <UploadIcon />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-600 uppercase tracking-wider">
+                        {isDragging ? "Solte aqui" : "Arraste ou clique para enviar"}
+                      </p>
+                      <p className="text-zinc-400 text-xs mt-1">.docx · .pdf · .txt · máx. 50 MB</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* File selected, not processing */}
+              {file && !isProcessing && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-200 bg-zinc-50">
+                  <div className="w-10 h-10 rounded-lg bg-brand-primary flex items-center justify-center shrink-0">
+                    <span className="text-brand-gold text-[10px] font-bold">{fileExt}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-zinc-800 truncate">{file.name}</p>
+                    <p className="text-zinc-400 text-xs mt-0.5">{formatBytes(file.size)}</p>
+                  </div>
+                  <button
+                    onClick={() => { setFile(null); setError(null); }}
+                    className="text-zinc-300 hover:text-zinc-500 transition-colors p-1"
+                    aria-label="Remover arquivo"
+                  >
+                    <RemoveIcon />
+                  </button>
+                </div>
+              )}
+
+              {/* Processing */}
+              {isProcessing && (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-brand-primary flex items-center justify-center shrink-0">
+                      <span className="text-brand-gold text-[10px] font-bold">{fileExt}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-zinc-800 truncate">{file?.name}</p>
+                      <p className="text-zinc-400 text-xs mt-0.5">{statusLabel}</p>
+                    </div>
+                  </div>
+
+                  <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        status === "analyzing" ? "bg-brand-gold animate-pulse" : "bg-brand-gold"
+                      }`}
+                      style={{ width: status === "uploading" ? `${progress}%` : "100%" }}
+                    />
+                  </div>
+
+                  <div className="flex gap-4 mt-3">
+                    {(
+                      [
+                        { s: "uploading", label: "Upload" },
+                        { s: "creating",  label: "Projeto" },
+                        { s: "parsing",   label: "Texto" },
+                        { s: "analyzing", label: "IA" },
+                      ] as { s: Status; label: string }[]
+                    ).map(({ s, label }, i) => {
+                      const order: Status[] = ["uploading", "creating", "parsing", "analyzing"];
+                      const done   = order.indexOf(s) < order.indexOf(status);
+                      const active = s === status;
+                      return (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            done   ? "bg-emerald-500 text-white" :
+                            active ? "bg-brand-gold text-brand-primary" :
+                                     "bg-zinc-200 text-zinc-400"
+                          }`}>
+                            {done ? "✓" : i + 1}
+                          </span>
+                          <span className={`text-xs ${
+                            done   ? "text-emerald-600" :
+                            active ? "text-brand-gold font-medium" :
+                                     "text-zinc-400"
+                          }`}>
+                            {label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
+
+            {/* ── Error ── */}
+            {error && (
+              <div className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-xl p-4">
+                <span className="text-red-400 shrink-0 mt-0.5">⚠</span>
+                <div>
+                  <p className="text-red-700 text-sm font-medium">{error}</p>
+                  {status === "error" && (
+                    <button
+                      onClick={() => { setStatus("idle"); setError(null); setFile(null); setProgress(0); }}
+                      className="text-red-500 text-xs underline underline-offset-2 mt-1 hover:text-red-700"
+                    >
+                      Tentar novamente
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── CTA ── */}
+            <button
+              onClick={handleNext}
+              disabled={isProcessing}
+              className="w-full bg-brand-primary text-white py-3.5 rounded-xl font-semibold text-sm uppercase tracking-wide hover:bg-[#2a2a4e] active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isProcessing ? statusLabel : "Próximo →"}
+            </button>
+
+            <p className="text-center text-zinc-400 text-xs -mt-2">
+              Seu arquivo é armazenado com segurança. Apenas você tem acesso.
+            </p>
+
           </div>
-        )}
-
-        {/* CTA */}
-        {!isProcessing && (
-          <button
-            onClick={handleUpload}
-            disabled={!file || isProcessing}
-            className="mt-6 w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Iniciar diagnóstico →
-          </button>
-        )}
-
-        <p className="text-center text-zinc-400 text-xs mt-4">
-          Seu arquivo é armazenado com segurança. Apenas você tem acesso.
-        </p>
+        </div>
       </main>
+    </div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Divider() {
+  return <hr className="border-zinc-100" />;
+}
+
+interface AuthorRowProps {
+  titulo: string;
+  primeiro: string;
+  meio: string;
+  sobrenome: string;
+  disabled: boolean;
+  onTitulo: (v: string) => void;
+  onPrimeiro: (v: string) => void;
+  onMeio: (v: string) => void;
+  onSobrenome: (v: string) => void;
+}
+
+function AuthorRow({ titulo, primeiro, meio, sobrenome, disabled, onTitulo, onPrimeiro, onMeio, onSobrenome }: AuthorRowProps) {
+  return (
+    <div className="grid grid-cols-[90px_1fr_1fr_1fr] gap-2">
+      <select
+        value={titulo}
+        onChange={(e) => onTitulo(e.target.value)}
+        disabled={disabled}
+        className={fieldClass}
+      >
+        <option value="">Título</option>
+        {AUTHOR_TITLES.map((t) => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </select>
+      <input
+        value={primeiro}
+        onChange={(e) => onPrimeiro(e.target.value)}
+        placeholder="Primeiro nome"
+        disabled={disabled}
+        className={fieldClass}
+      />
+      <input
+        value={meio}
+        onChange={(e) => onMeio(e.target.value)}
+        placeholder="Nome do meio"
+        disabled={disabled}
+        className={fieldClass}
+      />
+      <input
+        value={sobrenome}
+        onChange={(e) => onSobrenome(e.target.value)}
+        placeholder="Sobrenome"
+        disabled={disabled}
+        className={fieldClass}
+      />
     </div>
   );
 }
@@ -498,7 +796,7 @@ export default function NovoProjetoPage() {
 function UploadIcon() {
   return (
     <svg
-      width="28" height="28" viewBox="0 0 24 24" fill="none"
+      width="24" height="24" viewBox="0 0 24 24" fill="none"
       stroke="#1a1a2e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
       aria-hidden="true"
     >
@@ -512,7 +810,7 @@ function UploadIcon() {
 function RemoveIcon() {
   return (
     <svg
-      width="18" height="18" viewBox="0 0 24 24" fill="none"
+      width="16" height="16" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
       aria-hidden="true"
     >
