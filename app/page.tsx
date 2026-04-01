@@ -160,9 +160,9 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
     <Image
       src={src}
       alt="Autoria"
-      width={160}
-      height={40}
-      className="h-10 w-auto object-contain"
+      width={480}
+      height={120}
+      className="h-[108px] w-auto object-contain"
       priority
     />
   );
