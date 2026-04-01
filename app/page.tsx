@@ -324,7 +324,7 @@ function Hero() {
         <div className="grid grid-cols-4 border-t border-white/5 -mx-8">
           {[
             { value: "15+",   label: "Plataformas de distribuição" },
-            { value: "85%",   label: "Royalties para o autor"       },
+            { value: "100%",  label: "Royalties para o autor"       },
             { value: "R$197", label: "A partir de por obra"          },
             { value: "< 24h", label: "Do upload à publicação"        },
           ].map((s) => (
@@ -693,12 +693,12 @@ function FeatureRoyalties() {
               {/* Split */}
               <div className="flex gap-3">
                 <div className="flex-1 bg-brand-gold/10 border border-brand-gold/20 rounded-xl p-4 text-center">
-                  <div className="font-heading text-3xl text-brand-gold">85%</div>
+                  <div className="font-heading text-3xl text-brand-gold">100%</div>
                   <div className="text-white/40 text-xs mt-1">Para você</div>
                 </div>
                 <div className="flex-1 bg-white/5 border border-white/5 rounded-xl p-4 text-center">
-                  <div className="font-heading text-3xl text-white/30">15%</div>
-                  <div className="text-white/30 text-xs mt-1">Autoria</div>
+                  <div className="font-heading text-3xl text-white/30">R$0</div>
+                  <div className="text-white/30 text-xs mt-1">Comissão Autoria</div>
                 </div>
               </div>
             </div>
@@ -710,20 +710,20 @@ function FeatureRoyalties() {
               Royalties
             </p>
             <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-6">
-              85% de cada<br />venda são seus.
+              100% de cada<br />venda são seus.
             </h2>
             <p className="text-zinc-500 text-lg leading-relaxed mb-8">
-              Sem assinatura, sem comissão escondida, sem surpresas. Você paga uma vez
-              por obra e fica com a maior parte de tudo que vender. Para sempre.
+              A Autoria não cobra comissão sobre suas vendas. Zero. Você paga uma vez
+              pela produção do livro e fica com tudo que vender — para sempre.
               Os royalties de todas as plataformas chegam em um painel unificado.
             </p>
             <ul className="space-y-4 mb-10">
               {[
-                "85% de royalties em todas as plataformas",
+                "100% dos royalties direto para você",
+                "Sem comissão sobre vendas — nunca",
                 "Painel unificado com todas as vendas",
                 "Relatórios por plataforma, período e formato",
                 "ISBN registrado em seu nome",
-                "Sem comissão sobre vendas futuras",
                 "Pague por obra, não por assinatura",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-zinc-600 text-base">
