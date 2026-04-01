@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import WaitlistForm from "./_components/waitlist-form";
 import FAQ from "./_components/faq";
+import HowItWorks from "./_components/how-it-works";
 
 export const metadata: Metadata = {
   title: "Autoria — Publique seu livro com IA, do manuscrito ao leitor",
@@ -39,32 +40,6 @@ const PLATFORMS = [
   "Barnes & Noble", "Rakuten", "Scribd", "OverDrive",
 ];
 
-const STEPS = [
-  {
-    num: "01",
-    title: "Envie o manuscrito",
-    desc: "Faça upload do seu .docx, .pdf ou .txt. Em segundos, nossa IA gera um diagnóstico editorial completo: gênero, complexidade, pontos fortes e áreas de melhoria.",
-    detail: "Diagnóstico gratuito em todos os planos",
-  },
-  {
-    num: "02",
-    title: "IA revisa e aprimora",
-    desc: "Claude Sonnet — o modelo mais avançado da Anthropic — revisa ortografia, gramática e estilo. Gera sinopse, palavras-chave e ficha catalográfica no padrão CBL.",
-    detail: "IA treinada para o português brasileiro",
-  },
-  {
-    num: "03",
-    title: "Capa e diagramação",
-    desc: "Descreva a atmosfera do seu livro e receba opções de capa profissional geradas por IA. Diagramação automática em PDF e EPUB com tipografia editorial.",
-    detail: "Alta resolução para impressão CMYK",
-  },
-  {
-    num: "04",
-    title: "Publique e receba",
-    desc: "Com um clique, seu livro chega a 15+ plataformas globais. Royalties consolidados em um painel único. 85% de cada venda são seus.",
-    detail: "15+ plataformas de distribuição",
-  },
-];
 
 const PLANS = [
   {
@@ -190,9 +165,9 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
     <Image
       src={src}
       alt="Autoria"
-      width={140}
-      height={36}
-      className="h-8 w-auto object-contain"
+      width={480}
+      height={104}
+      className="h-24 w-auto object-contain"
       priority
     />
   );
@@ -203,7 +178,7 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
 function Navbar() {
   return (
     <header className="fixed top-0 inset-x-0 z-50 bg-brand-primary/95 backdrop-blur-md border-b border-white/5">
-      <nav className="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between gap-8" aria-label="Navegação principal">
+      <nav className="max-w-7xl mx-auto px-8 h-28 flex items-center justify-between gap-8" aria-label="Navegação principal">
         <Link href="/" aria-label="Autoria — página inicial">
           <Logo variant="gold" />
         </Link>
@@ -425,49 +400,6 @@ function PlatformBar() {
   );
 }
 
-function HowItWorks() {
-  return (
-    <section id="como-funciona" className="bg-zinc-50 py-28">
-      <div className="max-w-7xl mx-auto px-8">
-
-        <div className="text-center max-w-2xl mx-auto mb-20">
-          <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
-            Processo
-          </p>
-          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
-            Do manuscrito ao leitor<br />em 4 etapas
-          </h2>
-          <p className="text-zinc-500 text-lg leading-relaxed">
-            Sem precisar entender de editoração. Você escreve — nós cuidamos de tudo.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-4 gap-px bg-zinc-200 rounded-2xl overflow-hidden border border-zinc-200">
-          {STEPS.map((step, i) => (
-            <article key={step.num} className="bg-white p-8 group hover:bg-brand-primary transition-all duration-300">
-              <div className="font-heading text-7xl text-zinc-100 group-hover:text-white/10 transition-colors leading-none mb-6">
-                {step.num}
-              </div>
-              <h3 className="font-heading text-xl text-brand-primary group-hover:text-white transition-colors mb-3">
-                {step.title}
-              </h3>
-              <p className="text-zinc-500 group-hover:text-white/60 text-sm leading-relaxed mb-5 transition-colors">
-                {step.desc}
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-gold" />
-                <span className="text-brand-gold text-xs font-semibold">{step.detail}</span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 text-zinc-300 text-lg hidden" aria-hidden="true">›</div>
-              )}
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function FeatureEditorial() {
   return (
