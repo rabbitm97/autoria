@@ -4,52 +4,64 @@ import { useState } from "react";
 
 const STEPS = [
   {
-    num: "01",
-    label: "Envio",
-    title: "Envie seu manuscrito com alguns cliques",
+    label: "Envie o manuscrito",
+    title: "Envie seu manuscrito com poucos cliques",
     bullets: [
-      "Faça upload do seu .docx, .pdf ou .txt — até 50 MB",
-      "Preencha título, gênero e dados do autor",
-      "Nossa IA gera um diagnóstico editorial completo em segundos",
-      "Receba um relatório de pontos fortes e áreas de melhoria",
+      {
+        icon: "upload",
+        text: "Faça upload do seu .docx, .pdf ou .txt. Preencha título, gênero e dados do autor no painel intuitivo da Autoria.",
+      },
+      {
+        icon: "cert",
+        text: "Nossa IA gera imediatamente um diagnóstico editorial completo do seu texto.",
+      },
     ],
-    visual: <UploadMockup />,
+    visual: <UploadVisual />,
   },
   {
-    num: "02",
-    label: "Revisão",
-    title: "IA revisa e aprimora seu texto",
+    label: "Revisão & Aprimoramento",
+    title: "IA revisa e aprimora seu livro",
     bullets: [
-      "Revisão ortográfica, gramatical e de estilo em português",
-      "Sugestões contextuais preservando sua voz autoral",
-      "Geração de sinopse, palavras-chave e ficha catalográfica",
-      "Relatório de erros corrigidos e melhorias aplicadas",
+      {
+        icon: "scan",
+        text: "A Autoria analisa seu manuscrito com IA para identificar erros gramaticais, de estilo e oportunidades de melhoria.",
+      },
+      {
+        icon: "user",
+        text: "Gera automaticamente sinopse, palavras-chave e ficha catalográfica no padrão CBL.",
+      },
     ],
-    visual: <RevisionMockup />,
+    visual: <RevisaoVisual />,
   },
   {
-    num: "03",
     label: "Capa & Diagramação",
-    title: "Capa profissional e diagramação automática",
+    title: "Capa sob medida para o seu livro",
     bullets: [
-      "Descreva a atmosfera — receba opções de capa geradas por IA",
-      "Frente, contra-capa, lombada e orelhas num único fluxo",
-      "Diagramação automática em PDF e EPUB com tipografia editorial",
-      "Alta resolução para impressão CMYK e distribuição digital",
+      {
+        icon: "brush",
+        text: "Escolha entre opções de capa geradas por IA, personalizadas para o estilo do seu livro. Frente, contra-capa, lombada e orelhas.",
+      },
+      {
+        icon: "layout",
+        text: "Diagramação automática em PDF e EPUB com tipografia editorial profissional.",
+      },
     ],
-    visual: <CapaMockup />,
+    visual: <CapaVisual />,
   },
   {
-    num: "04",
-    label: "Publicação",
-    title: "Publique globalmente e acompanhe seus royalties",
+    label: "Publique & Distribua",
+    title: "Publique e alcance leitores no mundo todo",
     bullets: [
-      "Distribuição para 15+ plataformas com um clique",
-      "Amazon KDP, Kobo, Apple Books, Spotify Audiobooks e mais",
-      "85% de cada venda direto para você",
-      "Painel unificado de royalties por plataforma e período",
+      {
+        icon: "globe",
+        text: "Com um clique, seu livro é distribuído para 15+ plataformas globais — Amazon, Kobo, Apple Books, Spotify e muito mais.",
+      },
+      {
+        icon: "chart",
+        text: "Acompanhe visualizações, vendas e royalties consolidados em um painel único. 85% de cada venda são seus.",
+      },
     ],
-    visual: <PublicacaoMockup />,
+    visual: <PublicacaoVisual />,
   },
 ];
 
@@ -62,79 +74,110 @@ export default function HowItWorks() {
       <div className="max-w-6xl mx-auto px-8">
 
         {/* Header */}
-        <div className="text-center mb-12">
-          <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
-            Processo
-          </p>
+        <div className="text-center mb-10">
+          <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">Processo</p>
           <h2 className="font-heading text-4xl text-brand-primary leading-tight mb-4">
-            Do manuscrito ao leitor em 4 etapas
+            Publique com a Autoria em 4 etapas simples
           </h2>
-          <p className="text-zinc-500 text-base leading-relaxed">
-            Sem precisar entender de editoração. Você escreve — nós cuidamos de tudo.
+          <p className="text-zinc-500 text-base">
+            A Autoria revisa, projeta capas, diagrama e distribui seu livro em horas.
           </p>
         </div>
 
-        {/* Box with tabs inside */}
+        {/* Single fixed-size box */}
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
 
-          {/* Tabs row — inside the box, centered */}
-          <div className="border-b border-zinc-100 px-6 flex justify-center">
+          {/* Tabs — always 4 cols equally spaced */}
+          <div className="grid grid-cols-4 border-b border-zinc-100">
             {STEPS.map((s, i) => (
               <button
-                key={s.num}
+                key={i}
                 onClick={() => setActive(i)}
-                className={`flex items-center gap-2 px-5 py-4 text-sm font-semibold border-b-2 transition-all -mb-px ${
+                className={`text-left px-7 py-5 border-b-2 transition-all ${
                   active === i
-                    ? "border-brand-gold text-brand-primary"
-                    : "border-transparent text-zinc-400 hover:text-zinc-600 hover:border-zinc-200"
-                }`}
+                    ? "border-brand-gold"
+                    : "border-transparent hover:bg-zinc-50"
+                } ${i < STEPS.length - 1 ? "border-r border-r-zinc-100" : ""}`}
               >
-                <span
-                  className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold shrink-0 transition-colors ${
-                    active === i ? "bg-brand-gold text-brand-primary" : "bg-zinc-100 text-zinc-500"
+                <div
+                  className={`text-xs font-semibold mb-0.5 ${
+                    active === i ? "text-brand-gold" : "text-zinc-400"
                   }`}
                 >
-                  {i + 1}
-                </span>
-                <span>{s.label}</span>
+                  Etapa {i + 1}
+                </div>
+                <div
+                  className={`text-sm font-bold leading-snug ${
+                    active === i ? "text-brand-primary" : "text-zinc-400"
+                  }`}
+                >
+                  {s.label}
+                </div>
               </button>
             ))}
           </div>
 
-          {/* Content */}
-          <div className="grid grid-cols-[1fr_1.2fr] min-h-[400px]">
+          {/* Content — fixed height, no reflow */}
+          <div className="grid grid-cols-[1fr_1.3fr] h-[420px]">
 
-            {/* Left: text */}
-            <div className="p-10 flex flex-col justify-center border-r border-zinc-100">
-              <div className="font-heading text-6xl text-zinc-100 leading-none mb-5 select-none">
-                {step.num}
+            {/* Left */}
+            <div className="flex flex-col justify-between p-10 border-r border-zinc-100">
+              <div>
+                <h3 className="font-heading text-[1.6rem] text-brand-primary leading-snug mb-7">
+                  {step.title}
+                </h3>
+                <ul className="space-y-5">
+                  {step.bullets.map((b, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 shrink-0 text-brand-gold">
+                        <BulletIcon type={b.icon} />
+                      </span>
+                      <span className="text-zinc-500 text-sm leading-relaxed">{b.text}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <h3 className="font-heading text-2xl text-brand-primary leading-snug mb-5">
-                {step.title}
-              </h3>
-              <ul className="space-y-3">
-                {step.bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <span className="w-5 h-5 rounded-full bg-brand-gold/15 flex items-center justify-center shrink-0 mt-0.5">
-                      <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden="true">
-                        <path d="M1 4l2.5 2.5L9 1" stroke="#c9a84c" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </span>
-                    <span className="text-zinc-500 text-sm leading-relaxed">{b}</span>
-                  </li>
-                ))}
-              </ul>
               <a
                 href="/login"
-                className="mt-7 inline-flex items-center gap-2 bg-brand-gold text-brand-primary text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-brand-gold/90 transition-colors w-fit"
+                className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary text-sm font-bold px-6 py-3 rounded-lg hover:bg-brand-gold/90 transition-colors w-fit"
               >
                 Começar agora →
               </a>
             </div>
 
-            {/* Right: visual */}
-            <div className="bg-zinc-50 flex items-center justify-center p-10">
-              {step.visual}
+            {/* Right — browser mockup, fixed height */}
+            <div className="bg-zinc-50 flex items-center justify-center p-8 h-full overflow-hidden">
+              <div className="w-full h-full max-w-[440px] bg-white rounded-xl border border-zinc-200 shadow-md flex flex-col overflow-hidden">
+                {/* Browser chrome */}
+                <div className="shrink-0 bg-zinc-100 border-b border-zinc-200 px-4 py-2.5 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-300" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-300" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-300" />
+                  {/* Progress stepper */}
+                  <div className="flex-1 flex items-center justify-center gap-1 mx-4">
+                    {STEPS.map((_, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <div
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                            i <= active
+                              ? "bg-brand-gold text-brand-primary"
+                              : "bg-zinc-200 text-zinc-400"
+                          }`}
+                        >
+                          {i + 1}
+                        </div>
+                        {i < STEPS.length - 1 && (
+                          <div className={`w-6 h-0.5 ${i < active ? "bg-brand-gold" : "bg-zinc-200"}`} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Content area */}
+                <div className="flex-1 overflow-hidden">
+                  {step.visual}
+                </div>
+              </div>
             </div>
 
           </div>
@@ -145,141 +188,191 @@ export default function HowItWorks() {
   );
 }
 
-// ─── Visual mockups ───────────────────────────────────────────────────────────
+// ─── Bullet icons ─────────────────────────────────────────────────────────────
 
-function UploadMockup() {
+function BulletIcon({ type }: { type: string }) {
+  const cls = "w-5 h-5";
+  if (type === "upload") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 13V7m0 0L7.5 9.5M10 7l2.5 2.5"/><rect x="3" y="14" width="14" height="3" rx="1"/>
+    </svg>
+  );
+  if (type === "cert") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="10" r="7"/><path d="M7 10l2 2 4-4"/>
+    </svg>
+  );
+  if (type === "scan") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7V4h3M14 4h3v3M3 13v3h3M14 16h3v-3"/><rect x="6" y="6" width="8" height="8" rx="1"/>
+    </svg>
+  );
+  if (type === "user") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="7" r="3"/><path d="M4 17c0-3.314 2.686-6 6-6s6 2.686 6 6"/>
+    </svg>
+  );
+  if (type === "brush") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 16s1-4 6-9l3 3c-5 5-9 6-9 6z"/><path d="M13 7l2-2 1 1-2 2"/>
+    </svg>
+  );
+  if (type === "layout") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 8h14M8 8v9"/>
+    </svg>
+  );
+  if (type === "globe") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="10" r="7"/><path d="M10 3c0 0-3 3-3 7s3 7 3 7M10 3c0 0 3 3 3 7s-3 7-3 7M3 10h14"/>
+    </svg>
+  );
+  if (type === "chart") return (
+    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 14l4-4 3 3 5-5"/><rect x="3" y="3" width="14" height="14" rx="2"/>
+    </svg>
+  );
+  return null;
+}
+
+// ─── Visual mockup contents (fixed height, no scrollbar) ─────────────────────
+
+function UploadVisual() {
   return (
-    <div className="w-full max-w-sm bg-white rounded-xl border border-zinc-200 shadow-md overflow-hidden">
-      <div className="bg-brand-primary px-4 py-3 flex items-center gap-2">
-        <div className="flex gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-          <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-          <span className="w-2.5 h-2.5 rounded-full bg-white/20" />
-        </div>
-        <span className="text-white/40 text-xs ml-2">autoria.app/novo-projeto</span>
+    <div className="h-full p-4 flex gap-3">
+      {/* Upload zone */}
+      <div className="flex-1 border-2 border-dashed border-zinc-200 rounded-lg flex flex-col items-center justify-center gap-2 bg-zinc-50">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 15V9m0 0l-3 3m3-3l3 3"/><path d="M3 15v3a2 2 0 002 2h14a2 2 0 002-2v-3"/>
+        </svg>
+        <span className="text-xs text-zinc-400 font-medium">Enviar manuscrito</span>
       </div>
-      <div className="p-5 space-y-3">
+      {/* Form fields */}
+      <div className="w-40 space-y-2">
         <div>
-          <div className="text-xs text-zinc-400 mb-1">Título do livro</div>
-          <div className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-700">O Último Horizonte</div>
+          <div className="text-[10px] text-zinc-400 mb-0.5">Título do livro</div>
+          <div className="bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-[10px] text-zinc-600">Alice no País das Maravilhas</div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <div className="text-xs text-zinc-400 mb-1">Gênero</div>
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-600">Ficção Científica</div>
+        <div>
+          <div className="text-[10px] text-zinc-400 mb-0.5">Gênero</div>
+          <div className="bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-[10px] text-zinc-600">Ficção Jovem Adulto</div>
+        </div>
+        <div>
+          <div className="text-[10px] text-zinc-400 mb-0.5">Subgênero</div>
+          <div className="bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-[10px] text-zinc-600">Aventura e Fantasia</div>
+        </div>
+        <div>
+          <div className="text-[10px] text-zinc-400 mb-0.5">Nome do autor</div>
+          <div className="flex gap-1">
+            <div className="bg-zinc-50 border border-zinc-200 rounded px-1.5 py-1 text-[10px] text-zinc-500 w-10">Dr.</div>
+            <div className="bg-zinc-50 border border-zinc-200 rounded px-1.5 py-1 text-[10px] text-zinc-600 flex-1">Lewis</div>
           </div>
-          <div>
-            <div className="text-xs text-zinc-400 mb-1">Autor</div>
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-600">Carlos Silva</div>
-          </div>
+          <div className="bg-zinc-50 border border-zinc-200 rounded px-2 py-1 text-[10px] text-zinc-600 mt-1">Carroll</div>
         </div>
-        <div className="border-2 border-dashed border-zinc-200 rounded-xl p-5 text-center bg-zinc-50">
-          <div className="text-2xl mb-1">📄</div>
-          <div className="text-xs text-zinc-500">manuscrito.docx</div>
-          <div className="text-xs text-brand-gold font-semibold mt-1">✓ Pronto para enviar</div>
-        </div>
-        <div className="bg-brand-gold text-brand-primary text-xs font-semibold text-center py-2.5 rounded-lg">
-          Enviar e analisar →
+        <div className="bg-brand-gold text-brand-primary text-[10px] font-bold text-center py-1.5 rounded">
+          Próximo →
         </div>
       </div>
     </div>
   );
 }
 
-function RevisionMockup() {
+function RevisaoVisual() {
   return (
-    <div className="w-full max-w-sm bg-white rounded-xl border border-zinc-200 shadow-md overflow-hidden">
-      <div className="bg-brand-primary px-4 py-3 flex items-center justify-between">
-        <span className="text-white/60 text-xs">Revisão com IA</span>
-        <span className="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-semibold">237 correções</span>
+    <div className="h-full flex">
+      {/* Text area */}
+      <div className="flex-1 p-4 overflow-hidden">
+        <div className="text-xs font-bold text-zinc-700 mb-0.5">As Aventuras de Sherlock Holmes</div>
+        <div className="text-[9px] text-zinc-400 mb-2">Arthur Conan Doyle — Capítulo 1</div>
+        <div className="text-[9px] text-zinc-500 leading-relaxed">
+          Para{" "}
+          <span className="bg-yellow-100 text-yellow-700 px-0.5 rounded">Sherlock Holmes</span>{" "}
+          ela é sempre <em>a</em> mulher. Raramente o ouvi mencioná-la{" "}
+          <span className="bg-red-100 text-red-500 line-through px-0.5 rounded">sob qualquer outro</span>{" "}
+          <span className="bg-emerald-100 text-emerald-700 px-0.5 rounded">por qualquer outro</span>{" "}
+          nome. A seus olhos ela eclipsa e predomina{" "}
+          <span className="bg-yellow-100 text-yellow-700 px-0.5 rounded">toda a sua raça</span>.
+          Não era que ele sentisse{" "}
+          <span className="bg-red-100 text-red-500 line-through px-0.5 rounded">alguma coisa</span>{" "}
+          <span className="bg-emerald-100 text-emerald-700 px-0.5 rounded">emoção</span>{" "}
+          akin ao amor por Irene Adler.
+        </div>
+        <div className="mt-3 bg-brand-gold/10 border border-brand-gold/20 rounded text-[9px] text-brand-primary px-2 py-1.5">
+          Concluir revisão →
+        </div>
       </div>
-      <div className="p-5 space-y-2.5 text-sm">
-        <div className="bg-zinc-50 rounded-lg p-3 leading-relaxed text-zinc-700 text-xs">
-          O jovem escritor <span className="bg-red-100 text-red-500 line-through px-0.5 rounded">foi andando</span>{" "}
-          <span className="bg-emerald-100 text-emerald-700 px-0.5 rounded">caminhou</span> até a janela e
-          olhou para o <span className="bg-red-100 text-red-500 line-through px-0.5 rounded">horizonte infinito</span>{" "}
-          <span className="bg-emerald-100 text-emerald-700 px-0.5 rounded">horizonte distante</span>.
-        </div>
-        <div className="space-y-1.5">
-          {[
-            { type: "Estilo", msg: "Locução verbal substituída por verbo simples", color: "blue" },
-            { type: "Repetição", msg: "Adjetivo redundante removido", color: "amber" },
-            { type: "Gramática", msg: "Concordância verbal corrigida", color: "violet" },
-          ].map((item) => (
-            <div key={item.type} className="flex items-center gap-2 text-xs bg-zinc-50 rounded-lg px-3 py-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full bg-${item.color}-400 shrink-0`} />
-              <span className="font-semibold text-zinc-600">{item.type}:</span>
-              <span className="text-zinc-400">{item.msg}</span>
-            </div>
-          ))}
-        </div>
+      {/* Sidebar */}
+      <div className="w-24 border-l border-zinc-100 p-3 bg-zinc-50">
+        <div className="text-[9px] font-bold text-zinc-600 mb-2">Gramática</div>
+        {[70, 50, 85, 60, 75, 45, 90].map((w, i) => (
+          <div key={i} className="h-1.5 bg-zinc-200 rounded-full mb-1.5 overflow-hidden">
+            <div className="h-full bg-zinc-400 rounded-full" style={{ width: `${w}%` }} />
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function CapaMockup() {
+function CapaVisual() {
   return (
-    <div className="flex gap-4 items-end">
-      {[
-        { bg: "from-indigo-900 to-violet-900", title: "O Último\nHorizonte" },
-        { bg: "from-rose-900 to-orange-900", title: "O Último\nHorizonte", active: true },
-        { bg: "from-zinc-800 to-zinc-900", title: "O Último\nHorizonte" },
-      ].map((c, i) => (
-        <div
-          key={i}
-          className={`relative rounded-lg overflow-hidden shadow-lg transition-all ${
-            c.active ? "w-32 h-48 ring-2 ring-brand-gold" : "w-24 h-36 opacity-70"
-          }`}
-        >
-          <div className={`w-full h-full bg-gradient-to-b ${c.bg} flex flex-col items-center justify-end p-3`}>
-            <div className="text-white text-center leading-tight font-bold text-xs whitespace-pre-line">{c.title}</div>
-            <div className="text-white/40 text-[9px] mt-1">Carlos Silva</div>
+    <div className="h-full p-4 flex flex-col">
+      <div className="text-[10px] text-zinc-400 font-semibold text-center mb-3">Escolha o estilo de capa</div>
+      <div className="flex-1 grid grid-cols-4 gap-2">
+        {[
+          { bg: "bg-gradient-to-br from-purple-300 to-pink-300", active: false },
+          { bg: "bg-gradient-to-br from-yellow-200 to-orange-300", active: true },
+          { bg: "bg-gradient-to-br from-blue-300 to-cyan-300", active: false },
+          { bg: "bg-gradient-to-br from-emerald-200 to-teal-300", active: false },
+        ].map((c, i) => (
+          <div key={i} className={`rounded-lg ${c.bg} flex flex-col items-center justify-end p-2 relative ${c.active ? "ring-2 ring-brand-gold" : ""}`}>
+            <div className="w-6 h-2 bg-white/50 rounded-sm mb-1" />
+            <div className="w-8 h-1.5 bg-white/40 rounded-sm" />
+            {c.active && (
+              <div className="absolute top-1 right-1 w-3 h-3 bg-brand-gold rounded-full flex items-center justify-center">
+                <svg width="6" height="5" viewBox="0 0 6 5" fill="none"><path d="M1 2.5l1.5 1.5L5 1" stroke="#1a1a2e" strokeWidth="1.2" strokeLinecap="round"/></svg>
+              </div>
+            )}
           </div>
-          {c.active && (
-            <div className="absolute top-2 right-2 bg-brand-gold text-brand-primary text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-              ✓ Selecionada
-            </div>
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
 
-function PublicacaoMockup() {
-  const platforms = ["Amazon KDP", "Kobo", "Apple Books", "Spotify", "Google Play", "Scribd"];
+function PublicacaoVisual() {
   return (
-    <div className="w-full max-w-sm bg-white rounded-xl border border-zinc-200 shadow-md overflow-hidden">
-      <div className="bg-brand-primary px-4 py-3 flex items-center justify-between">
-        <span className="text-white/60 text-xs">Distribuição global</span>
-        <span className="text-brand-gold text-xs font-semibold">15+ plataformas</span>
+    <div className="h-full p-4 flex flex-col gap-2">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Visualizações", value: "1.847" },
+          { label: "Compraram", value: "143" },
+          { label: "Saldo total", value: "R$2.890" },
+        ].map((s) => (
+          <div key={s.label} className="bg-zinc-50 border border-zinc-100 rounded-lg p-2 text-center">
+            <div className="text-sm font-bold text-brand-primary">{s.value}</div>
+            <div className="text-[9px] text-zinc-400">{s.label}</div>
+          </div>
+        ))}
       </div>
-      <div className="p-4 space-y-3">
-        <div className="grid grid-cols-3 gap-2">
-          {platforms.map((p) => (
-            <div key={p} className="bg-zinc-50 border border-zinc-100 rounded-lg p-2 text-center">
-              <div className="text-emerald-500 text-sm mb-0.5">✓</div>
-              <div className="text-zinc-500 text-[10px] leading-tight">{p}</div>
-            </div>
-          ))}
+      {/* Table */}
+      <div className="flex-1 bg-zinc-50 rounded-lg border border-zinc-100 overflow-hidden">
+        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 px-3 py-1.5 border-b border-zinc-200 text-[9px] text-zinc-400 font-semibold">
+          <span>Capa</span><span>Plataforma</span><span>Royalties</span><span>Status</span>
         </div>
-        <div className="bg-zinc-50 rounded-lg p-3 border border-zinc-100">
-          <div className="text-xs text-zinc-400 mb-2">Royalties — últimos 30 dias</div>
-          <div className="flex items-end gap-1 h-10">
-            {[3, 5, 4, 7, 6, 8, 10, 9, 12, 11, 14, 13].map((v, i) => (
-              <div
-                key={i}
-                className="flex-1 bg-brand-gold/70 rounded-sm transition-all"
-                style={{ height: `${(v / 14) * 100}%` }}
-              />
-            ))}
+        {[
+          { color: "bg-purple-300", name: "Amazon KDP", val: "R$1.240", status: "Pausar" },
+          { color: "bg-yellow-300", name: "Apple Books", val: "R$890", status: "Pausar" },
+          { color: "bg-blue-300", name: "Kobo", val: "R$760", status: "Iniciar" },
+        ].map((r) => (
+          <div key={r.name} className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 px-3 py-1.5 border-b border-zinc-100 items-center text-[9px]">
+            <span className={`w-5 h-5 rounded ${r.color} shrink-0`} />
+            <span className="text-zinc-600">{r.name}</span>
+            <span className="text-zinc-500">{r.val}</span>
+            <span className="bg-zinc-200 text-zinc-500 px-1.5 py-0.5 rounded text-[8px]">{r.status}</span>
           </div>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-zinc-400">Total</span>
-            <span className="text-sm font-bold text-brand-primary">R$ 1.240,00</span>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );
