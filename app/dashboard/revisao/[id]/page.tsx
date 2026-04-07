@@ -1,20 +1,92 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { SugestaoRevisao, RevisaoResult } from "@/app/api/agentes/revisao/route";
 import { supabase } from "@/lib/supabase";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Tipo labels ──────────────────────────────────────────────────────────────
 
 const TIPO_LABEL: Record<SugestaoRevisao["tipo"], { label: string; color: string; bg: string }> = {
-  gramatica:   { label: "Gramática",   color: "text-red-700",    bg: "bg-red-50 border-red-200"       },
-  ortografia:  { label: "Ortografia",  color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
-  estilo:      { label: "Estilo",      color: "text-violet-700", bg: "bg-violet-50 border-violet-200" },
-  coesao:      { label: "Coesão",      color: "text-blue-700",   bg: "bg-blue-50 border-blue-200"     },
-  clareza:     { label: "Clareza",     color: "text-amber-700",  bg: "bg-amber-50 border-amber-200"   },
+  ortografia:  { label: "Ortografia",   color: "text-orange-700", bg: "bg-orange-50 border-orange-200"  },
+  gramatica:   { label: "Gramática",    color: "text-red-700",    bg: "bg-red-50 border-red-200"         },
+  coesao:      { label: "Coesão",       color: "text-blue-700",   bg: "bg-blue-50 border-blue-200"       },
+  consistencia:{ label: "Consistência", color: "text-violet-700", bg: "bg-violet-50 border-violet-200"   },
+  ritmo:       { label: "Ritmo",        color: "text-teal-700",   bg: "bg-teal-50 border-teal-200"       },
 };
+
+const SEVERIDADE_LABEL: Record<SugestaoRevisao["severidade"], { label: string; dot: string }> = {
+  critico:     { label: "Crítico",     dot: "bg-red-500"    },
+  recomendado: { label: "Recomendado", dot: "bg-amber-400"  },
+  opcional:    { label: "Opcional",    dot: "bg-zinc-300"   },
+};
+
+// ─── DOCX builder (via JSZip) ─────────────────────────────────────────────────
+
+async function buildDocxBlob(text: string): Promise<Blob> {
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const paragraphs = text
+    .split(/\r?\n/)
+    .map((line) => `<w:p><w:r><w:t xml:space="preserve">${esc(line)}</w:t></w:r></w:p>`)
+    .join("\n");
+
+  zip.file(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`
+  );
+
+  const rels = zip.folder("_rels")!;
+  rels.file(
+    ".rels",
+    `<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`
+  );
+
+  const word = zip.folder("word")!;
+  word.file(
+    "document.xml",
+    `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraphs}<w:sectPr/></w:body></w:document>`
+  );
+  word.folder("_rels")!.file(
+    "document.xml.rels",
+    `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`
+  );
+
+  return zip.generateAsync({
+    type: "blob",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Apply accepted changes to text ──────────────────────────────────────────
+
+function buildRevisedText(
+  originalText: string,
+  sugestoes: SugestaoRevisao[],
+  aceitas: Set<string>
+): string {
+  let text = originalText;
+  for (const s of sugestoes) {
+    if (aceitas.has(s.id)) {
+      text = text.replace(s.trecho_original, s.sugestao);
+    }
+  }
+  return text;
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -31,48 +103,62 @@ function SugestaoCard({
   onAceitar: () => void;
   onRejeitar: () => void;
 }) {
-  const tipo = TIPO_LABEL[sugestao.tipo] ?? TIPO_LABEL.clareza;
+  const tipo = TIPO_LABEL[sugestao.tipo] ?? TIPO_LABEL.coesao;
+  const sev  = SEVERIDADE_LABEL[sugestao.severidade] ?? SEVERIDADE_LABEL.recomendado;
+  const { capitulo, paragrafo, linha_aproximada } = sugestao.localizacao ?? {};
 
   return (
     <div
       className={`rounded-2xl border p-5 transition-all ${
-        aceita
-          ? "border-emerald-200 bg-emerald-50 opacity-80"
-          : rejeitada
-          ? "border-zinc-100 bg-white opacity-40"
-          : "border-zinc-100 bg-white"
+        aceita    ? "border-emerald-200 bg-emerald-50/60"  :
+        rejeitada ? "border-zinc-100 bg-zinc-50/60 opacity-50" :
+                    "border-zinc-100 bg-white hover:border-zinc-200"
       }`}
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${tipo.bg} ${tipo.color}`}>
+      {/* Header */}
+      <div className="flex items-start gap-2 mb-3 flex-wrap">
+        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0 ${tipo.bg} ${tipo.color}`}>
           {tipo.label}
         </span>
+        <span className="flex items-center gap-1.5 text-xs text-zinc-400 shrink-0">
+          <span className={`w-1.5 h-1.5 rounded-full ${sev.dot}`} />
+          {sev.label}
+        </span>
+        {capitulo !== undefined && (
+          <span className="text-[11px] text-zinc-300 ml-auto">
+            Cap.{capitulo} · §{paragrafo} · L.{linha_aproximada}
+          </span>
+        )}
         {aceita && (
-          <span className="text-emerald-600 text-xs font-medium flex items-center gap-1">
+          <span className="text-emerald-600 text-xs font-medium flex items-center gap-1 ml-auto">
             <CheckIcon /> Aceita
           </span>
         )}
         {rejeitada && (
-          <span className="text-zinc-400 text-xs font-medium">Rejeitada</span>
+          <span className="text-zinc-400 text-xs ml-auto">Rejeitada</span>
         )}
       </div>
 
-      <div className="space-y-2 mb-3">
+      {/* Diff */}
+      <div className="space-y-1.5 mb-3">
         <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2">
-          <p className="text-xs text-red-400 font-medium uppercase tracking-wide mb-1">Original</p>
-          <p className="text-sm text-red-800 line-through leading-relaxed">
+          <p className="text-[10px] text-red-400 font-semibold uppercase tracking-wide mb-1">Original</p>
+          <p className="text-sm text-red-800 line-through leading-relaxed break-words">
             {sugestao.trecho_original}
           </p>
         </div>
         <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
-          <p className="text-xs text-emerald-500 font-medium uppercase tracking-wide mb-1">Sugestão</p>
-          <p className="text-sm text-emerald-800 leading-relaxed">{sugestao.sugestao}</p>
+          <p className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wide mb-1">Sugestão</p>
+          <p className="text-sm text-emerald-800 leading-relaxed break-words">{sugestao.sugestao}</p>
         </div>
       </div>
 
-      <p className="text-xs text-zinc-500 leading-relaxed mb-4">{sugestao.explicacao}</p>
+      <p className="text-xs text-zinc-500 leading-relaxed mb-1">{sugestao.explicacao}</p>
+      {sugestao.referencia_norma && (
+        <p className="text-[11px] text-zinc-300 mb-4">Ref.: {sugestao.referencia_norma}</p>
+      )}
 
-      {!aceita && !rejeitada && (
+      {!aceita && !rejeitada ? (
         <div className="flex gap-2">
           <button
             onClick={onAceitar}
@@ -87,9 +173,7 @@ function SugestaoCard({
             Rejeitar
           </button>
         </div>
-      )}
-
-      {(aceita || rejeitada) && (
+      ) : (
         <button
           onClick={aceita ? onRejeitar : onAceitar}
           className="text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-600 transition-colors"
@@ -106,39 +190,68 @@ function SugestaoCard({
 export default function RevisaoPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const router = useRouter();
+  const newFileRef = useRef<HTMLInputElement>(null);
 
-  const [revisao, setRevisao] = useState<RevisaoResult | null>(null);
+  const [usarRevisao, setUsarRevisao] = useState<boolean | null>(null);
+  const [manuscriptId, setManuscriptId] = useState<string>("");
   const [manuscritoNome, setManuscritoNome] = useState<string>("");
+  const [manuscritoTexto, setManuscritoTexto] = useState<string>("");
+  const [revisao, setRevisao] = useState<RevisaoResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aceitas, setAceitas] = useState<Set<string>>(new Set());
   const [rejeitadas, setRejeitadas] = useState<Set<string>>(new Set());
+  const [filtro, setFiltro] = useState<"todas" | "critico" | "recomendado" | "opcional">("todas");
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "analyzing">("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Load initial data
+  // ── Load ─────────────────────────────────────────────────────────────────────
+
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_revisao, manuscripts(nome)")
+      .select("usar_revisao, manuscript_id, dados_revisao, manuscripts(nome, texto)")
       .eq("id", projectId)
       .single();
 
     if (project) {
+      setUsarRevisao(project.usar_revisao as boolean | null);
+      setManuscriptId((project.manuscript_id as string | null) ?? "");
+      const ms = project.manuscripts as unknown as { nome: string; texto: string | null } | null;
+      setManuscritoNome(ms?.nome ?? "Manuscrito");
+      setManuscritoTexto(ms?.texto ?? "");
+
       const rev = project.dados_revisao as RevisaoResult | null;
-      setRevisao(rev);
-      setManuscritoNome(
-        (project.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito"
-      );
+      if (rev) {
+        setRevisao(rev);
+        if (rev.aceitas) setAceitas(new Set(rev.aceitas));
+        if (rev.rejeitadas) setRejeitadas(new Set(rev.rejeitadas));
+      }
     }
     setLoading(false);
   }, [projectId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
+  // ── Save progress (called after every aceitar/rejeitar) ───────────────────
+
+  async function saveProgress(newAceitas: Set<string>, newRejeitadas: Set<string>) {
+    if (!revisao) return;
+    await supabase
+      .from("projects")
+      .update({
+        dados_revisao: {
+          ...revisao,
+          aceitas: Array.from(newAceitas),
+          rejeitadas: Array.from(newRejeitadas),
+        },
+      })
+      .eq("id", projectId);
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function triggerRevisao() {
     setTriggering(true);
@@ -149,13 +262,14 @@ export default function RevisaoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId }),
       });
-      const data = await res.json();
+      const data = await res.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
       if (!res.ok) {
         setError(data.error ?? "Erro ao iniciar revisão.");
       } else {
-        setRevisao(data.revisao as RevisaoResult);
-        setAceitas(new Set());
-        setRejeitadas(new Set());
+        setRevisao(data.revisao!);
+        const empty = new Set<string>();
+        setAceitas(empty);
+        setRejeitadas(empty);
       }
     } catch {
       setError("Erro de conexão. Tente novamente.");
@@ -164,16 +278,46 @@ export default function RevisaoPage() {
     }
   }
 
+  function toggle(id: string, type: "aceitar" | "rejeitar") {
+    let newAceitas = new Set(aceitas);
+    let newRejeitadas = new Set(rejeitadas);
+
+    if (type === "aceitar") {
+      newAceitas.add(id);
+      newRejeitadas.delete(id);
+    } else {
+      newRejeitadas.add(id);
+      newAceitas.delete(id);
+    }
+
+    setAceitas(newAceitas);
+    setRejeitadas(newRejeitadas);
+    saveProgress(newAceitas, newRejeitadas);
+  }
+
   function aceitarTodas() {
     if (!revisao) return;
-    setAceitas(new Set(revisao.sugestoes.map((s) => s.id)));
-    setRejeitadas(new Set());
+    const all = new Set(revisao.sugestoes.map((s) => s.id));
+    const empty = new Set<string>();
+    setAceitas(all);
+    setRejeitadas(empty);
+    saveProgress(all, empty);
+  }
+
+  function rejeitarTodas() {
+    if (!revisao) return;
+    const empty = new Set<string>();
+    const all = new Set(revisao.sugestoes.map((s) => s.id));
+    setAceitas(empty);
+    setRejeitadas(all);
+    saveProgress(empty, all);
   }
 
   async function finalizarRevisao() {
     if (!revisao) return;
     setSaving(true);
     try {
+      // Save revision choices
       const { error: saveErr } = await supabase
         .from("projects")
         .update({
@@ -183,11 +327,19 @@ export default function RevisaoPage() {
             rejeitadas: Array.from(rejeitadas),
             finalizado_em: new Date().toISOString(),
           },
-          etapa_atual: "sinopse_ficha",
+          etapa_atual: "elementos",
         })
         .eq("id", projectId);
 
       if (saveErr) throw saveErr;
+
+      // Persist revised text to manuscript so Diagramação uses the corrected version
+      await fetch("/api/agentes/prova-revisao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+
       router.push(`/dashboard/elementos/${projectId}`);
     } catch {
       setError("Falha ao salvar revisão. Tente novamente.");
@@ -196,38 +348,158 @@ export default function RevisaoPage() {
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  async function gerarProva() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agentes/prova-revisao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      const data = await res.json() as { ok?: boolean; url?: string; aceitas?: number; total?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar prova");
+      if (data.url) window.open(data.url, "_blank");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const aceitasCount = aceitas.size;
-  const rejeitadasCount = rejeitadas.size;
-  const totalCount = revisao?.sugestoes.length ?? 0;
+  // ── Download ──────────────────────────────────────────────────────────────
+
+  async function downloadTxt() {
+    if (!revisao || !manuscritoTexto) return;
+    const revised = buildRevisedText(manuscritoTexto, revisao.sugestoes, aceitas);
+    const blob = new Blob([revised], { type: "text/plain;charset=utf-8" });
+    triggerDownload(blob, `${manuscritoNome}_revisado.txt`);
+  }
+
+  async function downloadDocx() {
+    if (!revisao || !manuscritoTexto) return;
+    const revised = buildRevisedText(manuscritoTexto, revisao.sugestoes, aceitas);
+    const blob = await buildDocxBlob(revised);
+    triggerDownload(blob, `${manuscritoNome}_revisado.docx`);
+  }
+
+  // ── New file upload ──────────────────────────────────────────────────────
+
+  async function handleNewFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+
+    try {
+      // Step 1: parse file
+      setUploadStatus("parsing");
+      const fd = new FormData();
+      fd.append("file", file);
+      const parseRes = await fetch("/api/ferramentas/parse-file", { method: "POST", body: fd });
+      const parseData = await parseRes.json() as { texto?: string; error?: string };
+      if (!parseRes.ok) throw new Error(parseData.error ?? "Erro ao processar arquivo.");
+
+      // Step 2: save texto to manuscripts
+      if (manuscriptId) {
+        await supabase
+          .from("manuscripts")
+          .update({ texto: parseData.texto })
+          .eq("id", manuscriptId);
+        setManuscritoTexto(parseData.texto ?? "");
+      }
+
+      // Step 3: re-run revisao
+      setUploadStatus("analyzing");
+      const diagRes = await fetch("/api/agentes/revisao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      const diagData = await diagRes.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
+      if (!diagRes.ok) throw new Error(diagData.error ?? "Erro ao gerar revisão.");
+
+      setRevisao(diagData.revisao!);
+      const empty = new Set<string>();
+      setAceitas(empty);
+      setRejeitadas(empty);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
+    } finally {
+      setUploadStatus("idle");
+      if (newFileRef.current) newFileRef.current.value = "";
+    }
+  }
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  const total     = revisao?.sugestoes.length ?? 0;
+  const reviewed  = aceitas.size + rejeitadas.size;
+  const pendentes = total - reviewed;
+  const canFinish = pendentes === 0;
+
+  const filtradas = revisao?.sugestoes.filter(
+    (s) => filtro === "todas" || s.severidade === filtro
+  ) ?? [];
+
+  const countBySev = (sev: SugestaoRevisao["severidade"]) =>
+    revisao?.sugestoes.filter((s) => s.severidade === sev).length ?? 0;
+
+  const isUploading = uploadStatus !== "idle";
+
+  // ── Dev mock ──────────────────────────────────────────────────────────────
+
+  const isDev = typeof window !== "undefined" && process.env.NODE_ENV === "development";
+
+  useEffect(() => {
+    if (!isDev || !loading) return;
+    // In dev with no real data, show mock after loadData finishes
+  }, [isDev, loading]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div>
-
-      <EtapasProgress currentStep={1} />
+      <EtapasProgress currentStep={1} projectId={projectId} />
 
       <main className="max-w-4xl mx-auto px-4 py-10">
         {loading ? (
+          /* Loading */
           <div className="flex flex-col items-center justify-center py-24">
             <div className="w-10 h-10 rounded-full border-4 border-brand-gold border-t-transparent animate-spin mb-4" />
             <p className="text-zinc-400 text-sm">Carregando…</p>
           </div>
+
+        ) : usarRevisao === false ? (
+          /* Skipped */
+          <div className="max-w-lg mx-auto text-center py-16">
+            <div className="w-16 h-16 rounded-2xl bg-zinc-100 flex items-center justify-center mx-auto mb-6">
+              <SkipIcon />
+            </div>
+            <h1 className="font-heading text-3xl text-brand-primary mb-3">Revisão não selecionada</h1>
+            <p className="text-zinc-500 leading-relaxed mb-8">
+              Você optou por pular a revisão textual ao criar o projeto. Quando quiser, pode avançar diretamente para os elementos editoriais.
+            </p>
+            <button
+              onClick={() => router.push(`/dashboard/elementos/${projectId}`)}
+              className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
+            >
+              Continuar para Elementos Editoriais →
+            </button>
+          </div>
+
         ) : !revisao ? (
-          /* No revision yet — show trigger */
+          /* Not yet run */
           <div className="max-w-lg mx-auto text-center py-16">
             <div className="w-16 h-16 rounded-2xl bg-brand-primary/5 flex items-center justify-center mx-auto mb-6">
               <EditIcon />
             </div>
-            <h1 className="font-heading text-3xl text-brand-primary mb-3">
-              Revisão editorial
-            </h1>
-            <p className="text-zinc-500 leading-relaxed mb-8">
-              A IA irá revisar seu manuscrito para gramática, ortografia, estilo
-              e coesão — preservando sua voz como autor.
+            <h1 className="font-heading text-3xl text-brand-primary mb-3">Revisão Editorial</h1>
+            <p className="text-zinc-500 leading-relaxed mb-2">
+              Nossa IA irá revisar ortografia, gramática, coesão e consistência narrativa — preservando completamente sua voz como autor.
             </p>
+            <p className="text-zinc-400 text-sm mb-8">Todas as sugestões são opcionais. Você decide o que aceitar.</p>
             {error && (
-              <div className="mb-6 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm">
+              <div className="mb-6 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm text-left">
                 {error}
               </div>
             )}
@@ -241,42 +513,94 @@ export default function RevisaoPage() {
                   <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
                   Analisando com IA…
                 </>
-              ) : (
-                <>Iniciar revisão →</>
-              )}
+              ) : "Iniciar revisão →"}
             </button>
-            <p className="text-zinc-400 text-xs mt-4">
-              Leva cerca de 30–60 segundos dependendo do tamanho do manuscrito.
-            </p>
+            <p className="text-zinc-400 text-xs mt-4">Leva cerca de 30–60 segundos dependendo do tamanho do manuscrito.</p>
           </div>
+
         ) : (
-          /* Revision results */
+          /* Review UI */
           <>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
               <div>
-                <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
-                  Revisão completa
-                </p>
+                <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Revisão completa</p>
                 <h1 className="font-heading text-3xl text-brand-primary">{manuscritoNome}</h1>
                 <p className="text-zinc-400 text-sm mt-1">
-                  {totalCount} sugestões · {aceitasCount} aceitas · {rejeitadasCount} rejeitadas
+                  {total} sugestões · {aceitas.size} aceitas · {rejeitadas.size} rejeitadas
+                  {pendentes > 0 && <span className="text-amber-500"> · {pendentes} pendentes</span>}
                 </p>
               </div>
-              <div className="flex gap-2 shrink-0">
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-2 shrink-0">
                 <button
                   onClick={aceitarTodas}
-                  className="px-4 py-2 text-sm border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 transition-colors"
+                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors"
                 >
-                  Aceitar todas
+                  ✓ Aceitar todas
+                </button>
+                <button
+                  onClick={rejeitarTodas}
+                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors"
+                >
+                  ✕ Rejeitar todas
+                </button>
+                <button
+                  onClick={downloadTxt}
+                  disabled={!manuscritoTexto}
+                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-40"
+                  title="Baixar texto revisado como .txt"
+                >
+                  ↓ TXT
+                </button>
+                <button
+                  onClick={downloadDocx}
+                  disabled={!manuscritoTexto}
+                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-40"
+                  title="Baixar texto revisado como .docx"
+                >
+                  ↓ DOCX
                 </button>
                 <button
                   onClick={triggerRevisao}
                   disabled={triggering}
-                  className="px-4 py-2 text-sm border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 transition-colors disabled:opacity-50"
+                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-50"
                 >
-                  {triggering ? "Analisando…" : "Nova análise"}
+                  {triggering ? "Analisando…" : "↺ Nova análise"}
                 </button>
               </div>
+            </div>
+
+            {/* Severity filter tabs */}
+            <div className="flex gap-1.5 mb-6 flex-wrap">
+              {(["todas", "critico", "recomendado", "opcional"] as const).map((f) => {
+                const count =
+                  f === "todas" ? total :
+                  f === "critico" ? countBySev("critico") :
+                  f === "recomendado" ? countBySev("recomendado") :
+                  countBySev("opcional");
+                const labels: Record<typeof f, string> = {
+                  todas: "Todas",
+                  critico: "Críticas",
+                  recomendado: "Recomendadas",
+                  opcional: "Opcionais",
+                };
+                if (f !== "todas" && count === 0) return null;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setFiltro(f)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      filtro === f
+                        ? "bg-brand-primary text-white"
+                        : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                    }`}
+                  >
+                    {labels[f]} ({count})
+                  </button>
+                );
+              })}
             </div>
 
             {error && (
@@ -285,36 +609,82 @@ export default function RevisaoPage() {
               </div>
             )}
 
+            {/* Cards */}
             <div className="grid md:grid-cols-2 gap-4 mb-10">
-              {revisao.sugestoes.map((s) => (
+              {filtradas.map((s) => (
                 <SugestaoCard
                   key={s.id}
                   sugestao={s}
                   aceita={aceitas.has(s.id)}
                   rejeitada={rejeitadas.has(s.id)}
-                  onAceitar={() => {
-                    setAceitas((prev) => new Set([...prev, s.id]));
-                    setRejeitadas((prev) => { const n = new Set(prev); n.delete(s.id); return n; });
-                  }}
-                  onRejeitar={() => {
-                    setRejeitadas((prev) => new Set([...prev, s.id]));
-                    setAceitas((prev) => { const n = new Set(prev); n.delete(s.id); return n; });
-                  }}
+                  onAceitar={() => toggle(s.id, "aceitar")}
+                  onRejeitar={() => toggle(s.id, "rejeitar")}
                 />
               ))}
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-zinc-200">
-              <p className="text-zinc-400 text-sm">
-                Aceite as sugestões desejadas e clique em Finalizar para continuar.
-              </p>
-              <button
-                onClick={finalizarRevisao}
-                disabled={saving}
-                className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap disabled:opacity-50"
-              >
-                {saving ? "Salvando…" : "Finalizar revisão →"}
-              </button>
+            {/* Bottom CTA bar */}
+            <div className="border-t border-zinc-200 pt-6 space-y-4">
+
+              {/* Upload new file */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <input
+                  ref={newFileRef}
+                  type="file"
+                  accept=".docx,.pdf,.txt"
+                  className="hidden"
+                  onChange={handleNewFile}
+                />
+                <button
+                  onClick={() => newFileRef.current?.click()}
+                  disabled={isUploading}
+                  className="inline-flex items-center gap-2 text-zinc-500 text-sm border border-zinc-200 px-5 py-2.5 rounded-xl hover:border-zinc-400 hover:text-zinc-700 transition-all disabled:opacity-50"
+                >
+                  {isUploading && (
+                    <span className="w-3.5 h-3.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {uploadStatus === "parsing" ? "Extraindo texto…" :
+                   uploadStatus === "analyzing" ? "Re-analisando…" :
+                   "↑ Enviar arquivo revisado"}
+                </button>
+                <span className="text-xs text-zinc-400">Aceita .docx, .pdf ou .txt</span>
+                {uploadError && <p className="text-red-500 text-xs">{uploadError}</p>}
+              </div>
+
+              {/* Finalize */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  {!canFinish ? (
+                    <p className="text-amber-600 text-sm font-medium">
+                      ⚠ {pendentes} sugestão{pendentes !== 1 ? "ões" : ""} ainda não{pendentes !== 1 ? " foram avaliadas" : " foi avaliada"}
+                    </p>
+                  ) : (
+                    <p className="text-emerald-600 text-sm font-medium">
+                      ✓ Todas as sugestões foram avaliadas
+                    </p>
+                  )}
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 leading-relaxed">
+                  <strong>Nota:</strong> A prova mostra o texto com as revisões aplicadas em formato simples — não representa o layout final diagramado. O PDF definitivo é gerado na etapa de Diagramação.
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={gerarProva}
+                    disabled={saving}
+                    className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-brand-gold/40 transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    Ver prova (texto revisado)
+                  </button>
+                  <button
+                    onClick={finalizarRevisao}
+                    disabled={saving || !canFinish}
+                    title={!canFinish ? `Avalie todas as ${pendentes} sugestões pendentes para continuar` : ""}
+                    className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {saving ? "Salvando…" : "Finalizar revisão →"}
+                  </button>
+                </div>
+              </div>
             </div>
           </>
         )}
@@ -340,6 +710,17 @@ function EditIcon() {
       stroke="#1a1a2e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function SkipIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+      stroke="#71717a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 8 16 12 12 16" />
+      <line x1="8" y1="12" x2="16" y2="12" />
     </svg>
   );
 }

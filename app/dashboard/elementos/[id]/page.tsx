@@ -92,7 +92,6 @@ export default function ElementosPage() {
             ...elementos,
             sinopse_curta: sinopseCurta,
             sinopse_longa: sinopseLonga,
-            ficha_catalografica: ficha,
             titulo_escolhido: elementos.opcoes_titulo[tituloSelecionado],
             salvo_em: new Date().toISOString(),
           },
@@ -114,7 +113,7 @@ export default function ElementosPage() {
   return (
     <div>
 
-      <EtapasProgress currentStep={2} />
+      <EtapasProgress currentStep={2} projectId={projectId} />
 
       <main className="max-w-4xl mx-auto px-4 py-10">
         {loading ? (
@@ -240,16 +239,15 @@ export default function ElementosPage() {
                 </div>
               </div>
 
-              {/* Ficha catalográfica */}
-              <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-                <h2 className="font-heading text-lg text-brand-primary mb-1">Ficha catalográfica</h2>
-                <p className="text-zinc-400 text-xs mb-3">Padrão CBL — obrigatório para impressão</p>
-                <textarea
-                  value={ficha}
-                  onChange={(e) => setFicha(e.target.value)}
-                  rows={6}
-                  className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700 font-mono resize-none focus:outline-none focus:ring-2 focus:ring-brand-gold/40 focus:border-brand-gold/40 transition-all"
-                />
+              {/* Ficha catalográfica — gerada na etapa de Créditos (ABNT NBR 6029, CIP-BRASIL) */}
+              <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 flex items-start gap-3">
+                <span className="text-lg mt-0.5">📑</span>
+                <div>
+                  <p className="text-sm font-medium text-zinc-700">Ficha catalográfica</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Gerada na etapa <strong>Créditos</strong> no padrão ABNT NBR 6029 com ficha CIP-BRASIL completa.
+                  </p>
+                </div>
               </div>
             </div>
 

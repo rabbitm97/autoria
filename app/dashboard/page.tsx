@@ -17,7 +17,8 @@ const STEPS = [
   { key: "revisao",       label: "Revisão",       href: (id: string) => `/dashboard/revisao/${id}` },
   { key: "sinopse_ficha", label: "Elementos",     href: (id: string) => `/dashboard/elementos/${id}` },
   { key: "capa",          label: "Capa",          href: (id: string) => `/dashboard/capa/${id}` },
-  { key: "diagramacao",   label: "Diagramação",   href: (id: string) => `/dashboard/diagramacao/${id}` },
+  { key: "creditos",      label: "Créditos",      href: (id: string) => `/dashboard/creditos/${id}` },
+  { key: "diagramacao",   label: "Diagramação",   href: (id: string) => `/dashboard/miolo/${id}` },
   { key: "qa",            label: "QA",            href: (id: string) => `/dashboard/qa/${id}` },
   { key: "publicacao",    label: "Publicação",    href: (id: string) => `/dashboard/publicacao/${id}` },
 ];
@@ -27,8 +28,11 @@ const ETAPA_HREF: Record<string, (id: string) => string> = {
   diagnostico:   (id) => `/dashboard/diagnostico/${id}`,
   revisao:       (id) => `/dashboard/revisao/${id}`,
   sinopse_ficha: (id) => `/dashboard/elementos/${id}`,
+  elementos:     (id) => `/dashboard/elementos/${id}`,
   capa:          (id) => `/dashboard/capa/${id}`,
-  diagramacao:   (id) => `/dashboard/diagramacao/${id}`,
+  creditos:      (id) => `/dashboard/creditos/${id}`,
+  diagramacao:   (id) => `/dashboard/miolo/${id}`,
+  preview:       (id) => `/dashboard/qa/${id}`,
   qa:            (id) => `/dashboard/qa/${id}`,
   publicacao:    (id) => `/dashboard/publicacao/${id}`,
   concluido:     (id) => `/dashboard/publicacao/${id}`,
@@ -40,8 +44,16 @@ const MOCK_PROJETOS: Projeto[] = [
   { id: "mock-3", etapa_atual: "sinopse_ficha", criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte" } },
 ];
 
+const ETAPA_STEP_ALIAS: Record<string, string> = {
+  elementos: "sinopse_ficha",
+  preview:   "qa",
+  // "diagramacao" is the etapa key set after capa — maps to miolo step
+  // (already in STEPS as key "diagramacao", no alias needed)
+};
+
 function getStepIndex(etapa: string): number {
-  const idx = STEPS.findIndex((s) => s.key === etapa);
+  const key = ETAPA_STEP_ALIAS[etapa] ?? etapa;
+  const idx = STEPS.findIndex((s) => s.key === key);
   return idx >= 0 ? idx : 0;
 }
 
@@ -85,6 +97,13 @@ const TOOLS = [
     icon: "✏️",
     label: "Revisor de texto",
     desc: "Revisão gramatical e estilística com IA",
+    highlight: false,
+  },
+  {
+    href: "/dashboard/ferramentas/creditos",
+    icon: "📑",
+    label: "Página de créditos",
+    desc: "Gere o verso da folha de rosto com ficha catalográfica CIP-BRASIL",
     highlight: false,
   },
   {

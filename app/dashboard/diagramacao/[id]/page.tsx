@@ -101,7 +101,7 @@ export default function DiagramacaoPage() {
   return (
     <div>
 
-      <EtapasProgress currentStep={4} />
+      <EtapasProgress currentStep={5} projectId={id} />
 
       <main className="max-w-4xl mx-auto px-4 py-10">
 

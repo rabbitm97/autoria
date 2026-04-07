@@ -1,30 +1,76 @@
 import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type EstiloCapa =
+  | "minimalista"
+  | "cartoon"
+  | "aquarela"
+  | "fotorrealista"
+  | "abstrato"
+  | "vintage"
+  | "geometrico";
+
 export interface OpcaoCapa {
-  url: string;           // Supabase Storage public URL
-  storage_path: string;  // e.g. "{user_id}/{project_id}/capa_0.png"
+  url: string;
+  storage_path: string;
 }
 
-export interface CapaResult {
+export interface CapaGeradaResult {
   project_id: string;
+  modo: "ia";
+  estilo: EstiloCapa;
+  cor_predominante: string;
+  quarta_capa_texto: string;
+  usar_orelhas: boolean;
   prompt_usado: string;
   opcoes: OpcaoCapa[];
   url_escolhida: string | null;
+  gerado_em: string;
+  is_regeneracao: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildContents(textPrompt: string, ref: string | undefined): Part[] {
+const ESTILO_DESC: Record<EstiloCapa, string> = {
+  minimalista:    "minimalist editorial design, clean lines, flat colors, lots of white space",
+  cartoon:        "cartoon illustration style, bold outlines, vibrant flat colors, playful feel",
+  aquarela:       "watercolor painting style, soft washes, organic edges, painterly texture",
+  fotorrealista:  "photorealistic digital art, cinematic lighting, high detail, professional photography feel",
+  abstrato:       "abstract art, geometric shapes, overlapping forms, expressive color fields",
+  vintage:        "vintage retro illustration, aged textures, muted palette, period-appropriate typography feel",
+  geometrico:     "geometric design, bold shapes, strong contrast, modern graphic style",
+};
+
+function buildPrompt(opts: {
+  titulo: string;
+  autor: string;
+  sinopse: string;
+  genero: string;
+  estilo: EstiloCapa;
+  cor_predominante: string;
+}): string {
+  return [
+    `Professional book cover design for "${opts.titulo}" by ${opts.autor}.`,
+    `Genre: ${opts.genero}.`,
+    `Story synopsis: ${opts.sinopse.slice(0, 250)}.`,
+    `Style: ${ESTILO_DESC[opts.estilo]}.`,
+    `Predominant color palette centered around ${opts.cor_predominante}.`,
+    "Portrait orientation (2:3 aspect ratio). No text, no letters, no words on the image.",
+    "High contrast, professional publishing industry quality, suitable for CMYK print.",
+    "Full bleed composition, no borders or frames.",
+  ].join(" ");
+}
+
+function buildContents(textPrompt: string, ref?: string): Part[] {
   if (ref) {
     const match = ref.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
       return [
-        { text: textPrompt + "\nUse the provided reference image as a style and composition guide. Do not copy it literally — adapt its mood, color palette, and visual style for this new book cover." } as Part,
+        { text: textPrompt + " Use the provided reference image as a style and composition guide — adapt its mood and color palette for this new cover." } as Part,
         { inlineData: { mimeType: match[1], data: match[2] } } as Part,
       ];
     }
@@ -36,34 +82,63 @@ function buildContents(textPrompt: string, ref: string | undefined): Part[] {
 
 export async function POST(req: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
-  const supabase = await createSupabaseServerClient();
 
   let userId: string;
+  let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
   if (isDev) {
     userId = "dev-user";
+    supabase = await createSupabaseServerClient();
   } else {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    try {
+      const auth = await requireAuth();
+      userId = auth.user.id;
+      supabase = auth.supabase;
+    } catch (e) {
+      return e as Response;
     }
-    userId = user.id;
   }
 
   if (!process.env.GOOGLE_AI_API_KEY) {
     return NextResponse.json(
-      { error: "GOOGLE_AI_API_KEY não configurada. Configure no Vercel ou .env.local." },
+      { error: "GOOGLE_AI_API_KEY não configurada." },
       { status: 503 }
     );
   }
 
-  let body: { project_id: string; titulo: string; sinopse: string; genero?: string; qtd?: number; imagemRef?: string };
+  let body: {
+    project_id: string;
+    titulo: string;
+    autor: string;
+    sinopse: string;
+    genero?: string;
+    estilo?: EstiloCapa;
+    cor_predominante?: string;
+    usar_orelhas?: boolean;
+    quarta_capa_texto?: string;
+    imagemRef?: string;
+    is_regeneracao?: boolean;
+  };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const { project_id, titulo, sinopse, genero = "literatura", qtd = 3, imagemRef } = body;
+  const {
+    project_id,
+    titulo,
+    autor = "",
+    sinopse,
+    genero = "literatura",
+    estilo = "minimalista",
+    cor_predominante = "azul escuro",
+    usar_orelhas = false,
+    quarta_capa_texto = sinopse?.slice(0, 500) ?? "",
+    imagemRef,
+    is_regeneracao = false,
+  } = body;
+
   if (!project_id || !titulo || !sinopse) {
     return NextResponse.json(
       { error: "project_id, titulo e sinopse são obrigatórios" },
@@ -71,78 +146,105 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const prompt = [
-    `Book cover design for a ${genero} book titled "${titulo}".`,
-    `Story: ${sinopse.slice(0, 300)}.`,
-    "Professional editorial design. No text, no letters, no words on the image.",
-    "High contrast, suitable for CMYK print. Vertical portrait orientation.",
-    "Cinematic lighting, rich colors, publishing industry quality.",
-  ].join(" ");
+  // ── Credit check for regeneration ────────────────────────────────────────
+  if (is_regeneracao && !isDev) {
+    const { data: proj } = await supabase
+      .from("projects")
+      .select("creditos")
+      .eq("id", project_id)
+      .single();
 
-  // Service-role client for server-side Storage uploads
+    const creditos = (proj as { creditos?: number } | null)?.creditos ?? 0;
+    if (creditos < 20) {
+      return NextResponse.json(
+        { error: "Créditos insuficientes. Regenerar capa custa 20 créditos." },
+        { status: 402 }
+      );
+    }
+
+    await supabase
+      .from("projects")
+      .update({ creditos: creditos - 20 })
+      .eq("id", project_id);
+  }
+
+  const prompt = buildPrompt({ titulo, autor, sinopse, genero, estilo, cor_predominante });
+
+  // Service-role client for Storage uploads
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
-  const count = Math.min(Math.max(1, qtd), 3);
   const opcoes: OpcaoCapa[] = [];
 
-  for (let i = 0; i < count; i++) {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-image-preview",
-      contents: [{ role: "user", parts: buildContents(prompt, imagemRef) }],
-      config: {
-        responseModalities: ["IMAGE"],
-        imageConfig: { aspectRatio: "2:3", imageSize: "2K" },
-      },
-    });
+  // Generate 4 options
+  for (let i = 0; i < 4; i++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-image-preview",
+        contents: [{ role: "user", parts: buildContents(prompt, imagemRef) }],
+        config: {
+          responseModalities: ["IMAGE"],
+          imageConfig: { aspectRatio: "2:3", imageSize: "2K" },
+        },
+      });
 
-    const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
-    const imgPart = parts.find((p) => p.inlineData);
-    if (!imgPart?.inlineData?.data) continue;
+      const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
+      const imgPart = parts.find((p) => p.inlineData);
+      if (!imgPart?.inlineData?.data) continue;
 
-    const base64 = imgPart.inlineData.data;
-    const mimeType = imgPart.inlineData.mimeType ?? "image/png";
-    const ext = mimeType.includes("png") ? "png" : "jpg";
-    const storagePath = `${userId}/${project_id}/capa_${i}.${ext}`;
-    const buffer = Buffer.from(base64, "base64");
+      const base64 = imgPart.inlineData.data;
+      const mimeType = imgPart.inlineData.mimeType ?? "image/png";
+      const ext = mimeType.includes("png") ? "png" : "jpg";
+      const storagePath = `${userId}/${project_id}/capa_ia_${i}.${ext}`;
+      const buffer = Buffer.from(base64, "base64");
 
-    const { error: uploadError } = await storageClient.storage
-      .from("capas")
-      .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+      const { error: uploadError } = await storageClient.storage
+        .from("capas")
+        .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
 
-    if (uploadError) {
-      console.error("[gerar-capa] upload error:", uploadError.message);
-      continue;
+      if (uploadError) {
+        console.error("[gerar-capa] upload error:", uploadError.message);
+        continue;
+      }
+
+      const { data: { publicUrl } } = storageClient.storage
+        .from("capas")
+        .getPublicUrl(storagePath);
+
+      opcoes.push({ url: publicUrl, storage_path: storagePath });
+    } catch (err) {
+      console.error(`[gerar-capa] option ${i} failed:`, err);
     }
-
-    const { data: { publicUrl } } = storageClient.storage
-      .from("capas")
-      .getPublicUrl(storagePath);
-
-    opcoes.push({ url: publicUrl, storage_path: storagePath });
   }
 
   if (opcoes.length === 0) {
     return NextResponse.json({ error: "Nenhuma imagem foi gerada" }, { status: 500 });
   }
 
-  const dados_capa: CapaResult = {
+  const result: CapaGeradaResult = {
     project_id,
+    modo: "ia",
+    estilo,
+    cor_predominante,
+    quarta_capa_texto,
+    usar_orelhas,
     prompt_usado: prompt,
     opcoes,
     url_escolhida: opcoes[0]?.url ?? null,
+    gerado_em: new Date().toISOString(),
+    is_regeneracao,
   };
 
   await supabase
     .from("projects")
-    .update({ dados_capa, etapa_atual: "capa" })
+    .update({ dados_capa: result, etapa_atual: "capa" })
     .eq("id", project_id)
     .eq("user_id", userId);
 
-  return NextResponse.json(dados_capa);
+  return NextResponse.json(result);
 }
 
 // ─── GET /api/agentes/gerar-capa?project_id=... ───────────────────────────────
@@ -154,21 +256,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (process.env.NODE_ENV === "development") {
-    return NextResponse.json({
-      project_id,
-      prompt_usado: "Mock prompt para ambiente de dev",
-      opcoes: [
-        {
-          url: "https://placehold.co/683x1024/1a1a2e/e8c97b?text=Capa+Mock",
-          storage_path: "dev-user/mock/capa_0.png",
-        },
-      ],
-      url_escolhida: "https://placehold.co/683x1024/1a1a2e/e8c97b?text=Capa+Mock",
-    } satisfies CapaResult);
+    return NextResponse.json(null);
   }
 
   const supabase = await createSupabaseServerClient();
-
   const { data, error } = await supabase
     .from("projects")
     .select("dados_capa")
