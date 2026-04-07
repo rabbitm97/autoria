@@ -21,12 +21,13 @@ export default async function proxy(req: NextRequest) {
     }
   );
 
-  // getUser() validates the JWT server-side — more secure than getSession()
+  // getSession() reads from cookie (no network round-trip) — fast for proxy checks.
+  // getUser() (network call) is used inside Route Handlers/Server Components where needed.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!session) {
     const loginUrl = new URL("/login", req.nextUrl);
     loginUrl.searchParams.set("next", req.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
