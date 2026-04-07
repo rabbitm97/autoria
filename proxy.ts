@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
-export default async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   const res = NextResponse.next();
 
   // Dev: skip auth so local preview works without credentials
