@@ -2,48 +2,77 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-type LoadingState = "google" | "magic" | null;
-
 function LoginInner() {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState<LoadingState>(null);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const searchParams = useSearchParams();
 
+  const [email, setEmail]     = useState("");
+  const [senha, setSenha]     = useState("");
+  const [loading, setLoading] = useState<"password" | "google" | "magic" | null>(null);
+  const [sent, setSent]       = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [info, setInfo]       = useState<string | null>(null);
+  const [showMagic, setShowMagic] = useState(false);
+
   useEffect(() => {
-    if (searchParams.get("error") === "auth") {
-      setError("O link de acesso expirou ou já foi usado. Solicite um novo link abaixo.");
-    }
+    const err = searchParams.get("error");
+    const ok  = searchParams.get("cadastro");
+    if (err === "auth") setError("O link de acesso expirou ou já foi usado. Solicite um novo abaixo.");
+    if (ok  === "ok")  setInfo("Conta criada! Verifique seu e-mail para confirmar, depois faça login.");
   }, [searchParams]);
 
+  // ── Email + senha ──────────────────────────────────────────────────────────
+  async function handlePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !senha) return;
+    setLoading("password");
+    setError(null);
+
+    const { error: err } = await supabase.auth.signInWithPassword({ email, password: senha });
+
+    if (err) {
+      setError(
+        err.message.includes("Invalid login")
+          ? "E-mail ou senha incorretos."
+          : `Erro ao entrar: ${err.message}`
+      );
+      setLoading(null);
+      return;
+    }
+
+    router.push("/dashboard");
+  }
+
+  // ── Google ─────────────────────────────────────────────────────────────────
   async function handleGoogle() {
     setLoading("google");
     setError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
-    if (error) {
+    if (err) {
       setError("Não foi possível conectar com o Google. Tente novamente.");
       setLoading(null);
     }
   }
 
-  async function handleMagicLink(e: React.FormEvent<HTMLFormElement>) {
+  // ── Magic link ─────────────────────────────────────────────────────────────
+  async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
     setLoading("magic");
     setError(null);
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error: err } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
-    if (error) {
-      setError("Não foi possível enviar o link. Verifique o e-mail e tente novamente.");
+    if (err) {
+      setError("Não foi possível enviar o link. Verifique o e-mail.");
     } else {
       setSent(true);
     }
@@ -54,13 +83,9 @@ function LoginInner() {
 
   return (
     <div className="min-h-screen bg-brand-primary flex">
-
-      {/* Left panel — brand */}
+      {/* Left panel */}
       <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 border-r border-white/5 p-12">
-        <Link href="/" className="font-heading text-2xl text-brand-gold">
-          Autoria
-        </Link>
-
+        <Link href="/" className="font-heading text-2xl text-brand-gold">Autoria</Link>
         <div>
           <div className="w-12 h-1 bg-brand-gold rounded-full mb-8" />
           <blockquote className="text-white/70 text-xl leading-relaxed mb-6">
@@ -68,13 +93,8 @@ function LoginInner() {
           </blockquote>
           <p className="text-white/40 text-sm">— Fernanda Oliveira, autora de romance contemporâneo</p>
         </div>
-
         <div className="grid grid-cols-3 gap-4">
-          {[
-            { value: "15+", label: "Plataformas" },
-            { value: "85%", label: "Royalties"   },
-            { value: "24h", label: "Publicação"  },
-          ].map(s => (
+          {[{ value: "15+", label: "Plataformas" }, { value: "85%", label: "Royalties" }, { value: "24h", label: "Publicação" }].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl p-4 border border-white/5">
               <div className="font-heading text-2xl text-brand-gold">{s.value}</div>
               <div className="text-white/40 text-xs mt-1">{s.label}</div>
@@ -83,97 +103,129 @@ function LoginInner() {
         </div>
       </div>
 
-      {/* Right panel — form */}
+      {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-sm">
-
-          {/* Mobile logo */}
-          <Link href="/" className="font-heading text-2xl text-brand-gold block mb-10 lg:hidden">
-            Autoria
-          </Link>
+          <Link href="/" className="font-heading text-2xl text-brand-gold block mb-10 lg:hidden">Autoria</Link>
 
           {sent ? (
             <SuccessState email={email} onReset={() => { setSent(false); setEmail(""); }} />
           ) : (
             <>
               <div className="mb-8">
-                <h1 className="font-heading text-3xl text-white mb-2">
-                  Bem-vindo de volta
-                </h1>
+                <h1 className="font-heading text-3xl text-white mb-2">Bem-vindo de volta</h1>
                 <p className="text-white/50 text-sm">
-                  Entre na sua conta ou crie uma nova —{" "}
-                  <span className="text-brand-gold">é o mesmo processo.</span>
+                  Não tem conta?{" "}
+                  <Link href="/cadastro" className="text-brand-gold hover:underline">Criar agora</Link>
                 </p>
               </div>
 
-              {/* Google */}
-              <button
-                onClick={handleGoogle}
-                disabled={isDisabled}
-                className="w-full flex items-center justify-center gap-3 bg-white text-zinc-800 rounded-xl py-3.5 px-4 text-sm font-semibold hover:bg-zinc-100 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed mb-5 shadow-sm"
-              >
-                <GoogleIcon />
-                {loading === "google" ? "Redirecionando…" : "Continuar com Google"}
-              </button>
+              {info && (
+                <div className="mb-5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-sm text-emerald-400">
+                  {info}
+                </div>
+              )}
 
-              {/* Divider */}
-              <div className="flex items-center gap-3 mb-5">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-white/30 text-xs">ou entre com e-mail</span>
-                <div className="flex-1 h-px bg-white/10" />
-              </div>
-
-              {/* Magic link */}
-              <form onSubmit={handleMagicLink} className="space-y-3">
+              {/* Email + senha (método principal) */}
+              <form onSubmit={handlePassword} className="space-y-3">
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-white/60 mb-1.5">
-                    E-mail
-                  </label>
+                  <label className="block text-sm font-medium text-white/60 mb-1.5">E-mail</label>
                   <input
-                    id="email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={e => setEmail(e.target.value)}
                     placeholder="seu@email.com"
                     required
-                    disabled={isDisabled}
                     autoComplete="email"
+                    disabled={isDisabled}
                     className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:border-brand-gold/50 disabled:opacity-50 transition"
                   />
                 </div>
-
+                <div>
+                  <label className="block text-sm font-medium text-white/60 mb-1.5">Senha</label>
+                  <input
+                    type="password"
+                    value={senha}
+                    onChange={e => setSenha(e.target.value)}
+                    placeholder="Sua senha"
+                    required
+                    autoComplete="current-password"
+                    disabled={isDisabled}
+                    className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:border-brand-gold/50 disabled:opacity-50 transition"
+                  />
+                </div>
                 <button
                   type="submit"
-                  disabled={isDisabled || !email}
+                  disabled={isDisabled || !email || !senha}
                   className="w-full bg-brand-gold text-brand-primary rounded-xl py-3.5 px-4 text-sm font-semibold hover:bg-brand-gold-light active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {loading === "magic" ? "Enviando…" : "Enviar link de acesso"}
+                  {loading === "password" ? "Entrando…" : "Entrar"}
                 </button>
               </form>
 
               {error && (
-                <p className="mt-4 text-sm text-red-400 text-center leading-relaxed bg-red-400/10 rounded-lg py-3 px-4 border border-red-400/20">
+                <div className="mt-4 bg-red-400/10 border border-red-400/20 rounded-xl p-3 text-sm text-red-400 text-center">
                   {error}
-                </p>
+                </div>
               )}
+
+              {/* Opções secundárias */}
+              <div className="mt-5 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="text-white/30 text-xs">ou</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+
+                <button
+                  onClick={handleGoogle}
+                  disabled={isDisabled}
+                  className="w-full flex items-center justify-center gap-3 bg-white/5 border border-white/10 text-white/70 rounded-xl py-3 px-4 text-sm hover:bg-white/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <GoogleIcon />
+                  {loading === "google" ? "Redirecionando…" : "Continuar com Google"}
+                </button>
+
+                {!showMagic ? (
+                  <button
+                    onClick={() => setShowMagic(true)}
+                    className="w-full text-center text-xs text-white/30 hover:text-white/50 transition-colors py-1"
+                  >
+                    Entrar com link por e-mail (sem senha)
+                  </button>
+                ) : (
+                  <form onSubmit={handleMagicLink} className="space-y-2">
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="seu@email.com"
+                      required
+                      disabled={isDisabled}
+                      className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-gold/50 disabled:opacity-50 transition"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isDisabled || !email}
+                      className="w-full bg-white/5 border border-white/10 text-white/70 rounded-xl py-3 text-sm hover:bg-white/10 transition-all disabled:opacity-40"
+                    >
+                      {loading === "magic" ? "Enviando…" : "Enviar link de acesso"}
+                    </button>
+                  </form>
+                )}
+              </div>
 
               <p className="mt-8 text-center text-xs text-white/25 leading-relaxed">
                 Ao entrar, você concorda com os{" "}
-                <a href="/termos" className="underline underline-offset-2 hover:text-white/50 transition-colors">
-                  Termos de Uso
-                </a>{" "}
+                <a href="/termos" className="underline underline-offset-2 hover:text-white/50 transition-colors">Termos de Uso</a>{" "}
                 e a{" "}
-                <a href="/privacidade" className="underline underline-offset-2 hover:text-white/50 transition-colors">
-                  Política de Privacidade
-                </a>.
+                <a href="/privacidade" className="underline underline-offset-2 hover:text-white/50 transition-colors">Política de Privacidade</a>.
               </p>
             </>
           )}
 
           <p className="text-center text-white/20 text-xs mt-8 pt-8 border-t border-white/5">
-            <Link href="/" className="hover:text-white/40 transition-colors">
-              ← Voltar para o site
-            </Link>
+            <Link href="/" className="hover:text-white/40 transition-colors">← Voltar para o site</Link>
           </p>
         </div>
       </div>
@@ -201,17 +253,10 @@ function SuccessState({ email, onReset }: { email: string; onReset: () => void }
         </svg>
       </div>
       <h2 className="font-heading text-2xl text-white mb-3">Verifique seu e-mail</h2>
-      <p className="text-white/50 text-sm leading-relaxed mb-2">
-        Enviamos um link de acesso para
-      </p>
+      <p className="text-white/50 text-sm leading-relaxed mb-2">Enviamos um link de acesso para</p>
       <p className="text-brand-gold font-semibold text-sm mb-6">{email}</p>
-      <p className="text-white/30 text-xs">
-        Clique no link para entrar. Não encontrou? Verifique o spam.
-      </p>
-      <button
-        onClick={onReset}
-        className="mt-8 text-sm text-brand-gold/70 hover:text-brand-gold underline underline-offset-4 transition-colors"
-      >
+      <p className="text-white/30 text-xs">Clique no link para entrar. Não encontrou? Verifique o spam.</p>
+      <button onClick={onReset} className="mt-8 text-sm text-brand-gold/70 hover:text-brand-gold underline underline-offset-4 transition-colors">
         Usar outro e-mail
       </button>
     </div>
