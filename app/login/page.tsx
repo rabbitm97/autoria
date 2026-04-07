@@ -1,16 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 type LoadingState = "google" | "magic" | null;
 
-export default function LoginPage() {
+function LoginInner() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState<LoadingState>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("error") === "auth") {
+      setError("O link de acesso expirou ou já foi usado. Solicite um novo link abaixo.");
+    }
+  }, [searchParams]);
 
   async function handleGoogle() {
     setLoading("google");
@@ -170,6 +178,14 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginInner />
+    </Suspense>
   );
 }
 
