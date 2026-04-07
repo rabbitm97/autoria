@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
     if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
     const el = project.dados_elementos as Record<string, unknown> | null;
-    const ms = project.manuscript as Record<string, unknown> | null;
+    const ms = (Array.isArray(project.manuscript) ? project.manuscript[0] : project.manuscript) as Record<string, unknown> | null;
 
     dados = {
       ...((body.dados ?? {}) as Partial<RequisitosArquivo>),
