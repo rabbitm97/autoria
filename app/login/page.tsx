@@ -154,13 +154,20 @@ function LoginInner() {
                     className="w-full rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/25 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:border-brand-gold/50 disabled:opacity-50 transition"
                   />
                 </div>
-                <button
-                  type="submit"
-                  disabled={isDisabled || !email || !senha}
-                  className="w-full bg-brand-gold text-brand-primary rounded-xl py-3.5 px-4 text-sm font-semibold hover:bg-brand-gold-light active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {loading === "password" ? "Entrando…" : "Entrar"}
-                </button>
+                <div className="flex items-center justify-between">
+                  <button
+                    type="submit"
+                    disabled={isDisabled || !email || !senha}
+                    className="flex-1 bg-brand-gold text-brand-primary rounded-xl py-3.5 px-4 text-sm font-semibold hover:bg-brand-gold-light active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {loading === "password" ? "Entrando…" : "Entrar"}
+                  </button>
+                </div>
+                <div className="text-right">
+                  <Link href="/esqueci-senha" className="text-xs text-white/30 hover:text-brand-gold transition-colors">
+                    Esqueci minha senha
+                  </Link>
+                </div>
               </form>
 
               {error && (
