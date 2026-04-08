@@ -161,14 +161,14 @@ export async function POST(request: NextRequest) {
   // Real word count + truncate to ~50k chars for cost control
   const numPalavras = texto.trim().split(/\s+/).filter(Boolean).length;
   const textoCortado =
-    texto.length > 50_000
-      ? texto.slice(0, 50_000) + "\n\n[...trecho truncado para análise]"
+    texto.length > 20_000
+      ? texto.slice(0, 20_000) + "\n\n[...trecho truncado para análise]"
       : texto;
 
   let diagnostico: DiagnosticoResult;
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [

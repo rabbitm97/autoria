@@ -152,16 +152,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Limita a 20k chars (~3.500 palavras) para caber no timeout do Vercel (60s).
+  // A revisão é amostral — sugestões representativas do manuscrito inteiro.
   const textoCortado =
-    texto.length > 60_000
-      ? texto.slice(0, 60_000) + "\n\n[...trecho truncado para revisão]"
+    texto.length > 20_000
+      ? texto.slice(0, 20_000) + "\n\n[...trecho truncado — revisão amostral das primeiras ~3.500 palavras]"
       : texto;
 
   let revisao: RevisaoResult;
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [
         {
