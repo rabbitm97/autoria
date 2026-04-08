@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "app/api/agentes/revisao/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/diagnostico/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/elementos-editoriais/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/gerar-capa/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/miolo/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/creditos/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/prova-revisao/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/qa/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/qa-publicacao/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/upload-capa/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/gerar-audio/route.ts": { "maxDuration": 60 },
+    "app/api/ferramentas/revisor/route.ts": { "maxDuration": 60 },
+    "app/api/ferramentas/diagnostico/route.ts": { "maxDuration": 60 },
+    "app/api/ferramentas/elementos/route.ts": { "maxDuration": 60 },
+    "app/api/ferramentas/creditos/route.ts": { "maxDuration": 60 }
+  }
+}
