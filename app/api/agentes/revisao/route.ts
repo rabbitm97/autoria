@@ -159,7 +159,28 @@ export async function POST(request: NextRequest) {
       ? texto.slice(0, 20_000) + "\n\n[...trecho truncado — revisão amostral das primeiras ~3.500 palavras]"
       : texto;
 
+  // Mock mode — set MOCK_AI=true in .env.local or Vercel env to skip API calls
+  const isMock = process.env.MOCK_AI === 'true';
+
   let revisao: RevisaoResult;
+
+  if (isMock) {
+    revisao = {
+      sugestoes: [
+        {
+          id: 'r001',
+          tipo: 'ortografia',
+          severidade: 'critico',
+          localizacao: { capitulo: 1, paragrafo: 1, linha_aproximada: 1 },
+          trecho_original: textoCortado.slice(0, 50).trim(),
+          sugestao: 'Verifique a ortografia deste trecho.',
+          explicacao: 'Modo de teste ativo (MOCK_AI=true). Este é um resultado simulado.',
+          referencia_norma: 'Mock — sem chamada à API',
+        },
+      ],
+      revisado_em: new Date().toISOString(),
+    };
+  } else
   try {
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -178,10 +199,11 @@ export async function POST(request: NextRequest) {
       sugestoes,
       revisado_em: new Date().toISOString(),
     };
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("[revisao] Erro Claude:", e);
+    const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "Erro ao processar a revisão com IA. Tente novamente." },
+      { error: `Erro ao processar revisão: ${msg}` },
       { status: 502 }
     );
   }

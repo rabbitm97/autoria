@@ -165,7 +165,29 @@ export async function POST(request: NextRequest) {
       ? texto.slice(0, 20_000) + "\n\n[...trecho truncado para análise]"
       : texto;
 
+  const isMock = process.env.MOCK_AI === 'true';
   let diagnostico: DiagnosticoResult;
+
+  if (isMock) {
+    diagnostico = {
+      genero_provavel: 'Romance Contemporâneo (MOCK)',
+      confianca_genero: 85,
+      num_capitulos: 12,
+      num_palavras: numPalavras,
+      paginas_estimadas: Math.round(numPalavras / 250),
+      complexidade: 'médio',
+      complexidade_flesch: 62,
+      tom_narrativo: 'Leve e envolvente (mock)',
+      pontos_fortes: ['Narrativa fluida', 'Diálogos naturais', 'Personagens cativantes'],
+      pontos_melhorar: ['Desenvolver conflito central', 'Aprofundar subtramas', 'Revisar ritmo final'],
+      mercado_alvo: 'Leitores adultos brasileiros, 25-45 anos (resultado simulado)',
+      tamanho_mercado: 'adequado',
+      potencial_comercial: 'médio',
+      faixa_preco_sugerida: 'R$29,90 – R$39,90',
+      comparaveis_mercado: ['Thalita Rebouças — estilo acessível', 'Colleen Hoover — apelo emocional'],
+      proximos_passos: ['Revisão editorial completa', 'Definir elementos editoriais', 'Criar capa profissional'],
+    };
+  } else
   try {
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -196,10 +218,11 @@ export async function POST(request: NextRequest) {
         throw new Error(`Campo ausente na resposta da IA: ${campo}`);
       }
     }
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("[diagnostico] Erro Claude:", e);
+    const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "Erro ao processar o diagnóstico com IA. Tente novamente." },
+      { error: `Erro ao processar diagnóstico: ${msg}` },
       { status: 502 }
     );
   }
