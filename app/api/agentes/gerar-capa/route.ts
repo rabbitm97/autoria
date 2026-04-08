@@ -1,3 +1,5 @@
+export const maxDuration = 60;
+
 import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";

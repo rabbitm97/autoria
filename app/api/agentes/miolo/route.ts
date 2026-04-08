@@ -1,3 +1,5 @@
+export const maxDuration = 60;
+
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";

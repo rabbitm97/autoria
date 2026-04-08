@@ -1,3 +1,5 @@
+export const maxDuration = 60;
+
 import JSZip from "jszip";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
