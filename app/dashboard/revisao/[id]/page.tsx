@@ -262,17 +262,46 @@ export default function RevisaoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId }),
       });
-      const data = await res.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
+
+      // Erro antes de iniciar stream (auth, 404, etc.)
       if (!res.ok) {
+        const data = await res.json() as { error?: string };
         setError(data.error ?? "Erro ao iniciar revisão.");
-      } else {
-        setRevisao(data.revisao!);
-        const empty = new Set<string>();
-        setAceitas(empty);
-        setRejeitadas(empty);
+        return;
       }
-    } catch {
-      setError("Erro de conexão. Tente novamente.");
+
+      // Mock ou resposta JSON normal
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
+        if (!data.ok) { setError(data.error ?? "Erro."); return; }
+        setRevisao(data.revisao!);
+        setAceitas(new Set()); setRejeitadas(new Set());
+        return;
+      }
+
+      // Streaming: acumula chunks até receber __DONE__ ou __ERROR__
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+      }
+
+      if (buffer.includes("__ERROR__")) {
+        setError("Erro ao processar: " + buffer.split("__ERROR__")[1]);
+        return;
+      }
+
+      const doneIdx = buffer.lastIndexOf("__DONE__");
+      if (doneIdx === -1) { setError("Resposta incompleta. Tente novamente."); return; }
+      const revisao = JSON.parse(buffer.slice(doneIdx + 8)) as RevisaoResult;
+      setRevisao(revisao);
+      setAceitas(new Set()); setRejeitadas(new Set());
+    } catch (e: unknown) {
+      setError("Erro de conexão: " + (e instanceof Error ? e.message : "tente novamente."));
     } finally {
       setTriggering(false);
     }

@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { anthropic, parseLLMJson } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -159,68 +159,59 @@ export async function POST(request: NextRequest) {
       ? texto.slice(0, 20_000) + "\n\n[...trecho truncado — revisão amostral das primeiras ~3.500 palavras]"
       : texto;
 
-  // Mock mode — set MOCK_AI=true in .env.local or Vercel env to skip API calls
-  const isMock = process.env.MOCK_AI === 'true';
-
-  let revisao: RevisaoResult;
-
-  if (isMock) {
-    revisao = {
-      sugestoes: [
-        {
-          id: 'r001',
-          tipo: 'ortografia',
-          severidade: 'critico',
-          localizacao: { capitulo: 1, paragrafo: 1, linha_aproximada: 1 },
-          trecho_original: textoCortado.slice(0, 50).trim(),
-          sugestao: 'Verifique a ortografia deste trecho.',
-          explicacao: 'Modo de teste ativo (MOCK_AI=true). Este é um resultado simulado.',
-          referencia_norma: 'Mock — sem chamada à API',
-        },
-      ],
+  // Mock: retorna instantaneamente sem chamar a API
+  if (process.env.MOCK_AI === "true") {
+    const revisaoMock: RevisaoResult = {
+      sugestoes: [{
+        id: "r001", tipo: "ortografia", severidade: "critico",
+        localizacao: { capitulo: 1, paragrafo: 1, linha_aproximada: 1 },
+        trecho_original: textoCortado.slice(0, 50).trim(),
+        sugestao: "Verifique a ortografia deste trecho.",
+        explicacao: "Modo de teste ativo (MOCK_AI=true). Resultado simulado.",
+        referencia_norma: "Mock — sem chamada à API",
+      }],
       revisado_em: new Date().toISOString(),
     };
-  } else
-  try {
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Revise o seguinte manuscrito e retorne apenas o array JSON de sugestões:\n\n${textoCortado}`,
-        },
-      ],
-    });
-
-    const sugestoes = parseLLMJson<SugestaoRevisao[]>(extractText(message.content));
-    revisao = {
-      sugestoes,
-      revisado_em: new Date().toISOString(),
-    };
-  } catch (e: unknown) {
-    console.error("[revisao] Erro Claude:", e);
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json(
-      { error: `Erro ao processar revisão: ${msg}` },
-      { status: 502 }
-    );
+    await supabase.from("projects")
+      .update({ dados_revisao: revisaoMock, etapa_atual: "revisao" })
+      .eq("id", project_id).eq("user_id", user.id);
+    return NextResponse.json({ ok: true, revisao: revisaoMock });
   }
 
-  const { error: updateErr } = await supabase
-    .from("projects")
-    .update({ dados_revisao: revisao, etapa_atual: "revisao" })
-    .eq("id", project_id)
-    .eq("user_id", user.id);
+  // Streaming — envia chunks do Claude ao cliente à medida que chegam.
+  // Isso evita o timeout do Vercel: a conexão fica viva enquanto dados fluem.
+  const enc = new TextEncoder();
+  const aiStream = anthropic.messages.stream({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 2048,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: `Revise o seguinte manuscrito e retorne apenas o array JSON de sugestões:\n\n${textoCortado}` }],
+  });
 
-  if (updateErr) {
-    console.error("[revisao] Erro ao salvar:", updateErr);
-    return NextResponse.json(
-      { error: "Revisão gerada, mas falha ao salvar no banco." },
-      { status: 500 }
-    );
-  }
+  const streamBody = new ReadableStream({
+    async start(controller) {
+      let accumulated = "";
+      try {
+        for await (const event of aiStream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            accumulated += event.delta.text;
+            controller.enqueue(enc.encode(event.delta.text));
+          }
+        }
+        const sugestoes = parseLLMJson<SugestaoRevisao[]>(accumulated);
+        const revisao: RevisaoResult = { sugestoes, revisado_em: new Date().toISOString() };
+        await supabase.from("projects")
+          .update({ dados_revisao: revisao, etapa_atual: "revisao" })
+          .eq("id", project_id).eq("user_id", user.id);
+        controller.enqueue(enc.encode("\n__DONE__" + JSON.stringify(revisao)));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[revisao] Erro stream:", msg);
+        controller.enqueue(enc.encode("\n__ERROR__" + msg));
+      }
+      controller.close();
+    },
+  });
 
-  return NextResponse.json({ ok: true, revisao });
+  return new Response(streamBody, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
