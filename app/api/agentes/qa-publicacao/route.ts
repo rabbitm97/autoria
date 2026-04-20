@@ -347,7 +347,7 @@ ${resumo}`,
       .from("projects")
       .update({
         dados_qa_publicacao: result,
-        etapa_atual: aprovado ? "publicacao" : "qa",
+        etapa_atual: aprovado ? "publicado" : "qa",
       })
       .eq("id", project_id)
       .eq("user_id", userId);

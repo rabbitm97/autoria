@@ -570,7 +570,7 @@ export async function POST(request: NextRequest) {
   // Save to project
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({ dados_miolo: mioloResult, etapa_atual: "miolo" })
+    .update({ dados_miolo: mioloResult, etapa_atual: "diagramacao" })
     .eq("id", project_id)
     .eq("user_id", user.id);
 
