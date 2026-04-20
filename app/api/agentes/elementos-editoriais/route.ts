@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
 
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({ dados_elementos: elementos, etapa_atual: "sinopse_ficha" })
+    .update({ dados_elementos: elementos, etapa_atual: "capa" })
     .eq("id", project_id)
     .eq("user_id", user.id);
 
