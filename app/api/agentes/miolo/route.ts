@@ -576,7 +576,10 @@ export async function POST(request: NextRequest) {
 
   if (updateErr) {
     console.error("[miolo] Erro ao salvar:", updateErr);
-    return NextResponse.json({ error: "Miolo gerado, mas falha ao salvar no banco." }, { status: 500 });
+    return NextResponse.json({
+      error: "Miolo gerado, mas falha ao salvar no banco.",
+      debug: { code: updateErr.code, message: updateErr.message, details: updateErr.details, hint: updateErr.hint },
+    }, { status: 500 });
   }
 
   // Return signed URL for preview (1 hour)
