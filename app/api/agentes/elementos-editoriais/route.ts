@@ -151,7 +151,10 @@ export async function POST(request: NextRequest) {
   if (updateErr) {
     console.error("[elementos-editoriais] Erro ao salvar:", updateErr);
     return NextResponse.json(
-      { error: "Elementos gerados, mas falha ao salvar no banco." },
+      {
+        error: "Elementos gerados, mas falha ao salvar no banco.",
+        debug: { code: updateErr.code, message: updateErr.message, details: updateErr.details, hint: updateErr.hint },
+      },
       { status: 500 }
     );
   }
