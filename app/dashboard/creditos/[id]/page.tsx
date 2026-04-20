@@ -103,6 +103,8 @@ export default function CreditosPage() {
   const [step, setStep] = useState<Step>("config");
   const [creditos, setCreditos] = useState<CreditosResult | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [htmlContent, setHtmlContent] = useState<string>("");
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [processingMsg, setProcessingMsg] = useState(PROCESSING_MSGS[0]);
   const [processingPct, setProcessingPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -179,8 +181,13 @@ export default function CreditosPage() {
         // Fetch fresh signed URL
         const res = await fetch(`/api/agentes/creditos?project_id=${projectId}`);
         if (res.ok) {
-          const data = await res.json() as { creditos: CreditosResult; preview_url: string | null };
-          if (data?.preview_url) {
+          const data = await res.json() as { creditos: CreditosResult; preview_url: string | null; html?: string };
+          if (data?.html) {
+            const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
+            setPreviewUrl(URL.createObjectURL(blob));
+            setHtmlContent(data.html);
+            setStep("preview");
+          } else if (data?.preview_url) {
             setPreviewUrl(data.preview_url);
             setStep("preview");
           }
@@ -279,11 +286,17 @@ export default function CreditosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId, config }),
       });
-      const data = await res.json() as { ok?: boolean; creditos?: CreditosResult; preview_url?: string; error?: string };
+      const data = await res.json() as { ok?: boolean; creditos?: CreditosResult; preview_url?: string; html?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar página de créditos.");
       setProcessingPct(100);
       setCreditos(data.creditos!);
-      setPreviewUrl(data.preview_url ?? null);
+      if (data.html) {
+        const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
+        setPreviewUrl(URL.createObjectURL(blob));
+        setHtmlContent(data.html);
+      } else {
+        setPreviewUrl(data.preview_url ?? null);
+      }
       setTimeout(() => setStep("preview"), 400);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido.");
@@ -293,14 +306,58 @@ export default function CreditosPage() {
     }
   }
 
-  // ── Download HTML ─────────────────────────────────────────────────────────
+  // ── Downloads ─────────────────────────────────────────────────────────────
 
-  function handleDownload() {
-    if (!previewUrl) return;
+  const safeName = manuscritoNome.replace(/\s+/g, "_");
+
+  function downloadHtml() {
+    if (!htmlContent) return;
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = previewUrl;
-    a.download = `creditos_${manuscritoNome.replace(/\s+/g, "_")}.html`;
+    a.href = URL.createObjectURL(blob);
+    a.download = `creditos_${safeName}.html`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+  }
+
+  function downloadPdf() {
+    if (!htmlContent) return;
+    const htmlWithPrint = htmlContent.replace(
+      "</body>",
+      "<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body>"
+    );
+    const blob = new Blob([htmlWithPrint], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 15_000);
+  }
+
+  async function downloadDocx() {
+    if (!creditos) return;
+    setDownloadingDocx(true);
+    try {
+      const res = await fetch("/api/creditos/docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: creditos.config,
+          ficha: creditos.ficha_catalografica ?? null,
+          titulo: manuscritoNome,
+          autor: creditos.config.titular_direitos,
+        }),
+      });
+      if (!res.ok) { setError("Erro ao gerar DOCX."); return; }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `creditos_${safeName}.docx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+    } catch {
+      setError("Erro ao gerar DOCX.");
+    } finally {
+      setDownloadingDocx(false);
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -539,11 +596,25 @@ export default function CreditosPage() {
               {/* Actions */}
               <div className="mt-auto space-y-2">
                 <button
-                  onClick={handleDownload}
-                  disabled={!previewUrl}
+                  onClick={downloadHtml}
+                  disabled={!htmlContent}
                   className="w-full text-xs border border-zinc-200 rounded-lg px-3 py-2 text-zinc-500 hover:border-zinc-300 transition-colors disabled:opacity-40"
                 >
-                  ⬇ Baixar HTML
+                  ⬇ HTML
+                </button>
+                <button
+                  onClick={downloadPdf}
+                  disabled={!htmlContent}
+                  className="w-full text-xs border border-zinc-200 rounded-lg px-3 py-2 text-zinc-500 hover:border-zinc-300 transition-colors disabled:opacity-40"
+                >
+                  ⬇ PDF
+                </button>
+                <button
+                  onClick={downloadDocx}
+                  disabled={!creditos || downloadingDocx}
+                  className="w-full text-xs border border-zinc-200 rounded-lg px-3 py-2 text-zinc-500 hover:border-zinc-300 transition-colors disabled:opacity-40"
+                >
+                  {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
                 </button>
                 <button
                   onClick={() => setStep("config")}
@@ -578,11 +649,25 @@ export default function CreditosPage() {
           {/* Bottom CTA */}
           <div className="bg-white border-t border-zinc-100 px-6 py-4 flex flex-wrap items-center gap-3">
             <button
-              onClick={handleDownload}
-              disabled={!previewUrl}
+              onClick={downloadHtml}
+              disabled={!htmlContent}
               className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
             >
-              ⬇ Baixar HTML
+              ⬇ HTML
+            </button>
+            <button
+              onClick={downloadPdf}
+              disabled={!htmlContent}
+              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
+            >
+              ⬇ PDF
+            </button>
+            <button
+              onClick={downloadDocx}
+              disabled={!creditos || downloadingDocx}
+              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
+            >
+              {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
             </button>
 
             <div className="ml-auto flex items-center gap-3">

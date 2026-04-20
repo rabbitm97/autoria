@@ -67,7 +67,9 @@ export default function CreditosFerramenta() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [htmlContent, setHtmlContent] = useState<string>("");
   const [fichaGerada, setFichaGerada] = useState<Record<string, unknown> | null>(null);
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
 
   // ── Obra info (for ficha) ────────────────────────────────────────────────
   const [titulo, setTitulo]   = useState("");
@@ -177,6 +179,7 @@ export default function CreditosFerramenta() {
       // Create blob URL for iframe
       const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
       setPreviewUrl(URL.createObjectURL(blob));
+      setHtmlContent(data.html);
       if (data.ficha) setFichaGerada(data.ficha);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
@@ -185,12 +188,83 @@ export default function CreditosFerramenta() {
     }
   }
 
-  function handleDownload() {
-    if (!previewUrl) return;
+  function downloadHtml() {
+    if (!htmlContent) return;
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
-    a.href = previewUrl;
+    a.href = URL.createObjectURL(blob);
     a.download = `pagina_de_creditos.html`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+  }
+
+  function downloadPdf() {
+    if (!htmlContent) return;
+    const htmlWithPrint = htmlContent.replace(
+      "</body>",
+      "<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body>"
+    );
+    const blob = new Blob([htmlWithPrint], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 15_000);
+  }
+
+  async function downloadDocx() {
+    if (!htmlContent) return;
+    setDownloadingDocx(true);
+    try {
+      const res = await fetch("/api/creditos/docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: {
+            formato,
+            ano_copyright: parseInt(anoCopyright) || new Date().getFullYear(),
+            titular_direitos: titularDireitos.trim(),
+            numero_edicao: numeroEdicao.trim() || undefined,
+            ano_edicao: anoEdicao ? parseInt(anoEdicao) : undefined,
+            titulo_original: tituloOriginal.trim() || undefined,
+            idioma_original: idiomaOriginal.trim() || undefined,
+            traducao: traducao.trim() || undefined,
+            revisao_tecnica: revisaoTecnica.trim() || undefined,
+            revisao: revisao.trim() || undefined,
+            preparacao: preparacao.trim() || undefined,
+            diagramacao: diagramacao.trim() || undefined,
+            projeto_capa: projetoCapa.trim() || undefined,
+            ilustracao_capa: ilustracaoCapa.trim() || undefined,
+            producao_editorial: producaoEditorial.trim() || undefined,
+            outros_creditos: outrosCreditos.trim() || undefined,
+            nome_editora: nomeEditora.trim() || undefined,
+            local_edicao: localEdicao.trim() || undefined,
+            endereco_editora: enderecoEditora.trim() || undefined,
+            cidade_estado: cidadeEstado.trim() || undefined,
+            cep: cep.trim() || undefined,
+            site_editora: siteEditora.trim() || undefined,
+            email_editora: emailEditora.trim() || undefined,
+            incluir_ficha: incluirFicha,
+            isbn: isbn.trim() || undefined,
+            assuntos_livres: assuntosLivres.trim() || undefined,
+            cdd: cdd.trim() || undefined,
+            cdu: cdu.trim() || undefined,
+          },
+          ficha: fichaGerada ?? null,
+          titulo: titulo.trim() || "Meu Livro",
+          autor: autorNome.trim() || titularDireitos.trim(),
+        }),
+      });
+      if (!res.ok) { setError("Erro ao gerar DOCX."); return; }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `pagina_de_creditos.docx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+    } catch {
+      setError("Erro ao gerar DOCX.");
+    } finally {
+      setDownloadingDocx(false);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -371,13 +445,30 @@ export default function CreditosFerramenta() {
               <h2 className="font-heading text-xl text-brand-primary">Pré-visualização</h2>
               <p className="text-xs text-zinc-400 mt-0.5">Verso da folha de rosto — posição 2 no livro</p>
             </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleDownload}
-              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors"
+              onClick={downloadHtml}
+              disabled={!htmlContent}
+              className="inline-flex items-center gap-1.5 border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
             >
-              ⬇ Baixar HTML
+              ⬇ HTML
+            </button>
+            <button
+              onClick={downloadPdf}
+              disabled={!htmlContent}
+              className="inline-flex items-center gap-1.5 border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
+            >
+              ⬇ PDF
+            </button>
+            <button
+              onClick={downloadDocx}
+              disabled={!htmlContent || downloadingDocx}
+              className="inline-flex items-center gap-1.5 border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
+            >
+              {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
             </button>
           </div>
+        </div>
 
           {fichaGerada && (
             <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-4 text-xs text-emerald-800">
