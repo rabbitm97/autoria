@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
   const buffer = await Packer.toBuffer(doc);
   const safeName = titulo.replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, "").replace(/\s+/g, "_").slice(0, 40);
 
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": `attachment; filename="creditos_${safeName}.docx"`,
