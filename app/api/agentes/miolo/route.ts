@@ -591,6 +591,7 @@ export async function POST(request: NextRequest) {
     ok: true,
     miolo: mioloResult,
     preview_url: signed?.signedUrl ?? null,
+    html,
   });
 }
 
@@ -626,9 +627,12 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-  const { data: signed } = await storageClient.storage
-    .from("manuscripts")
-    .createSignedUrl(miolo.html_storage_path, 3600);
+  const [{ data: signed }, { data: htmlBlob }] = await Promise.all([
+    storageClient.storage.from("manuscripts").createSignedUrl(miolo.html_storage_path, 3600),
+    storageClient.storage.from("manuscripts").download(miolo.html_storage_path),
+  ]);
 
-  return NextResponse.json({ miolo, preview_url: signed?.signedUrl ?? null });
+  const html = htmlBlob ? await htmlBlob.text() : null;
+
+  return NextResponse.json({ miolo, preview_url: signed?.signedUrl ?? null, html });
 }

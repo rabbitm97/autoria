@@ -92,7 +92,9 @@ export default function MioloPage() {
   const [step, setStep] = useState<Step>("config");
   const [miolo, setMiolo] = useState<MioloResult | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [htmlContent, setHtmlContent] = useState<string>("");
   const [currentCapIdx, setCurrentCapIdx] = useState(0);
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
 
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
@@ -149,8 +151,13 @@ export default function MioloPage() {
         // Fetch fresh signed URL
         const res = await fetch(`/api/agentes/miolo?project_id=${projectId}`);
         if (res.ok) {
-          const data = await res.json() as { miolo: MioloResult; preview_url: string | null };
-          if (data?.preview_url) {
+          const data = await res.json() as { miolo: MioloResult; preview_url: string | null; html?: string };
+          if (data?.html) {
+            const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
+            setPreviewUrl(URL.createObjectURL(blob));
+            setHtmlContent(data.html);
+            setStep("preview");
+          } else if (data?.preview_url) {
             setPreviewUrl(data.preview_url);
             setStep("preview");
           }
@@ -191,12 +198,18 @@ export default function MioloPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId, config }),
       });
-      const data = await res.json() as { ok?: boolean; miolo?: MioloResult; preview_url?: string; error?: string };
+      const data = await res.json() as { ok?: boolean; miolo?: MioloResult; preview_url?: string; html?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar miolo.");
 
       setProcessingPct(100);
       setMiolo(data.miolo!);
-      setPreviewUrl(data.preview_url ?? null);
+      if (data.html) {
+        const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
+        setPreviewUrl(URL.createObjectURL(blob));
+        setHtmlContent(data.html);
+      } else {
+        setPreviewUrl(data.preview_url ?? null);
+      }
       setCurrentCapIdx(0);
       setTimeout(() => setStep("preview"), 400);
     } catch (e) {
@@ -261,19 +274,71 @@ export default function MioloPage() {
 
   // ── Downloads ────────────────────────────────────────────────────────────
 
-  async function handleDownload(type: "pdf" | "epub") {
+  const safeName = manuscritoNome.replace(/\s+/g, "_");
+
+  function downloadHtml() {
+    if (!htmlContent) return;
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${safeName}_miolo.html`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+  }
+
+  function downloadPdf() {
+    if (!htmlContent) return;
+    // Opens a new tab with auto-print → browser "Save as PDF"
+    // Crop marks (if any) are included via @media print CSS already in the HTML
+    const htmlWithPrint = htmlContent.replace(
+      "</body>",
+      "<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body>"
+    );
+    const blob = new Blob([htmlWithPrint], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
+  function downloadDocx() {
+    if (!htmlContent) return;
+    setDownloadingDocx(true);
     try {
-      const route = type === "pdf" ? "/api/agentes/gerar-pdf" : "/api/agentes/gerar-epub";
-      const res = await fetch(route, {
+      // Word HTML format: opens natively in Microsoft Word and LibreOffice
+      // Retains all typographic styling, chapters, and layout
+      const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8">
+<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
+${htmlContent.match(/<style[\s\S]*?<\/style>/)?.[0] ?? ""}
+</head>
+<body>
+${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
+</body>
+</html>`;
+      const blob = new Blob([wordHtml], { type: "application/vnd.ms-word;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safeName}_miolo.doc`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+    } finally {
+      setDownloadingDocx(false);
+    }
+  }
+
+  async function handleEpub() {
+    try {
+      const res = await fetch("/api/agentes/gerar-epub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, formato: "kdp_6x9" }),
+        body: JSON.stringify({ project_id: projectId }),
       });
       const data = await res.json() as { url_download?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar arquivo.");
+      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar EPUB.");
       if (data.url_download) window.open(data.url_download, "_blank");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao gerar arquivo.");
+      setError(e instanceof Error ? e.message : "Erro ao gerar EPUB.");
     }
   }
 
@@ -651,16 +716,32 @@ export default function MioloPage() {
           {/* Bottom CTA bar */}
           <div className="bg-white border-t border-zinc-100 px-6 py-4 flex flex-wrap items-center gap-3">
             <button
-              onClick={() => handleDownload("pdf")}
-              className="inline-flex items-center gap-2 bg-zinc-800 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-900 transition-colors"
+              onClick={downloadHtml}
+              disabled={!htmlContent}
+              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
             >
-              ⬇ Baixar PDF
+              ⬇ HTML
             </button>
             <button
-              onClick={() => handleDownload("epub")}
-              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors"
+              onClick={downloadPdf}
+              disabled={!htmlContent}
+              className="inline-flex items-center gap-2 bg-zinc-800 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-900 transition-colors disabled:opacity-40"
+              title={miolo?.config.marcas_corte ? "PDF com marcas de corte e sangria de 3mm" : "PDF pronto para impressão"}
             >
-              ⬇ Baixar EPUB
+              ⬇ PDF{miolo?.config.marcas_corte ? " ✂" : ""}
+            </button>
+            <button
+              onClick={downloadDocx}
+              disabled={!htmlContent || downloadingDocx}
+              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
+            >
+              {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
+            </button>
+            <button
+              onClick={handleEpub}
+              className="inline-flex items-center gap-2 border border-violet-200 text-violet-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-violet-400 transition-colors"
+            >
+              ⬇ EPUB
             </button>
 
             {error && <p className="text-red-500 text-xs">{error}</p>}
