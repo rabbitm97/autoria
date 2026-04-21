@@ -311,6 +311,35 @@ function buildOrnamented(config: MioloConfig): string {
   return `<div class="ornamento">* * *</div>`;
 }
 
+// Split chapter text into page-sized chunks based on word count per page.
+// firstPageWpp should be smaller (header takes ~20% of vertical space).
+function splitIntoChunks(text: string, wpp: number, firstPageWpp: number): string[] {
+  const paras = text.split(/\n{2,}/).filter(p => p.trim());
+  if (paras.length === 0) return [""];
+
+  const chunks: string[] = [];
+  let currentChunk: string[] = [];
+  let wordCount = 0;
+  let isFirstChunk = true;
+
+  for (const para of paras) {
+    const paraWords = para.split(/\s+/).filter(Boolean).length;
+    const limit = isFirstChunk ? firstPageWpp : wpp;
+
+    if (wordCount > 0 && wordCount + paraWords > limit) {
+      chunks.push(currentChunk.join("\n\n"));
+      currentChunk = [];
+      wordCount = 0;
+      isFirstChunk = false;
+    }
+    currentChunk.push(para);
+    wordCount += paraWords;
+  }
+
+  if (currentChunk.length > 0) chunks.push(currentChunk.join("\n\n"));
+  return chunks.length > 0 ? chunks : [""];
+}
+
 function buildBookHtml(params: {
   titulo: string;
   subtitulo: string;
@@ -450,21 +479,37 @@ function buildBookHtml(params: {
   </div>`);
   }
 
-  // ── 8. Chapters (each starts on odd/recto page) ───────────────────────────────
+  // ── 8. Chapters (each starts on odd/recto page, text split into page-sized chunks) ──
   segments.forEach((seg, i) => {
     const info = capitulosInfo[i];
     ensureOddPage();
 
-    pageCount++; // count the chapter section
-    const extraClass = i === 0 ? " first-chapter" : "";
+    // First page loses ~20% to the chapter header (number + title + top padding)
+    const firstPageWpp = Math.floor(fmt.wpp * 0.80);
+    const chunks = splitIntoChunks(seg.texto, fmt.wpp, firstPageWpp);
 
-    sections.push(pg(`
+    chunks.forEach((chunkText, chunkIdx) => {
+      pageCount++;
+      const isFirst = chunkIdx === 0;
+      const isLast  = chunkIdx === chunks.length - 1;
+      const extraClass = (i === 0 && isFirst) ? " first-chapter" : "";
+
+      if (isFirst) {
+        sections.push(pg(`
 <section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
   <span class="chapter-number">Capítulo ${i + 1}</span>
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
-  ${buildParagraphs(seg.texto, config, true)}
-  ${buildOrnamented(config)}
+  ${buildParagraphs(chunkText, config, true)}
+  ${isLast ? buildOrnamented(config) : ""}
 </section>`));
+      } else {
+        sections.push(pg(`
+<div class="book-page page-break">
+  ${buildParagraphs(chunkText, config, false)}
+  ${isLast ? buildOrnamented(config) : ""}
+</div>`));
+      }
+    });
   });
 
   // ── 9. Nota sobre o autor ─────────────────────────────────────────────────────
