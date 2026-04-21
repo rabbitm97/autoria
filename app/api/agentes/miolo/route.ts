@@ -70,17 +70,21 @@ const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string =
   @page { size: ${w} ${h}; }
   html, body { background: #fff !important; }
   .chapter { break-before: right; }
+  .book-page { margin: 0 !important; height: ${h} !important; box-shadow: none !important; }
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: ${corpo}pt; }
-body { background: #fff; color: #1a1a1a; counter-reset: pagenum 0; }
+body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
 .book-page {
   width: ${w};
-  margin: 0 auto;
+  height: ${h};
+  overflow: hidden;
+  margin: 18mm auto;
   padding: ${m.top} ${m.outer} ${m.bottom} ${m.inner};
-  min-height: 100px;
   position: relative;
   counter-increment: pagenum;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
 }
 .book-page.no-num { counter-increment: none; }
 .first-chapter { counter-reset: pagenum 0; }
@@ -95,10 +99,10 @@ body { background: #fff; color: #1a1a1a; counter-reset: pagenum 0; }
   font-family: inherit;
 }
 .page-break { break-before: always; page-break-before: always; }
-.title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:65vh; text-align:center; padding:4em 0; }
-.dedicatoria { min-height:35vh; display:flex; align-items:flex-end; justify-content:flex-end; }
+.title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; text-align:center; padding:4em 0; }
+.dedicatoria { height:100%; display:flex; align-items:flex-end; justify-content:flex-end; }
 .dedicatoria p { font-style:italic; text-align:right; max-width:60%; font-size:0.9em; color:#555; }
-.epigrafe { min-height:25vh; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; padding:3em 0; }
+.epigrafe { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; padding:3em 0; }
 .epigrafe .epigrafe-text { font-style:italic; text-align:right; max-width:55%; font-size:0.9em; }
 .epigrafe .epigrafe-autor { font-size:0.8em; color:#777; text-align:right; margin-top:0.4em; }
 .toc { padding:3em 0; }
@@ -195,50 +199,59 @@ blockquote { margin:1em 2em; font-size:.9em; font-style:italic; }
 // ─── Crop marks / bleed ───────────────────────────────────────────────────────
 
 /** Returns CSS for 3 mm sangria + crop marks. Injected when config.marcas_corte is true.
- *  @page size is already set by BASE_CSS; this only adds marks/bleed and spread layout. */
-function buildMarksCss(w: string): string {
-  // Measurements (all absolute):
-  //   bleed  = 3 mm  – white bleed area beyond trim
-  //   gap    = 2 mm  – silent gap between bleed edge and mark start
-  //   mark   = 7 mm  – visible length of each crop line
-  //   offset = bleed + gap       = 5 mm (distance from trim to mark start)
-  //   total  = bleed + gap + mark = 12 mm (distance from trim to mark end)
+ *
+ *  Industry standard layout:
+ *    spread  = trim + 24mm per axis (12mm each side)
+ *    12mm    = 3mm bleed + 2mm gap + 7mm visible mark
+ *    @page   = spread dimensions (larger than trim box)
+ *    .book-page is absolutely positioned at (12mm, 12mm) inside spread
+ *    crop marks are inside the spread at positive positions
+ */
+function buildMarksCss(w: string, h: string): string {
+  // All FORMAT_DIMS use cm units — add 2.4cm (= 24mm) to each axis
+  const addCm = (dim: string, add: number) => `${+(parseFloat(dim) + add).toFixed(1)}cm`;
+  const sw = addCm(w, 2.4); // spread width  = trim width  + 24mm
+  const sh = addCm(h, 2.4); // spread height = trim height + 24mm
+
   return `
 /* ── Sangria 3 mm + Marcas de corte ──────────────────────────── */
 @media print {
-  @page { marks: crop; bleed: 3mm; }
-  .spread { margin: 0 !important; }
+  @page { size: ${sw} ${sh}; }
+  .spread { margin: 0 auto !important; }
   .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
-body.with-marks { background: #888; }
+/* Spread = full bleed sheet; book-page = trim area, inset 12mm on each side */
 .spread {
   position: relative;
   display: block;
-  width: ${w};
+  width: ${sw};
+  height: ${sh};
   margin: 18mm auto;
-}
-/* Sangria: 3 mm de área branca além do corte */
-.spread::before {
-  content: '';
-  position: absolute;
-  inset: -3mm;
   background: #fff;
-  z-index: 0;
-  pointer-events: none;
 }
-.spread .book-page { position: relative; z-index: 1; margin: 0 !important; }
-/* Linhas de corte */
+.spread .book-page {
+  position: absolute !important;
+  top: 12mm;
+  left: 12mm;
+  margin: 0 !important;
+  z-index: 1;
+}
+/* Crop mark lines — all inside the spread, at trim-box corners */
 .cm { position: absolute; background: #111; z-index: 10; }
 .cm-h { height: 1px; width: 7mm; }
 .cm-v { width:  1px; height: 7mm; }
-.cm-tl-h { top: -5mm;  left: -12mm; }
-.cm-tl-v { top: -12mm; left: -5mm;  }
-.cm-tr-h { top: -5mm;  right: -12mm; }
-.cm-tr-v { top: -12mm; right: -5mm;  }
-.cm-bl-h { bottom: -5mm;  left: -12mm; }
-.cm-bl-v { bottom: -12mm; left: -5mm;  }
-.cm-br-h { bottom: -5mm;  right: -12mm; }
-.cm-br-v { bottom: -12mm; right: -5mm;  }
+/* top-left: marks at 7mm from spread edge (= 5mm outside trim edge at 12mm) */
+.cm-tl-h { top: 7mm;    left: 0;    }
+.cm-tl-v { top: 0;      left: 7mm;  }
+/* top-right */
+.cm-tr-h { top: 7mm;    right: 0;   }
+.cm-tr-v { top: 0;      right: 7mm; }
+/* bottom-left */
+.cm-bl-h { bottom: 7mm; left: 0;    }
+.cm-bl-v { bottom: 0;   left: 7mm;  }
+/* bottom-right */
+.cm-br-h { bottom: 7mm; right: 0;   }
+.cm-br-v { bottom: 0;   right: 7mm; }
 `;
 }
 
@@ -312,7 +325,7 @@ function buildBookHtml(params: {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml } = params;
   const fmt = FORMAT_DIMS[config.formato];
   const css = TEMPLATE_CSS[config.template](fmt.w, fmt.h, config.corpo_pt, config.formato)
-    + (config.marcas_corte ? buildMarksCss(fmt.w) : "");
+    + (config.marcas_corte ? buildMarksCss(fmt.w, fmt.h) : "");
 
   // Wraps a .book-page div in .spread with 8 crop-mark elements when enabled
   const pg = config.marcas_corte
@@ -468,7 +481,6 @@ function buildBookHtml(params: {
 </div>`));
   }
 
-  const bodyClass = config.marcas_corte ? ' class="with-marks"' : "";
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -478,7 +490,7 @@ function buildBookHtml(params: {
 ${css}
 </style>
 </head>
-<body${bodyClass}>
+<body>
 ${sections.join("\n")}
 </body>
 </html>`;
