@@ -361,7 +361,19 @@ function buildBookHtml(params: {
     if (pageCount % 2 !== 0) blankPage();
   };
 
-  // ── 1. Folha de rosto (p.1 — recto) ──────────────────────────────────────────
+  // ── 1. Falsa folha de rosto / half-title (p.1 — recto) ──────────────────────
+  //      Apenas título e subtítulo, sem autor — padrão editorial (ABNT NBR 6029)
+  noNumPage(`
+  <div class="title-page">
+    <p class="book-title">${escHtml(titulo)}</p>
+    ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
+  </div>`);
+
+  // ── 2. Verso da falsa folha (p.2 — verso, sempre em branco) ──────────────────
+  blankPage();
+
+  // ── 3. Folha de rosto completa (p.3 — recto) ─────────────────────────────────
+  //      Título, subtítulo e autor — padrão ABNT NBR 6029
   noNumPage(`
   <div class="title-page">
     <p class="book-title">${escHtml(titulo)}</p>
@@ -369,7 +381,7 @@ function buildBookHtml(params: {
     <p class="author-name">${escHtml(autor)}</p>
   </div>`);
 
-  // ── 2. Verso do rosto — créditos (p.2 — verso) ───────────────────────────────
+  // ── 4. Verso do rosto — créditos (p.4 — verso) ───────────────────────────────
   if (creditosInnerHtml) {
     noNumPage(creditosInnerHtml);
   } else {
@@ -383,7 +395,7 @@ function buildBookHtml(params: {
   </div>`);
   }
 
-  // ── 3. Dedicatória (follows créditos on p.3, already odd) ────────────────────
+  // ── 5. Dedicatória (follows créditos on p.5, already odd) ────────────────────
   if (config.dedicatoria?.trim()) {
     noNumPage(`
   <div class="dedicatoria">
@@ -391,7 +403,7 @@ function buildBookHtml(params: {
   </div>`);
   }
 
-  // ── 4. Epígrafe ───────────────────────────────────────────────────────────────
+  // ── 6. Epígrafe ───────────────────────────────────────────────────────────────
   if (config.epigrafe_texto?.trim()) {
     noNumPage(`
   <div class="epigrafe">
@@ -400,7 +412,7 @@ function buildBookHtml(params: {
   </div>`);
   }
 
-  // ── 5. Sumário (always starts on odd/recto page) ─────────────────────────────
+  // ── 7. Sumário (always starts on odd/recto page) ─────────────────────────────
   if (config.sumario && segments.length > 1) {
     ensureOddPage();
 
@@ -427,7 +439,7 @@ function buildBookHtml(params: {
   </div>`);
   }
 
-  // ── 6. Chapters (each starts on odd/recto page) ───────────────────────────────
+  // ── 8. Chapters (each starts on odd/recto page) ───────────────────────────────
   segments.forEach((seg, i) => {
     const info = capitulosInfo[i];
     ensureOddPage();
@@ -444,7 +456,7 @@ function buildBookHtml(params: {
 </section>`));
   });
 
-  // ── 7. Nota sobre o autor ─────────────────────────────────────────────────────
+  // ── 9. Nota sobre o autor ─────────────────────────────────────────────────────
   if (config.bio_autor?.trim()) {
     pageCount++;
     sections.push(pg(`
