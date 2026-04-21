@@ -51,16 +51,52 @@ const FORMAT_DIMS: Record<FormatoId, { w: string; h: string; label: string; wpp:
   a4:        { w: "21cm",   h: "29.7cm", label: "A4 (21×29,7cm)",           wpp: 380 },
 };
 
+// ─── Proportional margins per format ─────────────────────────────────────────
+
+const MARGIN_BY_FORMAT: Record<FormatoId, { top: string; outer: string; bottom: string; inner: string }> = {
+  bolso:     { top: "20mm", outer: "14mm", bottom: "22mm", inner: "18mm" },
+  a5:        { top: "22mm", outer: "16mm", bottom: "25mm", inner: "20mm" },
+  padrao_br: { top: "25mm", outer: "18mm", bottom: "28mm", inner: "22mm" },
+  quadrado:  { top: "22mm", outer: "18mm", bottom: "25mm", inner: "22mm" },
+  a4:        { top: "30mm", outer: "20mm", bottom: "30mm", inner: "25mm" },
+};
+
 // ─── Template CSS ─────────────────────────────────────────────────────────────
 
-const BASE_CSS = (w: string, corpo: number): string => `
+const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string => {
+  const m = MARGIN_BY_FORMAT[fmt];
+  return `
+@media print {
+  @page { size: ${w} ${h}; }
+  html, body { background: #fff !important; }
+  .chapter { break-before: right; }
+}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: ${corpo}pt; }
-body { background: #fff; color: #1a1a1a; }
-.book-page { width: ${w}; margin: 0 auto; padding: 22mm 18mm 28mm 20mm; min-height: 100px; }
+body { background: #fff; color: #1a1a1a; counter-reset: pagenum 0; }
+.book-page {
+  width: ${w};
+  margin: 0 auto;
+  padding: ${m.top} ${m.outer} ${m.bottom} ${m.inner};
+  min-height: 100px;
+  position: relative;
+  counter-increment: pagenum;
+}
+.book-page.no-num { counter-increment: none; }
+.first-chapter { counter-reset: pagenum 0; }
+.book-page:not(.no-num)::after {
+  content: counter(pagenum);
+  position: absolute;
+  bottom: 8mm;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.78em;
+  color: #555;
+  font-family: inherit;
+}
 .page-break { break-before: always; page-break-before: always; }
 .title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:65vh; text-align:center; padding:4em 0; }
-.dedicatoria { min-height:35vh; display:flex; align-items:flex-end; justify-content:flex-end; padding-bottom:4em; }
+.dedicatoria { min-height:35vh; display:flex; align-items:flex-end; justify-content:flex-end; }
 .dedicatoria p { font-style:italic; text-align:right; max-width:60%; font-size:0.9em; color:#555; }
 .epigrafe { min-height:25vh; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; padding:3em 0; }
 .epigrafe .epigrafe-text { font-style:italic; text-align:right; max-width:55%; font-size:0.9em; }
@@ -68,19 +104,24 @@ body { background: #fff; color: #1a1a1a; }
 .toc { padding:3em 0; }
 .toc h2 { font-size:1.2em; margin-bottom:2em; }
 .toc ol { list-style:none; }
-.toc ol li { display:flex; justify-content:space-between; margin-bottom:0.7em; font-size:0.95em; }
-.toc ol li a { text-decoration:none; color:inherit; }
+.toc ol li { display:flex; align-items:baseline; margin-bottom:0.7em; font-size:0.95em; gap:0.2em; }
+.toc ol li a { text-decoration:none; color:inherit; white-space:nowrap; }
+.toc ol li .toc-dots { flex:1; border-bottom:1px dotted #999; margin:0 0.5em 0.15em; min-width:1em; }
+.toc ol li .toc-pg { color:#555; font-size:0.88em; white-space:nowrap; min-width:2em; text-align:right; }
+.chapter-number { font-size:.75em; text-transform:uppercase; letter-spacing:.2em; color:#888; display:block; margin-bottom:.4em; }
 .author-bio { margin-top:3em; padding-top:2em; border-top:1px solid #ddd; font-size:0.9em; color:#444; }
 `;
+};
 
-const TEMPLATE_CSS: Record<TemplateId, (w: string, corpo: number) => string> = {
-  literario: (w, corpo) => BASE_CSS(w, corpo) + `
+const TEMPLATE_CSS: Record<TemplateId, (w: string, h: string, corpo: number, fmt: FormatoId) => string> = {
+  literario: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
 body { font-family: 'EB Garamond', Georgia, 'Times New Roman', serif; line-height: 1.65; }
 .book-title { font-family:'EB Garamond',Georgia,serif; font-size:2.2em; font-weight:400; text-transform:uppercase; letter-spacing:.1em; margin-bottom:.6em; }
 .book-subtitle { font-size:1.1em; color:#555; margin-bottom:.5em; font-style:italic; }
 .author-name { font-size:1.1em; color:#555; margin-top:2em; }
 .chapter { padding-top:4em; }
+.chapter-number { color:#bbb; }
 .chapter-title { font-size:1.45em; font-weight:400; text-align:center; text-transform:uppercase; letter-spacing:.12em; margin-bottom:2.5em; }
 p { text-indent:1.5em; text-align:justify; orphans:2; widows:2; }
 p.first-para, .chapter-title+p, h2+p, h3+p { text-indent:0; }
@@ -89,7 +130,7 @@ blockquote { margin:1.5em 4em; font-size:.9em; font-style:italic; }
 .ornamento { text-align:center; color:#888; margin:1.5em 0; letter-spacing:.5em; font-size:1.1em; }
 .toc h2 { font-size:1.2em; text-transform:uppercase; letter-spacing:.15em; font-weight:400; text-align:center; }
 `,
-  nao_ficcao: (w, corpo) => BASE_CSS(w, corpo) + `
+  nao_ficcao: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');
 body { font-family:'Source Serif 4',Georgia,serif; line-height:1.65; }
 .book-title { font-size:2.4em; font-weight:600; line-height:1.2; margin-bottom:.4em; text-align:left; }
@@ -97,7 +138,6 @@ body { font-family:'Source Serif 4',Georgia,serif; line-height:1.65; }
 .author-name { font-size:1.1em; color:#555; margin-top:2.5em; text-align:left; }
 .title-page { align-items:flex-start; }
 .chapter { padding-top:3em; }
-.chapter-number { font-size:.8em; text-transform:uppercase; letter-spacing:.2em; color:#888; display:block; margin-bottom:.3em; }
 .chapter-title { font-size:1.8em; font-weight:600; line-height:1.2; margin-bottom:1.5em; }
 h3 { font-size:1.2em; font-weight:600; margin:2em 0 .5em; }
 h4 { font-size:1.05em; font-weight:600; margin:1.5em 0 .3em; }
@@ -105,7 +145,7 @@ p { margin:0 0 .8em; text-align:left; }
 blockquote { margin:1.5em 2em; padding:.8em 1.5em; border-left:3px solid #ddd; font-style:italic; color:#555; }
 .box-destaque { background:#f8f8f8; border-radius:4px; padding:.8em 1.2em; margin:1.5em 0; font-size:.95em; }
 `,
-  abnt: (w, corpo) => BASE_CSS(w, corpo) + `
+  abnt: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 body { font-family:'Times New Roman',Times,serif; line-height:1.5; }
 .book-title { font-size:1.8em; font-weight:bold; text-align:center; }
 .author-name { font-size:1em; text-align:center; margin-top:2em; }
@@ -117,7 +157,7 @@ p { text-indent:1.25cm; text-align:justify; }
 p.first-para, h2+p, h3+p, h4+p { text-indent:0; }
 blockquote { margin-left:4cm; font-size:.9em; text-indent:0; }
 `,
-  infantil: (w, corpo) => BASE_CSS(w, corpo) + `
+  infantil: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
 body { font-family:'Lora',Georgia,serif; line-height:1.9; }
 .book-title { font-size:2.5em; font-weight:600; line-height:1.2; margin-bottom:.5em; }
@@ -127,7 +167,7 @@ body { font-family:'Lora',Georgia,serif; line-height:1.9; }
 p { margin:0 0 1em; }
 .dialogo { margin:0 0 1em; }
 `,
-  poesia: (w, corpo) => BASE_CSS(w, corpo) + `
+  poesia: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 body { font-family:'Crimson Text',Georgia,serif; line-height:1.7; }
 .book-title { font-size:2em; font-weight:400; font-style:italic; margin-bottom:.5em; text-align:center; }
@@ -139,7 +179,7 @@ body { font-family:'Crimson Text',Georgia,serif; line-height:1.7; }
 .poem-stanza { margin-bottom:1.5em; }
 p { margin:0 0 1em; }
 `,
-  religioso: (w, corpo) => BASE_CSS(w, corpo) + `
+  religioso: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');
 body { font-family:'Gentium Book Plus',Georgia,serif; line-height:1.6; font-size:${corpo}pt; }
 .book-title { font-size:2em; font-weight:700; text-align:center; margin-bottom:.5em; }
@@ -154,8 +194,9 @@ blockquote { margin:1em 2em; font-size:.9em; font-style:italic; }
 
 // ─── Crop marks / bleed ───────────────────────────────────────────────────────
 
-/** Returns CSS for 3 mm sangria + crop marks. Injected when config.marcas_corte is true. */
-function buildMarksCss(w: string, h: string): string {
+/** Returns CSS for 3 mm sangria + crop marks. Injected when config.marcas_corte is true.
+ *  @page size is already set by BASE_CSS; this only adds marks/bleed and spread layout. */
+function buildMarksCss(w: string): string {
   // Measurements (all absolute):
   //   bleed  = 3 mm  – white bleed area beyond trim
   //   gap    = 2 mm  – silent gap between bleed edge and mark start
@@ -165,7 +206,7 @@ function buildMarksCss(w: string, h: string): string {
   return `
 /* ── Sangria 3 mm + Marcas de corte ──────────────────────────── */
 @media print {
-  @page { size: ${w} ${h}; marks: crop; bleed: 3mm; }
+  @page { marks: crop; bleed: 3mm; }
   .spread { margin: 0 !important; }
   .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
@@ -270,15 +311,15 @@ function buildBookHtml(params: {
 }): { html: string; capitulosInfo: CapituloInfo[] } {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml } = params;
   const fmt = FORMAT_DIMS[config.formato];
-  const css = TEMPLATE_CSS[config.template](fmt.w, config.corpo_pt)
-    + (config.marcas_corte ? buildMarksCss(fmt.w, fmt.h) : "");
+  const css = TEMPLATE_CSS[config.template](fmt.w, fmt.h, config.corpo_pt, config.formato)
+    + (config.marcas_corte ? buildMarksCss(fmt.w) : "");
 
   // Wraps a .book-page div in .spread with 8 crop-mark elements when enabled
   const pg = config.marcas_corte
     ? (html: string) => wrapInSpread(html)
     : (html: string) => html;
 
-  // Split manuscript into chapter segments
+  // ── Split manuscript into chapter segments ────────────────────────────────────
   const segments: { titulo: string; texto: string }[] = [];
   if (capitulos.length === 0) {
     segments.push({ titulo: titulo || "Capítulo 1", texto });
@@ -286,7 +327,6 @@ function buildBookHtml(params: {
     for (let i = 0; i < capitulos.length; i++) {
       const start = capitulos[i].pos;
       const end = i < capitulos.length - 1 ? capitulos[i + 1].pos : texto.length;
-      // Remove the chapter marker line from segment text
       let segTexto = texto.slice(start, end).trim();
       const markerEnd = segTexto.indexOf("\n");
       segTexto = markerEnd > -1 ? segTexto.slice(markerEnd).trim() : segTexto;
@@ -300,82 +340,120 @@ function buildBookHtml(params: {
     palavras: seg.texto.split(/\s+/).filter(Boolean).length,
   }));
 
-  // Build HTML sections
-  const frontMatter: string[] = [];
-  const chaptersHtml: string[] = [];
+  // ── Page counter — tracks physical front-matter pages for blank-page insertion ─
+  let pageCount = 0;
+  const sections: string[] = [];
 
-  // Title page
-  frontMatter.push(pg(`
-<div class="book-page title-page page-break">
-  <p class="book-title">${escHtml(titulo)}</p>
-  ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
-  <p class="author-name">${escHtml(autor)}</p>
-</div>`));
+  const noNumPage = (inner: string, extraClass = ""): void => {
+    pageCount++;
+    const cls = ["book-page", "page-break", "no-num", extraClass].filter(Boolean).join(" ");
+    sections.push(pg(`<div class="${cls}">${inner}</div>`));
+  };
 
-  // Copyright / Credits page — uses full credits page if available, otherwise fallback
+  const blankPage = (): void => {
+    pageCount++;
+    sections.push(pg(`<div class="book-page page-break no-num blank-page" aria-hidden="true"></div>`));
+  };
+
+  // After pageCount pages, next page is pageCount+1.
+  // For it to be a recto (odd), pageCount must be even.
+  const ensureOddPage = (): void => {
+    if (pageCount % 2 !== 0) blankPage();
+  };
+
+  // ── 1. Folha de rosto (p.1 — recto) ──────────────────────────────────────────
+  noNumPage(`
+  <div class="title-page">
+    <p class="book-title">${escHtml(titulo)}</p>
+    ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
+    <p class="author-name">${escHtml(autor)}</p>
+  </div>`);
+
+  // ── 2. Verso do rosto — créditos (p.2 — verso) ───────────────────────────────
   if (creditosInnerHtml) {
-    frontMatter.push(pg(`<div class="book-page page-break">${creditosInnerHtml}</div>`));
+    noNumPage(creditosInnerHtml);
   } else {
-    frontMatter.push(pg(`
-<div class="book-page page-break" style="display:flex;flex-direction:column;justify-content:flex-end;min-height:60vh">
-  <p style="font-size:.8em;color:#666;line-height:1.8">
-    © ${new Date().getFullYear()} ${escHtml(autor)}<br>
-    Todos os direitos reservados.<br>
-    Publicado pela plataforma Autoria.
-  </p>
-</div>`));
+    noNumPage(`
+  <div style="display:flex;flex-direction:column;justify-content:flex-end;min-height:60vh">
+    <p style="font-size:.8em;color:#666;line-height:1.8">
+      © ${new Date().getFullYear()} ${escHtml(autor)}<br>
+      Todos os direitos reservados.<br>
+      Publicado pela plataforma Autoria.
+    </p>
+  </div>`);
   }
 
-  // Dedication
+  // ── 3. Dedicatória (follows créditos on p.3, already odd) ────────────────────
   if (config.dedicatoria?.trim()) {
-    frontMatter.push(pg(`
-<div class="book-page dedicatoria page-break">
-  <p>${escHtml(config.dedicatoria)}</p>
-</div>`));
+    noNumPage(`
+  <div class="dedicatoria">
+    <p>${escHtml(config.dedicatoria)}</p>
+  </div>`);
   }
 
-  // Epigraph
+  // ── 4. Epígrafe ───────────────────────────────────────────────────────────────
   if (config.epigrafe_texto?.trim()) {
-    frontMatter.push(pg(`
-<div class="book-page epigrafe page-break">
-  <p class="epigrafe-text">${escHtml(config.epigrafe_texto)}</p>
-  ${config.epigrafe_autor ? `<p class="epigrafe-autor">— ${escHtml(config.epigrafe_autor)}</p>` : ""}
-</div>`));
+    noNumPage(`
+  <div class="epigrafe">
+    <p class="epigrafe-text">${escHtml(config.epigrafe_texto)}</p>
+    ${config.epigrafe_autor ? `<p class="epigrafe-autor">— ${escHtml(config.epigrafe_autor)}</p>` : ""}
+  </div>`);
   }
 
-  // TOC
+  // ── 5. Sumário (always starts on odd/recto page) ─────────────────────────────
   if (config.sumario && segments.length > 1) {
-    frontMatter.push(pg(`
-<div class="book-page toc page-break">
-  <h2>Sumário</h2>
-  <ol>
-    ${capitulosInfo.map((c) => `<li><a href="#${c.id}">${escHtml(c.titulo)}</a><span>—</span></li>`).join("\n    ")}
-  </ol>
-</div>`));
+    ensureOddPage();
+
+    // Estimate chapter start pages (Arabic 1-indexed, first chapter = 1)
+    const chapterStartPages: number[] = [];
+    let runningPage = 1;
+    for (const info of capitulosInfo) {
+      chapterStartPages.push(runningPage);
+      const pagesInChapter = Math.max(1, Math.ceil(info.palavras / fmt.wpp));
+      runningPage += pagesInChapter;
+      if (runningPage % 2 === 0) runningPage++; // next chapter on odd page
+    }
+
+    const tocItems = capitulosInfo.map((c, i) =>
+      `<li><a href="#${c.id}">${escHtml(c.titulo)}</a><span class="toc-dots"></span><span class="toc-pg">${chapterStartPages[i]}</span></li>`
+    ).join("\n      ");
+
+    noNumPage(`
+  <div class="toc">
+    <h2>Sumário</h2>
+    <ol>
+      ${tocItems}
+    </ol>
+  </div>`);
   }
 
-  // Chapters
+  // ── 6. Chapters (each starts on odd/recto page) ───────────────────────────────
   segments.forEach((seg, i) => {
     const info = capitulosInfo[i];
-    chaptersHtml.push(pg(`
-<section class="book-page chapter page-break" id="${info.id}" data-title="${escHtml(info.titulo)}">
-  ${config.template === "nao_ficcao" ? `<span class="chapter-number">Capítulo ${i + 1}</span>` : ""}
+    ensureOddPage();
+
+    pageCount++; // count the chapter section
+    const extraClass = i === 0 ? " first-chapter" : "";
+
+    sections.push(pg(`
+<section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
+  <span class="chapter-number">Capítulo ${i + 1}</span>
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
   ${buildParagraphs(seg.texto, config, true)}
   ${buildOrnamented(config)}
 </section>`));
   });
 
-  // Author bio
-  let authorBioHtml = "";
+  // ── 7. Nota sobre o autor ─────────────────────────────────────────────────────
   if (config.bio_autor?.trim()) {
-    authorBioHtml = pg(`
+    pageCount++;
+    sections.push(pg(`
 <div class="book-page page-break">
   <div class="author-bio">
     <h3 style="font-size:1em;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1em">Sobre o autor</h3>
     <p style="text-indent:0">${escHtml(config.bio_autor)}</p>
   </div>
-</div>`);
+</div>`));
   }
 
   const bodyClass = config.marcas_corte ? ' class="with-marks"' : "";
@@ -389,9 +467,7 @@ ${css}
 </style>
 </head>
 <body${bodyClass}>
-${frontMatter.join("\n")}
-${chaptersHtml.join("\n")}
-${authorBioHtml}
+${sections.join("\n")}
 </body>
 </html>`;
 
@@ -576,10 +652,7 @@ export async function POST(request: NextRequest) {
 
   if (updateErr) {
     console.error("[miolo] Erro ao salvar:", updateErr);
-    return NextResponse.json({
-      error: "Miolo gerado, mas falha ao salvar no banco.",
-      debug: { code: updateErr.code, message: updateErr.message, details: updateErr.details, hint: updateErr.hint },
-    }, { status: 500 });
+    return NextResponse.json({ error: "Miolo gerado, mas falha ao salvar no banco." }, { status: 500 });
   }
 
   // Return signed URL for preview (1 hour)
