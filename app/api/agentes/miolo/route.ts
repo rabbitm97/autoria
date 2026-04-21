@@ -70,21 +70,19 @@ const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string =
   @page { size: ${w} ${h}; }
   html, body { background: #fff !important; }
   .chapter { break-before: right; }
-  .book-page { margin: 0 !important; height: ${h} !important; box-shadow: none !important; }
+  .book-page { margin: 0 !important; }
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: ${corpo}pt; }
 body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
 .book-page {
   width: ${w};
-  height: ${h};
-  overflow: hidden;
+  min-height: ${h};
   margin: 18mm auto;
   padding: ${m.top} ${m.outer} ${m.bottom} ${m.inner};
   position: relative;
   counter-increment: pagenum;
   background: #fff;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
 }
 .book-page.no-num { counter-increment: none; }
 .first-chapter { counter-reset: pagenum 0; }
