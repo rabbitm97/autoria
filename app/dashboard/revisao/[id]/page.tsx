@@ -378,19 +378,18 @@ export default function RevisaoPage() {
   }
 
   async function gerarProva() {
+    if (!manuscritoTexto) {
+      setError("Texto do manuscrito não carregado. Recarregue a página.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/agentes/prova-revisao", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
-      });
-      const data = await res.json() as { ok?: boolean; url?: string; aceitas?: number; total?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar prova");
-      if (data.url) window.open(data.url, "_blank");
+      const revised = buildRevisedText(manuscritoTexto, sugestoesArr, aceitas);
+      const blob = await buildDocxBlob(revised);
+      triggerDownload(blob, `${manuscritoNome}_prova_revisao.docx`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro desconhecido");
+      setError(e instanceof Error ? e.message : "Erro ao gerar prova");
     } finally {
       setSaving(false);
     }
