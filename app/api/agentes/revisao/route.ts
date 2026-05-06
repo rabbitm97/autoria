@@ -76,8 +76,10 @@ PRINCÍPIOS ÉTICOS QUE VOCÊ SEGUE:
 - Neologismos literários: aceitar se artisticamente justificados
 - Tom das sugestões: "Considere..." em vez de "Você deve..."
 
-Retorne EXCLUSIVAMENTE um array JSON de sugestões entre 5 e 25 itens. \
-Não inclua markdown, comentários ou qualquer texto fora do JSON.
+Retorne EXCLUSIVAMENTE um array JSON — começando com [ e terminando com ]. \
+Nunca retorne um objeto JSON, nunca inclua markdown, comentários ou qualquer texto fora do array. \
+Se não houver sugestões, retorne um array vazio: []. \
+Quantidade alvo: entre 5 e 25 itens quando houver problemas encontrados.
 
 Schema de cada sugestão:
 {
@@ -208,16 +210,34 @@ export async function POST(request: NextRequest) {
           }
         }
         const parsed = parseLLMJson<unknown>(accumulated);
-        // Claude sometimes wraps the array: {"sugestoes": [...]} — unwrap it
         let sugestoes: SugestaoRevisao[];
         if (Array.isArray(parsed)) {
           sugestoes = parsed as SugestaoRevisao[];
         } else if (parsed && typeof parsed === "object") {
-          const inner = Object.values(parsed as Record<string, unknown>).find(Array.isArray);
-          if (!inner) throw new Error("Resposta da IA não contém array de sugestões.");
-          sugestoes = inner as SugestaoRevisao[];
+          const obj = parsed as Record<string, unknown>;
+          // Search direct values first, then one level deeper for {"wrapper": {"sugestoes": [...]}}
+          let inner: unknown[] | undefined =
+            Object.values(obj).find(Array.isArray) as unknown[] | undefined;
+          if (!inner) {
+            for (const v of Object.values(obj)) {
+              if (v && typeof v === "object" && !Array.isArray(v)) {
+                inner = Object.values(v as Record<string, unknown>).find(Array.isArray) as unknown[] | undefined;
+                if (inner) break;
+              }
+            }
+          }
+          if (inner) {
+            sugestoes = inner as SugestaoRevisao[];
+          } else if (obj.id && obj.tipo && obj.severidade) {
+            // Single suggestion returned as object instead of array
+            sugestoes = [obj as unknown as SugestaoRevisao];
+          } else {
+            // Unexpected format — log and treat as no suggestions
+            console.warn("[revisao] Resposta inesperada da IA (sem array):", JSON.stringify(parsed).slice(0, 300));
+            sugestoes = [];
+          }
         } else {
-          throw new Error("Resposta da IA não é um array de sugestões.");
+          sugestoes = [];
         }
         const revisao: RevisaoResult = { sugestoes, revisado_em: new Date().toISOString() };
         await supabase.from("projects")
