@@ -437,17 +437,37 @@ export default function RevisaoPage() {
         setManuscritoTexto(parseData.texto ?? "");
       }
 
-      // Step 3: re-run revisao
+      // Step 3: re-run revisao (streaming endpoint — same handling as triggerRevisao)
       setUploadStatus("analyzing");
       const diagRes = await fetch("/api/agentes/revisao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId }),
       });
-      const diagData = await diagRes.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
-      if (!diagRes.ok) throw new Error(diagData.error ?? "Erro ao gerar revisão.");
 
-      setRevisao(diagData.revisao!);
+      if (!diagRes.ok) {
+        const data = await diagRes.json() as { error?: string };
+        throw new Error(data.error ?? "Erro ao gerar revisão.");
+      }
+
+      const reader = diagRes.body!.getReader();
+      const decoder = new TextDecoder();
+      let diagBuffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        diagBuffer += decoder.decode(value, { stream: true });
+      }
+
+      if (diagBuffer.includes("__ERROR__")) {
+        throw new Error(diagBuffer.split("__ERROR__")[1]);
+      }
+
+      const doneIdx = diagBuffer.lastIndexOf("__DONE__");
+      if (doneIdx === -1) throw new Error("Resposta incompleta da revisão.");
+      const novaRevisao = JSON.parse(diagBuffer.slice(doneIdx + 8)) as RevisaoResult;
+
+      setRevisao(novaRevisao);
       const empty = new Set<string>();
       setAceitas(empty);
       setRejeitadas(empty);

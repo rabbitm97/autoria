@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
       }
 
       const storagePath = `${userId}/${project_id}/capa_ia_${i}.png`;
-      const buffer = Buffer.from(imgBytes);
+      const buffer = Buffer.from(imgBytes, "base64");
 
       const { error: uploadError } = await storageClient.storage
         .from("capas")

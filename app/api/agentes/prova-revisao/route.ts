@@ -36,121 +36,116 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
   }
 
-  // Load project, manuscript and revisions
-  const { data: project } = await supabase
-    .from("projects")
-    .select("manuscript_id, dados_revisao, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, texto)")
-    .eq("id", project_id)
-    .single();
+  try {
+    // Load project, manuscript and revisions
+    const { data: project, error: projErr } = await supabase
+      .from("projects")
+      .select("manuscript_id, dados_revisao, manuscripts(nome, titulo, autor_primeiro_nome, autor_sobrenome, texto)")
+      .eq("id", project_id)
+      .single();
 
-  if (!project) {
-    return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
-  }
-
-  const ms = project.manuscripts as unknown as {
-    titulo?: string;
-    autor_primeiro_nome?: string;
-    autor_sobrenome?: string;
-    texto?: string;
-  } | null;
-
-  const titulo = ms?.titulo ?? "Manuscrito";
-  const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
-  const textoOriginal = ms?.texto ?? "";
-
-  // Apply accepted revisions to get revised text
-  const revisao = project.dados_revisao as {
-    sugestoes?: Array<{ id: string; trecho_original: string; sugestao: string }>;
-    aceitas?: string[];
-  } | null;
-
-  let textoRevisado = textoOriginal;
-  let aplicadas = 0;
-  let descartadas = 0;
-
-  if (revisao?.sugestoes && revisao?.aceitas) {
-    const aceitasSet = new Set(revisao.aceitas);
-
-    // Collect accepted suggestions with their position in the *current* text
-    // so we can sort descending and avoid offset drift (bug #1 — race condition).
-    type SugestaoComPos = {
-      id: string;
-      trecho_original: string;
-      sugestao: string;
-      pos: number;
-    };
-
-    const candidatas: SugestaoComPos[] = [];
-    for (const s of revisao.sugestoes) {
-      if (!aceitasSet.has(s.id)) continue;
-      const pos = textoOriginal.indexOf(s.trecho_original);
-      if (pos === -1) {
-        // Bug #3 — fuzzy-match failure: log explicitly and count as discarded.
-        console.warn(
-          `[prova-revisao] trecho_original não encontrado no texto — sugestão descartada.\n` +
-          `  id: ${s.id}\n` +
-          `  trecho: ${JSON.stringify(s.trecho_original.slice(0, 80))}`
-        );
-        descartadas++;
-        continue;
-      }
-      candidatas.push({ ...s, pos });
+    if (projErr || !project) {
+      console.error("[prova-revisao] projeto não encontrado:", projErr?.message);
+      return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
     }
 
-    // Sort DESCENDING by position so end-of-text replacements don't shift
-    // earlier offsets (bug #1 fix).
-    candidatas.sort((a, b) => b.pos - a.pos);
+    const ms = project.manuscripts as unknown as {
+      nome?: string;
+      titulo?: string;
+      autor_primeiro_nome?: string;
+      autor_sobrenome?: string;
+      texto?: string;
+    } | null;
 
-    // Apply each replacement via slice+concat at the known character position
-    // (bug #2 fix — avoids first-occurrence-only and case-sensitivity issues).
-    for (const s of candidatas) {
-      const pos = textoRevisado.indexOf(s.trecho_original);
-      if (pos === -1) {
-        // Offset shifted unexpectedly (overlapping replacements); skip safely.
-        console.warn(
-          `[prova-revisao] posição perdida após replacements anteriores — sugestão descartada.\n` +
-          `  id: ${s.id}`
-        );
-        descartadas++;
-        continue;
+    const titulo = ms?.titulo ?? ms?.nome ?? "Manuscrito";
+    const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
+    const textoOriginal = ms?.texto ?? "";
+
+    // Apply accepted revisions to get revised text
+    const revisao = project.dados_revisao as {
+      sugestoes?: Array<{ id: string; trecho_original: string; sugestao: string }>;
+      aceitas?: string[];
+    } | null;
+
+    let textoRevisado = textoOriginal;
+    let aplicadas = 0;
+    let descartadas = 0;
+
+    if (revisao?.sugestoes && revisao?.aceitas) {
+      const aceitasSet = new Set(revisao.aceitas);
+
+      type SugestaoComPos = {
+        id: string;
+        trecho_original: string;
+        sugestao: string;
+        pos: number;
+      };
+
+      const candidatas: SugestaoComPos[] = [];
+      for (const s of revisao.sugestoes) {
+        if (!aceitasSet.has(s.id)) continue;
+        const pos = textoOriginal.indexOf(s.trecho_original);
+        if (pos === -1) {
+          console.warn(
+            `[prova-revisao] trecho_original não encontrado — sugestão descartada.\n` +
+            `  id: ${s.id}\n` +
+            `  trecho: ${JSON.stringify(s.trecho_original.slice(0, 80))}`
+          );
+          descartadas++;
+          continue;
+        }
+        candidatas.push({ ...s, pos });
       }
-      textoRevisado =
-        textoRevisado.slice(0, pos) +
-        s.sugestao +
-        textoRevisado.slice(pos + s.trecho_original.length);
-      aplicadas++;
+
+      candidatas.sort((a, b) => b.pos - a.pos);
+
+      for (const s of candidatas) {
+        const pos = textoRevisado.indexOf(s.trecho_original);
+        if (pos === -1) {
+          console.warn(`[prova-revisao] posição perdida após replacements — sugestão descartada. id: ${s.id}`);
+          descartadas++;
+          continue;
+        }
+        textoRevisado =
+          textoRevisado.slice(0, pos) +
+          s.sugestao +
+          textoRevisado.slice(pos + s.trecho_original.length);
+        aplicadas++;
+      }
     }
-  }
 
-  if (!textoRevisado.trim()) {
-    return NextResponse.json({ error: "Texto não encontrado" }, { status: 422 });
-  }
+    if (!textoRevisado.trim()) {
+      return NextResponse.json({ error: "Texto do manuscrito não encontrado. Faça o upload do arquivo primeiro." }, { status: 422 });
+    }
 
-  // Save revised text back to manuscript
-  if (project.manuscript_id) {
-    await supabase
-      .from("manuscripts")
-      .update({ texto_revisado: textoRevisado })
-      .eq("id", project.manuscript_id as string);
-  }
+    // Save revised text back to manuscript
+    if (project.manuscript_id) {
+      const { error: updateErr } = await supabase
+        .from("manuscripts")
+        .update({ texto_revisado: textoRevisado })
+        .eq("id", project.manuscript_id as string);
+      if (updateErr) {
+        console.warn("[prova-revisao] falha ao salvar texto_revisado:", updateErr.message);
+      }
+    }
 
-  // Build HTML proof document
-  function esc(s: string) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+    // Build HTML proof document
+    function esc(s: string) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
 
-  const paragraphs = textoRevisado
-    .split(/\n{2,}/)
-    .filter(p => p.trim())
-    .map(p => `<p>${esc(p.trim())}</p>`)
-    .join("\n");
+    const paragraphs = textoRevisado
+      .split(/\n{2,}/)
+      .filter(p => p.trim())
+      .map(p => `<p>${esc(p.trim())}</p>`)
+      .join("\n");
 
-  const totalCount = revisao?.sugestoes?.length ?? 0;
-  const descartadasAviso = descartadas > 0
-    ? `<br><span style="color:#b45309">⚠ ${descartadas} sugestão(ões) descartada(s) por não coincidir exatamente com o texto — verifique o log do servidor.</span>`
-    : "";
+    const totalCount = revisao?.sugestoes?.length ?? 0;
+    const descartadasAviso = descartadas > 0
+      ? `<br><span style="color:#b45309">⚠ ${descartadas} sugestão(ões) descartada(s) por não coincidir exatamente com o texto.</span>`
+      : "";
 
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -186,34 +181,40 @@ export async function POST(req: NextRequest) {
 </body>
 </html>`;
 
-  // Upload to Supabase Storage
-  const storageClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+    // Upload to Supabase Storage (service role bypasses RLS)
+    const storageClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-  const storagePath = `${userId}/prova_${project_id}.html`;
-  const { error: uploadErr } = await storageClient.storage
-    .from("manuscripts")
-    .upload(storagePath, Buffer.from(html, "utf-8"), {
-      contentType: "text/html; charset=utf-8",
-      upsert: true,
+    const storagePath = `${userId}/prova_${project_id}.html`;
+    const { error: uploadErr } = await storageClient.storage
+      .from("manuscripts")
+      .upload(storagePath, Buffer.from(html, "utf-8"), {
+        contentType: "text/html; charset=utf-8",
+        upsert: true,
+      });
+
+    if (uploadErr) {
+      console.error("[prova-revisao] upload error:", uploadErr.message);
+      return NextResponse.json({ error: `Erro ao salvar prova: ${uploadErr.message}` }, { status: 500 });
+    }
+
+    const { data: signed } = await storageClient.storage
+      .from("manuscripts")
+      .createSignedUrl(storagePath, 3600);
+
+    return NextResponse.json({
+      ok: true,
+      url: signed?.signedUrl ?? null,
+      aplicadas,
+      descartadas,
+      total: totalCount,
+      palavras: textoRevisado.split(/\s+/).filter(Boolean).length,
     });
-
-  if (uploadErr) {
-    return NextResponse.json({ error: "Erro ao salvar prova" }, { status: 500 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[prova-revisao] erro inesperado:", msg);
+    return NextResponse.json({ error: `Erro interno: ${msg}` }, { status: 500 });
   }
-
-  const { data: signed } = await storageClient.storage
-    .from("manuscripts")
-    .createSignedUrl(storagePath, 3600);
-
-  return NextResponse.json({
-    ok: true,
-    url: signed?.signedUrl ?? null,
-    aplicadas,
-    descartadas,
-    total: totalCount,
-    palavras: textoRevisado.split(/\s+/).filter(Boolean).length,
-  });
 }
