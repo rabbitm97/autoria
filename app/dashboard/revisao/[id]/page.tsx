@@ -326,7 +326,7 @@ export default function RevisaoPage() {
 
   function aceitarTodas() {
     if (!revisao) return;
-    const all = new Set(revisao.sugestoes.map((s) => s.id));
+    const all = new Set(sugestoesArr.map((s) => s.id));
     const empty = new Set<string>();
     setAceitas(all);
     setRejeitadas(empty);
@@ -336,7 +336,7 @@ export default function RevisaoPage() {
   function rejeitarTodas() {
     if (!revisao) return;
     const empty = new Set<string>();
-    const all = new Set(revisao.sugestoes.map((s) => s.id));
+    const all = new Set(sugestoesArr.map((s) => s.id));
     setAceitas(empty);
     setRejeitadas(all);
     saveProgress(empty, all);
@@ -400,14 +400,14 @@ export default function RevisaoPage() {
 
   async function downloadTxt() {
     if (!revisao || !manuscritoTexto) return;
-    const revised = buildRevisedText(manuscritoTexto, revisao.sugestoes, aceitas);
+    const revised = buildRevisedText(manuscritoTexto, sugestoesArr, aceitas);
     const blob = new Blob([revised], { type: "text/plain;charset=utf-8" });
     triggerDownload(blob, `${manuscritoNome}_revisado.txt`);
   }
 
   async function downloadDocx() {
     if (!revisao || !manuscritoTexto) return;
-    const revised = buildRevisedText(manuscritoTexto, revisao.sugestoes, aceitas);
+    const revised = buildRevisedText(manuscritoTexto, sugestoesArr, aceitas);
     const blob = await buildDocxBlob(revised);
     triggerDownload(blob, `${manuscritoNome}_revisado.docx`);
   }
@@ -461,17 +461,19 @@ export default function RevisaoPage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
-  const total     = revisao?.sugestoes.length ?? 0;
+  const sugestoesArr: SugestaoRevisao[] = Array.isArray(revisao?.sugestoes) ? revisao!.sugestoes : [];
+
+  const total     = sugestoesArr.length;
   const reviewed  = aceitas.size + rejeitadas.size;
   const pendentes = total - reviewed;
   const canFinish = pendentes === 0;
 
-  const filtradas = revisao?.sugestoes.filter(
+  const filtradas = sugestoesArr.filter(
     (s) => filtro === "todas" || s.severidade === filtro
-  ) ?? [];
+  );
 
   const countBySev = (sev: SugestaoRevisao["severidade"]) =>
-    revisao?.sugestoes.filter((s) => s.severidade === sev).length ?? 0;
+    sugestoesArr.filter((s) => s.severidade === sev).length;
 
   const isUploading = uploadStatus !== "idle";
 

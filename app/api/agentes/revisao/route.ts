@@ -207,7 +207,18 @@ export async function POST(request: NextRequest) {
             controller.enqueue(enc.encode(event.delta.text));
           }
         }
-        const sugestoes = parseLLMJson<SugestaoRevisao[]>(accumulated);
+        const parsed = parseLLMJson<unknown>(accumulated);
+        // Claude sometimes wraps the array: {"sugestoes": [...]} — unwrap it
+        let sugestoes: SugestaoRevisao[];
+        if (Array.isArray(parsed)) {
+          sugestoes = parsed as SugestaoRevisao[];
+        } else if (parsed && typeof parsed === "object") {
+          const inner = Object.values(parsed as Record<string, unknown>).find(Array.isArray);
+          if (!inner) throw new Error("Resposta da IA não contém array de sugestões.");
+          sugestoes = inner as SugestaoRevisao[];
+        } else {
+          throw new Error("Resposta da IA não é um array de sugestões.");
+        }
         const revisao: RevisaoResult = { sugestoes, revisado_em: new Date().toISOString() };
         await supabase.from("projects")
           .update({ dados_revisao: revisao, etapa_atual: "revisao" })
