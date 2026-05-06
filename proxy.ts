@@ -1,8 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
+import { ADMIN_EMAILS } from "@/lib/admin-agents";
 
 export default async function proxy(req: NextRequest) {
   const res = NextResponse.next();
+  const { pathname } = req.nextUrl;
 
   // Dev: skip auth so local preview works without credentials
   if (process.env.NODE_ENV === "development") return res;
@@ -21,11 +23,23 @@ export default async function proxy(req: NextRequest) {
     }
   );
 
-  // getSession() reads from cookie (no network round-trip) — fast for proxy checks.
-  // getUser() (network call) is used inside Route Handlers/Server Components where needed.
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  if (pathname.startsWith("/admin")) {
+    // getUser() verifies the token server-side — needed to check email for admin gate
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+
+    if (!ADMIN_EMAILS.includes(user.email ?? "")) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
+    return res;
+  }
+
+  // Dashboard: getSession() reads from cookie (no network round-trip) — fast for proxy checks
+  const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
     const loginUrl = new URL("/login", req.nextUrl);
@@ -37,5 +51,5 @@ export default async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*"],
 };
