@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
@@ -107,22 +107,29 @@ async function gerarFichaCatalografica(params: {
   local: string;
   isbn: string;
   formato: CreditosFormato;
+  context?: { userId?: string; projectId?: string };
 }): Promise<FichaCatalografica | null> {
-  const { titulo, autor, genero, paginas, ano, editora, local, isbn, formato } = params;
+  const { titulo, autor, genero, paginas, ano, editora, local, isbn, formato, context } = params;
   const dim = FORMATO_DIMS[formato];
   const FICHA_PROMPT = await getAgentPrompt("creditos", FALLBACK_PROMPT);
 
   try {
-    const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 512,
-      system: FICHA_PROMPT,
-      messages: [{
-        role: "user",
-        content: `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\nAutor: ${autor}\nGênero: ${genero}\n` +
-          `Páginas estimadas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
-          `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`,
-      }],
+    const msg = await traceClaudeCall({
+      agentName: "creditos",
+      projectId: context?.projectId,
+      userId: context?.userId,
+      metadata: { model: "claude-sonnet-4-6" },
+      fn: () => anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 512,
+        system: FICHA_PROMPT,
+        messages: [{
+          role: "user",
+          content: `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\nAutor: ${autor}\nGênero: ${genero}\n` +
+            `Páginas estimadas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
+            `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`,
+        }],
+      }),
     });
     const raw = extractText(msg.content);
     const data = parseLLMJson<FichaCatalografica>(raw);
@@ -372,6 +379,7 @@ export async function POST(request: NextRequest) {
       local: config.local_edicao ?? "São Paulo",
       isbn: config.isbn ?? "",
       formato: config.formato,
+      context: { userId: user.id, projectId: project_id },
     });
   }
 

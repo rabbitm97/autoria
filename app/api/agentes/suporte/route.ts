@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, extractText } from "@/lib/anthropic";
+import { anthropic, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 
@@ -119,11 +119,17 @@ export async function POST(req: NextRequest) {
   }
 
   const KNOWLEDGE_BASE = await getAgentPrompt("suporte", FALLBACK_KNOWLEDGE_BASE);
-  const res = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 500,
-    system: KNOWLEDGE_BASE + contextoProj,
-    messages: [{ role: "user", content: pergunta }],
+  const res = await traceClaudeCall({
+    agentName: "suporte",
+    projectId: project_id ?? undefined,
+    userId: isDev ? undefined : userId,
+    metadata: { model: "claude-sonnet-4-6" },
+    fn: () => anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 500,
+      system: KNOWLEDGE_BASE + contextoProj,
+      messages: [{ role: "user", content: pergunta }],
+    }),
   });
 
   const resposta = extractText(res.content).trim();

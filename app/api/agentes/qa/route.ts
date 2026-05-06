@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, extractText } from "@/lib/anthropic";
+import { anthropic, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -238,19 +238,25 @@ export async function POST(req: NextRequest) {
     .map(i => `[${i.status.toUpperCase()}] ${i.categoria}: ${i.mensagem}`)
     .join("\n");
 
-  const claudeRes = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 300,
-    messages: [{
-      role: "user",
-      content: `Você é um consultor editorial. Analise o relatório QA abaixo e escreva UMA recomendação final em 2-3 frases em português. Seja direto e útil. Sem título, sem listas.
+  const claudeRes = await traceClaudeCall({
+    agentName: "qa",
+    projectId: project_id,
+    userId: isDev ? undefined : userId,
+    metadata: { model: "claude-sonnet-4-6" },
+    fn: () => anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 300,
+      messages: [{
+        role: "user",
+        content: `Você é um consultor editorial. Analise o relatório QA abaixo e escreva UMA recomendação final em 2-3 frases em português. Seja direto e útil. Sem título, sem listas.
 
 Título: ${titulo || "Não definido"}
 Palavras: ${palavras.toLocaleString("pt-BR")}
 Score: ${score}/100 | Aprovado: ${aprovado ? "sim" : "não"}
 
 ${resumo}`,
-    }],
+      }],
+    }),
   });
 
   const recomendacao = extractText(claudeRes.content).trim();

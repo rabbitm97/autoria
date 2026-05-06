@@ -515,6 +515,46 @@ function HistoricoTab({
   );
 }
 
+// ─── Tab: Langfuse ────────────────────────────────────────────────────────────
+
+function LangfuseTab({ agentName }: { agentName: string }) {
+  const host = process.env.NEXT_PUBLIC_LANGFUSE_HOST ?? "https://us.cloud.langfuse.com";
+  const tracesUrl = `${host}/traces`;
+
+  return (
+    <div className="space-y-6 py-4">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-200 mb-1">Dashboard de Traces</h3>
+          <p className="text-xs text-zinc-500">
+            Cada chamada ao agente <span className="font-mono text-zinc-300">{agentName}</span> gera
+            uma trace no Langfuse com nome <span className="font-mono text-zinc-300">{agentName}</span>.
+          </p>
+        </div>
+
+        <a
+          href={tracesUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-amber-500 text-zinc-950 font-semibold hover:bg-amber-400 transition-colors"
+        >
+          Abrir Langfuse Traces ↗
+        </a>
+
+        <div className="text-xs text-zinc-500 space-y-1">
+          <p>No dashboard, filtre por <strong className="text-zinc-400">Name = {agentName}</strong> para ver apenas este agente.</p>
+          <p>As traces incluem: duração, userId, project_id e erros (se houver).</p>
+          {!process.env.NEXT_PUBLIC_LANGFUSE_HOST && (
+            <p className="text-amber-500/80">
+              Variável <span className="font-mono">NEXT_PUBLIC_LANGFUSE_HOST</span> não configurada — usando us.cloud.langfuse.com como padrão.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AgentDetailPage() {
@@ -571,6 +611,7 @@ export default function AgentDetailPage() {
             { value: "testar",    label: "Testar",   onActivate: () => {} },
             { value: "metricas",  label: "Métricas",  onActivate: loadMetrics },
             { value: "historico", label: "Histórico" },
+            { value: "langfuse",  label: "Langfuse" },
           ].map(tab => (
             <Tabs.Tab
               key={tab.value}
@@ -610,6 +651,10 @@ export default function AgentDetailPage() {
             versions={versions}
             onReverted={loadVersions}
           />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="langfuse" className="outline-none">
+          <LangfuseTab agentName={nome} />
         </Tabs.Panel>
       </Tabs.Root>
     </div>

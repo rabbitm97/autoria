@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, extractText } from "@/lib/anthropic";
+import { anthropic, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -314,19 +314,25 @@ export async function POST(req: NextRequest) {
     .map(c => `[${c.status.toUpperCase()}] ${c.plataforma} / ${c.campo}: ${c.mensagem}`)
     .join("\n");
 
-  const claudeRes = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 400,
-    messages: [{
-      role: "user",
-      content: `Você é um consultor de publicação especialista em plataformas digitais globais. Analise o relatório de QA abaixo e escreva uma recomendação final em 3-4 frases em português para o autor. Seja direto, prático e útil. Mencione os itens mais críticos a corrigir. Sem título, sem listas.
+  const claudeRes = await traceClaudeCall({
+    agentName: "qa-publicacao",
+    projectId: project_id,
+    userId: isDev ? undefined : userId,
+    metadata: { model: "claude-sonnet-4-6" },
+    fn: () => anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `Você é um consultor de publicação especialista em plataformas digitais globais. Analise o relatório de QA abaixo e escreva uma recomendação final em 3-4 frases em português para o autor. Seja direto, prático e útil. Mencione os itens mais críticos a corrigir. Sem título, sem listas.
 
 Livro: "${dados.titulo}" por ${dados.autor}
 Score: ${score}/100 | Aprovado para publicação: ${aprovado ? "sim" : "não"}
 Plataformas analisadas: ${plataformas.join(", ")}
 
 ${resumo}`,
-    }],
+      }],
+    }),
   });
 
   const recomendacao = extractText(claudeRes.content).trim();

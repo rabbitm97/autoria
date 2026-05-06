@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson } from "@/lib/anthropic";
+import { anthropic, parseLLMJson, langfuse } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 
@@ -190,6 +190,13 @@ export async function POST(request: NextRequest) {
     messages: [{ role: "user", content: `Revise o seguinte manuscrito e retorne apenas o array JSON de sugestões:\n\n${textoCortado}` }],
   });
 
+  const streamStartTime = Date.now();
+  const streamTrace = langfuse?.trace({
+    name: "revisao",
+    userId: user.id,
+    metadata: { project_id, model: "claude-haiku-4-5-20251001" },
+  });
+
   const streamBody = new ReadableStream({
     async start(controller) {
       let accumulated = "";
@@ -205,12 +212,15 @@ export async function POST(request: NextRequest) {
         await supabase.from("projects")
           .update({ dados_revisao: revisao, etapa_atual: "revisao" })
           .eq("id", project_id).eq("user_id", user.id);
+        streamTrace?.update({ output: { duration_ms: Date.now() - streamStartTime } });
         controller.enqueue(enc.encode("\n__DONE__" + JSON.stringify(revisao)));
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("[revisao] Erro stream:", msg);
+        streamTrace?.update({ output: { error: msg, duration_ms: Date.now() - streamStartTime } });
         controller.enqueue(enc.encode("\n__ERROR__" + msg));
       }
+      void (async () => { try { await langfuse?.flushAsync(); } catch {} })();
       controller.close();
     },
   });

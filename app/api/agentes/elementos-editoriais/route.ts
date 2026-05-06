@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 
@@ -116,16 +116,22 @@ export async function POST(request: NextRequest) {
   const SYSTEM_PROMPT = await getAgentPrompt("elementos-editoriais", FALLBACK_PROMPT);
   let elementos: ElementosEditoriais;
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Manuscrito: "${nomeManuscrito}"${diagnosticoCtx}\n\nTexto:\n${textoCortado}\n\nGere os elementos editoriais e retorne apenas o JSON:`,
-        },
-      ],
+    const message = await traceClaudeCall({
+      agentName: "elementos-editoriais",
+      projectId: project_id,
+      userId: user.id,
+      metadata: { model: "claude-sonnet-4-6" },
+      fn: () => anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2048,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Manuscrito: "${nomeManuscrito}"${diagnosticoCtx}\n\nTexto:\n${textoCortado}\n\nGere os elementos editoriais e retorne apenas o JSON:`,
+          },
+        ],
+      }),
     });
 
     elementos = parseLLMJson<ElementosEditoriais>(extractText(message.content));

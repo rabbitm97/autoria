@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createHash } from "crypto";
@@ -44,18 +44,25 @@ Padrões de capítulo a detectar:
 - Nomes de capítulos sem número (ex: "O Despertar") se seguirem padrão consistente`;
 
 async function detectChaptersWithClaude(
-  texto: string
+  texto: string,
+  context?: { userId?: string; projectId?: string }
 ): Promise<{ titulo: string; pos: number }[]> {
   // Send first 20k chars — enough to detect the chapter pattern
   const sample = texto.slice(0, 20_000);
   const STRUCTURE_PROMPT = await getAgentPrompt("miolo-estrutura", FALLBACK_STRUCTURE_PROMPT);
 
   try {
-    const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system: STRUCTURE_PROMPT,
-      messages: [{ role: "user", content: `Detecte os capítulos neste manuscrito:\n\n${sample}` }],
+    const msg = await traceClaudeCall({
+      agentName: "miolo-estrutura",
+      projectId: context?.projectId,
+      userId: context?.userId,
+      metadata: { model: "claude-sonnet-4-6" },
+      fn: () => anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: STRUCTURE_PROMPT,
+        messages: [{ role: "user", content: `Detecte os capítulos neste manuscrito:\n\n${sample}` }],
+      }),
     });
     const chapters = parseLLMJson<{ titulo: string; pos: number }[]>(extractText(msg.content));
     if (!Array.isArray(chapters)) return [];
@@ -133,7 +140,7 @@ export async function POST(request: NextRequest) {
   if (ms?.texto_hash === textoHash && Array.isArray(ms?.capitulos_detectados)) {
     capitulos = ms.capitulos_detectados as { titulo: string; pos: number }[];
   } else {
-    capitulos = await detectChaptersWithClaude(texto);
+    capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
     void (async () => {
       try {
         await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)

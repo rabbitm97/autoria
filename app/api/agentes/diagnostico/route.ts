@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 
@@ -191,16 +191,22 @@ export async function POST(request: NextRequest) {
   } else
   try {
     const SYSTEM_PROMPT = await getAgentPrompt("diagnostico", FALLBACK_PROMPT);
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Analise o seguinte manuscrito e retorne apenas o JSON:\n\n${textoCortado}`,
-        },
-      ],
+    const message = await traceClaudeCall({
+      agentName: "diagnostico",
+      projectId: project_id,
+      userId: user.id,
+      metadata: { model: "claude-haiku-4-5-20251001" },
+      fn: () => anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2048,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Analise o seguinte manuscrito e retorne apenas o JSON:\n\n${textoCortado}`,
+          },
+        ],
+      }),
     });
 
     diagnostico = parseLLMJson<DiagnosticoResult>(extractText(message.content));
