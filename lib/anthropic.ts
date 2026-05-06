@@ -64,3 +64,12 @@ export function extractText(content: Anthropic.ContentBlock[]): string {
   const block = content[0];
   return block?.type === "text" ? block.text : "";
 }
+
+export const isMock = () => process.env.MOCK_AI === "true";
+
+// Safer than NODE_ENV === "development" alone — guards against misconfigured Vercel
+// envs where NODE_ENV leaks as "development" on preview/production deployments.
+export const isDev = () =>
+  process.env.NODE_ENV === "development" &&
+  process.env.VERCEL_ENV !== "production" &&
+  process.env.VERCEL_ENV !== "preview";
