@@ -1,6 +1,6 @@
 export const maxDuration = 60;
 
-import { GoogleGenAI, type Part } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
@@ -65,19 +65,6 @@ function buildPrompt(opts: {
     "High contrast, professional publishing industry quality, suitable for CMYK print.",
     "Full bleed composition, no borders or frames.",
   ].join(" ");
-}
-
-function buildContents(textPrompt: string, ref?: string): Part[] {
-  if (ref) {
-    const match = ref.match(/^data:([^;]+);base64,(.+)$/);
-    if (match) {
-      return [
-        { text: textPrompt + " Use the provided reference image as a style and composition guide — adapt its mood and color palette for this new cover." } as Part,
-        { inlineData: { mimeType: match[1], data: match[2] } } as Part,
-      ];
-    }
-  }
-  return [{ text: textPrompt } as Part];
 }
 
 // ─── POST /api/agentes/gerar-capa ─────────────────────────────────────────────
@@ -181,31 +168,34 @@ export async function POST(req: NextRequest) {
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
   const opcoes: OpcaoCapa[] = [];
 
-  // Generate 4 options
-  for (let i = 0; i < 4; i++) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-pro-image-preview",
-        contents: [{ role: "user", parts: buildContents(prompt, imagemRef) }],
-        config: {
-          responseModalities: ["IMAGE"],
-          imageConfig: { aspectRatio: "2:3", imageSize: "2K" },
-        },
-      });
+  // Build final prompt — include reference style hint if provided
+  const fullPrompt = imagemRef
+    ? prompt + " Maintain a visual style consistent with the provided reference image aesthetic."
+    : prompt;
 
-      const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
-      const imgPart = parts.find((p) => p.inlineData);
-      if (!imgPart?.inlineData?.data) continue;
+  try {
+    const response = await ai.models.generateImages({
+      model: "imagen-3.0-generate-002",
+      prompt: fullPrompt,
+      config: {
+        numberOfImages: 4,
+        aspectRatio: "3:4",
+      },
+    });
 
-      const base64 = imgPart.inlineData.data;
-      const mimeType = imgPart.inlineData.mimeType ?? "image/png";
-      const ext = mimeType.includes("png") ? "png" : "jpg";
-      const storagePath = `${userId}/${project_id}/capa_ia_${i}.${ext}`;
-      const buffer = Buffer.from(base64, "base64");
+    for (let i = 0; i < (response.generatedImages?.length ?? 0); i++) {
+      const imgBytes = response.generatedImages[i]?.image?.imageBytes;
+      if (!imgBytes) {
+        console.warn(`[gerar-capa] option ${i}: imageBytes ausente`);
+        continue;
+      }
+
+      const storagePath = `${userId}/${project_id}/capa_ia_${i}.png`;
+      const buffer = Buffer.from(imgBytes);
 
       const { error: uploadError } = await storageClient.storage
         .from("capas")
-        .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+        .upload(storagePath, buffer, { contentType: "image/png", upsert: true });
 
       if (uploadError) {
         console.error("[gerar-capa] upload error:", uploadError.message);
@@ -217,9 +207,9 @@ export async function POST(req: NextRequest) {
         .getPublicUrl(storagePath);
 
       opcoes.push({ url: publicUrl, storage_path: storagePath });
-    } catch (err) {
-      console.error(`[gerar-capa] option ${i} failed:`, err);
     }
+  } catch (err) {
+    console.error("[gerar-capa] generateImages failed:", err);
   }
 
   if (opcoes.length === 0) {
