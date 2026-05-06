@@ -94,7 +94,7 @@ p.body { text-indent: 1.5em; margin: 0; }
 
 function navXhtml(chapters: Chapter[], bookTitle: string): string {
   const items = chapters
-    .map((c, i) => `    <li><a href="chapters/chapter-${String(i + 1).padStart(2, "0")}.xhtml">${esc(c.title)}</a></li>`)
+    .map((c, i) => `    <li><a href="chapters/chapter-${String(i + 1).padStart(3, "0")}.xhtml">${esc(c.title)}</a></li>`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -115,7 +115,7 @@ function ncxXml(chapters: Chapter[], bookTitle: string, autor: string, uid: stri
   const navPoints = chapters
     .map((c, i) => `  <navPoint id="np-${i + 1}" playOrder="${i + 1}">
     <navLabel><text>${esc(c.title)}</text></navLabel>
-    <content src="chapters/chapter-${String(i + 1).padStart(2, "0")}.xhtml"/>
+    <content src="chapters/chapter-${String(i + 1).padStart(3, "0")}.xhtml"/>
   </navPoint>`)
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -134,12 +134,28 @@ ${navPoints}
 </ncx>`;
 }
 
-function opfXml(chapters: Chapter[], bookTitle: string, autor: string, uid: string, lang = "pt-BR"): string {
+function opfXml(
+  chapters: Chapter[],
+  bookTitle: string,
+  autor: string,
+  uid: string,
+  lang = "pt-BR",
+  coverExt: "jpg" | "png" | null = null,
+  palavrasChave: string[] = [],
+): string {
   const items = chapters
-    .map((_, i) => `    <item id="ch${i + 1}" href="chapters/chapter-${String(i + 1).padStart(2, "0")}.xhtml" media-type="application/xhtml+xml"/>`)
+    .map((_, i) => `    <item id="ch${i + 1}" href="chapters/chapter-${String(i + 1).padStart(3, "0")}.xhtml" media-type="application/xhtml+xml"/>`)
     .join("\n");
   const spine = chapters
     .map((_, i) => `    <itemref idref="ch${i + 1}"/>`)
+    .join("\n");
+
+  const coverManifest = coverExt
+    ? `\n  <item id="cover" href="cover.${coverExt}" media-type="image/${coverExt === "png" ? "png" : "jpeg"}" properties="cover-image"/>`
+    : "";
+
+  const subjects = palavrasChave
+    .map(kw => `  <dc:subject>${esc(kw)}</dc:subject>`)
     .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -151,11 +167,12 @@ function opfXml(chapters: Chapter[], bookTitle: string, autor: string, uid: stri
   <dc:language>${lang}</dc:language>
   <dc:date>${new Date().toISOString().slice(0, 10)}</dc:date>
   <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, "Z")}</meta>
+${subjects}
 </metadata>
 <manifest>
   <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
   <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-  <item id="css" href="styles.css" media-type="text/css"/>
+  <item id="css" href="styles.css" media-type="text/css"/>${coverManifest}
 ${items}
 </manifest>
 <spine toc="ncx">
@@ -190,6 +207,8 @@ export async function POST(req: NextRequest) {
   let titulo = "Sem título";
   let autor = "";
   let texto = "";
+  let capaUrl: string | null = null;
+  let palavrasChave: string[] = [];
 
   if (process.env.NODE_ENV === "development") {
     titulo = "O Último Manuscrito";
@@ -203,7 +222,7 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_elementos, manuscript:manuscript_id(texto, nome)")
+      .select("dados_elementos, dados_capa, manuscript:manuscript_id(texto, nome)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
@@ -212,9 +231,12 @@ export async function POST(req: NextRequest) {
 
     const el = project.dados_elementos as Record<string, unknown> | null;
     const ms = project.manuscript as { texto?: string; nome?: string } | null;
+    const capa = project.dados_capa as { url_escolhida?: string } | null;
 
     titulo = (el?.titulo_escolhido as string) ?? (el?.opcoes_titulo as string[])?.[0] ?? ms?.nome ?? "Sem título";
     texto  = ms?.texto ?? "";
+    capaUrl = capa?.url_escolhida ?? null;
+    palavrasChave = (el?.palavras_chave as string[] | undefined) ?? [];
 
     const { data: profile } = await supabase.from("users").select("nome").eq("id", userId).single();
     autor = profile?.nome ?? "";
@@ -222,6 +244,24 @@ export async function POST(req: NextRequest) {
 
   if (!texto.trim()) {
     return NextResponse.json({ error: "Manuscrito sem texto. Execute o parse primeiro." }, { status: 422 });
+  }
+
+  // ── Fetch cover image (optional) ─────────────────────────────────────────
+  let coverBuffer: Buffer | null = null;
+  let coverExt: "jpg" | "png" | null = null;
+
+  if (capaUrl) {
+    try {
+      const res = await fetch(capaUrl);
+      if (res.ok) {
+        const contentType = res.headers.get("content-type") ?? "";
+        coverExt = contentType.includes("png") ? "png" : "jpg";
+        coverBuffer = Buffer.from(await res.arrayBuffer());
+      }
+    } catch {
+      // Cover fetch failure is non-fatal — EPUB still valid without it.
+      console.warn("[gerar-epub] falha ao baixar capa, continuando sem ela.");
+    }
   }
 
   // ── Build EPUB ────────────────────────────────────────────────────────────
@@ -245,14 +285,18 @@ export async function POST(req: NextRequest) {
 
   // OEBPS
   const oebps = zip.folder("OEBPS")!;
-  oebps.file("content.opf", opfXml(chapters, titulo, autor, uid));
+  oebps.file("content.opf", opfXml(chapters, titulo, autor, uid, "pt-BR", coverExt, palavrasChave));
   oebps.file("toc.ncx",     ncxXml(chapters, titulo, autor, uid));
   oebps.file("nav.xhtml",   navXhtml(chapters, titulo));
   oebps.file("styles.css",  CSS);
 
+  if (coverBuffer && coverExt) {
+    oebps.file(`cover.${coverExt}`, coverBuffer);
+  }
+
   const chaptersFolder = oebps.folder("chapters")!;
   chapters.forEach((ch, i) => {
-    chaptersFolder.file(`chapter-${String(i + 1).padStart(2, "0")}.xhtml`, chapterXhtml(ch, i));
+    chaptersFolder.file(`chapter-${String(i + 1).padStart(3, "0")}.xhtml`, chapterXhtml(ch, i));
   });
 
   const epubBuffer = await zip.generateAsync({

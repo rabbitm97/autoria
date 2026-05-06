@@ -65,12 +65,60 @@ export async function POST(req: NextRequest) {
   } | null;
 
   let textoRevisado = textoOriginal;
+  let aplicadas = 0;
+  let descartadas = 0;
+
   if (revisao?.sugestoes && revisao?.aceitas) {
     const aceitasSet = new Set(revisao.aceitas);
+
+    // Collect accepted suggestions with their position in the *current* text
+    // so we can sort descending and avoid offset drift (bug #1 — race condition).
+    type SugestaoComPos = {
+      id: string;
+      trecho_original: string;
+      sugestao: string;
+      pos: number;
+    };
+
+    const candidatas: SugestaoComPos[] = [];
     for (const s of revisao.sugestoes) {
-      if (aceitasSet.has(s.id)) {
-        textoRevisado = textoRevisado.replace(s.trecho_original, s.sugestao);
+      if (!aceitasSet.has(s.id)) continue;
+      const pos = textoOriginal.indexOf(s.trecho_original);
+      if (pos === -1) {
+        // Bug #3 — fuzzy-match failure: log explicitly and count as discarded.
+        console.warn(
+          `[prova-revisao] trecho_original não encontrado no texto — sugestão descartada.\n` +
+          `  id: ${s.id}\n` +
+          `  trecho: ${JSON.stringify(s.trecho_original.slice(0, 80))}`
+        );
+        descartadas++;
+        continue;
       }
+      candidatas.push({ ...s, pos });
+    }
+
+    // Sort DESCENDING by position so end-of-text replacements don't shift
+    // earlier offsets (bug #1 fix).
+    candidatas.sort((a, b) => b.pos - a.pos);
+
+    // Apply each replacement via slice+concat at the known character position
+    // (bug #2 fix — avoids first-occurrence-only and case-sensitivity issues).
+    for (const s of candidatas) {
+      const pos = textoRevisado.indexOf(s.trecho_original);
+      if (pos === -1) {
+        // Offset shifted unexpectedly (overlapping replacements); skip safely.
+        console.warn(
+          `[prova-revisao] posição perdida após replacements anteriores — sugestão descartada.\n` +
+          `  id: ${s.id}`
+        );
+        descartadas++;
+        continue;
+      }
+      textoRevisado =
+        textoRevisado.slice(0, pos) +
+        s.sugestao +
+        textoRevisado.slice(pos + s.trecho_original.length);
+      aplicadas++;
     }
   }
 
@@ -97,8 +145,10 @@ export async function POST(req: NextRequest) {
     .map(p => `<p>${esc(p.trim())}</p>`)
     .join("\n");
 
-  const aceitasCount = revisao?.aceitas?.length ?? 0;
   const totalCount = revisao?.sugestoes?.length ?? 0;
+  const descartadasAviso = descartadas > 0
+    ? `<br><span style="color:#b45309">⚠ ${descartadas} sugestão(ões) descartada(s) por não coincidir exatamente com o texto — verifique o log do servidor.</span>`
+    : "";
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -129,7 +179,7 @@ export async function POST(req: NextRequest) {
   </div>
   <div class="meta">
     <strong>Prova de revisão</strong> — gerada em ${new Date().toLocaleString("pt-BR")}<br>
-    Revisões aplicadas: <strong>${aceitasCount} de ${totalCount}</strong> sugestões aceitas.<br>
+    Revisões aplicadas: <strong>${aplicadas} de ${totalCount}</strong> sugestões (${descartadas} descartada(s)).${descartadasAviso}<br>
     Este documento reflete o texto que será usado na diagramação.
   </div>
   ${paragraphs}
@@ -161,7 +211,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     url: signed?.signedUrl ?? null,
-    aceitas: aceitasCount,
+    aplicadas,
+    descartadas,
     total: totalCount,
     palavras: textoRevisado.split(/\s+/).filter(Boolean).length,
   });

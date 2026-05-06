@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { getAgentPrompt } from "@/lib/agent-prompts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface ElementosEditoriais {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `\
+const FALLBACK_PROMPT = `\
 Você é um editor especialista em marketing editorial brasileiro com experiência em Amazon KDP, \
 livrarias independentes e plataformas de eBook nacionais.
 
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
       ? texto.slice(0, 40_000) + "\n\n[...trecho truncado]"
       : texto;
 
+  const SYSTEM_PROMPT = await getAgentPrompt("elementos-editoriais", FALLBACK_PROMPT);
   let elementos: ElementosEditoriais;
   try {
     const message = await anthropic.messages.create({

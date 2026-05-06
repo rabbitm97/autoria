@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { ADMIN_EMAILS } from "@/lib/admin-agents";
 
 /**
  * Creates a Supabase SSR client bound to the current request's cookies.
@@ -37,6 +38,35 @@ export async function requireAuth() {
 
   if (error || !user) {
     throw Response.json({ error: "Não autorizado." }, { status: 401 });
+  }
+
+  return { user, supabase };
+}
+
+/**
+ * Like requireAuth but also verifies admin access.
+ * Checks hardcoded ADMIN_EMAILS first, then users.role = "admin".
+ */
+export async function requireAdmin() {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    throw Response.json({ error: "Não autorizado." }, { status: 401 });
+  }
+
+  if (ADMIN_EMAILS.includes(user.email ?? "")) {
+    return { user, supabase };
+  }
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    throw Response.json({ error: "Acesso restrito a administradores." }, { status: 403 });
   }
 
   return { user, supabase };

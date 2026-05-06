@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { getAgentPrompt } from "@/lib/agent-prompts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ export interface DiagnosticoResult {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `\
+const FALLBACK_PROMPT = `\
 Você é um editor literário brasileiro sênior e analista de mercado editorial com 20 anos de experiência. \
 Já avaliou mais de 5.000 manuscritos de todos os gêneros. Conhece profundamente o mercado leitor brasileiro, \
 as convenções editoriais, os catálogos das principais editoras nacionais, as tendências de autopublicação \
@@ -189,6 +190,7 @@ export async function POST(request: NextRequest) {
     };
   } else
   try {
+    const SYSTEM_PROMPT = await getAgentPrompt("diagnostico", FALLBACK_PROMPT);
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,

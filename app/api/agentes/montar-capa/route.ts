@@ -7,9 +7,9 @@ import sharp from "sharp";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DPI = 150;                     // composite preview resolution
-const PX_PER_CM = DPI / 2.54;        // ≈ 59.06 px/cm
-const MM_PER_PAGE = 0.07;            // spine thickness per page (75g offset paper)
+const DPI_PREVIEW  = 150;   // fast composite for on-screen preview
+const DPI_PRINT    = 300;   // minimum required by KDP and most POD services
+const MM_PER_PAGE  = 0.07;  // spine thickness per page (75g offset paper)
 const MIN_SPINE_PX = 4;
 
 const FORMATO_DIMS: Record<string, { w: number; h: number }> = {
@@ -21,6 +21,15 @@ const FORMATO_DIMS: Record<string, { w: number; h: number }> = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
 
 async function fetchBuf(url: string): Promise<Buffer> {
   const res = await fetch(url);
@@ -63,6 +72,9 @@ export async function POST(req: NextRequest) {
     formato: string;
     paginas: number;
     usar_orelhas: boolean;
+    titulo?: string;
+    autor?: string;
+    qualidade?: "preview" | "impressao";
     elementos: {
       frente_url: string;
       contra_url: string;
@@ -76,7 +88,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const { project_id, formato, paginas, usar_orelhas, elementos } = body;
+  const {
+    project_id, formato, paginas, usar_orelhas, elementos,
+    titulo = "", autor = "", qualidade = "preview",
+  } = body;
 
   if (!project_id || !elementos.frente_url || !elementos.contra_url) {
     return NextResponse.json({ error: "project_id, frente_url e contra_url são obrigatórios" }, { status: 400 });
@@ -87,10 +102,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       url: "https://placehold.co/2000x1000/1a1a2e/e8c97b?text=Capa+Completa+Mock",
       storage_path: `dev-user/${project_id}/capa_completa.png`,
+      qualidade,
     });
   }
 
   // ── Calculate dimensions ──────────────────────────────────────────────────
+  const t0 = Date.now();
+  const DPI = qualidade === "impressao" ? DPI_PRINT : DPI_PREVIEW;
+  const PX_PER_CM = DPI / 2.54;
+
   const dims = FORMATO_DIMS[formato] ?? FORMATO_DIMS["16x23"];
   const frontW = Math.round(dims.w * PX_PER_CM);
   const frontH = Math.round(dims.h * PX_PER_CM);
@@ -114,18 +134,36 @@ export async function POST(req: NextRequest) {
     lombadaPanel = await blankPanel(spineW, frontH, 26, 26, 46);
   }
 
-  // Spine SVG text overlay (title rotated 90°)
-  // Note: uses SVG composite — sharp supports this natively
+  // Spine SVG text overlay — title + author rotated -90° along the spine.
+  // Only rendered when spineW is wide enough to be legible.
   if (spineW >= 12) {
-    const fontSize = Math.min(spineW * 0.55, 16);
+    const cx = spineW / 2;
+    const cy = frontH / 2;
+    const fontSizeTitle  = Math.min(spineW * 0.55, 16);
+    const fontSizeAuthor = Math.min(spineW * 0.40, 12);
+    // Offset the two text lines so they don't overlap when rotated.
+    // After -90° rotation the visual "vertical" gap becomes a horizontal offset
+    // in the rotated coordinate system; we shift along the original Y axis.
+    const gap = fontSizeTitle * 1.6;
+    const yTitle  = cy - gap * 0.5;
+    const yAuthor = cy + gap * 0.5 + fontSizeAuthor;
+
     const svgOverlay = Buffer.from(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${spineW}" height="${frontH}">
         <text
-          transform="rotate(-90 ${spineW / 2} ${frontH / 2})"
-          x="${spineW / 2}" y="${frontH / 2}"
-          font-family="serif" font-size="${fontSize}" fill="rgba(255,255,255,0.9)"
+          transform="rotate(-90 ${cx} ${yTitle})"
+          x="${cx}" y="${yTitle}"
+          font-family="serif" font-size="${fontSizeTitle}" font-weight="600"
+          fill="rgba(255,255,255,0.95)"
           text-anchor="middle" dominant-baseline="middle"
-        >${body.elementos.frente_url ? "" : ""}</text>
+        >${esc(titulo)}</text>
+        <text
+          transform="rotate(-90 ${cx} ${yAuthor})"
+          x="${cx}" y="${yAuthor}"
+          font-family="serif" font-size="${fontSizeAuthor}" font-weight="400"
+          fill="rgba(255,255,255,0.75)"
+          text-anchor="middle" dominant-baseline="middle"
+        >${esc(autor)}</text>
       </svg>`
     );
     lombadaPanel = await sharp(lombadaPanel).composite([{ input: svgOverlay, top: 0, left: 0 }]).png().toBuffer();
@@ -190,6 +228,13 @@ export async function POST(req: NextRequest) {
 
   const { data: { publicUrl } } = storageClient.storage.from("capas").getPublicUrl(storagePath);
 
+  const elapsed = Date.now() - t0;
+  console.info(
+    `[montar-capa] qualidade=${qualidade} DPI=${DPI} ` +
+    `dimensões=${totalW}×${frontH}px lombada=${spineW}px ` +
+    `tempo=${elapsed}ms`
+  );
+
   // ── Persist in project ────────────────────────────────────────────────────
   await supabase
     .from("projects")
@@ -197,5 +242,11 @@ export async function POST(req: NextRequest) {
     .eq("id", project_id)
     .eq("user_id", userId);
 
-  return NextResponse.json({ url: publicUrl, storage_path: storagePath });
+  return NextResponse.json({
+    url: publicUrl,
+    storage_path: storagePath,
+    qualidade,
+    dimensoes: { largura_px: totalW, altura_px: frontH, dpi: DPI },
+    tempo_ms: elapsed,
+  });
 }

@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ const FORMATO_DIMS: Record<CreditosFormato, { w: string; h: string }> = {
 
 // ─── Claude prompt — ficha catalográfica ─────────────────────────────────────
 
-const FICHA_PROMPT = `\
+const FALLBACK_PROMPT = `\
 Você é um catalogador de bibliotecas brasileiro especializado em gerar fichas catalográficas \
 seguindo o padrão AACR2/RDA e a norma ABNT NBR 6029. Gere a ficha catalográfica para o livro descrito.
 
@@ -109,6 +110,7 @@ async function gerarFichaCatalografica(params: {
 }): Promise<FichaCatalografica | null> {
   const { titulo, autor, genero, paginas, ano, editora, local, isbn, formato } = params;
   const dim = FORMATO_DIMS[formato];
+  const FICHA_PROMPT = await getAgentPrompt("creditos", FALLBACK_PROMPT);
 
   try {
     const msg = await anthropic.messages.create({

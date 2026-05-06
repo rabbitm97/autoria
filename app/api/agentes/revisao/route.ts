@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { getAgentPrompt } from "@/lib/agent-prompts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ export interface RevisaoResult {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `\
+const FALLBACK_PROMPT = `\
 Você é um revisor editorial profissional especializado em literatura em português brasileiro, \
 com 20 anos de experiência em editoras nacionais. Trabalhe no modo "sugerir mudanças" — \
 NUNCA reescreva o texto do autor sem permissão explícita.
@@ -180,6 +181,7 @@ export async function POST(request: NextRequest) {
 
   // Streaming — envia chunks do Claude ao cliente à medida que chegam.
   // Isso evita o timeout do Vercel: a conexão fica viva enquanto dados fluem.
+  const SYSTEM_PROMPT = await getAgentPrompt("revisao", FALLBACK_PROMPT);
   const enc = new TextEncoder();
   const aiStream = anthropic.messages.stream({
     model: "claude-haiku-4-5-20251001",
