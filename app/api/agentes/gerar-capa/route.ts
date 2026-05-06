@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
     });
 
     for (let i = 0; i < (response.generatedImages?.length ?? 0); i++) {
-      const imgBytes = response.generatedImages[i]?.image?.imageBytes;
+      const imgBytes = response.generatedImages?.[i]?.image?.imageBytes;
       if (!imgBytes) {
         console.warn(`[gerar-capa] option ${i}: imageBytes ausente`);
         continue;
