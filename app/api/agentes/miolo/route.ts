@@ -139,15 +139,30 @@ export async function POST(request: NextRequest) {
   let capitulos: { titulo: string; pos: number }[];
   if (ms?.texto_hash === textoHash && Array.isArray(ms?.capitulos_detectados)) {
     capitulos = ms.capitulos_detectados as { titulo: string; pos: number }[];
+    console.log("[miolo] Cache HIT — usando capítulos persistidos:", {
+      project_id,
+      capitulos: capitulos.length,
+    });
   } else {
     capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
+    console.log("[miolo] Cache MISS — detectando capítulos via Claude:", {
+      project_id,
+      texto_hash: textoHash,
+      capitulos_detectados: capitulos.length,
+    });
     void (async () => {
       try {
         await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
           .from("manuscripts")
           .update({ capitulos_detectados: capitulos, texto_hash: textoHash })
-          .eq("id", project.manuscript_id);
-      } catch { /* non-fatal */ }
+          .eq("id", project.manuscript_id as string);
+      } catch (e) {
+        console.error("[miolo] Falha ao persistir cache de capítulos:", {
+          project_id: project.manuscript_id,
+          texto_hash: textoHash,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     })();
   }
 
