@@ -25,30 +25,85 @@ export interface MioloResult {
   gerado_em: string;
 }
 
-// ─── Chapter detection (Claude-assisted) ─────────────────────────────────────
+// ─── Chapter detection (regex + Claude-assisted) ─────────────────────────────
 
 const FALLBACK_STRUCTURE_PROMPT = `\
 Você analisa manuscritos em português brasileiro para detectar capítulos.
+
+IMPORTANTE: Respeite a estrutura já definida pelo autor. Se o autor já separou capítulos \
+com títulos explícitos, use esses títulos EXATAMENTE como aparecem no texto — não invente \
+nem altere nomes de capítulos.
 
 Retorne EXCLUSIVAMENTE um array JSON de capítulos encontrados.
 Se não houver capítulos claros, retorne [].
 
 Schema:
-[{ "titulo": "string — título exato como aparece", "pos": number — posição aproximada de início em chars }]
+[{ "titulo": "string — título EXATO como aparece no texto", "pos": number — posição de início em chars }]
 
-Padrões de capítulo a detectar:
-- "Capítulo 1", "Capítulo I", "CAPÍTULO 1", "Cap. 1"
+Padrões a detectar (linhas isoladas por linhas em branco):
+- "Capítulo 1", "Capítulo I", "CAPÍTULO 1", "Cap. 1", "Capítulo 1: Título"
 - "Parte Um", "Parte 1", "PARTE I"
-- Números isolados: "1.", "I.", "2."
-- Títulos ALL CAPS isolados (< 60 chars, linha própria)
-- Nomes de capítulos sem número (ex: "O Despertar") se seguirem padrão consistente`;
+- Números isolados: "1.", "I.", "2.", "III"
+- Títulos ALL CAPS isolados (< 80 chars, linha própria)
+- Nomes próprios de capítulos isolados (ex: "O Despertar", "A Chegada") se seguirem padrão consistente
+- Prefácio, Prólogo, Epílogo, Introdução, Apresentação, Conclusão quando isolados`;
+
+function isChapterHeading(s: string): boolean {
+  if (!s || s.includes('\n') || s.length > 100) return false;
+  // Explicit chapter/part keywords
+  if (/^(cap[íi]tulo|cap\.|parte)\s+/i.test(s)) return true;
+  // Roman numerals alone (I, II, III, IV, V ... XX)
+  if (/^[IVXLCDM]{1,6}\.?\s*$/.test(s)) return true;
+  // Simple number alone (1. / 2 / 3.)
+  if (/^\d{1,2}\.?\s*$/.test(s)) return true;
+  // Common section names
+  if (/^(prefácio|prólogo|epílogo|conclusão|introdução|apresentação|posfácio|agradecimentos|dedicatória|nota do autor|sobre o autor)$/i.test(s)) return true;
+  // ALL CAPS short title (1-8 words, max 70 chars, must contain at least one letter)
+  if (
+    s.length <= 70 &&
+    s.trim() === s.trim().toUpperCase() &&
+    /[A-ZÁÀÂÃÉÈÊÍÏÓÔÕÚÜÇ]/.test(s) &&
+    s.trim().split(/\s+/).length <= 8
+  ) return true;
+  return false;
+}
+
+function detectChaptersRegex(texto: string): { titulo: string; pos: number }[] {
+  const results: { titulo: string; pos: number }[] = [];
+  const lines = texto.split('\n');
+  let charPos = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+    const prevBlank = i === 0 || lines[i - 1].trim() === '';
+    const nextBlank = i === lines.length - 1 || lines[i + 1].trim() === '';
+
+    if (prevBlank && nextBlank && trimmed && isChapterHeading(trimmed)) {
+      const pos = texto.indexOf(trimmed, Math.max(0, charPos - 5));
+      if (pos >= 0) results.push({ titulo: trimmed, pos });
+    }
+    charPos += raw.length + 1;
+  }
+  return results;
+}
 
 async function detectChaptersWithClaude(
   texto: string,
   context?: { userId?: string; projectId?: string }
 ): Promise<{ titulo: string; pos: number }[]> {
-  // Send first 20k chars — enough to detect the chapter pattern
-  const sample = texto.slice(0, 20_000);
+  // First: instant regex scan of full text — respects pre-defined author chapters
+  const regexChapters = detectChaptersRegex(texto);
+  if (regexChapters.length >= 2) {
+    console.log("[miolo] Chapter detection via regex:", regexChapters.length, "chapters found");
+    return regexChapters;
+  }
+
+  // Fallback: Claude on full text (up to 60k chars)
+  const sample = texto.length > 60_000
+    ? texto.slice(0, 60_000) + "\n\n[...texto truncado após 60.000 caracteres]"
+    : texto;
+
   const STRUCTURE_PROMPT = await getAgentPrompt("miolo-estrutura", FALLBACK_STRUCTURE_PROMPT);
 
   try {
@@ -61,7 +116,7 @@ async function detectChaptersWithClaude(
         model: "claude-sonnet-4-6",
         max_tokens: 1024,
         system: STRUCTURE_PROMPT,
-        messages: [{ role: "user", content: `Detecte os capítulos neste manuscrito:\n\n${sample}` }],
+        messages: [{ role: "user", content: `Detecte os capítulos neste manuscrito. Respeite a estrutura já definida pelo autor — use os títulos EXATAMENTE como aparecem no texto:\n\n${sample}` }],
       }),
     });
     const chapters = parseLLMJson<{ titulo: string; pos: number }[]>(extractText(msg.content));

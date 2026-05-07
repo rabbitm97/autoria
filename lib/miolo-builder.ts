@@ -49,7 +49,6 @@ const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string =
   const m = MARGIN_BY_FORMAT[fmt];
   return `
 @media print {
-  @page { size: ${w} ${h}; }
   html, body { background: #fff !important; }
   .chapter { break-before: right; }
   .book-page { margin: 0 !important; }
@@ -184,10 +183,12 @@ export function buildMarksCss(w: string, h: string): string {
   const sh = addCm(h, 2.4);
 
   return `
-/* ── Sangria 3 mm + Marcas de corte ──────────────────────────── */
+/* ── Sangria 12 mm + Marcas de corte ─────────────────────────── */
 @media print {
   @page { size: ${sw} ${sh}; }
-  .spread { margin: 0 auto !important; }
+  .spread { margin: 0 auto !important; break-before: page; page-break-before: always; }
+  .spread .book-page { break-before: auto !important; page-break-before: auto !important; }
+  .spread .chapter { break-before: auto !important; }
   .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 .spread {
@@ -315,7 +316,13 @@ export function buildBookHtml(params: {
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml, chapterStartPagesOverride } = params;
   const fmt = FORMAT_DIMS[config.formato];
+  // When crop marks are off, inject the plain @page size rule.
+  // When crop marks are on, buildMarksCss owns the @page rule (spread size).
+  const pageSizeCss = config.marcas_corte
+    ? ""
+    : `@media print { @page { size: ${fmt.w} ${fmt.h}; } }\n`;
   const css = TEMPLATE_CSS[config.template](fmt.w, fmt.h, config.corpo_pt, config.formato)
+    + pageSizeCss
     + (config.marcas_corte ? buildMarksCss(fmt.w, fmt.h) : "");
 
   const pg = config.marcas_corte
@@ -461,7 +468,6 @@ export function buildBookHtml(params: {
       if (isFirst) {
         sections.push(pg(`
 <section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
-  <span class="chapter-number">Capítulo ${i + 1}</span>
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
   ${buildParagraphs(chunkText, config, true)}
   ${isLast ? buildOrnamented(config) : ""}

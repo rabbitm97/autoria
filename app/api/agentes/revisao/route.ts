@@ -79,7 +79,9 @@ PRINCÍPIOS ÉTICOS QUE VOCÊ SEGUE:
 Retorne EXCLUSIVAMENTE um array JSON — começando com [ e terminando com ]. \
 Nunca retorne um objeto JSON, nunca inclua markdown, comentários ou qualquer texto fora do array. \
 Se não houver sugestões, retorne um array vazio: []. \
-Quantidade alvo: entre 5 e 25 itens quando houver problemas encontrados.
+Quantidade alvo: entre 15 e 40 itens — distribua as sugestões AO LONGO de todo o texto fornecido, \
+não apenas no início. Analise CADA parágrafo com atenção. Priorize críticos, depois recomendados, \
+depois opcionais. Nunca omita problemas reais por querer reduzir a quantidade.
 
 Schema de cada sugestão:
 {
@@ -155,11 +157,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Limita a 20k chars (~3.500 palavras) para caber no timeout do Vercel (60s).
-  // A revisão é amostral — sugestões representativas do manuscrito inteiro.
+  // Limita a 50k chars (~8.500 palavras) para cobrir mais do texto no timeout do Vercel (60s).
   const textoCortado =
-    texto.length > 20_000
-      ? texto.slice(0, 20_000) + "\n\n[...trecho truncado — revisão amostral das primeiras ~3.500 palavras]"
+    texto.length > 50_000
+      ? texto.slice(0, 50_000) + "\n\n[...trecho truncado após ~8.500 palavras — revise o restante em etapas]"
       : texto;
 
   // Mock: retorna instantaneamente sem chamar a API
@@ -187,9 +188,9 @@ export async function POST(request: NextRequest) {
   const enc = new TextEncoder();
   const aiStream = anthropic.messages.stream({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: `Revise o seguinte manuscrito e retorne apenas o array JSON de sugestões:\n\n${textoCortado}` }],
+    messages: [{ role: "user", content: `Revise o seguinte manuscrito com minúcia. Analise TODO o texto do início ao fim, distribuindo as sugestões ao longo de toda a extensão — não apenas nas primeiras páginas. Retorne apenas o array JSON de sugestões:\n\n${textoCortado}` }],
   });
 
   const streamStartTime = Date.now();
