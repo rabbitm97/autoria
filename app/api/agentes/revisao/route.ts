@@ -188,8 +188,8 @@ export async function POST(request: NextRequest) {
   const SYSTEM_PROMPT = await getAgentPrompt("revisao", FALLBACK_PROMPT);
   const enc = new TextEncoder();
   const aiStream = anthropic.messages.stream({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 4096,
+    model: "claude-sonnet-4-6",
+    max_tokens: 8096,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: `Revise o seguinte manuscrito com minúcia. Analise TODO o texto do início ao fim, distribuindo as sugestões ao longo de toda a extensão — não apenas nas primeiras páginas. Retorne apenas o array JSON de sugestões:\n\n${textoCortado}` }],
   });
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
   const streamTrace = langfuse?.trace({
     name: "revisao",
     userId: user.id,
-    metadata: { project_id, model: "claude-haiku-4-5-20251001" },
+    metadata: { project_id, model: "claude-sonnet-4-6" },
   });
 
   const streamBody = new ReadableStream({
