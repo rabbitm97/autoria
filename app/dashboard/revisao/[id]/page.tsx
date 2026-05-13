@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { SugestaoRevisao, RevisaoResult } from "@/app/api/agentes/revisao/route";
+import type { SugestaoRevisao, RevisaoResult, RevisaoProcessingState } from "@/app/api/agentes/revisao/route";
 import { supabase } from "@/lib/supabase";
 
 // ─── Tipo labels ──────────────────────────────────────────────────────────────
@@ -206,7 +206,46 @@ export default function RevisaoPage() {
   const [filtro, setFiltro] = useState<"todas" | "critico" | "recomendado" | "opcional">("todas");
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "analyzing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  // Progresso do batch: { done, total } enquanto Anthropic processa; null quando inativo
+  const [pollProgress, setPollProgress] = useState<{ done: number; total: number } | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Polling ───────────────────────────────────────────────────────────────────
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) { clearTimeout(pollingRef.current); pollingRef.current = null; }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    async function poll() {
+      try {
+        const res = await fetch(`/api/agentes/revisao?project_id=${projectId}`);
+        if (!res.ok) { setError("Erro ao verificar status da revisão."); return; }
+        const data = await res.json() as {
+          status: string; done?: number; total?: number; revisao?: RevisaoResult;
+        };
+        if (data.status === "done") {
+          setPollProgress(null);
+          setRevisao(data.revisao!);
+          setAceitas(new Set());
+          setRejeitadas(new Set());
+        } else if (data.status === "processing") {
+          setPollProgress({ done: data.done ?? 0, total: data.total ?? 1 });
+          pollingRef.current = setTimeout(poll, 5_000);
+        } else {
+          setError("Estado inesperado da revisão. Tente novamente.");
+        }
+      } catch (e) {
+        // Retry on network error
+        pollingRef.current = setTimeout(poll, 10_000);
+        console.warn("[revisao] poll error:", e);
+      }
+    }
+    poll();
+  }, [projectId, stopPolling]);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
@@ -224,8 +263,13 @@ export default function RevisaoPage() {
       setManuscritoNome(ms?.nome ?? "Manuscrito");
       setManuscritoTexto(ms?.texto ?? "");
 
-      const rev = project.dados_revisao as RevisaoResult | null;
-      if (rev) {
+      const raw = project.dados_revisao as RevisaoProcessingState | RevisaoResult | null;
+      if (raw && (raw as RevisaoProcessingState).status === "processing") {
+        // Batch em andamento — retoma polling (ex: usuário recarregou a página)
+        const ps = raw as RevisaoProcessingState;
+        setPollProgress({ done: 0, total: ps.total_chunks });
+      } else if (raw) {
+        const rev = raw as RevisaoResult;
         setRevisao(rev);
         if (rev.aceitas) setAceitas(new Set(rev.aceitas));
         if (rev.rejeitadas) setRejeitadas(new Set(rev.rejeitadas));
@@ -235,6 +279,12 @@ export default function RevisaoPage() {
   }, [projectId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Inicia polling automaticamente se loadData detectou um batch em andamento
+  useEffect(() => {
+    if (!loading && pollProgress !== null && revisao === null) startPolling();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   // ── Save progress (called after every aceitar/rejeitar) ───────────────────
 
@@ -254,110 +304,40 @@ export default function RevisaoPage() {
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  // Lê uma resposta de streaming da API e extrai as sugestões do marcador __DONE__.
-  async function readChunkSugestoes(res: Response): Promise<SugestaoRevisao[]> {
-    const contentType = res.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      const data = await res.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
-      if (!data.ok) throw new Error(data.error ?? "Erro.");
-      return data.revisao?.sugestoes ?? [];
-    }
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-    }
-    if (buffer.includes("__ERROR__")) throw new Error(buffer.split("__ERROR__")[1]);
-    const doneIdx = buffer.lastIndexOf("__DONE__");
-    if (doneIdx === -1) throw new Error("Resposta incompleta. Tente novamente.");
-    const parsed = JSON.parse(buffer.slice(doneIdx + 8)) as { sugestoes?: SugestaoRevisao[] };
-    return parsed.sugestoes ?? [];
-  }
-
-  // Orquestra a revisão completa em chunks sequenciais.
-  // overrideText permite passar o texto diretamente (ex: após upload de novo arquivo).
-  async function runRevisao(overrideText?: string) {
-    const CHUNK_SIZE = 20_000;
-    const texto = overrideText ?? manuscritoTexto;
-
-    const totalChunks = Math.max(1, Math.ceil(texto.length / CHUNK_SIZE));
-    let allSugestoes: SugestaoRevisao[] = [];
-
-    for (let i = 0; i < totalChunks; i++) {
-      const chunkStart = i * CHUNK_SIZE;
-      const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, texto.length);
-
-      setProgress({ current: i + 1, total: totalChunks });
-
-      const body: Record<string, unknown> = { project_id: projectId };
-      // Passa coordenadas de chunk apenas quando há mais de 1 (o servidor salva no DB quando não é chunked)
-      if (totalChunks > 1) {
-        body.chunk_start = chunkStart;
-        body.chunk_end = chunkEnd;
-      }
-
+  async function triggerRevisao() {
+    setTriggering(true);
+    setError(null);
+    stopPolling();
+    try {
       const res = await fetch("/api/agentes/revisao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ project_id: projectId }),
       });
 
       if (!res.ok) {
         const data = await res.json() as { error?: string };
-        throw new Error(data.error ?? "Erro ao iniciar revisão.");
+        setError(data.error ?? "Erro ao iniciar revisão.");
+        return;
       }
 
-      const sugestoes = await readChunkSugestoes(res);
-      allSugestoes = allSugestoes.concat(sugestoes);
-    }
+      const data = await res.json() as { status: string; revisao?: RevisaoResult; total_chunks?: number };
 
-    // Deduplica por trecho_original (sobreposição de bordas pode gerar duplicatas)
-    const seen = new Set<string>();
-    const deduped = allSugestoes.filter(s => {
-      if (!s.trecho_original || seen.has(s.trecho_original)) return false;
-      seen.add(s.trecho_original);
-      return true;
-    });
-
-    // Renumera IDs de forma consistente
-    const sugestoesFinal = deduped.map((s, idx) => ({
-      ...s,
-      id: `r${String(idx + 1).padStart(3, "0")}`,
-    }));
-
-    const revisaoResult: RevisaoResult = {
-      sugestoes: sugestoesFinal,
-      revisado_em: new Date().toISOString(),
-    };
-
-    // Quando chunked o servidor não salva — o cliente salva o resultado consolidado
-    if (Math.ceil(texto.length / CHUNK_SIZE) > 1) {
-      await supabase
-        .from("projects")
-        .update({ dados_revisao: revisaoResult, etapa_atual: "revisao" })
-        .eq("id", projectId);
-    }
-
-    return revisaoResult;
-  }
-
-  async function triggerRevisao() {
-    setTriggering(true);
-    setError(null);
-    setProgress(null);
-    try {
-      const revisao = await runRevisao();
-      setRevisao(revisao);
-      setAceitas(new Set());
-      setRejeitadas(new Set());
+      if (data.status === "done") {
+        // Mock ou livro muito curto processado instantaneamente
+        setRevisao(data.revisao!);
+        setAceitas(new Set());
+        setRejeitadas(new Set());
+      } else if (data.status === "processing") {
+        setPollProgress({ done: 0, total: data.total_chunks ?? 1 });
+        startPolling();
+      } else {
+        setError("Resposta inesperada do servidor.");
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erro de conexão. Tente novamente.");
+      setError("Erro de conexão: " + (e instanceof Error ? e.message : "tente novamente."));
     } finally {
       setTriggering(false);
-      setProgress(null);
     }
   }
 
@@ -490,14 +470,25 @@ export default function RevisaoPage() {
         setManuscritoTexto(parseData.texto ?? "");
       }
 
-      // Step 3: re-run revisao usando texto novo diretamente
+      // Step 3: submete novo batch para o texto actualizado
       setUploadStatus("analyzing");
-      const novaRevisao = await runRevisao(parseData.texto ?? "");
-
-      setRevisao(novaRevisao);
-      const empty = new Set<string>();
-      setAceitas(empty);
-      setRejeitadas(empty);
+      const trigRes = await fetch("/api/agentes/revisao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      if (!trigRes.ok) {
+        const d = await trigRes.json() as { error?: string };
+        throw new Error(d.error ?? "Erro ao iniciar revisão.");
+      }
+      const trigData = await trigRes.json() as { status: string; revisao?: RevisaoResult; total_chunks?: number };
+      if (trigData.status === "done") {
+        setRevisao(trigData.revisao!);
+        setAceitas(new Set()); setRejeitadas(new Set());
+      } else if (trigData.status === "processing") {
+        setPollProgress({ done: 0, total: trigData.total_chunks ?? 1 });
+        startPolling();
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
     } finally {
@@ -565,6 +556,35 @@ export default function RevisaoPage() {
             </button>
           </div>
 
+        ) : pollProgress !== null ? (
+          /* Batch em processamento */
+          <div className="max-w-lg mx-auto text-center py-16">
+            <div className="w-16 h-16 rounded-2xl bg-brand-primary/5 flex items-center justify-center mx-auto mb-6">
+              <span className="w-8 h-8 rounded-full border-4 border-brand-primary border-t-transparent animate-spin" />
+            </div>
+            <h1 className="font-heading text-3xl text-brand-primary mb-3">Revisão em andamento</h1>
+            <p className="text-zinc-500 leading-relaxed mb-6">
+              A Anthropic está analisando seu manuscrito em paralelo. Você pode fechar esta página — o resultado será salvo automaticamente.
+            </p>
+            {/* Progress bar */}
+            <div className="w-full bg-zinc-100 rounded-full h-2 mb-2">
+              <div
+                className="bg-brand-primary h-2 rounded-full transition-all duration-500"
+                style={{ width: pollProgress.total > 0 ? `${Math.round((pollProgress.done / pollProgress.total) * 100)}%` : "5%" }}
+              />
+            </div>
+            <p className="text-zinc-400 text-sm mb-8">
+              {pollProgress.done > 0
+                ? `${pollProgress.done} de ${pollProgress.total} partes concluídas`
+                : `0 de ${pollProgress.total} partes — aguardando início…`}
+            </p>
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm text-left">
+                {error}
+              </div>
+            )}
+          </div>
+
         ) : !revisao ? (
           /* Not yet run */
           <div className="max-w-lg mx-auto text-center py-16">
@@ -589,16 +609,12 @@ export default function RevisaoPage() {
               {triggering ? (
                 <>
                   <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  {progress
-                    ? `Analisando parte ${progress.current} de ${progress.total}…`
-                    : "Analisando com IA…"}
+                  Enviando para análise…
                 </>
               ) : "Iniciar revisão →"}
             </button>
             <p className="text-zinc-400 text-xs mt-4">
-              {progress
-                ? `Parte ${progress.current} de ${progress.total} — cada parte leva ~30s`
-                : "Leva cerca de 30–60 s por parte do manuscrito."}
+              A análise é processada em paralelo pela Anthropic. Manuscritos grandes levam alguns minutos.
             </p>
           </div>
 
@@ -651,11 +667,7 @@ export default function RevisaoPage() {
                   disabled={triggering}
                   className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-50"
                 >
-                  {triggering
-                    ? progress
-                      ? `Parte ${progress.current}/${progress.total}…`
-                      : "Analisando…"
-                    : "↺ Nova análise"}
+                  {triggering ? "Enviando…" : "↺ Nova análise"}
                 </button>
               </div>
             </div>
