@@ -206,6 +206,7 @@ export default function RevisaoPage() {
   const [filtro, setFiltro] = useState<"todas" | "critico" | "recomendado" | "opcional">("todas");
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "analyzing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
@@ -253,57 +254,110 @@ export default function RevisaoPage() {
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  async function triggerRevisao() {
-    setTriggering(true);
-    setError(null);
-    try {
+  // Lê uma resposta de streaming da API e extrai as sugestões do marcador __DONE__.
+  async function readChunkSugestoes(res: Response): Promise<SugestaoRevisao[]> {
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const data = await res.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "Erro.");
+      return data.revisao?.sugestoes ?? [];
+    }
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+    }
+    if (buffer.includes("__ERROR__")) throw new Error(buffer.split("__ERROR__")[1]);
+    const doneIdx = buffer.lastIndexOf("__DONE__");
+    if (doneIdx === -1) throw new Error("Resposta incompleta. Tente novamente.");
+    const parsed = JSON.parse(buffer.slice(doneIdx + 8)) as { sugestoes?: SugestaoRevisao[] };
+    return parsed.sugestoes ?? [];
+  }
+
+  // Orquestra a revisão completa em chunks sequenciais.
+  // overrideText permite passar o texto diretamente (ex: após upload de novo arquivo).
+  async function runRevisao(overrideText?: string) {
+    const CHUNK_SIZE = 20_000;
+    const texto = overrideText ?? manuscritoTexto;
+
+    const totalChunks = Math.max(1, Math.ceil(texto.length / CHUNK_SIZE));
+    let allSugestoes: SugestaoRevisao[] = [];
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkStart = i * CHUNK_SIZE;
+      const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, texto.length);
+
+      setProgress({ current: i + 1, total: totalChunks });
+
+      const body: Record<string, unknown> = { project_id: projectId };
+      // Passa coordenadas de chunk apenas quando há mais de 1 (o servidor salva no DB quando não é chunked)
+      if (totalChunks > 1) {
+        body.chunk_start = chunkStart;
+        body.chunk_end = chunkEnd;
+      }
+
       const res = await fetch("/api/agentes/revisao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
+        body: JSON.stringify(body),
       });
 
-      // Erro antes de iniciar stream (auth, 404, etc.)
       if (!res.ok) {
         const data = await res.json() as { error?: string };
-        setError(data.error ?? "Erro ao iniciar revisão.");
-        return;
+        throw new Error(data.error ?? "Erro ao iniciar revisão.");
       }
 
-      // Mock ou resposta JSON normal
-      const contentType = res.headers.get("content-type") ?? "";
-      if (contentType.includes("application/json")) {
-        const data = await res.json() as { ok?: boolean; revisao?: RevisaoResult; error?: string };
-        if (!data.ok) { setError(data.error ?? "Erro."); return; }
-        setRevisao(data.revisao!);
-        setAceitas(new Set()); setRejeitadas(new Set());
-        return;
-      }
+      const sugestoes = await readChunkSugestoes(res);
+      allSugestoes = allSugestoes.concat(sugestoes);
+    }
 
-      // Streaming: acumula chunks até receber __DONE__ ou __ERROR__
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-      }
+    // Deduplica por trecho_original (sobreposição de bordas pode gerar duplicatas)
+    const seen = new Set<string>();
+    const deduped = allSugestoes.filter(s => {
+      if (!s.trecho_original || seen.has(s.trecho_original)) return false;
+      seen.add(s.trecho_original);
+      return true;
+    });
 
-      if (buffer.includes("__ERROR__")) {
-        setError("Erro ao processar: " + buffer.split("__ERROR__")[1]);
-        return;
-      }
+    // Renumera IDs de forma consistente
+    const sugestoesFinal = deduped.map((s, idx) => ({
+      ...s,
+      id: `r${String(idx + 1).padStart(3, "0")}`,
+    }));
 
-      const doneIdx = buffer.lastIndexOf("__DONE__");
-      if (doneIdx === -1) { setError("Resposta incompleta. Tente novamente."); return; }
-      const revisao = JSON.parse(buffer.slice(doneIdx + 8)) as RevisaoResult;
+    const revisaoResult: RevisaoResult = {
+      sugestoes: sugestoesFinal,
+      revisado_em: new Date().toISOString(),
+    };
+
+    // Quando chunked o servidor não salva — o cliente salva o resultado consolidado
+    if (Math.ceil(texto.length / CHUNK_SIZE) > 1) {
+      await supabase
+        .from("projects")
+        .update({ dados_revisao: revisaoResult, etapa_atual: "revisao" })
+        .eq("id", projectId);
+    }
+
+    return revisaoResult;
+  }
+
+  async function triggerRevisao() {
+    setTriggering(true);
+    setError(null);
+    setProgress(null);
+    try {
+      const revisao = await runRevisao();
       setRevisao(revisao);
-      setAceitas(new Set()); setRejeitadas(new Set());
+      setAceitas(new Set());
+      setRejeitadas(new Set());
     } catch (e: unknown) {
-      setError("Erro de conexão: " + (e instanceof Error ? e.message : "tente novamente."));
+      setError(e instanceof Error ? e.message : "Erro de conexão. Tente novamente.");
     } finally {
       setTriggering(false);
+      setProgress(null);
     }
   }
 
@@ -436,35 +490,9 @@ export default function RevisaoPage() {
         setManuscritoTexto(parseData.texto ?? "");
       }
 
-      // Step 3: re-run revisao (streaming endpoint — same handling as triggerRevisao)
+      // Step 3: re-run revisao usando texto novo diretamente
       setUploadStatus("analyzing");
-      const diagRes = await fetch("/api/agentes/revisao", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
-      });
-
-      if (!diagRes.ok) {
-        const data = await diagRes.json() as { error?: string };
-        throw new Error(data.error ?? "Erro ao gerar revisão.");
-      }
-
-      const reader = diagRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let diagBuffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        diagBuffer += decoder.decode(value, { stream: true });
-      }
-
-      if (diagBuffer.includes("__ERROR__")) {
-        throw new Error(diagBuffer.split("__ERROR__")[1]);
-      }
-
-      const doneIdx = diagBuffer.lastIndexOf("__DONE__");
-      if (doneIdx === -1) throw new Error("Resposta incompleta da revisão.");
-      const novaRevisao = JSON.parse(diagBuffer.slice(doneIdx + 8)) as RevisaoResult;
+      const novaRevisao = await runRevisao(parseData.texto ?? "");
 
       setRevisao(novaRevisao);
       const empty = new Set<string>();
@@ -561,11 +589,17 @@ export default function RevisaoPage() {
               {triggering ? (
                 <>
                   <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                  Analisando com IA…
+                  {progress
+                    ? `Analisando parte ${progress.current} de ${progress.total}…`
+                    : "Analisando com IA…"}
                 </>
               ) : "Iniciar revisão →"}
             </button>
-            <p className="text-zinc-400 text-xs mt-4">Leva cerca de 30–60 segundos dependendo do tamanho do manuscrito.</p>
+            <p className="text-zinc-400 text-xs mt-4">
+              {progress
+                ? `Parte ${progress.current} de ${progress.total} — cada parte leva ~30s`
+                : "Leva cerca de 30–60 s por parte do manuscrito."}
+            </p>
           </div>
 
         ) : (
@@ -617,7 +651,11 @@ export default function RevisaoPage() {
                   disabled={triggering}
                   className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-50"
                 >
-                  {triggering ? "Analisando…" : "↺ Nova análise"}
+                  {triggering
+                    ? progress
+                      ? `Parte ${progress.current}/${progress.total}…`
+                      : "Analisando…"
+                    : "↺ Nova análise"}
                 </button>
               </div>
             </div>

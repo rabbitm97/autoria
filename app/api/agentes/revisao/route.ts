@@ -118,14 +118,15 @@ export async function POST(request: NextRequest) {
     return res as Response;
   }
 
-  let body: { project_id: string };
+  let body: { project_id: string; chunk_start?: number; chunk_end?: number };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
 
-  const { project_id } = body;
+  const { project_id, chunk_start, chunk_end } = body;
+  const isChunked = chunk_start !== undefined && chunk_end !== undefined;
   if (!project_id) {
     return NextResponse.json({ error: "Campo 'project_id' obrigatório." }, { status: 400 });
   }
@@ -158,10 +159,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Limita a 50k chars (~8.500 palavras) para cobrir mais do texto no timeout do Vercel (60s).
-  const textoCortado =
-    texto.length > 50_000
-      ? texto.slice(0, 50_000) + "\n\n[...trecho truncado após ~8.500 palavras — revise o restante em etapas]"
+  // Quando chunked, usa o slice exato enviado pelo cliente.
+  // Quando chamado diretamente (texto curto / mock), limita a 20k chars.
+  const textoCortado = isChunked
+    ? texto.slice(chunk_start!, chunk_end!)
+    : texto.length > 20_000
+      ? texto.slice(0, 20_000) + "\n\n[...trecho truncado — use a análise completa para manuscritos maiores]"
       : texto;
 
   // Mock: retorna instantaneamente sem chamar a API
@@ -246,9 +249,12 @@ export async function POST(request: NextRequest) {
           s => s.trecho_original?.trim() && s.sugestao?.trim() && s.trecho_original.trim() !== s.sugestao.trim()
         );
         const revisao: RevisaoResult = { sugestoes, revisado_em: new Date().toISOString() };
-        await supabase.from("projects")
-          .update({ dados_revisao: revisao, etapa_atual: "revisao" })
-          .eq("id", project_id).eq("user_id", user.id);
+        // No modo chunked o cliente é responsável por salvar o resultado consolidado.
+        if (!isChunked) {
+          await supabase.from("projects")
+            .update({ dados_revisao: revisao, etapa_atual: "revisao" })
+            .eq("id", project_id).eq("user_id", user.id);
+        }
         streamTrace?.update({ output: { duration_ms: Date.now() - streamStartTime } });
         controller.enqueue(enc.encode("\n__DONE__" + JSON.stringify(revisao)));
       } catch (e: unknown) {
