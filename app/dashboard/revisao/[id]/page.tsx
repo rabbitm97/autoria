@@ -564,7 +564,7 @@ export default function RevisaoPage() {
             </div>
             <h1 className="font-heading text-3xl text-brand-primary mb-3">Revisão em andamento</h1>
             <p className="text-zinc-500 leading-relaxed mb-6">
-              A Anthropic está analisando seu manuscrito em paralelo. Você pode fechar esta página — o resultado será salvo automaticamente.
+              A Autoria está analisando seu manuscrito em paralelo. Você pode fechar esta página — o resultado será salvo automaticamente.
             </p>
             {/* Progress bar */}
             <div className="w-full bg-zinc-100 rounded-full h-2 mb-2">
@@ -593,7 +593,7 @@ export default function RevisaoPage() {
             </div>
             <h1 className="font-heading text-3xl text-brand-primary mb-3">Revisão Editorial</h1>
             <p className="text-zinc-500 leading-relaxed mb-2">
-              Nossa IA irá revisar ortografia, gramática, coesão e consistência narrativa — preservando completamente sua voz como autor.
+              A Autoria irá revisar ortografia, gramática, coesão e consistência narrativa — preservando completamente sua voz como autor.
             </p>
             <p className="text-zinc-400 text-sm mb-8">Todas as sugestões são opcionais. Você decide o que aceitar.</p>
             {error && (

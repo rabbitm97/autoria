@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
   }
 
   const SYSTEM_PROMPT = await getAgentPrompt("revisao", FALLBACK_PROMPT);
-  const chunks = splitIntoChunks(texto, 20_000);
+  const chunks = splitIntoChunks(texto, 10_000);
 
   // Submete todos os chunks como um único batch assíncrono — sem timeout de execução.
   const batch = await anthropic.messages.batches.create({
@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
       custom_id: `chunk-${i}`,
       params: {
         model: "claude-sonnet-4-6",
-        max_tokens: 4096,
+        max_tokens: 8096,
         system: SYSTEM_PROMPT,
         messages: [{
           role: "user" as const,
