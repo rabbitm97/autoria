@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import Link from "next/link";
+import { ProjectsThumbnails } from "./ProjectsThumbnails";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,31 +191,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* Project thumbnails strip */}
-          {projetos.length > 0 && (
-            <div className="flex items-center gap-3 flex-1 overflow-x-auto px-2">
-              <span className="text-xs text-zinc-400 font-medium shrink-0">Seus projetos</span>
-              <div className="flex gap-2">
-                {projetos.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={ETAPA_HREF[p.etapa_atual]?.(p.id) ?? "#"}
-                    className="shrink-0 group"
-                  >
-                    <div className={`w-14 h-20 rounded-lg border-2 flex flex-col items-center justify-end pb-1.5 overflow-hidden transition-all
-                      ${p.id === projetoAtivo?.id
-                        ? "border-brand-gold shadow-md shadow-brand-gold/20"
-                        : "border-zinc-200 group-hover:border-brand-gold/50"}`}
-                      style={{ background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}
-                    >
-                      <span className="text-[8px] text-brand-gold/80 font-medium text-center leading-tight px-1 truncate w-full text-center">
-                        {p.manuscript?.nome?.split(" ").slice(0, 2).join(" ") ?? "Livro"}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          <ProjectsThumbnails projetos={projetos} activeId={projetoAtivo?.id} />
 
           {/* New project CTA */}
           <Link
