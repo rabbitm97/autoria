@@ -88,14 +88,51 @@ function detectChaptersRegex(texto: string): { titulo: string; pos: number }[] {
   return results;
 }
 
+type Chapter = { titulo: string; pos: number };
+
+function filterByContentDensity(texto: string, chapters: Chapter[]): Chapter[] {
+  if (chapters.length < 2) return chapters;
+  return chapters.filter((cap, i) => {
+    const end = i < chapters.length - 1 ? chapters[i + 1].pos : texto.length;
+    const segment = texto.slice(cap.pos + cap.titulo.length, end).trim();
+    const wordCount = segment.split(/\s+/).filter(Boolean).length;
+    return wordCount >= 100;
+  });
+}
+
+function filterByDominantPattern(chapters: Chapter[]): Chapter[] {
+  const capituloPattern = /^(cap[íi]tulo|cap\.|parte)\s+/i;
+  const numericPattern = /^[IVXLCDM]+\.?\s*$|^\d+\.?\s*$/;
+  const explicit = chapters.filter(c => capituloPattern.test(c.titulo));
+  const numeric = chapters.filter(c => numericPattern.test(c.titulo));
+  if (explicit.length >= 5) return explicit;
+  if (numeric.length >= 5) return numeric;
+  return chapters;
+}
+
+function filterFrontMatter(chapters: Chapter[]): Chapter[] {
+  const firstExplicit = chapters.findIndex(c =>
+    /^(cap[íi]tulo|cap\.)\s+(1|i|um|primeiro)/i.test(c.titulo.trim())
+  );
+  if (firstExplicit > 0) return chapters.slice(firstExplicit);
+  return chapters;
+}
+
+function applyChapterFilters(texto: string, chapters: Chapter[]): Chapter[] {
+  let result = filterByContentDensity(texto, chapters);
+  result = filterFrontMatter(result);
+  result = filterByDominantPattern(result);
+  return result;
+}
+
 async function detectChaptersWithClaude(
   texto: string,
   context?: { userId?: string; projectId?: string }
 ): Promise<{ titulo: string; pos: number }[]> {
   // First: instant regex scan of full text — respects pre-defined author chapters
-  const regexChapters = detectChaptersRegex(texto);
+  const regexChapters = applyChapterFilters(texto, detectChaptersRegex(texto));
   if (regexChapters.length >= 2) {
-    console.log("[miolo] Chapter detection via regex:", regexChapters.length, "chapters found");
+    console.log("[miolo] Capítulos após filtros:", regexChapters.length);
     return regexChapters;
   }
 
@@ -119,14 +156,16 @@ async function detectChaptersWithClaude(
         messages: [{ role: "user", content: `Detecte os capítulos neste manuscrito. Respeite a estrutura já definida pelo autor — use os títulos EXATAMENTE como aparecem no texto:\n\n${sample}` }],
       }),
     });
-    const chapters = parseLLMJson<{ titulo: string; pos: number }[]>(extractText(msg.content));
-    if (!Array.isArray(chapters)) return [];
+    const raw = parseLLMJson<{ titulo: string; pos: number }[]>(extractText(msg.content));
+    if (!Array.isArray(raw)) return [];
 
     // Re-anchor positions to actual text (Claude positions might be approximate)
-    return chapters.map(c => {
+    const anchored = raw.map(c => {
       const realPos = texto.indexOf(c.titulo);
       return { titulo: c.titulo, pos: realPos >= 0 ? realPos : c.pos };
     }).filter(c => c.pos >= 0);
+
+    return applyChapterFilters(texto, anchored);
   } catch {
     return [];
   }
