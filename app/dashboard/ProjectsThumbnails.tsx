@@ -55,7 +55,7 @@ export function ProjectsThumbnails({
   if (projetos.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-3 flex-1 overflow-x-auto px-2">
+    <div className="flex items-center gap-3 flex-1 overflow-x-auto px-2 pt-2 pb-0.5">
       <span className="text-xs text-zinc-400 font-medium shrink-0">Seus projetos</span>
       <div className="flex gap-2">
         {projetos.map((p) => (
