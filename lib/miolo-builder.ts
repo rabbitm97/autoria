@@ -256,8 +256,12 @@ export function buildParagraphs(text: string, config: MioloConfig, isFirstInChap
   console.log("  tem \\n\\n?", text.includes('\n\n'));
   console.log("  tem \\r\\n\\r\\n?", text.includes('\r\n\r\n'));
   console.log("  contagem de \\n:", (text.match(/\n/g) || []).length);
-  const paras = text.split(/\n{2,}/).filter(p => p.trim());
-  return paras.map((para, idx) => {
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const paras = normalized.split(/\n{2,}/).filter(p => p.trim());
+  const finalParas = paras.length > 1
+    ? paras
+    : normalized.split('\n').map(p => p.trim()).filter(Boolean);
+  return finalParas.map((para, idx) => {
     const p = fixTypography(para.trim());
     const isFirst = isFirstInChapter && idx === 0;
     const isDialogue = p.startsWith("—") || p.startsWith("- ");
@@ -282,15 +286,17 @@ export function buildOrnamented(config: MioloConfig): string {
 }
 
 export function splitIntoChunks(text: string, wpp: number, firstPageWpp: number): string[] {
-  const paras = text.split(/\n{2,}/).filter(p => p.trim());
-  if (paras.length === 0) return [""];
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const paras = normalized.split(/\n{2,}/).filter(p => p.trim());
+  const finalParas = paras.length > 0 ? paras : normalized.split('\n').filter(p => p.trim());
+  if (finalParas.length === 0) return [""];
 
   const chunks: string[] = [];
   let currentChunk: string[] = [];
   let wordCount = 0;
   let isFirstChunk = true;
 
-  for (const para of paras) {
+  for (const para of finalParas) {
     const paraWords = para.split(/\s+/).filter(Boolean).length;
     const limit = isFirstChunk ? firstPageWpp : wpp;
 
@@ -341,18 +347,26 @@ export function buildBookHtml(params: {
   console.log("  capítulos detectados:", params.capitulos.length);
   console.log("  títulos:", params.capitulos.map(c => c.titulo));
 
+  const textoNormalizado = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Recalculate chapter positions against the normalized text so CRLF->LF index shift doesn't desync
+  const capitulosNorm = capitulos.map(c => {
+    const novaPos = textoNormalizado.indexOf(c.titulo);
+    return { ...c, pos: novaPos >= 0 ? novaPos : c.pos };
+  });
+
   // Split manuscript into chapter segments
   const segments: { titulo: string; texto: string }[] = [];
-  if (capitulos.length === 0) {
-    segments.push({ titulo: titulo || "Capítulo 1", texto });
+  if (capitulosNorm.length === 0) {
+    segments.push({ titulo: titulo || "Capítulo 1", texto: textoNormalizado });
   } else {
-    for (let i = 0; i < capitulos.length; i++) {
-      const start = capitulos[i].pos;
-      const end = i < capitulos.length - 1 ? capitulos[i + 1].pos : texto.length;
-      let segTexto = texto.slice(start, end).trim();
+    for (let i = 0; i < capitulosNorm.length; i++) {
+      const start = capitulosNorm[i].pos;
+      const end = i < capitulosNorm.length - 1 ? capitulosNorm[i + 1].pos : textoNormalizado.length;
+      let segTexto = textoNormalizado.slice(start, end).trim();
       const markerEnd = segTexto.indexOf("\n");
       segTexto = markerEnd > -1 ? segTexto.slice(markerEnd).trim() : segTexto;
-      segments.push({ titulo: capitulos[i].titulo, texto: segTexto });
+      segments.push({ titulo: capitulosNorm[i].titulo, texto: segTexto });
     }
   }
 
