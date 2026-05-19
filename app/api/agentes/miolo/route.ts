@@ -70,19 +70,34 @@ function isChapterHeading(s: string): boolean {
 
 function detectChaptersRegex(texto: string): { titulo: string; pos: number }[] {
   const results: { titulo: string; pos: number }[] = [];
-  const lines = texto.split('\n');
+  const normalized = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n');
   let charPos = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const trimmed = raw.trim();
     const prevBlank = i === 0 || lines[i - 1].trim() === '';
-    const nextBlank = i === lines.length - 1 || lines[i + 1].trim() === '';
 
-    if (prevBlank && nextBlank && trimmed && isChapterHeading(trimmed)) {
-      const pos = texto.indexOf(trimmed, Math.max(0, charPos - 5));
-      if (pos >= 0) results.push({ titulo: trimmed, pos });
+    if (!trimmed || !isChapterHeading(trimmed) || trimmed.length >= 80) {
+      charPos += raw.length + 1;
+      continue;
     }
+
+    // Explicit chapter/part: don't require blank line after
+    // (e.g. "CAPITULO I\nObito do autor\n..." — no blank between heading and subtitle)
+    const isExplicitChapter = /^(cap[íi]tulo|cap\.|parte)\s+/i.test(trimmed);
+    if (isExplicitChapter && prevBlank) {
+      const pos = normalized.indexOf(trimmed, Math.max(0, charPos - 5));
+      if (pos >= 0) results.push({ titulo: trimmed, pos });
+    } else if (prevBlank) {
+      const nextBlank = i === lines.length - 1 || lines[i + 1].trim() === '';
+      if (nextBlank) {
+        const pos = normalized.indexOf(trimmed, Math.max(0, charPos - 5));
+        if (pos >= 0) results.push({ titulo: trimmed, pos });
+      }
+    }
+
     charPos += raw.length + 1;
   }
   return results;
