@@ -282,15 +282,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Build HTML — two passes when sumário is on so TOC shows real page numbers.
-  // Pass 1 (no TOC): get chapterStartPages from actual page counter.
-  // Pass 2: rebuild with those real numbers injected into the TOC.
-  const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml };
-  const pass1 = buildBookHtml({ ...buildArgs, config: { ...config, sumario: false } });
-  const { html, capitulosInfo, paginasReais } =
-    config.sumario && pass1.capitulosInfo.length > 1
-      ? buildBookHtml({ ...buildArgs, chapterStartPagesOverride: pass1.chapterStartPages })
-      : pass1;
+  const { html, capitulosInfo, paginasReais } = buildBookHtml(
+    { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml }
+  );
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
   const paginasEstimadas = Math.max(1, Math.round(numPalavras / FORMAT_DIMS[config.formato].wpp));
