@@ -287,6 +287,11 @@ export async function POST(request: NextRequest) {
     persistCapitulos(capitulos);
   }
 
+  console.log("[miolo] DECISÃO FINAL — usando capítulos:", {
+    total: capitulos.length,
+    primeiros_5: capitulos.slice(0, 5).map(c => c.titulo),
+  });
+
   // Fetch credits HTML from Storage if available
   let creditosInnerHtml: string | null = null;
   const dadosCreditos = project.dados_creditos as { html_storage_path?: string } | null;

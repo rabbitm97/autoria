@@ -48,11 +48,6 @@ const MARGIN_BY_FORMAT: Record<FormatoId, { top: string; outer: string; bottom: 
 const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string => {
   const m = MARGIN_BY_FORMAT[fmt];
   return `
-@media print {
-  html, body { background: #fff !important; }
-  .chapter { break-before: right; }
-  .book-page { margin: 0 !important; }
-}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: ${corpo}pt; }
 body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
@@ -67,17 +62,30 @@ body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
 }
 .book-page.no-num { counter-increment: none; }
 .first-chapter { counter-reset: pagenum 0; }
-.book-page:not(.no-num)::after {
-  content: counter(pagenum);
-  position: absolute;
-  bottom: 8mm;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.78em;
-  color: #555;
-  font-family: inherit;
-}
 .page-break { break-before: always; page-break-before: always; }
+@media print {
+  html, body { background: #fff !important; }
+  .book-page {
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    break-inside: auto;
+  }
+  .book-page.no-num { break-before: page; }
+  .book-page.chapter { break-before: right; }
+  @page {
+    @bottom-center {
+      content: counter(page);
+      font-family: inherit;
+      font-size: 9pt;
+      color: #555;
+      margin-top: 5mm;
+    }
+  }
+  @page :first { @bottom-center { content: ""; } }
+  .book-page .toc,
+  .book-page .ficha-wrap { break-inside: auto; }
+}
 .title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; text-align:center; padding:4em 0; }
 .dedicatoria { height:100%; display:flex; align-items:flex-end; justify-content:flex-end; }
 .dedicatoria p { font-style:italic; text-align:right; max-width:60%; font-size:0.9em; color:#555; }
@@ -414,7 +422,7 @@ export function buildBookHtml(params: {
 
   // 4. Verso do rosto — créditos (p.4)
   if (creditosInnerHtml) {
-    noNumPage(creditosInnerHtml);
+    noNumPage(`<div class="creditos-wrap" style="break-inside: auto;">${creditosInnerHtml}</div>`);
   } else {
     noNumPage(`
   <div style="display:flex;flex-direction:column;justify-content:flex-end;min-height:60vh">
