@@ -192,18 +192,25 @@ function ModoUpload({
     setUploading(true);
     setError(null);
     try {
-      const b64 = await new Promise<string>((res, rej) => {
-        const reader = new FileReader();
-        reader.onload = () => res((reader.result as string).split(",")[1]);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
+      const presignRes = await fetch("/api/agentes/upload-capa/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, mime_type: file.type }),
       });
+      const presign = await presignRes.json();
+      if (!presignRes.ok) throw new Error(presign.error ?? "Erro ao obter URL de upload");
+
+      const { error: uploadError } = await supabase.storage
+        .from("capas")
+        .uploadToSignedUrl(presign.storage_path, presign.token, file, { contentType: file.type });
+      if (uploadError) throw new Error(`Erro ao enviar imagem: ${uploadError.message}`);
+
       const r = await fetch("/api/agentes/upload-capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: projectId,
-          imagem_base64: b64,
+          storage_path: presign.storage_path,
           mime_type: file.type,
           largura_px: dims.w,
           altura_px: dims.h,
@@ -827,19 +834,25 @@ function ModoManual({
       const blob = await new Promise<Blob>((res, rej) =>
         canvas.toBlob(b => b ? res(b) : rej(new Error("Canvas export failed")), "image/png")
       );
-      const reader = new FileReader();
-      const b64 = await new Promise<string>((res, rej) => {
-        reader.onload = () => res((reader.result as string).split(",")[1]);
-        reader.onerror = rej;
-        reader.readAsDataURL(blob);
+      const presignRes = await fetch("/api/agentes/upload-capa/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, mime_type: "image/png" }),
       });
+      const presign = await presignRes.json();
+      if (!presignRes.ok) throw new Error(presign.error ?? "Erro ao obter URL de upload");
+
+      const { error: uploadError } = await supabase.storage
+        .from("capas")
+        .uploadToSignedUrl(presign.storage_path, presign.token, blob, { contentType: "image/png" });
+      if (uploadError) throw new Error(`Erro ao enviar imagem: ${uploadError.message}`);
 
       const r = await fetch("/api/agentes/upload-capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: projectId,
-          imagem_base64: b64,
+          storage_path: presign.storage_path,
           mime_type: "image/png",
           largura_px: cW,
           altura_px: cH,

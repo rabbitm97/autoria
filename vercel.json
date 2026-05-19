@@ -10,6 +10,7 @@
     "app/api/agentes/qa/route.ts": { "maxDuration": 60 },
     "app/api/agentes/qa-publicacao/route.ts": { "maxDuration": 60 },
     "app/api/agentes/upload-capa/route.ts": { "maxDuration": 60 },
+    "app/api/agentes/upload-capa/presign/route.ts": { "maxDuration": 30 },
     "app/api/agentes/gerar-audio/route.ts": { "maxDuration": 60 },
     "app/api/ferramentas/revisor/route.ts": { "maxDuration": 60 },
     "app/api/ferramentas/diagnostico/route.ts": { "maxDuration": 60 },

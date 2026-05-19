@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   let body: {
     project_id: string;
-    imagem_base64: string;
+    storage_path: string;
     mime_type: string;
     largura_px: number;
     altura_px: number;
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
 
   const {
     project_id,
-    imagem_base64,
+    storage_path,
     mime_type,
     largura_px,
     altura_px,
@@ -123,9 +123,9 @@ export async function POST(req: NextRequest) {
     usar_orelhas,
   } = body;
 
-  if (!project_id || !imagem_base64 || !largura_px || !altura_px) {
+  if (!project_id || !storage_path || !largura_px || !altura_px) {
     return NextResponse.json(
-      { error: "project_id, imagem_base64, largura_px e altura_px são obrigatórios" },
+      { error: "project_id, storage_path, largura_px e altura_px são obrigatórios" },
       { status: 400 }
     );
   }
@@ -166,36 +166,21 @@ export async function POST(req: NextRequest) {
     detalhes,
   };
 
-  // ── Upload to Supabase Storage ────────────────────────────────────────────
+  // ── Get public URL for the already-uploaded file ─────────────────────────
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const ext = mime_type.includes("png") ? "png" : "jpg";
-  const storagePath = `${userId}/${project_id}/capa_upload.${ext}`;
-  const buffer = Buffer.from(imagem_base64, "base64");
-
-  const { error: uploadError } = await storageClient.storage
-    .from("capas")
-    .upload(storagePath, buffer, { contentType: mime_type, upsert: true });
-
-  if (uploadError) {
-    return NextResponse.json(
-      { error: `Erro ao salvar imagem: ${uploadError.message}` },
-      { status: 500 }
-    );
-  }
-
   const { data: { publicUrl } } = storageClient.storage
     .from("capas")
-    .getPublicUrl(storagePath);
+    .getPublicUrl(storage_path);
 
   const result: CapaUploadResult = {
     project_id,
     modo: "upload",
     url: publicUrl,
-    storage_path: storagePath,
+    storage_path,
     largura_px,
     altura_px,
     dpi,
