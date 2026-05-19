@@ -250,6 +250,12 @@ export function fixTypography(text: string): string {
 }
 
 export function buildParagraphs(text: string, config: MioloConfig, isFirstInChapter: boolean): string {
+  console.log("[buildParagraphs] entrada:");
+  console.log("  tamanho:", text.length);
+  console.log("  primeiros 500 chars:", JSON.stringify(text.slice(0, 500)));
+  console.log("  tem \\n\\n?", text.includes('\n\n'));
+  console.log("  tem \\r\\n\\r\\n?", text.includes('\r\n\r\n'));
+  console.log("  contagem de \\n:", (text.match(/\n/g) || []).length);
   const paras = text.split(/\n{2,}/).filter(p => p.trim());
   return paras.map((para, idx) => {
     const p = fixTypography(para.trim());
@@ -328,6 +334,12 @@ export function buildBookHtml(params: {
   const pg = config.marcas_corte
     ? (html: string) => wrapInSpread(html)
     : (html: string) => html;
+
+  console.log("[buildBookHtml] texto recebido:");
+  console.log("  tamanho:", texto.length);
+  console.log("  primeiros 500 chars:", JSON.stringify(texto.slice(0, 500)));
+  console.log("  capítulos detectados:", params.capitulos.length);
+  console.log("  títulos:", params.capitulos.map(c => c.titulo));
 
   // Split manuscript into chapter segments
   const segments: { titulo: string; texto: string }[] = [];
