@@ -231,24 +231,12 @@ export async function POST(request: NextRequest) {
   // Detect chapters — MD5 cache to skip redundant Claude calls on re-generation
   const textoHash = createHash("md5").update(texto).digest("hex");
   let capitulos: { titulo: string; pos: number }[];
-  if (ms?.texto_hash === textoHash && Array.isArray(ms?.capitulos_detectados)) {
-    capitulos = ms.capitulos_detectados as { titulo: string; pos: number }[];
-    console.log("[miolo] Cache HIT — usando capítulos persistidos:", {
-      project_id,
-      capitulos: capitulos.length,
-    });
-  } else {
-    capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
-    console.log("[miolo] Cache MISS — detectando capítulos via Claude:", {
-      project_id,
-      texto_hash: textoHash,
-      capitulos_detectados: capitulos.length,
-    });
+  const persistCapitulos = (caps: { titulo: string; pos: number }[]) => {
     void (async () => {
       try {
         await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
           .from("manuscripts")
-          .update({ capitulos_detectados: capitulos, texto_hash: textoHash })
+          .update({ capitulos_detectados: caps, texto_hash: textoHash })
           .eq("id", project.manuscript_id as string);
       } catch (e) {
         console.error("[miolo] Falha ao persistir cache de capítulos:", {
@@ -258,6 +246,30 @@ export async function POST(request: NextRequest) {
         });
       }
     })();
+  };
+
+  if (ms?.texto_hash === textoHash && Array.isArray(ms?.capitulos_detectados)) {
+    const cached = ms.capitulos_detectados as { titulo: string; pos: number }[];
+    const tamTexto = texto.length;
+    const primeiroSeg = cached.length > 1 ? cached[1].pos - cached[0].pos : tamTexto - (cached[0]?.pos ?? 0);
+    const cacheRuim = cached.length < 3 || (primeiroSeg / tamTexto) > 0.7;
+
+    if (cacheRuim) {
+      console.log("[miolo] Cache INVÁLIDO — re-detectando:", { capitulos: cached.length, project_id });
+      capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
+      persistCapitulos(capitulos);
+    } else {
+      capitulos = cached;
+      console.log("[miolo] Cache HIT — usando capítulos persistidos:", { project_id, capitulos: cached.length });
+    }
+  } else {
+    capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
+    console.log("[miolo] Cache MISS — detectando capítulos via Claude:", {
+      project_id,
+      texto_hash: textoHash,
+      capitulos_detectados: capitulos.length,
+    });
+    persistCapitulos(capitulos);
   }
 
   // Fetch credits HTML from Storage if available
