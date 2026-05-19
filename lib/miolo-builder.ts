@@ -43,80 +43,56 @@ const MARGIN_BY_FORMAT: Record<FormatoId, { top: string; outer: string; bottom: 
   a4:        { top: "30mm", outer: "20mm", bottom: "30mm", inner: "25mm" },
 };
 
-type MarginConfig = { top: string; outer: string; bottom: string; inner: string };
-
 // ─── Template CSS ─────────────────────────────────────────────────────────────
 
 const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string => {
   const m = MARGIN_BY_FORMAT[fmt];
   return `
-@page {
-  size: ${w} ${h};
-  margin: ${m.top} ${m.outer} ${m.bottom} ${m.inner};
+@media print {
+  html, body { background: #fff !important; }
+  .chapter { break-before: right; }
+  .book-page { margin: 0 !important; }
 }
-@page :left  { margin: ${m.top} ${m.inner} ${m.bottom} ${m.outer}; }
-@page :right { margin: ${m.top} ${m.outer} ${m.bottom} ${m.inner}; }
-
-@page main {
-  @bottom-center {
-    content: counter(page);
-    font-size: 9pt;
-    color: #555;
-  }
-}
-@page frontmatter { /* sem número de página */ }
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: ${corpo}pt; }
-body { color: #1a1a1a; }
-
-.frontmatter { page: frontmatter; break-after: page; }
-.chapter { page: main; break-before: right; padding-top: 4em; }
-.chapter:first-of-type { counter-reset: page 1; }
-
-.title-page { text-align: center; padding-top: 6em; }
-.dedicatoria { text-align: right; padding-top: 50%; font-style: italic; }
-.epigrafe    { text-align: right; padding-top: 30%; }
-.toc h2 { text-align: center; margin-bottom: 2em; }
-.toc ol { list-style: none; padding: 0; }
-.toc li { display:flex; align-items:baseline; margin-bottom:.6em; }
-.toc .toc-dots { flex:1; border-bottom:1px dotted #999; margin:0 .5em .15em; }
-
-.chapter-title {
-  font-size: 1.6em;
-  font-weight: 400;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: .1em;
-  margin-bottom: 2.5em;
-  break-after: avoid;
+body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
+.book-page {
+  width: ${w};
+  min-height: ${h};
+  margin: 18mm auto;
+  padding: ${m.top} ${m.outer} ${m.bottom} ${m.inner};
+  position: relative;
+  counter-increment: pagenum;
+  background: #fff;
 }
-
-p {
-  text-align: justify;
-  text-indent: 1.2em;
-  orphans: 3;
-  widows: 3;
-  hyphens: auto;
-  -webkit-hyphens: auto;
+.book-page.no-num { counter-increment: none; }
+.first-chapter { counter-reset: pagenum 0; }
+.book-page:not(.no-num)::after {
+  content: counter(pagenum);
+  position: absolute;
+  bottom: 8mm;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.78em;
+  color: #555;
+  font-family: inherit;
 }
-p.first-para,
-.chapter-title + p { text-indent: 0; }
-
-.dialogo { text-indent: 0; }
-.ornamento { text-align: center; margin: 1.5em 0; letter-spacing: .5em; }
-
-.drop-cap {
-  float: left;
-  font-size: 3.2em;
-  line-height: 0.85;
-  padding-right: 0.08em;
-  padding-top: 0.05em;
-  font-weight: 600;
-}
-
-.author-bio { margin-top: 3em; padding-top: 2em; border-top: 1px solid #ddd; font-size: 0.9em; color: #444; }
-.chapter-number { font-size: .75em; text-transform: uppercase; letter-spacing: .2em; color: #888; display: block; margin-bottom: .4em; }
+.page-break { break-before: always; page-break-before: always; }
+.title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; text-align:center; padding:4em 0; }
+.dedicatoria { height:100%; display:flex; align-items:flex-end; justify-content:flex-end; }
+.dedicatoria p { font-style:italic; text-align:right; max-width:60%; font-size:0.9em; color:#555; }
+.epigrafe { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; padding:3em 0; }
+.epigrafe .epigrafe-text { font-style:italic; text-align:right; max-width:55%; font-size:0.9em; }
+.epigrafe .epigrafe-autor { font-size:0.8em; color:#777; text-align:right; margin-top:0.4em; }
+.toc { padding:3em 0; }
+.toc h2 { font-size:1.2em; margin-bottom:2em; }
+.toc ol { list-style:none; }
+.toc ol li { display:flex; align-items:baseline; margin-bottom:0.7em; font-size:0.95em; gap:0.2em; }
+.toc ol li a { text-decoration:none; color:inherit; white-space:nowrap; }
+.toc ol li .toc-dots { flex:1; border-bottom:1px dotted #999; margin:0 0.5em 0.15em; min-width:1em; }
+.toc ol li .toc-pg { color:#555; font-size:0.88em; white-space:nowrap; min-width:2em; text-align:right; }
+.chapter-number { font-size:.75em; text-transform:uppercase; letter-spacing:.2em; color:#888; display:block; margin-bottom:.4em; }
+.author-bio { margin-top:3em; padding-top:2em; border-top:1px solid #ddd; font-size:0.9em; color:#444; }
 `;
 };
 
@@ -148,7 +124,7 @@ body { font-family:'Source Serif 4',Georgia,serif; line-height:1.65; }
 .chapter-title { font-size:1.8em; font-weight:600; line-height:1.2; margin-bottom:1.5em; }
 h3 { font-size:1.2em; font-weight:600; margin:2em 0 .5em; }
 h4 { font-size:1.05em; font-weight:600; margin:1.5em 0 .3em; }
-p { margin:0 0 .8em; text-align:left; text-indent:0; }
+p { margin:0 0 .8em; text-align:left; }
 blockquote { margin:1.5em 2em; padding:.8em 1.5em; border-left:3px solid #ddd; font-style:italic; color:#555; }
 .box-destaque { background:#f8f8f8; border-radius:4px; padding:.8em 1.2em; margin:1.5em 0; font-size:.95em; }
 `,
@@ -171,7 +147,7 @@ body { font-family:'Lora',Georgia,serif; line-height:1.9; }
 .author-name { font-size:1.2em; color:#555; margin-top:2em; }
 .chapter { padding-top:3em; }
 .chapter-title { font-size:1.8em; font-weight:600; margin-bottom:1.5em; }
-p { margin:0 0 1em; text-indent:0; }
+p { margin:0 0 1em; }
 .dialogo { margin:0 0 1em; }
 `,
   poesia: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
@@ -184,7 +160,7 @@ body { font-family:'Crimson Text',Georgia,serif; line-height:1.7; }
 .poem { margin:0 auto 2em; max-width:70%; }
 .poem-line { display:block; }
 .poem-stanza { margin-bottom:1.5em; }
-p { margin:0 0 1em; text-indent:0; text-align:left; }
+p { margin:0 0 1em; }
 `,
   religioso: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');
@@ -201,43 +177,49 @@ blockquote { margin:1em 2em; font-size:.9em; font-style:italic; }
 
 // ─── Crop marks / bleed ───────────────────────────────────────────────────────
 
-export function buildMarksCss(w: string, h: string, m: MarginConfig): string {
-  const bleed = 3; // mm
-  const addMm = (dim: string, add: number) => {
-    const cm = parseFloat(dim);
-    return `${(cm * 10 + add * 2).toFixed(1)}mm`;
-  };
-  const sw = addMm(w, bleed);
-  const sh = addMm(h, bleed);
+export function buildMarksCss(w: string, h: string): string {
+  const addCm = (dim: string, add: number) => `${+(parseFloat(dim) + add).toFixed(1)}cm`;
+  const sw = addCm(w, 2.4);
+  const sh = addCm(h, 2.4);
 
   return `
-@page {
-  size: ${sw} ${sh};
-  margin:
-    calc(${m.top} + ${bleed}mm)
-    calc(${m.outer} + ${bleed}mm)
-    calc(${m.bottom} + ${bleed}mm)
-    calc(${m.inner} + ${bleed}mm);
-  marks: crop;
+/* ── Sangria 12 mm + Marcas de corte ─────────────────────────── */
+@media print {
+  @page { size: ${sw} ${sh}; }
+  .spread { margin: 0 auto !important; break-before: page; page-break-before: always; }
+  .spread .book-page { break-before: auto !important; page-break-before: auto !important; }
+  .spread .chapter { break-before: auto !important; }
+  .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
-@page :left {
-  margin:
-    calc(${m.top} + ${bleed}mm)
-    calc(${m.inner} + ${bleed}mm)
-    calc(${m.bottom} + ${bleed}mm)
-    calc(${m.outer} + ${bleed}mm);
+.spread {
+  position: relative;
+  display: block;
+  width: ${sw};
+  height: ${sh};
+  margin: 18mm auto;
+  background: #fff;
 }
-@page :right {
-  margin:
-    calc(${m.top} + ${bleed}mm)
-    calc(${m.outer} + ${bleed}mm)
-    calc(${m.bottom} + ${bleed}mm)
-    calc(${m.inner} + ${bleed}mm);
+.spread .book-page {
+  position: absolute !important;
+  top: 12mm;
+  left: 12mm;
+  margin: 0 !important;
+  z-index: 1;
 }
+.cm { position: absolute; background: #111; z-index: 10; }
+.cm-h { height: 1px; width: 7mm; }
+.cm-v { width:  1px; height: 7mm; }
+.cm-tl-h { top: 7mm;    left: 0;    }
+.cm-tl-v { top: 0;      left: 7mm;  }
+.cm-tr-h { top: 7mm;    right: 0;   }
+.cm-tr-v { top: 0;      right: 7mm; }
+.cm-bl-h { bottom: 7mm; left: 0;    }
+.cm-bl-v { bottom: 0;   left: 7mm;  }
+.cm-br-h { bottom: 7mm; right: 0;   }
+.cm-br-v { bottom: 0;   right: 7mm; }
 `;
 }
 
-// Deprecated — kept for export compatibility, not called internally
 export const MARKS_HTML = `<span class="cm cm-h cm-tl-h" aria-hidden="true"></span>
 <span class="cm cm-v cm-tl-v" aria-hidden="true"></span>
 <span class="cm cm-h cm-tr-h" aria-hidden="true"></span>
@@ -268,29 +250,23 @@ export function fixTypography(text: string): string {
 }
 
 export function buildParagraphs(text: string, config: MioloConfig, isFirstInChapter: boolean): string {
-  const clean = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-  let paras = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-
-  // Fallback: if no blank-line separation, split by single newlines
-  if (paras.length === 1 && clean.includes("\n")) {
-    paras = clean.split("\n").map(p => p.trim()).filter(Boolean);
-  }
-
+  const paras = text.split(/\n{2,}/).filter(p => p.trim());
   return paras.map((para, idx) => {
-    const p = fixTypography(para);
+    const p = fixTypography(para.trim());
     const isFirst = isFirstInChapter && idx === 0;
     const isDialogue = p.startsWith("—") || p.startsWith("- ");
 
     if (isDialogue) return `<p class="dialogo">${escHtml(p)}</p>`;
 
+    const classNames = isFirst ? "first-para" : "";
+
     if (config.capitular && isFirst && p.length > 2) {
       const firstChar = p[0];
       const rest = escHtml(p.slice(1));
-      return `<p class="first-para"><span class="drop-cap">${firstChar}</span>${rest}</p>`;
+      return `<p class="${classNames}"><span style="float:left;font-size:3em;line-height:.8;padding-right:.1em;padding-top:.05em;font-weight:600">${firstChar}</span>${rest}</p>`;
     }
 
-    return `<p${isFirst ? ' class="first-para"' : ""}>${escHtml(p)}</p>`;
+    return `<p${classNames ? ` class="${classNames}"` : ""}>${escHtml(p)}</p>`;
   }).join("\n");
 }
 
@@ -299,7 +275,6 @@ export function buildOrnamented(config: MioloConfig): string {
   return `<div class="ornamento">* * *</div>`;
 }
 
-// Deprecated — kept for export compatibility
 export function splitIntoChunks(text: string, wpp: number, firstPageWpp: number): string[] {
   const paras = text.split(/\n{2,}/).filter(p => p.trim());
   if (paras.length === 0) return [""];
@@ -337,151 +312,201 @@ export function buildBookHtml(params: {
   capitulos: { titulo: string; pos: number }[];
   config: MioloConfig;
   creditosInnerHtml?: string | null;
+  chapterStartPagesOverride?: number[];
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
-  const { titulo, subtitulo, autor, capitulos, config, creditosInnerHtml } = params;
-
-  // Normalizar quebras de linha
-  const texto = params.texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
+  const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml, chapterStartPagesOverride } = params;
   const fmt = FORMAT_DIMS[config.formato];
-  const m = MARGIN_BY_FORMAT[config.formato];
+  // When crop marks are off, inject the plain @page size rule.
+  // When crop marks are on, buildMarksCss owns the @page rule (spread size).
+  const pageSizeCss = config.marcas_corte
+    ? ""
+    : `@media print { @page { size: ${fmt.w} ${fmt.h}; } }\n`;
+  const css = TEMPLATE_CSS[config.template](fmt.w, fmt.h, config.corpo_pt, config.formato)
+    + pageSizeCss
+    + (config.marcas_corte ? buildMarksCss(fmt.w, fmt.h) : "");
 
-  let css = TEMPLATE_CSS[config.template](fmt.w, fmt.h, config.corpo_pt, config.formato);
-  if (config.marcas_corte) {
-    css += buildMarksCss(fmt.w, fmt.h, m);
+  const pg = config.marcas_corte
+    ? (html: string) => wrapInSpread(html)
+    : (html: string) => html;
+
+  // Split manuscript into chapter segments
+  const segments: { titulo: string; texto: string }[] = [];
+  if (capitulos.length === 0) {
+    segments.push({ titulo: titulo || "Capítulo 1", texto });
+  } else {
+    for (let i = 0; i < capitulos.length; i++) {
+      const start = capitulos[i].pos;
+      const end = i < capitulos.length - 1 ? capitulos[i + 1].pos : texto.length;
+      let segTexto = texto.slice(start, end).trim();
+      const markerEnd = segTexto.indexOf("\n");
+      segTexto = markerEnd > -1 ? segTexto.slice(markerEnd).trim() : segTexto;
+      segments.push({ titulo: capitulos[i].titulo, texto: segTexto });
+    }
   }
 
-  // ── Front matter ──────────────────────────────────────────────────────────
+  const capitulosInfo: CapituloInfo[] = segments.map((seg, i) => ({
+    id: `cap-${i}`,
+    titulo: seg.titulo,
+    palavras: seg.texto.split(/\s+/).filter(Boolean).length,
+  }));
 
-  const frontMatter: string[] = [];
+  let pageCount = 0;
+  const sections: string[] = [];
 
-  // Half-title
-  frontMatter.push(`<section class="frontmatter">
+  const noNumPage = (inner: string, extraClass = ""): void => {
+    pageCount++;
+    const cls = ["book-page", "page-break", "no-num", extraClass].filter(Boolean).join(" ");
+    sections.push(pg(`<div class="${cls}">${inner}</div>`));
+  };
+
+  const blankPage = (): void => {
+    pageCount++;
+    sections.push(pg(`<div class="book-page page-break no-num blank-page" aria-hidden="true"></div>`));
+  };
+
+  const ensureOddPage = (): void => {
+    if (pageCount % 2 !== 0) blankPage();
+  };
+
+  // 1. Half-title (p.1 — recto)
+  noNumPage(`
   <div class="title-page">
     <p class="book-title">${escHtml(titulo)}</p>
     ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
-  </div>
-</section>`);
+  </div>`);
 
-  // Folha de rosto
-  frontMatter.push(`<section class="frontmatter">
+  // 2. Verso da falsa folha (p.2 — branco)
+  blankPage();
+
+  // 3. Folha de rosto (p.3 — recto)
+  noNumPage(`
   <div class="title-page">
     <p class="book-title">${escHtml(titulo)}</p>
     ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
     <p class="author-name">${escHtml(autor)}</p>
-  </div>
-</section>`);
+  </div>`);
 
-  // Créditos
+  // 4. Verso do rosto — créditos (p.4)
   if (creditosInnerHtml) {
-    frontMatter.push(`<section class="frontmatter">${creditosInnerHtml}</section>`);
+    noNumPage(creditosInnerHtml);
   } else {
-    frontMatter.push(`<section class="frontmatter">
+    noNumPage(`
   <div style="display:flex;flex-direction:column;justify-content:flex-end;min-height:60vh">
     <p style="font-size:.8em;color:#666;line-height:1.8">
       © ${new Date().getFullYear()} ${escHtml(autor)}<br>
       Todos os direitos reservados.<br>
       Publicado pela plataforma Autoria.
     </p>
-  </div>
-</section>`);
+  </div>`);
   }
 
-  // Dedicatória
+  // 5. Dedicatória
   if (config.dedicatoria?.trim()) {
-    frontMatter.push(`<section class="frontmatter">
-  <div class="dedicatoria"><p>${escHtml(config.dedicatoria)}</p></div>
-</section>`);
+    noNumPage(`
+  <div class="dedicatoria">
+    <p>${escHtml(config.dedicatoria)}</p>
+  </div>`);
   }
 
-  // Epígrafe
+  // 6. Epígrafe
   if (config.epigrafe_texto?.trim()) {
-    frontMatter.push(`<section class="frontmatter">
+    noNumPage(`
   <div class="epigrafe">
-    <p>${escHtml(config.epigrafe_texto)}</p>
+    <p class="epigrafe-text">${escHtml(config.epigrafe_texto)}</p>
     ${config.epigrafe_autor ? `<p class="epigrafe-autor">— ${escHtml(config.epigrafe_autor)}</p>` : ""}
-  </div>
-</section>`);
+  </div>`);
   }
 
-  // ── Segmentar capítulos ───────────────────────────────────────────────────
-
-  const segments: { titulo: string; texto: string }[] =
-    capitulos.length === 0
-      ? [{ titulo: titulo || "Capítulo 1", texto }]
-      : capitulos.map((cap, i) => {
-          const start = cap.pos;
-          const end = i < capitulos.length - 1 ? capitulos[i + 1].pos : texto.length;
-          let seg = texto.slice(start, end).trim();
-          const nl = seg.indexOf("\n");
-          if (nl > -1) seg = seg.slice(nl).trim();
-          return { titulo: cap.titulo, texto: seg };
-        });
-
-  // ── Sumário ───────────────────────────────────────────────────────────────
-
+  // 7. Sumário
   if (config.sumario && segments.length > 1) {
-    const tocItems = segments
-      .map((s, i) => `<li><a href="#cap-${i}">${escHtml(s.titulo)}</a><span class="toc-dots"></span></li>`)
-      .join("\n      ");
-    frontMatter.push(`<section class="frontmatter">
+    ensureOddPage();
+
+    const chapterStartPages = chapterStartPagesOverride ?? (() => {
+      const pages: number[] = [];
+      let runningPage = 1;
+      for (const info of capitulosInfo) {
+        pages.push(runningPage);
+        const pagesInChapter = Math.max(1, Math.ceil(info.palavras / fmt.wpp));
+        runningPage += pagesInChapter;
+        if (runningPage % 2 === 0) runningPage++;
+      }
+      return pages;
+    })();
+
+    const tocItems = capitulosInfo.map((c, i) =>
+      `<li><a href="#${c.id}">${escHtml(c.titulo)}</a><span class="toc-dots"></span><span class="toc-pg">${chapterStartPages[i]}</span></li>`
+    ).join("\n      ");
+
+    noNumPage(`
   <div class="toc">
     <h2>Sumário</h2>
     <ol>
       ${tocItems}
     </ol>
-  </div>
-</section>`);
+  </div>`);
   }
 
-  // ── Capítulos ─────────────────────────────────────────────────────────────
+  // 8. Chapters
+  const realChapterStartPages: number[] = [];
+  let numberedPagesSoFar = 0;
 
-  const chapterHtml = segments
-    .map(
-      (seg, i) => `
-<section class="chapter" id="cap-${i}">
-  <h2 class="chapter-title">${escHtml(seg.titulo)}</h2>
-  ${buildParagraphs(seg.texto, config, true)}
-  ${buildOrnamented(config)}
-</section>`
-    )
-    .join("\n");
+  segments.forEach((seg, i) => {
+    const info = capitulosInfo[i];
+    ensureOddPage();
+    realChapterStartPages.push(numberedPagesSoFar + 1);
 
-  // ── Bio do autor ──────────────────────────────────────────────────────────
+    const firstPageWpp = Math.floor(fmt.wpp * 0.80);
+    const chunks = splitIntoChunks(seg.texto, fmt.wpp, firstPageWpp);
 
-  const bioHtml = config.bio_autor?.trim()
-    ? `
-<section class="chapter author-bio">
-  <h3 style="font-size:1em;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1em">Sobre o autor</h3>
-  <p style="text-indent:0">${escHtml(config.bio_autor)}</p>
-</section>`
-    : "";
+    chunks.forEach((chunkText, chunkIdx) => {
+      pageCount++;
+      numberedPagesSoFar++;
+      const isFirst = chunkIdx === 0;
+      const isLast  = chunkIdx === chunks.length - 1;
+      const extraClass = (i === 0 && isFirst) ? " first-chapter" : "";
 
-  // ── Resultado ─────────────────────────────────────────────────────────────
+      if (isFirst) {
+        sections.push(pg(`
+<section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
+  <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
+  ${buildParagraphs(chunkText, config, true)}
+  ${isLast ? buildOrnamented(config) : ""}
+</section>`));
+      } else {
+        sections.push(pg(`
+<div class="book-page page-break">
+  ${buildParagraphs(chunkText, config, false)}
+  ${isLast ? buildOrnamented(config) : ""}
+</div>`));
+      }
+    });
+  });
 
-  const capitulosInfo: CapituloInfo[] = segments.map((s, i) => ({
-    id: `cap-${i}`,
-    titulo: s.titulo,
-    palavras: s.texto.split(/\s+/).filter(Boolean).length,
-  }));
-
-  const numPalavras = texto.split(/\s+/).filter(Boolean).length;
-  const paginasReais = Math.max(1, Math.round(numPalavras / fmt.wpp) + frontMatter.length);
+  // 9. Bio do autor
+  if (config.bio_autor?.trim()) {
+    pageCount++;
+    sections.push(pg(`
+<div class="book-page page-break">
+  <div class="author-bio">
+    <h3 style="font-size:1em;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1em">Sobre o autor</h3>
+    <p style="text-indent:0">${escHtml(config.bio_autor)}</p>
+  </div>
+</div>`));
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 ${css}
 </style>
 </head>
 <body>
-${frontMatter.join("\n")}
-${chapterHtml}
-${bioHtml}
+${sections.join("\n")}
 </body>
 </html>`;
 
-  return { html, capitulosInfo, paginasReais, chapterStartPages: [] };
+  return { html, capitulosInfo, paginasReais: pageCount, chapterStartPages: realChapterStartPages };
 }
