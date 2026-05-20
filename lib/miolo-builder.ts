@@ -307,10 +307,19 @@ export function buildParagraphs(text: string, config: MioloConfig, isFirstInChap
   console.log("  tem \\r\\n\\r\\n?", text.includes('\r\n\r\n'));
   console.log("  contagem de \\n:", (text.match(/\n/g) || []).length);
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const paras = normalized.split(/\n{2,}/).filter(p => p.trim());
-  const finalParas = paras.length > 1
-    ? paras
-    : normalized.split('\n').map(p => p.trim()).filter(Boolean);
+
+  // Heurística: contar quantos parágrafos sairiam de cada estratégia.
+  // - Se split por \n simples gerar 3x ou mais parágrafos que split por \n{2,},
+  //   o texto provavelmente usa \n único como separador. Usa \n.
+  // - Caso contrário, confia no \n{2,} (formatação tradicional com linha em branco).
+  const parasDuplo = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const parasSimples = normalized.split('\n').map(p => p.trim()).filter(Boolean);
+
+  const finalParas = parasSimples.length >= parasDuplo.length * 3
+    ? parasSimples
+    : parasDuplo.length >= 2
+      ? parasDuplo
+      : parasSimples;
   return finalParas.map((para, idx) => {
     const p = fixTypography(para.trim());
     const isFirst = isFirstInChapter && idx === 0;
