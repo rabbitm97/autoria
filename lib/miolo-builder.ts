@@ -73,16 +73,6 @@ body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
   }
   .book-page.no-num { break-before: page; }
   .book-page.chapter { break-before: right; }
-  @page {
-    @bottom-center {
-      content: counter(page);
-      font-family: inherit;
-      font-size: 9pt;
-      color: #555;
-      margin-top: 5mm;
-    }
-  }
-  @page :first { @bottom-center { content: ""; } }
   .book-page .toc,
   .book-page .ficha-wrap { break-inside: auto; }
 }
@@ -168,7 +158,8 @@ body { font-family:'Crimson Text',Georgia,serif; line-height:1.7; }
 .poem { margin:0 auto 2em; max-width:70%; }
 .poem-line { display:block; }
 .poem-stanza { margin-bottom:1.5em; }
-p { margin:0 0 1em; }
+p { margin:0 0 1em; text-align:justify; }
+.poem p { text-align:left; }
 `,
   religioso: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
 @import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');
@@ -198,13 +189,13 @@ export function buildMarksCss(w: string, h: string): string {
 @media print {
   @page {
     size: ${sw} ${sh};
-    margin: 0;
+    margin: 0 0 12mm 0;
     @bottom-center {
       content: counter(page);
       font-family: inherit;
       font-size: 9pt;
       color: #555;
-      margin-bottom: 5mm;
+      padding-bottom: 4mm;
     }
   }
   @page :first { @bottom-center { content: ""; } }
@@ -231,7 +222,7 @@ export function buildMarksCss(w: string, h: string): string {
   position: relative !important;
   margin: 3mm !important;
   width: calc(100% - 6mm) !important;
-  min-height: calc(100% - 6mm);
+  min-height: calc(${h} - 6mm);
   z-index: 1;
 }
 .cm { position: absolute; background: #111; z-index: 10; }
@@ -532,31 +523,16 @@ export function buildBookHtml(params: {
     ensureOddPage();
     realChapterStartPages.push(numberedPagesSoFar + 1);
 
-    const firstPageWpp = Math.floor(fmt.wpp * 0.80);
-    const chunks = splitIntoChunks(seg.texto, fmt.wpp, firstPageWpp);
+    pageCount++;
+    numberedPagesSoFar++;
+    const extraClass = (i === 0) ? " first-chapter" : "";
 
-    chunks.forEach((chunkText, chunkIdx) => {
-      pageCount++;
-      numberedPagesSoFar++;
-      const isFirst = chunkIdx === 0;
-      const isLast  = chunkIdx === chunks.length - 1;
-      const extraClass = (i === 0 && isFirst) ? " first-chapter" : "";
-
-      if (isFirst) {
-        sections.push(pg(`
+    sections.push(pg(`
 <section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
-  ${buildParagraphs(chunkText, config, true)}
-  ${isLast ? buildOrnamented(config) : ""}
+  ${buildParagraphs(seg.texto, config, true)}
+  ${buildOrnamented(config)}
 </section>`));
-      } else {
-        sections.push(pg(`
-<div class="book-page page-break">
-  ${buildParagraphs(chunkText, config, false)}
-  ${isLast ? buildOrnamented(config) : ""}
-</div>`));
-      }
-    });
   });
 
   // 9. Bio do autor
