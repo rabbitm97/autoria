@@ -186,45 +186,56 @@ blockquote { margin:1em 2em; font-size:.9em; font-style:italic; }
 // ─── Crop marks / bleed ───────────────────────────────────────────────────────
 
 export function buildMarksCss(w: string, h: string): string {
-  const addCm = (dim: string, add: number) => `${+(parseFloat(dim) + add).toFixed(1)}cm`;
-  const sw = addCm(w, 2.4);
-  const sh = addCm(h, 2.4);
+  const addMm = (dim: string, bleedMm: number) => {
+    const mm = parseFloat(dim) * (dim.endsWith("cm") ? 10 : 1);
+    return `${(mm + bleedMm * 2).toFixed(1)}mm`;
+  };
+  const sw = addMm(w, 3);
+  const sh = addMm(h, 3);
 
   return `
-/* ── Sangria 12 mm + Marcas de corte ─────────────────────────── */
-@media print {
-  @page { size: ${sw} ${sh}; }
-  .spread { margin: 0 auto !important; break-before: page; page-break-before: always; }
-  .spread .book-page { break-before: auto !important; page-break-before: auto !important; }
-  .spread .chapter { break-before: auto !important; }
-  .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+@page {
+  size: ${sw} ${sh};
+  margin: 0;
 }
+
+@media print {
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background:
+      linear-gradient(#111, #111) 3mm 0      / 7mm 1px no-repeat,
+      linear-gradient(#111, #111) 0    3mm    / 1px 7mm no-repeat,
+      linear-gradient(#111, #111) right 3mm top 0    / 7mm 1px no-repeat,
+      linear-gradient(#111, #111) right 0    top 3mm / 1px 7mm no-repeat,
+      linear-gradient(#111, #111) 3mm  bottom 0      / 7mm 1px no-repeat,
+      linear-gradient(#111, #111) 0    bottom 3mm    / 1px 7mm no-repeat,
+      linear-gradient(#111, #111) right 3mm  bottom 0    / 7mm 1px no-repeat,
+      linear-gradient(#111, #111) right 0    bottom 3mm  / 1px 7mm no-repeat;
+  }
+
+  .book-page {
+    width: ${w} !important;
+    margin: 3mm auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    break-inside: auto;
+  }
+
+  .book-page.no-num  { break-before: page; }
+  .book-page.chapter { break-before: right; }
+}
+
+/* Preview (tela): simula posição dentro da sangria sem prender quebras */
 .spread {
-  position: relative;
   display: block;
   width: ${sw};
-  height: ${sh};
   margin: 18mm auto;
   background: #fff;
 }
-.spread .book-page {
-  position: absolute !important;
-  top: 12mm;
-  left: 12mm;
-  margin: 0 !important;
-  z-index: 1;
-}
-.cm { position: absolute; background: #111; z-index: 10; }
-.cm-h { height: 1px; width: 7mm; }
-.cm-v { width:  1px; height: 7mm; }
-.cm-tl-h { top: 7mm;    left: 0;    }
-.cm-tl-v { top: 0;      left: 7mm;  }
-.cm-tr-h { top: 7mm;    right: 0;   }
-.cm-tr-v { top: 0;      right: 7mm; }
-.cm-bl-h { bottom: 7mm; left: 0;    }
-.cm-bl-v { bottom: 0;   left: 7mm;  }
-.cm-br-h { bottom: 7mm; right: 0;   }
-.cm-br-v { bottom: 0;   right: 7mm; }
 `;
 }
 
@@ -238,7 +249,8 @@ export const MARKS_HTML = `<span class="cm cm-h cm-tl-h" aria-hidden="true"></sp
 <span class="cm cm-v cm-br-v" aria-hidden="true"></span>`;
 
 export function wrapInSpread(pageHtml: string): string {
-  return `<div class="spread">\n${MARKS_HTML}\n${pageHtml.trim()}\n</div>`;
+  // Crop marks now come from @page background — content flows free without wrapper.
+  return pageHtml;
 }
 
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
