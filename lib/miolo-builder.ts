@@ -194,48 +194,51 @@ export function buildMarksCss(w: string, h: string): string {
   const sh = addMm(h, 3);
 
   return `
-@page {
-  size: ${sw} ${sh};
-  margin: 0;
-}
-
+/* ── Sangria 3 mm + Marcas de corte ──────────────────────────── */
 @media print {
-  body::before {
-    content: '';
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    background:
-      linear-gradient(#111, #111) 3mm 0      / 7mm 1px no-repeat,
-      linear-gradient(#111, #111) 0    3mm    / 1px 7mm no-repeat,
-      linear-gradient(#111, #111) right 3mm top 0    / 7mm 1px no-repeat,
-      linear-gradient(#111, #111) right 0    top 3mm / 1px 7mm no-repeat,
-      linear-gradient(#111, #111) 3mm  bottom 0      / 7mm 1px no-repeat,
-      linear-gradient(#111, #111) 0    bottom 3mm    / 1px 7mm no-repeat,
-      linear-gradient(#111, #111) right 3mm  bottom 0    / 7mm 1px no-repeat,
-      linear-gradient(#111, #111) right 0    bottom 3mm  / 1px 7mm no-repeat;
+  @page {
+    size: ${sw} ${sh};
+    margin: 0;
+    @bottom-center {
+      content: counter(page);
+      font-family: inherit;
+      font-size: 9pt;
+      color: #555;
+      margin-bottom: 5mm;
+    }
   }
-
-  .book-page {
-    width: ${w} !important;
-    margin: 3mm auto !important;
-    min-height: 0 !important;
-    height: auto !important;
-    break-inside: auto;
-  }
-
-  .book-page.no-num  { break-before: page; }
-  .book-page.chapter { break-before: right; }
+  @page :first { @bottom-center { content: ""; } }
+  .spread { margin: 0 !important; page-break-after: always; }
+  .spread .book-page { margin: 0 !important; }
+  .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 
-/* Preview (tela): simula posição dentro da sangria sem prender quebras */
 .spread {
+  position: relative;
   display: block;
   width: ${sw};
+  height: ${sh};
   margin: 18mm auto;
   background: #fff;
 }
+.spread .book-page {
+  position: absolute !important;
+  top: 3mm;
+  left: 3mm;
+  margin: 0 !important;
+  z-index: 1;
+}
+.cm { position: absolute; background: #111; z-index: 10; }
+.cm-h { height: 1px; width: 7mm; }
+.cm-v { width: 1px; height: 7mm; }
+.cm-tl-h { top: 0;    left: 0;    }
+.cm-tl-v { top: 0;    left: 0;    }
+.cm-tr-h { top: 0;    right: 0;   }
+.cm-tr-v { top: 0;    right: 0;   }
+.cm-bl-h { bottom: 0; left: 0;    }
+.cm-bl-v { bottom: 0; left: 0;    }
+.cm-br-h { bottom: 0; right: 0;   }
+.cm-br-v { bottom: 0; right: 0;   }
 `;
 }
 
@@ -249,8 +252,17 @@ export const MARKS_HTML = `<span class="cm cm-h cm-tl-h" aria-hidden="true"></sp
 <span class="cm cm-v cm-br-v" aria-hidden="true"></span>`;
 
 export function wrapInSpread(pageHtml: string): string {
-  // Crop marks now come from @page background — content flows free without wrapper.
-  return pageHtml;
+  return `<div class="spread">
+<span class="cm cm-h cm-tl-h" aria-hidden="true"></span>
+<span class="cm cm-v cm-tl-v" aria-hidden="true"></span>
+<span class="cm cm-h cm-tr-h" aria-hidden="true"></span>
+<span class="cm cm-v cm-tr-v" aria-hidden="true"></span>
+<span class="cm cm-h cm-bl-h" aria-hidden="true"></span>
+<span class="cm cm-v cm-bl-v" aria-hidden="true"></span>
+<span class="cm cm-h cm-br-h" aria-hidden="true"></span>
+<span class="cm cm-v cm-br-v" aria-hidden="true"></span>
+${pageHtml}
+</div>`;
 }
 
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
@@ -434,7 +446,14 @@ export function buildBookHtml(params: {
 
   // 4. Verso do rosto — créditos (p.4)
   if (creditosInnerHtml) {
-    noNumPage(`<div class="creditos-wrap" style="break-inside: auto;">${creditosInnerHtml}</div>`);
+    if (creditosInnerHtml.length < 3000) {
+      noNumPage(`<div class="creditos-wrap">${creditosInnerHtml}</div>`);
+    } else {
+      const parts = creditosInnerHtml.split(/(?=<div\s)/);
+      const half = Math.ceil(parts.length / 2);
+      noNumPage(`<div class="creditos-wrap">${parts.slice(0, half).join("")}</div>`);
+      noNumPage(`<div class="creditos-wrap">${parts.slice(half).join("")}</div>`);
+    }
   } else {
     noNumPage(`
   <div style="display:flex;flex-direction:column;justify-content:flex-end;min-height:60vh">
@@ -479,17 +498,23 @@ export function buildBookHtml(params: {
       return pages;
     })();
 
-    const tocItems = capitulosInfo.map((c, i) =>
+    const allTocItems = capitulosInfo.map((c, i) =>
       `<li><a href="#${c.id}">${escHtml(c.titulo)}</a><span class="toc-dots"></span><span class="toc-pg">${chapterStartPages[i]}</span></li>`
-    ).join("\n      ");
+    );
 
-    noNumPage(`
+    const TOC_PER_PAGE = 28;
+    for (let t = 0; t < allTocItems.length; t += TOC_PER_PAGE) {
+      const chunk = allTocItems.slice(t, t + TOC_PER_PAGE).join("\n      ");
+      pageCount++;
+      sections.push(pg(`<div class="book-page page-break no-num">
   <div class="toc">
-    <h2>Sumário</h2>
+    ${t === 0 ? "<h2>Sumário</h2>" : ""}
     <ol>
-      ${tocItems}
+      ${chunk}
     </ol>
-  </div>`);
+  </div>
+</div>`));
+    }
   }
 
   // 8. Chapters
