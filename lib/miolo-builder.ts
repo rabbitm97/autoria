@@ -23,6 +23,18 @@ export interface CapituloInfo {
   palavras: number;
 }
 
+// ─── Regra de negócio: quando renderizar sumário ─────────────────────────────
+// Templates de prosa narrativa (romance, conto, poesia, infantil) não exibem sumário
+// mesmo se o autor marcou sumário=true no config. Sumário só faz sentido em
+// não-ficção, acadêmico (ABNT) e religioso.
+
+const TEMPLATES_SEM_SUMARIO: TemplateId[] = ["literario", "poesia", "infantil"];
+
+export function deveExibirSumario(config: MioloConfig): boolean {
+  if (TEMPLATES_SEM_SUMARIO.includes(config.template)) return false;
+  return config.sumario === true;
+}
+
 // ─── Format dimensions (cm) ───────────────────────────────────────────────────
 
 export const FORMAT_DIMS: Record<FormatoId, { w: string; h: string; label: string; wpp: number }> = {
@@ -489,7 +501,7 @@ export function buildBookHtml(params: {
   }
 
   // 7. Sumário
-  if (config.sumario && segments.length > 1) {
+  if (deveExibirSumario(config) && segments.length > 1) {
     ensureOddPage();
 
     const chapterStartPages = chapterStartPagesOverride ?? (() => {
