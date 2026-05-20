@@ -206,7 +206,16 @@ export function buildMarksCss(w: string, h: string): string {
     height: auto !important;
     break-inside: auto;
   }
-  .spread .book-page { margin: 0 !important; }
+  .spread .book-page {
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+  }
+  .spread .book-page.toc-page,
+  .spread .book-page.creditos-wrap,
+  .spread .book-page.chapter {
+    break-inside: auto;
+  }
   .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 
