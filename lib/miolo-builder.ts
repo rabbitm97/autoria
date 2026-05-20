@@ -208,7 +208,13 @@ export function buildMarksCss(w: string, h: string): string {
     }
   }
   @page :first { @bottom-center { content: ""; } }
-  .spread { margin: 0 !important; page-break-after: always; }
+  .spread {
+    margin: 0 !important;
+    page-break-after: always;
+    min-height: 0 !important;
+    height: auto !important;
+    break-inside: auto;
+  }
   .spread .book-page { margin: 0 !important; }
   .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
@@ -217,28 +223,28 @@ export function buildMarksCss(w: string, h: string): string {
   position: relative;
   display: block;
   width: ${sw};
-  height: ${sh};
+  min-height: ${sh};
   margin: 18mm auto;
   background: #fff;
 }
 .spread .book-page {
-  position: absolute !important;
-  top: 3mm;
-  left: 3mm;
-  margin: 0 !important;
+  position: relative !important;
+  margin: 3mm !important;
+  width: calc(100% - 6mm) !important;
+  min-height: calc(100% - 6mm);
   z-index: 1;
 }
 .cm { position: absolute; background: #111; z-index: 10; }
-.cm-h { height: 1px; width: 7mm; }
-.cm-v { width: 1px; height: 7mm; }
-.cm-tl-h { top: 0;    left: 0;    }
-.cm-tl-v { top: 0;    left: 0;    }
-.cm-tr-h { top: 0;    right: 0;   }
-.cm-tr-v { top: 0;    right: 0;   }
-.cm-bl-h { bottom: 0; left: 0;    }
-.cm-bl-v { bottom: 0; left: 0;    }
-.cm-br-h { bottom: 0; right: 0;   }
-.cm-br-v { bottom: 0; right: 0;   }
+.cm-h { height: 0.4pt; }
+.cm-v { width: 0.4pt; }
+.cm-tl-h { top: 3mm;    left: 0;    width: 2.5mm; }
+.cm-tl-v { top: 0;      left: 3mm;  height: 2.5mm; }
+.cm-tr-h { top: 3mm;    right: 0;   width: 2.5mm; }
+.cm-tr-v { top: 0;      right: 3mm; height: 2.5mm; }
+.cm-bl-h { bottom: 3mm; left: 0;    width: 2.5mm; }
+.cm-bl-v { bottom: 0;   left: 3mm;  height: 2.5mm; }
+.cm-br-h { bottom: 3mm; right: 0;   width: 2.5mm; }
+.cm-br-v { bottom: 0;   right: 3mm; height: 2.5mm; }
 `;
 }
 
