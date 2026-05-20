@@ -26,14 +26,12 @@ export interface CapituloInfo {
 // ─── Format dimensions (cm) ───────────────────────────────────────────────────
 
 export const FORMAT_DIMS: Record<FormatoId, { w: string; h: string; label: string; wpp: number }> = {
-  bolso:     { w: "11cm",   h: "18cm",   label: "Bolso (11×18cm)",        wpp: 200 },
-  a5:        { w: "14.8cm", h: "21cm",   label: "A5 (14,8×21cm)",         wpp: 230 },
-  padrao_br: { w: "16cm",   h: "23cm",   label: "Padrão BR (16×23cm)",     wpp: 260 },
-  quadrado:  { w: "20cm",   h: "20cm",   label: "Quadrado (20×20cm)",      wpp: 300 },
-  a4:        { w: "21cm",   h: "29.7cm", label: "A4 (21×29,7cm)",          wpp: 380 },
+  bolso:     { w: "11cm",   h: "18cm",   label: "Bolso (11×18cm)",      wpp: 200 },
+  a5:        { w: "14.8cm", h: "21cm",   label: "A5 (14,8×21cm)",        wpp: 230 },
+  padrao_br: { w: "16cm",   h: "23cm",   label: "Padrão BR (16×23cm)",    wpp: 260 },
+  quadrado:  { w: "20cm",   h: "20cm",   label: "Quadrado (20×20cm)",     wpp: 300 },
+  a4:        { w: "21cm",   h: "29.7cm", label: "A4 (21×29,7cm)",         wpp: 380 },
 };
-
-// ─── Proportional margins per format ─────────────────────────────────────────
 
 const MARGIN_BY_FORMAT: Record<FormatoId, { top: string; outer: string; bottom: string; inner: string }> = {
   bolso:     { top: "20mm", outer: "14mm", bottom: "22mm", inner: "18mm" },
@@ -43,224 +41,8 @@ const MARGIN_BY_FORMAT: Record<FormatoId, { top: string; outer: string; bottom: 
   a4:        { top: "30mm", outer: "20mm", bottom: "30mm", inner: "25mm" },
 };
 
-// ─── Template CSS ─────────────────────────────────────────────────────────────
-
-const BASE_CSS = (w: string, h: string, corpo: number, fmt: FormatoId): string => {
-  const m = MARGIN_BY_FORMAT[fmt];
-  return `
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: ${corpo}pt; }
-body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
-.book-page {
-  width: ${w};
-  min-height: ${h};
-  margin: 18mm auto;
-  padding: ${m.top} ${m.outer} ${m.bottom} ${m.inner};
-  position: relative;
-  counter-increment: pagenum;
-  background: #fff;
-}
-.book-page.no-num { counter-increment: none; }
-.first-chapter { counter-reset: pagenum 0; }
-.page-break { break-before: always; page-break-before: always; }
-@media print {
-  html, body { background: #fff !important; }
-  .book-page {
-    min-height: 0 !important;
-    height: auto !important;
-    margin: 0 !important;
-    break-inside: auto;
-  }
-  .book-page.no-num { break-before: page; }
-  .book-page.chapter { break-before: right; }
-  .book-page .toc,
-  .book-page .ficha-wrap { break-inside: auto; }
-}
-.title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; text-align:center; padding:4em 0; }
-.dedicatoria { height:100%; display:flex; align-items:flex-end; justify-content:flex-end; }
-.dedicatoria p { font-style:italic; text-align:right; max-width:60%; font-size:0.9em; color:#555; }
-.epigrafe { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:flex-end; padding:3em 0; }
-.epigrafe .epigrafe-text { font-style:italic; text-align:right; max-width:55%; font-size:0.9em; }
-.epigrafe .epigrafe-autor { font-size:0.8em; color:#777; text-align:right; margin-top:0.4em; }
-.toc { padding:3em 0; }
-.toc h2 { font-size:1.2em; margin-bottom:2em; }
-.toc ol { list-style:none; }
-.toc ol li { display:flex; align-items:baseline; margin-bottom:0.7em; font-size:0.95em; gap:0.2em; }
-.toc ol li a { text-decoration:none; color:inherit; white-space:nowrap; }
-.toc ol li .toc-dots { flex:1; border-bottom:1px dotted #999; margin:0 0.5em 0.15em; min-width:1em; }
-.toc ol li .toc-pg { color:#555; font-size:0.88em; white-space:nowrap; min-width:2em; text-align:right; }
-.chapter-number { font-size:.75em; text-transform:uppercase; letter-spacing:.2em; color:#888; display:block; margin-bottom:.4em; }
-.author-bio { margin-top:3em; padding-top:2em; border-top:1px solid #ddd; font-size:0.9em; color:#444; }
-`;
-};
-
-export const TEMPLATE_CSS: Record<TemplateId, (w: string, h: string, corpo: number, fmt: FormatoId) => string> = {
-  literario: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
-@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
-body { font-family: 'EB Garamond', Georgia, 'Times New Roman', serif; line-height: 1.65; }
-.book-title { font-family:'EB Garamond',Georgia,serif; font-size:2.2em; font-weight:400; text-transform:uppercase; letter-spacing:.1em; margin-bottom:.6em; }
-.book-subtitle { font-size:1.1em; color:#555; margin-bottom:.5em; font-style:italic; }
-.author-name { font-size:1.1em; color:#555; margin-top:2em; }
-.chapter { padding-top:4em; }
-.chapter-number { color:#bbb; }
-.chapter-title { font-size:1.45em; font-weight:400; text-align:center; text-transform:uppercase; letter-spacing:.12em; margin-bottom:2.5em; }
-p { text-indent:1.5em; text-align:justify; orphans:2; widows:2; }
-p.first-para, .chapter-title+p, h2+p, h3+p { text-indent:0; }
-.dialogo { text-indent:0; }
-blockquote { margin:1.5em 4em; font-size:.9em; font-style:italic; }
-.ornamento { text-align:center; color:#888; margin:1.5em 0; letter-spacing:.5em; font-size:1.1em; }
-.toc h2 { font-size:1.2em; text-transform:uppercase; letter-spacing:.15em; font-weight:400; text-align:center; }
-`,
-  nao_ficcao: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');
-body { font-family:'Source Serif 4',Georgia,serif; line-height:1.65; }
-.book-title { font-size:2.4em; font-weight:600; line-height:1.2; margin-bottom:.4em; text-align:left; }
-.book-subtitle { font-size:1.15em; color:#555; margin-bottom:.5em; text-align:left; }
-.author-name { font-size:1.1em; color:#555; margin-top:2.5em; text-align:left; }
-.title-page { align-items:flex-start; }
-.chapter { padding-top:3em; }
-.chapter-title { font-size:1.8em; font-weight:600; line-height:1.2; margin-bottom:1.5em; }
-h3 { font-size:1.2em; font-weight:600; margin:2em 0 .5em; }
-h4 { font-size:1.05em; font-weight:600; margin:1.5em 0 .3em; }
-p { margin:0 0 .8em; text-align:left; }
-blockquote { margin:1.5em 2em; padding:.8em 1.5em; border-left:3px solid #ddd; font-style:italic; color:#555; }
-.box-destaque { background:#f8f8f8; border-radius:4px; padding:.8em 1.2em; margin:1.5em 0; font-size:.95em; }
-`,
-  abnt: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
-body { font-family:'Times New Roman',Times,serif; line-height:1.5; }
-.book-title { font-size:1.8em; font-weight:bold; text-align:center; }
-.author-name { font-size:1em; text-align:center; margin-top:2em; }
-.chapter { padding-top:3em; }
-.chapter-title { font-size:1em; font-weight:bold; text-transform:uppercase; margin-bottom:1em; }
-h3 { font-size:1em; font-weight:bold; margin:1.5em 0 .5em; }
-h4 { font-size:1em; font-weight:bold; font-style:italic; margin:1em 0 .3em; }
-p { text-indent:1.25cm; text-align:justify; }
-p.first-para, h2+p, h3+p, h4+p { text-indent:0; }
-blockquote { margin-left:4cm; font-size:.9em; text-indent:0; }
-`,
-  infantil: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
-body { font-family:'Lora',Georgia,serif; line-height:1.9; }
-.book-title { font-size:2.5em; font-weight:600; line-height:1.2; margin-bottom:.5em; }
-.author-name { font-size:1.2em; color:#555; margin-top:2em; }
-.chapter { padding-top:3em; }
-.chapter-title { font-size:1.8em; font-weight:600; margin-bottom:1.5em; }
-p { margin:0 0 1em; }
-.dialogo { margin:0 0 1em; }
-`,
-  poesia: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
-body { font-family:'Crimson Text',Georgia,serif; line-height:1.7; }
-.book-title { font-size:2em; font-weight:400; font-style:italic; margin-bottom:.5em; text-align:center; }
-.author-name { font-size:1.1em; color:#555; margin-top:2em; text-align:center; }
-.chapter { padding-top:3em; }
-.chapter-title { font-size:1.2em; font-style:italic; text-align:center; margin-bottom:2em; font-weight:400; }
-.poem { margin:0 auto 2em; max-width:70%; }
-.poem-line { display:block; }
-.poem-stanza { margin-bottom:1.5em; }
-p { margin:0 0 1em; text-align:justify; }
-.poem p { text-align:left; }
-`,
-  religioso: (w, h, corpo, fmt) => BASE_CSS(w, h, corpo, fmt) + `
-@import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');
-body { font-family:'Gentium Book Plus',Georgia,serif; line-height:1.6; font-size:${corpo}pt; }
-.book-title { font-size:2em; font-weight:700; text-align:center; margin-bottom:.5em; }
-.author-name { font-size:1em; text-align:center; color:#555; margin-top:1.5em; }
-.chapter { padding-top:3em; }
-.chapter-title { font-size:1.3em; font-weight:700; text-align:center; margin-bottom:2em; }
-p { text-indent:1.2em; text-align:justify; }
-p.first-para, h2+p, h3+p { text-indent:0; }
-blockquote { margin:1em 2em; font-size:.9em; font-style:italic; }
-`,
-};
-
-// ─── Crop marks / bleed ───────────────────────────────────────────────────────
-
-export function buildMarksCss(w: string, h: string): string {
-  const addMm = (dim: string, bleedMm: number) => {
-    const mm = parseFloat(dim) * (dim.endsWith("cm") ? 10 : 1);
-    return `${(mm + bleedMm * 2).toFixed(1)}mm`;
-  };
-  const sw = addMm(w, 3);
-  const sh = addMm(h, 3);
-
-  return `
-/* ── Sangria 3 mm + Marcas de corte ──────────────────────────── */
-@media print {
-  @page {
-    size: ${sw} ${sh};
-    margin: 0 0 12mm 0;
-    @bottom-center {
-      content: counter(page);
-      font-family: inherit;
-      font-size: 9pt;
-      color: #555;
-      padding-bottom: 4mm;
-    }
-  }
-  @page :first { @bottom-center { content: ""; } }
-  .spread {
-    margin: 0 !important;
-    page-break-after: always;
-    min-height: 0 !important;
-    height: auto !important;
-    break-inside: auto;
-  }
-  .spread .book-page { margin: 0 !important; }
-  .cm { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-}
-
-.spread {
-  position: relative;
-  display: block;
-  width: ${sw};
-  min-height: ${sh};
-  margin: 18mm auto;
-  background: #fff;
-}
-.spread .book-page {
-  position: relative !important;
-  margin: 3mm !important;
-  width: calc(100% - 6mm) !important;
-  min-height: calc(${h} - 6mm);
-  z-index: 1;
-}
-.cm { position: absolute; background: #111; z-index: 10; }
-.cm-h { height: 0.4pt; }
-.cm-v { width: 0.4pt; }
-.cm-tl-h { top: 3mm;    left: 0;    width: 2.5mm; }
-.cm-tl-v { top: 0;      left: 3mm;  height: 2.5mm; }
-.cm-tr-h { top: 3mm;    right: 0;   width: 2.5mm; }
-.cm-tr-v { top: 0;      right: 3mm; height: 2.5mm; }
-.cm-bl-h { bottom: 3mm; left: 0;    width: 2.5mm; }
-.cm-bl-v { bottom: 0;   left: 3mm;  height: 2.5mm; }
-.cm-br-h { bottom: 3mm; right: 0;   width: 2.5mm; }
-.cm-br-v { bottom: 0;   right: 3mm; height: 2.5mm; }
-`;
-}
-
-export const MARKS_HTML = `<span class="cm cm-h cm-tl-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-tl-v" aria-hidden="true"></span>
-<span class="cm cm-h cm-tr-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-tr-v" aria-hidden="true"></span>
-<span class="cm cm-h cm-bl-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-bl-v" aria-hidden="true"></span>
-<span class="cm cm-h cm-br-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-br-v" aria-hidden="true"></span>`;
-
-export function wrapInSpread(pageHtml: string): string {
-  return `<div class="spread">
-<span class="cm cm-h cm-tl-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-tl-v" aria-hidden="true"></span>
-<span class="cm cm-h cm-tr-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-tr-v" aria-hidden="true"></span>
-<span class="cm cm-h cm-bl-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-bl-v" aria-hidden="true"></span>
-<span class="cm cm-h cm-br-h" aria-hidden="true"></span>
-<span class="cm cm-v cm-br-v" aria-hidden="true"></span>
-${pageHtml}
-</div>`;
-}
+const BLEED_MM = 3;
+const BOTTOM_RESERVE_MM = 12;
 
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
 
@@ -279,68 +61,283 @@ export function fixTypography(text: string): string {
 }
 
 export function buildParagraphs(text: string, config: MioloConfig, isFirstInChapter: boolean): string {
-  console.log("[buildParagraphs] entrada:");
-  console.log("  tamanho:", text.length);
-  console.log("  primeiros 500 chars:", JSON.stringify(text.slice(0, 500)));
-  console.log("  tem \\n\\n?", text.includes('\n\n'));
-  console.log("  tem \\r\\n\\r\\n?", text.includes('\r\n\r\n'));
-  console.log("  contagem de \\n:", (text.match(/\n/g) || []).length);
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const paras = normalized.split(/\n{2,}/).filter(p => p.trim());
-  const finalParas = paras.length > 1
-    ? paras
-    : normalized.split('\n').map(p => p.trim()).filter(Boolean);
-  return finalParas.map((para, idx) => {
-    const p = fixTypography(para.trim());
+
+  let paras = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  if (paras.length === 1 && normalized.includes('\n')) {
+    paras = normalized.split('\n').map(p => p.trim()).filter(Boolean);
+  }
+
+  return paras.map((para, idx) => {
+    const p = fixTypography(para);
     const isFirst = isFirstInChapter && idx === 0;
     const isDialogue = p.startsWith("—") || p.startsWith("- ");
 
     if (isDialogue) return `<p class="dialogo">${escHtml(p)}</p>`;
 
-    const classNames = isFirst ? "first-para" : "";
-
     if (config.capitular && isFirst && p.length > 2) {
       const firstChar = p[0];
       const rest = escHtml(p.slice(1));
-      return `<p class="${classNames}"><span style="float:left;font-size:3em;line-height:.8;padding-right:.1em;padding-top:.05em;font-weight:600">${firstChar}</span>${rest}</p>`;
+      return `<p class="first-para"><span class="drop-cap">${firstChar}</span>${rest}</p>`;
     }
 
-    return `<p${classNames ? ` class="${classNames}"` : ""}>${escHtml(p)}</p>`;
+    return `<p${isFirst ? ' class="first-para"' : ''}>${escHtml(p)}</p>`;
   }).join("\n");
 }
 
+// ─── No-op exports (preservados para não quebrar imports legados) ─────────────
+
+export function buildMarksCss(_w: string, _h: string): string { return ""; }
+export const MARKS_HTML = "";
+export function wrapInSpread(pageHtml: string): string { return pageHtml; }
+export function splitIntoChunks(text: string, _wpp: number, _firstPageWpp: number): string[] {
+  return [text];
+}
 export function buildOrnamented(config: MioloConfig): string {
-  if (!config.ornamentos) return "";
-  return `<div class="ornamento">* * *</div>`;
+  return config.ornamentos ? `<div class="ornamento">* * *</div>` : "";
+}
+export const TEMPLATE_CSS = {} as Record<TemplateId, (w: string, h: string, corpo: number, fmt: FormatoId) => string>;
+
+// ─── CSS builder (single source of truth) ────────────────────────────────────
+
+function buildCss(config: MioloConfig): string {
+  const fmt = FORMAT_DIMS[config.formato];
+  const m = MARGIN_BY_FORMAT[config.formato];
+  const corpo = config.corpo_pt;
+
+  const trimWmm = parseFloat(fmt.w) * 10;
+  const trimHmm = parseFloat(fmt.h) * 10;
+  const sheetW = config.marcas_corte ? `${trimWmm + 2 * BLEED_MM}mm` : fmt.w;
+  const sheetH = config.marcas_corte ? `${trimHmm + 2 * BLEED_MM}mm` : fmt.h;
+
+  const pageMarginTop    = config.marcas_corte ? `calc(${m.top} + ${BLEED_MM}mm)` : m.top;
+  const pageMarginOuter  = config.marcas_corte ? `calc(${m.outer} + ${BLEED_MM}mm)` : m.outer;
+  const pageMarginBottom = `calc(${config.marcas_corte ? `${m.bottom} + ${BLEED_MM}mm` : m.bottom} + ${BOTTOM_RESERVE_MM}mm)`;
+  const pageMarginInner  = config.marcas_corte ? `calc(${m.inner} + ${BLEED_MM}mm)` : m.inner;
+
+  return `
+${templateImports(config.template)}
+
+@page {
+  size: ${sheetW} ${sheetH};
+  margin: ${pageMarginTop} ${pageMarginOuter} ${pageMarginBottom} ${pageMarginInner};
+  @bottom-center {
+    content: counter(page);
+    font-family: ${templateFontFamily(config.template)};
+    font-size: 9pt;
+    color: #555;
+    padding-top: 4mm;
+  }
+}
+@page :left {
+  margin: ${pageMarginTop} ${pageMarginInner} ${pageMarginBottom} ${pageMarginOuter};
+}
+@page :right {
+  margin: ${pageMarginTop} ${pageMarginOuter} ${pageMarginBottom} ${pageMarginInner};
+}
+@page :first {
+  @bottom-center { content: ""; }
+}
+@page frontmatter {
+  @bottom-center { content: ""; }
 }
 
-export function splitIntoChunks(text: string, wpp: number, firstPageWpp: number): string[] {
-  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const paras = normalized.split(/\n{2,}/).filter(p => p.trim());
-  const finalParas = paras.length > 0 ? paras : normalized.split('\n').filter(p => p.trim());
-  if (finalParas.length === 0) return [""];
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: ${corpo}pt; }
+body {
+  color: #1a1a1a;
+  font-family: ${templateFontFamily(config.template)};
+  line-height: ${templateLineHeight(config.template)};
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-rendering: optimizeLegibility;
+}
 
-  const chunks: string[] = [];
-  let currentChunk: string[] = [];
-  let wordCount = 0;
-  let isFirstChunk = true;
+${config.marcas_corte ? buildCropMarksCss(BLEED_MM) : ""}
 
-  for (const para of finalParas) {
-    const paraWords = para.split(/\s+/).filter(Boolean).length;
-    const limit = isFirstChunk ? firstPageWpp : wpp;
+.frontmatter {
+  page: frontmatter;
+  break-after: page;
+  page-break-after: always;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.frontmatter.center-v { justify-content: center; align-items: center; text-align: center; }
+.frontmatter.right-aligned { align-items: flex-end; text-align: right; }
+.frontmatter.right-aligned > * { max-width: 60%; }
+.frontmatter.bottom-aligned { justify-content: flex-end; }
 
-    if (wordCount > 0 && wordCount + paraWords > limit) {
-      chunks.push(currentChunk.join("\n\n"));
-      currentChunk = [];
-      wordCount = 0;
-      isFirstChunk = false;
-    }
-    currentChunk.push(para);
-    wordCount += paraWords;
-  }
+.title-half h1, .title-full h1 { ${templateTitleStyle(config.template)} }
+.title-full .subtitulo { font-size: 1.1em; color: #555; font-style: italic; margin-top: 0.4em; }
+.title-full .autor { margin-top: 2em; font-size: 1.1em; color: #555; }
 
-  if (currentChunk.length > 0) chunks.push(currentChunk.join("\n\n"));
-  return chunks.length > 0 ? chunks : [""];
+.dedicatoria p { font-style: italic; color: #555; font-size: 0.95em; }
+.epigrafe-text { font-style: italic; font-size: 0.95em; }
+.epigrafe-autor { font-size: 0.85em; color: #777; margin-top: 0.5em; }
+
+.toc { page-break-inside: auto; }
+.toc h2 { font-size: 1.2em; font-weight: 400; text-transform: uppercase; letter-spacing: 0.15em; text-align: center; margin-bottom: 2em; }
+.toc ol { list-style: none; padding: 0; }
+.toc li { display: flex; align-items: baseline; margin-bottom: 0.7em; font-size: 0.95em; break-inside: avoid; }
+.toc li a { text-decoration: none; color: inherit; white-space: nowrap; }
+.toc .toc-dots { flex: 1; border-bottom: 1px dotted #999; margin: 0 0.5em 0.15em; min-width: 1em; }
+.toc .toc-pg { color: #555; font-size: 0.88em; min-width: 2em; text-align: right; }
+
+.creditos-wrap { font-size: 0.85em; line-height: 1.6; }
+
+.chapter {
+  break-before: right;
+  page-break-before: right;
+  page: main;
+}
+
+.chapter-title {
+  ${templateChapterTitleStyle(config.template)}
+  text-align: center;
+  margin-bottom: 2.5em;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.chapter h3 { font-size: 1.15em; font-weight: 600; margin: 1.5em 0 0.6em; break-after: avoid; }
+.chapter h4 { font-size: 1.05em; font-weight: 600; margin: 1.2em 0 0.4em; break-after: avoid; }
+
+p { ${templateParagraphStyle(config.template)} orphans: 3; widows: 3; }
+p.first-para { text-indent: 0; }
+.dialogo { text-indent: 0; }
+
+.drop-cap {
+  float: left;
+  font-size: 3.2em;
+  line-height: 0.85;
+  padding-right: 0.08em;
+  padding-top: 0.05em;
+  font-weight: 600;
+}
+
+blockquote { margin: 1.5em 4em; font-size: 0.9em; font-style: italic; }
+
+.ornamento { text-align: center; color: #888; margin: 1.8em 0; letter-spacing: 0.5em; font-size: 1.1em; }
+
+.author-bio {
+  break-before: page;
+  page-break-before: always;
+  margin-top: 3em;
+  padding-top: 2em;
+  border-top: 1px solid #ddd;
+  font-size: 0.9em;
+  color: #444;
+}
+.author-bio h3 { font-size: 1em; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1em; }
+.author-bio p { text-indent: 0; }
+
+${config.template === "poesia" ? `.chapter p { text-align: left; text-indent: 0; }
+.poem { margin: 0 auto 2em; max-width: 70%; }
+.poem-line { display: block; }
+.poem-stanza { margin-bottom: 1.5em; }` : ""}
+`;
+}
+
+function buildCropMarksCss(bleed: number): string {
+  const o = `${bleed}mm`;
+  return `
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background-image:
+    linear-gradient(#111, #111), linear-gradient(#111, #111),
+    linear-gradient(#111, #111), linear-gradient(#111, #111),
+    linear-gradient(#111, #111), linear-gradient(#111, #111),
+    linear-gradient(#111, #111), linear-gradient(#111, #111);
+  background-repeat: no-repeat;
+  background-size:
+    4mm 0.15mm, 0.15mm 4mm,
+    4mm 0.15mm, 0.15mm 4mm,
+    4mm 0.15mm, 0.15mm 4mm,
+    4mm 0.15mm, 0.15mm 4mm;
+  background-position:
+    0 ${o},           ${o} 0,
+    calc(100% - 4mm) ${o},  calc(100% - ${o}) 0,
+    0 calc(100% - ${o}),    ${o} calc(100% - 4mm),
+    calc(100% - 4mm) calc(100% - ${o}),  calc(100% - ${o}) calc(100% - 4mm);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+`;
+}
+
+// ─── Template-specific style fragments ───────────────────────────────────────
+
+function templateImports(t: TemplateId): string {
+  const imports: Record<TemplateId, string> = {
+    literario:  `@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');`,
+    nao_ficcao: `@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');`,
+    abnt:       ``,
+    infantil:   `@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&display=swap');`,
+    poesia:     `@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');`,
+    religioso:  `@import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');`,
+  };
+  return imports[t] || "";
+}
+
+function templateFontFamily(t: TemplateId): string {
+  const fonts: Record<TemplateId, string> = {
+    literario:  `'EB Garamond', Georgia, 'Times New Roman', serif`,
+    nao_ficcao: `'Source Serif 4', Georgia, serif`,
+    abnt:       `'Times New Roman', Times, serif`,
+    infantil:   `'Lora', Georgia, serif`,
+    poesia:     `'Crimson Text', Georgia, serif`,
+    religioso:  `'Gentium Book Plus', Georgia, serif`,
+  };
+  return fonts[t];
+}
+
+function templateLineHeight(t: TemplateId): string {
+  const lh: Record<TemplateId, string> = {
+    literario: "1.65", nao_ficcao: "1.65", abnt: "1.5",
+    infantil: "1.9", poesia: "1.7", religioso: "1.6",
+  };
+  return lh[t];
+}
+
+function templateTitleStyle(t: TemplateId): string {
+  const styles: Record<TemplateId, string> = {
+    literario:  `font-size: 2.2em; font-weight: 400; text-transform: uppercase; letter-spacing: 0.1em;`,
+    nao_ficcao: `font-size: 2.4em; font-weight: 600; line-height: 1.2;`,
+    abnt:       `font-size: 1.8em; font-weight: bold;`,
+    infantil:   `font-size: 2.5em; font-weight: 600; line-height: 1.2;`,
+    poesia:     `font-size: 2em; font-weight: 400; font-style: italic;`,
+    religioso:  `font-size: 2em; font-weight: 700;`,
+  };
+  return styles[t];
+}
+
+function templateChapterTitleStyle(t: TemplateId): string {
+  const styles: Record<TemplateId, string> = {
+    literario:  `font-size: 1.45em; font-weight: 400; text-transform: uppercase; letter-spacing: 0.12em;`,
+    nao_ficcao: `font-size: 1.8em; font-weight: 600; line-height: 1.2;`,
+    abnt:       `font-size: 1em; font-weight: bold; text-transform: uppercase;`,
+    infantil:   `font-size: 1.8em; font-weight: 600;`,
+    poesia:     `font-size: 1.2em; font-style: italic; font-weight: 400;`,
+    religioso:  `font-size: 1.3em; font-weight: 700;`,
+  };
+  return styles[t];
+}
+
+function templateParagraphStyle(t: TemplateId): string {
+  const styles: Record<TemplateId, string> = {
+    literario:  `text-indent: 1.5em; text-align: justify;`,
+    nao_ficcao: `margin: 0 0 0.8em; text-align: justify;`,
+    abnt:       `text-indent: 1.25cm; text-align: justify;`,
+    infantil:   `margin: 0 0 1em; text-align: justify;`,
+    poesia:     `text-align: left; text-indent: 0; margin: 0 0 1em;`,
+    religioso:  `text-indent: 1.2em; text-align: justify;`,
+  };
+  return styles[t];
 }
 
 // ─── Book HTML builder ────────────────────────────────────────────────────────
@@ -357,34 +354,14 @@ export function buildBookHtml(params: {
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml, chapterStartPagesOverride } = params;
   const fmt = FORMAT_DIMS[config.formato];
-  // When crop marks are off, inject the plain @page size rule.
-  // When crop marks are on, buildMarksCss owns the @page rule (spread size).
-  const pageSizeCss = config.marcas_corte
-    ? ""
-    : `@media print { @page { size: ${fmt.w} ${fmt.h}; } }\n`;
-  const css = TEMPLATE_CSS[config.template](fmt.w, fmt.h, config.corpo_pt, config.formato)
-    + pageSizeCss
-    + (config.marcas_corte ? buildMarksCss(fmt.w, fmt.h) : "");
-
-  const pg = config.marcas_corte
-    ? (html: string) => wrapInSpread(html)
-    : (html: string) => html;
-
-  console.log("[buildBookHtml] texto recebido:");
-  console.log("  tamanho:", texto.length);
-  console.log("  primeiros 500 chars:", JSON.stringify(texto.slice(0, 500)));
-  console.log("  capítulos detectados:", params.capitulos.length);
-  console.log("  títulos:", params.capitulos.map(c => c.titulo));
 
   const textoNormalizado = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  // Recalculate chapter positions against the normalized text so CRLF->LF index shift doesn't desync
   const capitulosNorm = capitulos.map(c => {
     const novaPos = textoNormalizado.indexOf(c.titulo);
     return { ...c, pos: novaPos >= 0 ? novaPos : c.pos };
   });
 
-  // Split manuscript into chapter segments
   const segments: { titulo: string; texto: string }[] = [];
   if (capitulosNorm.length === 0) {
     segments.push({ titulo: titulo || "Capítulo 1", texto: textoNormalizado });
@@ -405,147 +382,109 @@ export function buildBookHtml(params: {
     palavras: seg.texto.split(/\s+/).filter(Boolean).length,
   }));
 
-  let pageCount = 0;
-  const sections: string[] = [];
+  // ── Front matter ─────────────────────────────────────────────────────────
 
-  const noNumPage = (inner: string, extraClass = ""): void => {
-    pageCount++;
-    const cls = ["book-page", "page-break", "no-num", extraClass].filter(Boolean).join(" ");
-    sections.push(pg(`<div class="${cls}">${inner}</div>`));
-  };
+  const frontMatterSections: string[] = [];
 
-  const blankPage = (): void => {
-    pageCount++;
-    sections.push(pg(`<div class="book-page page-break no-num blank-page" aria-hidden="true"></div>`));
-  };
+  frontMatterSections.push(`
+<section class="frontmatter center-v title-half">
+  <h1>${escHtml(titulo)}</h1>
+  ${subtitulo ? `<p class="subtitulo">${escHtml(subtitulo)}</p>` : ""}
+</section>`);
 
-  const ensureOddPage = (): void => {
-    if (pageCount % 2 !== 0) blankPage();
-  };
+  frontMatterSections.push(`<section class="frontmatter" aria-hidden="true"></section>`);
 
-  // 1. Half-title (p.1 — recto)
-  noNumPage(`
-  <div class="title-page">
-    <p class="book-title">${escHtml(titulo)}</p>
-    ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
-  </div>`);
+  frontMatterSections.push(`
+<section class="frontmatter center-v title-full">
+  <h1>${escHtml(titulo)}</h1>
+  ${subtitulo ? `<p class="subtitulo">${escHtml(subtitulo)}</p>` : ""}
+  <p class="autor">${escHtml(autor)}</p>
+</section>`);
 
-  // 2. Verso da falsa folha (p.2 — branco)
-  blankPage();
-
-  // 3. Folha de rosto (p.3 — recto)
-  noNumPage(`
-  <div class="title-page">
-    <p class="book-title">${escHtml(titulo)}</p>
-    ${subtitulo ? `<p class="book-subtitle">${escHtml(subtitulo)}</p>` : ""}
-    <p class="author-name">${escHtml(autor)}</p>
-  </div>`);
-
-  // 4. Verso do rosto — créditos (p.4)
-  if (creditosInnerHtml) {
-    if (creditosInnerHtml.length < 3000) {
-      noNumPage(`<div class="creditos-wrap">${creditosInnerHtml}</div>`);
-    } else {
-      const parts = creditosInnerHtml.split(/(?=<div\s)/);
-      const half = Math.ceil(parts.length / 2);
-      noNumPage(`<div class="creditos-wrap">${parts.slice(0, half).join("")}</div>`);
-      noNumPage(`<div class="creditos-wrap">${parts.slice(half).join("")}</div>`);
-    }
+  if (creditosInnerHtml?.trim()) {
+    frontMatterSections.push(`
+<section class="frontmatter">
+  <div class="creditos-wrap">${creditosInnerHtml}</div>
+</section>`);
   } else {
-    noNumPage(`
-  <div style="display:flex;flex-direction:column;justify-content:flex-end;min-height:60vh">
-    <p style="font-size:.8em;color:#666;line-height:1.8">
-      © ${new Date().getFullYear()} ${escHtml(autor)}<br>
-      Todos os direitos reservados.<br>
-      Publicado pela plataforma Autoria.
-    </p>
-  </div>`);
+    frontMatterSections.push(`
+<section class="frontmatter bottom-aligned">
+  <p style="font-size:0.8em;color:#666;line-height:1.8">
+    © ${new Date().getFullYear()} ${escHtml(autor)}<br>
+    Todos os direitos reservados.<br>
+    Publicado pela plataforma Autoria.
+  </p>
+</section>`);
   }
 
-  // 5. Dedicatória
   if (config.dedicatoria?.trim()) {
-    noNumPage(`
-  <div class="dedicatoria">
-    <p>${escHtml(config.dedicatoria)}</p>
-  </div>`);
+    frontMatterSections.push(`
+<section class="frontmatter right-aligned bottom-aligned">
+  <p>${escHtml(config.dedicatoria)}</p>
+</section>`);
   }
 
-  // 6. Epígrafe
   if (config.epigrafe_texto?.trim()) {
-    noNumPage(`
-  <div class="epigrafe">
-    <p class="epigrafe-text">${escHtml(config.epigrafe_texto)}</p>
-    ${config.epigrafe_autor ? `<p class="epigrafe-autor">— ${escHtml(config.epigrafe_autor)}</p>` : ""}
-  </div>`);
+    frontMatterSections.push(`
+<section class="frontmatter right-aligned center-v">
+  <p class="epigrafe-text">${escHtml(config.epigrafe_texto)}</p>
+  ${config.epigrafe_autor ? `<p class="epigrafe-autor">— ${escHtml(config.epigrafe_autor)}</p>` : ""}
+</section>`);
   }
 
-  // 7. Sumário
   if (config.sumario && segments.length > 1) {
-    ensureOddPage();
+    const showPages = !!chapterStartPagesOverride;
+    const tocItems = capitulosInfo.map((c, i) => {
+      const pgNum = showPages ? `<span class="toc-pg">${chapterStartPagesOverride![i]}</span>` : `<span class="toc-pg"></span>`;
+      return `<li><a href="#${c.id}">${escHtml(c.titulo)}</a><span class="toc-dots"></span>${pgNum}</li>`;
+    }).join('\n      ');
 
-    const chapterStartPages = chapterStartPagesOverride ?? (() => {
-      const pages: number[] = [];
-      let runningPage = 1;
-      for (const info of capitulosInfo) {
-        pages.push(runningPage);
-        const pagesInChapter = Math.max(1, Math.ceil(info.palavras / fmt.wpp));
-        runningPage += pagesInChapter;
-        if (runningPage % 2 === 0) runningPage++;
-      }
-      return pages;
-    })();
-
-    const allTocItems = capitulosInfo.map((c, i) =>
-      `<li><a href="#${c.id}">${escHtml(c.titulo)}</a><span class="toc-dots"></span><span class="toc-pg">${chapterStartPages[i]}</span></li>`
-    );
-
-    const TOC_PER_PAGE = 28;
-    for (let t = 0; t < allTocItems.length; t += TOC_PER_PAGE) {
-      const chunk = allTocItems.slice(t, t + TOC_PER_PAGE).join("\n      ");
-      pageCount++;
-      sections.push(pg(`<div class="book-page page-break no-num">
+    frontMatterSections.push(`
+<section class="frontmatter">
   <div class="toc">
-    ${t === 0 ? "<h2>Sumário</h2>" : ""}
+    <h2>Sumário</h2>
     <ol>
-      ${chunk}
+      ${tocItems}
     </ol>
   </div>
-</div>`));
-    }
+</section>`);
   }
 
-  // 8. Chapters
-  const realChapterStartPages: number[] = [];
-  let numberedPagesSoFar = 0;
+  // ── Capítulos ─────────────────────────────────────────────────────────────
 
-  segments.forEach((seg, i) => {
+  const chaptersHtml = segments.map((seg, i) => {
     const info = capitulosInfo[i];
-    ensureOddPage();
-    realChapterStartPages.push(numberedPagesSoFar + 1);
-
-    pageCount++;
-    numberedPagesSoFar++;
-    const extraClass = (i === 0) ? " first-chapter" : "";
-
-    sections.push(pg(`
-<section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
+    return `
+<section class="chapter" id="${info.id}" data-title="${escHtml(info.titulo)}">
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
   ${buildParagraphs(seg.texto, config, true)}
-  ${buildOrnamented(config)}
-</section>`));
-  });
+  ${config.ornamentos ? '<div class="ornamento">* * *</div>' : ''}
+</section>`;
+  }).join('\n');
 
-  // 9. Bio do autor
-  if (config.bio_autor?.trim()) {
-    pageCount++;
-    sections.push(pg(`
-<div class="book-page page-break">
-  <div class="author-bio">
-    <h3 style="font-size:1em;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1em">Sobre o autor</h3>
-    <p style="text-indent:0">${escHtml(config.bio_autor)}</p>
-  </div>
-</div>`));
+  // ── Bio ───────────────────────────────────────────────────────────────────
+
+  const bioHtml = config.bio_autor?.trim() ? `
+<section class="author-bio">
+  <h3>Sobre o autor</h3>
+  <p>${escHtml(config.bio_autor)}</p>
+</section>` : '';
+
+  // ── Estimativas de paginação ──────────────────────────────────────────────
+
+  const numPalavras = textoNormalizado.split(/\s+/).filter(Boolean).length;
+  const paginasReais = Math.max(1, Math.round(numPalavras / fmt.wpp) + frontMatterSections.length);
+
+  const chapterStartPages: number[] = [];
+  let runningPage = 1;
+  for (const info of capitulosInfo) {
+    chapterStartPages.push(runningPage);
+    const pagesInChapter = Math.max(1, Math.ceil(info.palavras / fmt.wpp));
+    runningPage += pagesInChapter;
+    if (runningPage % 2 === 0) runningPage++;
   }
+
+  // ── HTML final ────────────────────────────────────────────────────────────
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -553,13 +492,15 @@ export function buildBookHtml(params: {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-${css}
+${buildCss(config)}
 </style>
 </head>
 <body>
-${sections.join("\n")}
+${frontMatterSections.join('\n')}
+${chaptersHtml}
+${bioHtml}
 </body>
 </html>`;
 
-  return { html, capitulosInfo, paginasReais: pageCount, chapterStartPages: realChapterStartPages };
+  return { html, capitulosInfo, paginasReais, chapterStartPages };
 }
