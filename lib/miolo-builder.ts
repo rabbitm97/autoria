@@ -84,10 +84,12 @@ body { background: #888; color: #1a1a1a; counter-reset: pagenum 0; }
     break-inside: auto;
   }
   .book-page.no-num { break-before: page; }
-  .book-page.chapter { break-before: right; }
+  .chapter-marker { break-before: right; page-break-before: right; }
   .book-page .toc,
   .book-page .ficha-wrap { break-inside: auto; }
 }
+.chapter-marker { height: 0; display: block; }
+.chapter-title { padding-top: 3em; margin-bottom: 2em; }
 .title-page { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; text-align:center; padding:4em 0; }
 .dedicatoria { height:100%; display:flex; align-items:flex-end; justify-content:flex-end; }
 .dedicatoria p { font-style:italic; text-align:right; max-width:60%; font-size:0.9em; color:#555; }
@@ -113,7 +115,6 @@ body { font-family: 'EB Garamond', Georgia, 'Times New Roman', serif; line-heigh
 .book-title { font-family:'EB Garamond',Georgia,serif; font-size:2.2em; font-weight:400; text-transform:uppercase; letter-spacing:.1em; margin-bottom:.6em; }
 .book-subtitle { font-size:1.1em; color:#555; margin-bottom:.5em; font-style:italic; }
 .author-name { font-size:1.1em; color:#555; margin-top:2em; }
-.chapter { padding-top:4em; }
 .chapter-number { color:#bbb; }
 .chapter-title { font-size:1.45em; font-weight:400; text-align:center; text-transform:uppercase; letter-spacing:.12em; margin-bottom:2.5em; }
 p { text-indent:1.5em; text-align:justify; orphans:2; widows:2; }
@@ -400,6 +401,13 @@ export function buildBookHtml(params: {
     ? (html: string) => wrapInSpread(html)
     : (html: string) => html;
 
+  // Para capítulos: mesmo wrapper que pg, mas sem book-page — conteúdo fica solto
+  // dentro do .spread para o Chromium poder quebrar entre parágrafos livremente.
+  // No modo sem marcas, usa book-page simples para manter layout de tela.
+  const pgChapter = config.marcas_corte
+    ? (html: string) => wrapInSpread(html)
+    : (html: string) => `<div class="book-page">${html}</div>`;
+
   console.log("[buildBookHtml] texto recebido:");
   console.log("  tamanho:", texto.length);
   console.log("  primeiros 500 chars:", JSON.stringify(texto.slice(0, 500)));
@@ -557,12 +565,13 @@ export function buildBookHtml(params: {
     numberedPagesSoFar++;
     const extraClass = (i === 0) ? " first-chapter" : "";
 
-    sections.push(pg(`
-<section class="book-page chapter page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}">
-  <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
-  ${buildParagraphs(seg.texto, config, true)}
-  ${buildOrnamented(config)}
-</section>`));
+    // Capítulo: marcador de quebra + título + parágrafos como irmãos diretos.
+    // NÃO envolver em <section> — o Chromium quebra mal dentro de section.
+    sections.push(pgChapter(`
+<div class="chapter-marker page-break${extraClass}" id="${info.id}" data-title="${escHtml(info.titulo)}"></div>
+<h2 class="chapter-title">${escHtml(info.titulo)}</h2>
+${buildParagraphs(seg.texto, config, true)}
+${buildOrnamented(config)}`));
   });
 
   // 9. Bio do autor
