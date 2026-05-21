@@ -405,8 +405,8 @@ export function buildBookHtml(params: {
   // dentro do .spread para o Chromium poder quebrar entre parágrafos livremente.
   // No modo sem marcas, usa book-page simples para manter layout de tela.
   const pgChapter = config.marcas_corte
-    ? (html: string) => wrapInSpread(html)
-    : (html: string) => `<div class="book-page">${html}</div>`;
+    ? (html: string) => wrapInSpread(`<div class="book-page chapter">${html}</div>`)
+    : (html: string) => `<div class="book-page chapter">${html}</div>`;
 
   console.log("[buildBookHtml] texto recebido:");
   console.log("  tamanho:", texto.length);
