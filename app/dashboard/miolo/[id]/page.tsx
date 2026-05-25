@@ -674,12 +674,13 @@ ${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
 
               {/* Checklist */}
               <div className="mb-4">
-                <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">📋 Verifique nesta etapa:</p>
+                <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">📋 No PDF baixado, verifique:</p>
                 <ul className="space-y-1.5 text-xs text-zinc-600">
-                  <li>• Folheie até o final</li>
-                  <li>• Confira margens e tipografia</li>
-                  <li>• Verifique os títulos de capítulos</li>
-                  <li>• Confirme dedicatória e epígrafe</li>
+                  <li>• Folheie o livro até o final</li>
+                  <li>• Margens e tipografia</li>
+                  <li>• Títulos de capítulos</li>
+                  <li>• Dedicatória e epígrafe</li>
+                  <li>• Marcas de corte (se ativadas)</li>
                 </ul>
               </div>
 
@@ -703,103 +704,92 @@ ${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
               </div>
             </div>
 
-            {/* Right "page" — iframe preview */}
+            {/* Right "page" — download card (substitui iframe preview) */}
             <div
-              className="bg-white shadow-xl flex-1 flex flex-col overflow-hidden"
+              className="bg-white shadow-xl flex-1 flex flex-col items-center justify-center overflow-hidden p-8 sm:p-12"
               style={{ margin: "24px 24px 24px 0", borderRadius: "0 4px 4px 0" }}
             >
-              {previewUrl ? (
-                <>
-                  <iframe
-                    ref={iframeRef}
-                    src={previewUrl}
-                    title="Prévia do miolo"
-                    className="flex-1 border-0 w-full"
-                    style={{ minHeight: "500px" }}
-                  />
-                  {/* Chapter pagination */}
-                  {(miolo?.capitulos?.length ?? 0) > 1 && (
-                    <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-100 bg-white">
-                      <button
-                        onClick={() => navigateToChapter(Math.max(0, currentCapIdx - 1))}
-                        disabled={currentCapIdx === 0}
-                        className="text-zinc-400 hover:text-zinc-700 disabled:opacity-30 transition-colors"
-                      >
-                        ‹ Anterior
-                      </button>
-                      <span className="text-xs text-zinc-400">
-                        {miolo!.capitulos[currentCapIdx]?.titulo.slice(0, 35) ?? ""} ({currentCapIdx + 1} / {miolo!.capitulos.length})
-                      </span>
-                      <button
-                        onClick={() => navigateToChapter(Math.min(miolo!.capitulos.length - 1, currentCapIdx + 1))}
-                        disabled={currentCapIdx === (miolo?.capitulos.length ?? 1) - 1}
-                        className="text-zinc-400 hover:text-zinc-700 disabled:opacity-30 transition-colors"
-                      >
-                        Próximo ›
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-zinc-400 text-sm">
-                  Prévia não disponível — baixe o PDF para visualizar.
+              <div className="max-w-md w-full text-center">
+                {/* Ícone */}
+                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-brand-gold/10 flex items-center justify-center">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-brand-gold">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
                 </div>
-              )}
+
+                {/* Headline */}
+                <h2 className="font-heading text-2xl sm:text-3xl text-brand-primary mb-3">
+                  Seu livro está pronto
+                </h2>
+                <p className="text-zinc-500 text-sm leading-relaxed mb-8">
+                  Baixe o PDF para conferir como ficou seu livro impresso — com margens, marcas de corte e diagramação profissional.
+                </p>
+
+                {/* CTA primário — PDF */}
+                <button
+                  onClick={downloadPdf}
+                  disabled={!htmlContent || downloadingPdf}
+                  className="w-full bg-brand-primary text-brand-gold px-6 py-4 rounded-xl text-sm font-semibold hover:bg-[#2a2a4e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
+                  title={miolo?.config.marcas_corte ? "PDF com marcas de corte e sangria de 3mm" : "PDF pronto para impressão"}
+                >
+                  {downloadingPdf ? (
+                    <>
+                      <span className="inline-block w-4 h-4 rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
+                      Gerando PDF…
+                    </>
+                  ) : (
+                    <>
+                      ⬇ Baixar PDF{miolo?.config.marcas_corte ? " (com marcas de corte)" : ""}
+                    </>
+                  )}
+                </button>
+
+                {/* CTAs secundários — DOCX + EPUB lado a lado */}
+                <div className="flex gap-3 mb-6">
+                  <button
+                    onClick={downloadDocx}
+                    disabled={!htmlContent || downloadingDocx}
+                    className="flex-1 border border-zinc-200 text-zinc-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
+                  </button>
+                  <button
+                    onClick={handleEpub}
+                    className="flex-1 border border-violet-200 text-violet-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-violet-400 transition-colors flex items-center justify-center gap-2"
+                  >
+                    ⬇ EPUB
+                  </button>
+                </div>
+
+                {/* Mensagem de verificação */}
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Abra o arquivo baixado e confira margens, tipografia, títulos de capítulos, dedicatória e epígrafe.
+                  Se algo não estiver como esperado, ajuste as configurações no painel ao lado e baixe novamente.
+                </p>
+
+                {/* Erro */}
+                {error && (
+                  <div className="mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 text-left">
+                    {error}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Bottom CTA bar */}
-          <div className="bg-white border-t border-zinc-100 px-6 py-4 flex flex-wrap items-center gap-3">
+          {/* Bottom CTA bar — apenas avançar para próxima etapa */}
+          <div className="bg-white border-t border-zinc-100 px-6 py-4 flex items-center justify-end">
+            <p className="text-zinc-400 text-xs hidden sm:block mr-4">Próxima etapa: QA dos arquivos.</p>
             <button
-              onClick={downloadHtml}
-              disabled={!htmlContent}
-              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
+              onClick={async () => {
+                await supabase.from("projects").update({ etapa_atual: "preview" }).eq("id", projectId);
+                router.push(`/dashboard/qa/${projectId}`);
+              }}
+              className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
             >
-              ⬇ HTML
+              Continuar para QA →
             </button>
-            <button
-              onClick={downloadPdf}
-              disabled={!htmlContent || downloadingPdf}
-              className="inline-flex items-center gap-2 bg-zinc-800 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-900 transition-colors disabled:opacity-40"
-              title={miolo?.config.marcas_corte ? "PDF com marcas de corte e sangria de 3mm" : "PDF pronto para impressão"}
-            >
-              {downloadingPdf ? (
-                <>
-                  <span className="inline-block w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                  Gerando PDF…
-                </>
-              ) : (
-                <>⬇ PDF{miolo?.config.marcas_corte ? " ✂" : ""}</>
-              )}
-            </button>
-            <button
-              onClick={downloadDocx}
-              disabled={!htmlContent || downloadingDocx}
-              className="inline-flex items-center gap-2 border border-zinc-200 text-zinc-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40"
-            >
-              {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
-            </button>
-            <button
-              onClick={handleEpub}
-              className="inline-flex items-center gap-2 border border-violet-200 text-violet-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:border-violet-400 transition-colors"
-            >
-              ⬇ EPUB
-            </button>
-
-            {error && <p className="text-red-500 text-xs">{error}</p>}
-
-            <div className="ml-auto flex items-center gap-3">
-              <p className="text-zinc-400 text-xs hidden sm:block">Próxima etapa: QA dos arquivos.</p>
-              <button
-                onClick={async () => {
-                  await supabase.from("projects").update({ etapa_atual: "preview" }).eq("id", projectId);
-                  router.push(`/dashboard/qa/${projectId}`);
-                }}
-                className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
-              >
-                Continuar para QA →
-              </button>
-            </div>
           </div>
         </main>
       )}
