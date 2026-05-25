@@ -12,6 +12,16 @@ const nextConfig: NextConfig = {
     "jszip",
   ],
 
+  // Arquivos não-JS que precisam ser copiados para o pacote da função serverless.
+  // Sparticuz Chromium tem o binário comprimido em /bin/chromium.br que precisa
+  // estar disponível em runtime; sem este tracing, a pasta bin/ não é copiada
+  // e a função falha com "input directory does not exist".
+  outputFileTracingIncludes: {
+    "/api/agentes/gerar-pdf": [
+      "./node_modules/@sparticuz/chromium/bin/**/*",
+    ],
+  },
+
   images: {
     remotePatterns: [
       // Supabase Storage (generated covers, manuscript assets)
