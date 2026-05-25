@@ -95,6 +95,7 @@ export default function MioloPage() {
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [currentCapIdx, setCurrentCapIdx] = useState(0);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
@@ -286,18 +287,52 @@ export default function MioloPage() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
   }
 
-  function downloadPdf() {
-    if (!htmlContent) return;
-    // Opens a new tab with auto-print → browser "Save as PDF"
-    // Crop marks (if any) are included via @media print CSS already in the HTML
-    const htmlWithPrint = htmlContent.replace(
-      "</body>",
-      "<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body>"
-    );
-    const blob = new Blob([htmlWithPrint], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  async function downloadPdf() {
+    if (!miolo) return;
+    setDownloadingPdf(true);
+    setError(null);
+    try {
+      // Servidor gera PDF via Puppeteer + Sparticuz Chromium, respeitando CSS Paged Media completo.
+      // Demora 10-30s. Retorna signed URL do Supabase Storage com PDF binário.
+      const res = await fetch("/api/agentes/gerar-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+
+      // Defesa contra retorno não-JSON (rota quebrada retorna HTML do Vercel).
+      const ctype = res.headers.get("content-type") ?? "";
+      if (!ctype.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Servidor retornou ${ctype || "resposta desconhecida"} (status ${res.status}). Resposta: ${text.slice(0, 200)}`);
+      }
+
+      const data = await res.json() as { url_download?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status} ao gerar PDF`);
+      if (!data.url_download) throw new Error("URL de download não retornada pelo servidor");
+
+      // Download via blob: força salvar como arquivo PDF, não abre no Chrome.
+      const pdfRes = await fetch(data.url_download);
+      if (!pdfRes.ok) throw new Error(`Falha ao baixar PDF do Storage (${pdfRes.status})`);
+
+      const pdfCtype = pdfRes.headers.get("content-type") ?? "";
+      if (!pdfCtype.includes("pdf")) {
+        throw new Error(`Storage retornou ${pdfCtype}, esperado PDF. Geração falhou silenciosamente no servidor.`);
+      }
+
+      const blob = await pdfRes.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${safeName}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(link.href), 5_000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao gerar PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
   }
 
   function downloadDocx() {
@@ -724,11 +759,18 @@ ${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
             </button>
             <button
               onClick={downloadPdf}
-              disabled={!htmlContent}
+              disabled={!htmlContent || downloadingPdf}
               className="inline-flex items-center gap-2 bg-zinc-800 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-900 transition-colors disabled:opacity-40"
               title={miolo?.config.marcas_corte ? "PDF com marcas de corte e sangria de 3mm" : "PDF pronto para impressão"}
             >
-              ⬇ PDF{miolo?.config.marcas_corte ? " ✂" : ""}
+              {downloadingPdf ? (
+                <>
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                  Gerando PDF…
+                </>
+              ) : (
+                <>⬇ PDF{miolo?.config.marcas_corte ? " ✂" : ""}</>
+              )}
             </button>
             <button
               onClick={downloadDocx}

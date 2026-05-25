@@ -2,7 +2,7 @@ export const maxDuration = 60;
 
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { PDFParse } from "pdf-parse";
+import { PDFDocument } from "pdf-lib";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
@@ -138,9 +138,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Count real pages ──────────────────────────────────────────────────────
-  const parser = new PDFParse({ data: pdfBuffer });
-  const { total: numPaginas } = await parser.getInfo();
-  await parser.destroy();
+  // pdf-lib não depende de DOMMatrix; funciona em runtime Node serverless do Vercel.
+  const parsedPdf = await PDFDocument.load(pdfBuffer);
+  const numPaginas = parsedPdf.getPageCount();
 
   // ── Upload PDF to Storage ─────────────────────────────────────────────────
   const storagePath = `${userId}/${project_id}/livro.pdf`;
