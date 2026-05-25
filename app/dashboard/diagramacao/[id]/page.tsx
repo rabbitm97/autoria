@@ -95,6 +95,30 @@ export default function DiagramacaoPage() {
     router.push(`/dashboard/qa/${id}`);
   }
 
+  // ── Forced download via Blob (avoids cross-origin <a download> being ignored) ──
+  async function baixarArquivo(url: string, nomeArquivo: string) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Falha ao baixar (${res.status})`);
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (nomeArquivo.endsWith(".pdf") && !contentType.includes("pdf")) {
+        throw new Error(`Arquivo no Storage não é PDF (recebido: ${contentType}). A geração de PDF falhou no servidor. Tente regenerar.`);
+      }
+
+      const blob = await res.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = nomeArquivo;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido ao baixar");
+    }
+  }
+
   // ── Format label ─────────────────────────────────────────────────────────
   const formatoInfo = FORMATOS.find(f => f.id === (result?.formato ?? formato));
 
@@ -182,16 +206,13 @@ export default function DiagramacaoPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <a
-                    href={result.url_download}
-                    download
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    onClick={() => baixarArquivo(result.url_download, "livro.pdf")}
                     className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors"
                   >
                     <DownloadIcon />
                     Baixar PDF
-                  </a>
+                  </button>
                   <button
                     onClick={handleGerar}
                     disabled={generating}
@@ -228,16 +249,13 @@ export default function DiagramacaoPage() {
 
                 {epubResult ? (
                   <div className="flex gap-3">
-                    <a
-                      href={epubResult.url_download}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => baixarArquivo(epubResult.url_download, "livro.epub")}
                       className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-violet-600 text-white font-medium text-sm hover:bg-violet-700 transition-colors"
                     >
                       <DownloadIcon />
                       Baixar EPUB
-                    </a>
+                    </button>
                     <button
                       onClick={handleGerarEpub}
                       disabled={generatingEpub}
