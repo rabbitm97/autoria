@@ -8,7 +8,6 @@ export interface MioloConfig {
   formato: FormatoId;
   corpo_pt: 10 | 11 | 12;
   capitular: boolean;
-  ornamentos: boolean;
   sumario: boolean;
   dedicatoria: string;
   epigrafe_texto: string;
@@ -256,18 +255,6 @@ body {
   orphans: 2;
   widows: 2;
 }
-
-/* Ornamento — separa seções dentro do capítulo, sem quebrar página */
-.ornamento {
-  text-align: center;
-  color: #888;
-  margin: 1.8em 0;
-  letter-spacing: 0.8em;
-  font-size: 1.1em;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.ornamento + p { text-indent: 0; }
 
 /* Bio do autor */
 .author-bio {
@@ -527,11 +514,6 @@ function buildParagraphsForChapter(text: string, config: MioloConfig): string {
   }).join("\n");
 }
 
-function buildOrnamento(config: MioloConfig): string {
-  if (!config.ornamentos) return "";
-  return `<div class="ornamento">* * *</div>`;
-}
-
 // ─── Book HTML builder ────────────────────────────────────────────────────────
 
 export function buildBookHtml(params: {
@@ -674,7 +656,6 @@ ${tocItems}
     sections.push(`<section class="chapter" id="${info.id}">
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
 ${buildParagraphsForChapter(seg.texto, config)}
-${buildOrnamento(config)}
 </section>`);
   });
 

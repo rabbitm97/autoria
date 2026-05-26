@@ -574,17 +574,7 @@ export async function buildBookDocx(params: {
       bodyPara(text, isFirst, isDialogue, st, font, corpo_pt, config.capitular && isFirst && st.drop_cap !== null)
     );
 
-    const ornamentPara = config.ornamentos
-      ? new Paragraph({
-          alignment: "center",
-          spacing: { before: mm(10), after: mm(10) },
-          children: [trun("* * *", { font, size: size_hp, color: "888888" })],
-        })
-      : null;
-
-    const chChildren: (Paragraph | Table)[] = [
-      chTitlePara, ...bodyParas, ...(ornamentPara ? [ornamentPara] : []),
-    ];
+    const chChildren: (Paragraph | Table)[] = [chTitlePara, ...bodyParas];
 
     docSections.push({
       properties: {
