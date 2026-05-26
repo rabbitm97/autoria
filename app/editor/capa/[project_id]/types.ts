@@ -11,5 +11,6 @@ export interface ProjectData {
   authorName: string;
   isbn: string | null;
   synopsisShort: string;
+  synopsisLong: string;
   pagesSource: "real" | "estimated" | "default";
 }

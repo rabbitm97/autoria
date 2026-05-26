@@ -7,8 +7,11 @@ import {
   ZOOM_FIT_MARGIN,
 } from "./constants";
 import { FORMATS, SANGRIA_MM, ORELHA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
+import type { AnyElement, RegionFills, Region } from "./elements";
+import { nanoid } from "nanoid";
 
 interface EditorState {
+  // Viewport
   format: FormatKey;
   pages: number;
   comOrelhas: boolean;
@@ -16,7 +19,20 @@ interface EditorState {
   panX: number;
   panY: number;
   legendasAtivas: boolean;
+  snapEnabled: boolean;
+  snapThreshold: number;
 
+  // Elements
+  elements: AnyElement[];
+  selectedId: string | null;
+
+  // Region fills
+  fills: RegionFills;
+
+  // Project
+  isbn: string | null;
+
+  // Viewport actions
   setComOrelhas: (v: boolean) => void;
   setZoom: (z: number) => void;
   setPan: (x: number, y: number) => void;
@@ -24,16 +40,44 @@ interface EditorState {
   zoomOut: () => void;
   fitToScreen: (containerW: number, containerH: number) => void;
   toggleLegendas: () => void;
+  toggleSnap: () => void;
+
+  // Element CRUD
+  addElement: (el: AnyElement) => void;
+  updateElement: (id: string, patch: Partial<AnyElement>) => void;
+  deleteElement: (id: string) => void;
+  duplicateElement: (id: string) => void;
+  moveElementZ: (id: string, delta: 1 | -1) => void;
+  setSelectedId: (id: string | null) => void;
+
+  // Fills
+  setFill: (region: Region, color: string | null) => void;
+
+  // Project
+  setIsbn: (isbn: string | null) => void;
+
+  // Reset — call on mount to prevent state leaking between projects
+  reset: () => void;
 }
 
-export const useEditorStore = create<EditorState>((set, get) => ({
-  format: "16x23",
+const DEFAULT_STATE = {
+  format: "16x23" as FormatKey,
   pages: 200,
   comOrelhas: false,
   zoom: 0.5,
   panX: 0,
   panY: 0,
   legendasAtivas: false,
+  snapEnabled: true,
+  snapThreshold: 8,
+  elements: [] as AnyElement[],
+  selectedId: null as string | null,
+  fills: {} as RegionFills,
+  isbn: null as string | null,
+};
+
+export const useEditorStore = create<EditorState>((set, get) => ({
+  ...DEFAULT_STATE,
 
   setComOrelhas: (v) => set({ comOrelhas: v }),
   setZoom: (z) => set({ zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z)) }),
@@ -70,4 +114,82 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   toggleLegendas: () => set((s) => ({ legendasAtivas: !s.legendasAtivas })),
+  toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
+
+  addElement: (el) =>
+    set((s) => {
+      const maxZ = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
+      return { elements: [...s.elements, { ...el, zIndex: maxZ + 1 }] };
+    }),
+
+  updateElement: (id, patch) =>
+    set((s) => ({
+      elements: s.elements.map((e) =>
+        e.id === id ? ({ ...e, ...patch } as AnyElement) : e,
+      ),
+    })),
+
+  deleteElement: (id) =>
+    set((s) => ({
+      elements: s.elements.filter((e) => e.id !== id),
+      selectedId: s.selectedId === id ? null : s.selectedId,
+    })),
+
+  duplicateElement: (id) =>
+    set((s) => {
+      const el = s.elements.find((e) => e.id === id);
+      if (!el) return s;
+      const maxZ = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
+      const copy: AnyElement = {
+        ...el,
+        id: nanoid(),
+        x_mm: el.x_mm + 5,
+        y_mm: el.y_mm + 5,
+        zIndex: maxZ + 1,
+      };
+      return { elements: [...s.elements, copy], selectedId: copy.id };
+    }),
+
+  moveElementZ: (id, delta) =>
+    set((s) => {
+      const el = s.elements.find((e) => e.id === id);
+      if (!el) return s;
+      const sorted = [...s.elements].sort((a, b) => a.zIndex - b.zIndex);
+      const idx = sorted.findIndex((e) => e.id === id);
+      const swapIdx = idx + delta;
+      if (swapIdx < 0 || swapIdx >= sorted.length) return s;
+      const swapZ = sorted[swapIdx].zIndex;
+      const elZ = el.zIndex;
+      return {
+        elements: s.elements.map((e) => {
+          if (e.id === id) return { ...e, zIndex: swapZ } as AnyElement;
+          if (e.id === sorted[swapIdx].id) return { ...e, zIndex: elZ } as AnyElement;
+          return e;
+        }),
+      };
+    }),
+
+  setSelectedId: (id) => set({ selectedId: id }),
+
+  setFill: (region, color) =>
+    set((s) => {
+      const fills = { ...s.fills };
+      if (color === null) {
+        delete fills[region];
+      } else {
+        fills[region] = color;
+      }
+      return { fills };
+    }),
+
+  setIsbn: (isbn) => set({ isbn }),
+
+  reset: () =>
+    set({
+      elements: [],
+      selectedId: null,
+      fills: {},
+      isbn: null,
+      legendasAtivas: false,
+    }),
 }));

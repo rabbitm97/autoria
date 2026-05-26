@@ -28,7 +28,7 @@ export default async function EditorCapaPage({
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome)",
+      "dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, subtitulo, isbn)",
     )
     .eq("id", project_id)
     .single();
@@ -46,48 +46,14 @@ export default async function EditorCapaPage({
   const manuscript = project.manuscripts as {
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
+    subtitulo?: string;
+    isbn?: string;
   } | null;
 
   const rawFormat = capa?.formato as string | undefined;
+  const format: FormatKey =
+    rawFormat && rawFormat in FORMATS ? (rawFormat as FormatKey) : "16x23";
 
-  if (!rawFormat || !(rawFormat in FORMATS)) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-[#fdfcf9] text-[#1a1a2e]">
-        <div className="mx-4 max-w-sm text-center">
-          <div className="mb-4 flex justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50">
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#c9a84c"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </div>
-          </div>
-          <p className="mb-1 text-base font-medium">Formato do livro não definido</p>
-          <p className="mb-6 text-sm text-zinc-400">
-            Selecione o formato na página de capa antes de abrir o editor interativo.
-          </p>
-          <a
-            href={`/dashboard/capa/${project_id}`}
-            className="inline-block rounded-xl bg-[#1a1a2e] px-6 py-2.5 text-sm font-medium text-[#c9a84c] transition-opacity hover:opacity-90"
-          >
-            ← Voltar para edição de capa
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  const format = rawFormat as FormatKey;
   const pages = miolo?.paginas_reais ?? 200;
   const title =
     (elementos?.titulo_escolhido as string) ??
@@ -100,16 +66,20 @@ export default async function EditorCapaPage({
     .filter(Boolean)
     .join(" ");
   const synopsisShort = (elementos?.sinopse_curta as string) ?? "";
+  const synopsisLong = (elementos?.sinopse_longa as string) ?? "";
+  const subtitle = manuscript?.subtitulo ?? "";
+  const isbn = manuscript?.isbn ?? null;
 
   const projectData: ProjectData = {
     projectId: project_id,
     format,
     pages,
     title,
-    subtitle: "",
+    subtitle,
     authorName,
-    isbn: null, // TODO Onda 3: check if projects table has isbn column
+    isbn,
     synopsisShort,
+    synopsisLong,
     pagesSource: miolo?.paginas_reais ? "real" : "default",
   };
 
