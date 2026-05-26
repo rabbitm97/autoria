@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoId } from "@/app/api/agentes/miolo/route";
 import { supabase } from "@/lib/supabase";
+import { DocxDisclaimer } from "./docx-disclaimer";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export default function MioloPage() {
   const [currentCapIdx, setCurrentCapIdx] = useState(0);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [docxModalOpen, setDocxModalOpen] = useState(false);
 
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
@@ -335,31 +337,45 @@ export default function MioloPage() {
     }
   }
 
-  function downloadDocx() {
-    if (!htmlContent) return;
+  function handleDocxClick() {
+    const seen = typeof window !== "undefined"
+      && localStorage.getItem("autoria:docx-disclaimer-seen-v1") === "true";
+    if (seen) {
+      performDocxDownload();
+    } else {
+      setDocxModalOpen(true);
+    }
+  }
+
+  async function performDocxDownload() {
     setDownloadingDocx(true);
     try {
-      // Word HTML format: opens natively in Microsoft Word and LibreOffice
-      // Retains all typographic styling, chapters, and layout
-      const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="UTF-8">
-<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
-${htmlContent.match(/<style[\s\S]*?<\/style>/)?.[0] ?? ""}
-</head>
-<body>
-${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
-</body>
-</html>`;
-      const blob = new Blob([wordHtml], { type: "application/vnd.ms-word;charset=utf-8" });
+      const res = await fetch("/api/agentes/gerar-docx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      if (!res.ok) throw new Error("Falha ao gerar DOCX");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${safeName}_miolo.doc`;
+      a.href = url;
+      a.download = `${safeName}.docx`;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+      setTimeout(() => URL.revokeObjectURL(url), 5_000);
+    } catch (e) {
+      console.error(e);
     } finally {
       setDownloadingDocx(false);
     }
+  }
+
+  function handleDocxConfirm(dontShowAgain: boolean) {
+    if (dontShowAgain) {
+      localStorage.setItem("autoria:docx-disclaimer-seen-v1", "true");
+    }
+    setDocxModalOpen(false);
+    performDocxDownload();
   }
 
   async function handleEpub() {
@@ -746,14 +762,17 @@ ${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
                 </button>
 
                 {/* CTAs secundários — DOCX + EPUB lado a lado */}
-                <div className="flex gap-3 mb-6">
-                  <button
-                    onClick={downloadDocx}
-                    disabled={!htmlContent || downloadingDocx}
-                    className="flex-1 border border-zinc-200 text-zinc-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
-                  >
-                    {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
-                  </button>
+                <div className="flex gap-3 mb-2">
+                  <div className="flex-1 flex flex-col gap-1">
+                    <button
+                      onClick={handleDocxClick}
+                      disabled={!miolo || downloadingDocx}
+                      className="w-full border border-zinc-200 text-zinc-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
+                    </button>
+                    <p className="text-[10px] text-zinc-400 text-center">Para edição. Fontes adaptadas para Word.</p>
+                  </div>
                   <button
                     onClick={handleEpub}
                     className="flex-1 border border-violet-200 text-violet-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-violet-400 transition-colors flex items-center justify-center gap-2"
@@ -793,6 +812,12 @@ ${htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? htmlContent}
           </div>
         </main>
       )}
+
+      <DocxDisclaimer
+        open={docxModalOpen}
+        onClose={() => setDocxModalOpen(false)}
+        onConfirm={handleDocxConfirm}
+      />
     </div>
   );
 }
