@@ -20,6 +20,7 @@ const DEFAULT_CONFIG: MioloConfig = {
   formato: "padrao_br",
   corpo_pt: 11,
   capitular: true,
+  ornamentos: true,
   sumario: true,
   dedicatoria: "",
   epigrafe_texto: "",
@@ -175,6 +176,7 @@ export default function PreviewClient({ data }: { data: ProjectData }) {
         <Section label="Elementos">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <Toggle label="Capitular (drop cap)" checked={config.capitular} onChange={v => set("capitular", v)} />
+            <Toggle label="Ornamentos (***)" checked={config.ornamentos} onChange={v => set("ornamentos", v)} />
             <Toggle label="Sumário" checked={config.sumario} onChange={v => set("sumario", v)} />
             <Toggle label="Marcas de corte (sangria 3mm)" checked={config.marcas_corte} onChange={v => set("marcas_corte", v)} />
           </div>

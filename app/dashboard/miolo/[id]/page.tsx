@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoId } from "@/app/api/agentes/miolo/route";
-import { deveExibirSumario } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
 import { DocxDisclaimer } from "./docx-disclaimer";
 
@@ -56,13 +55,6 @@ const PROCESSING_MSGS = [
   "Finalizando visualização…",
 ];
 
-// Defaults fixos do miolo. UI não expõe estes campos — o builder usa sempre estes valores.
-const MIOLO_DEFAULTS = {
-  corpo_pt: 11 as const,
-  capitular: true,
-  marcas_corte: true,
-};
-
 // ─── Config Form ──────────────────────────────────────────────────────────────
 
 function RadioCard({ selected, onClick, children }: {
@@ -110,11 +102,16 @@ export default function MioloPage() {
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
   const [formato, setFormato] = useState<FormatoId>("padrao_br");
-  const [sumario, setSumario] = useState(false);
+  const [corpoPt, setCorpoPt] = useState<10 | 11 | 12>(11);
+  const [capitular, setCapitular] = useState(true);
+  const [ornamentos, setOrnamentos] = useState(true);
+  const [sumario, setSumario] = useState(true);
   const [dedicatoria, setDedicatoria] = useState("");
   const [epigrafeTexto, setEpigrafeTexto] = useState("");
   const [epigrafeAutor, setEpigrafeAutor] = useState("");
   const [bioAutor, setBioAutor] = useState("");
+  const [marcasCorte, setMarcasCorte] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPretextual, setShowPretextual] = useState(false);
 
   // ── Processing state ────────────────────────────────────────────────────────
@@ -154,10 +151,6 @@ export default function MioloPage() {
       const existingMiolo = project.dados_miolo as MioloResult | null;
       if (existingMiolo) {
         setMiolo(existingMiolo);
-        // Restore sumário setting from saved config
-        if (existingMiolo.config?.sumario !== undefined) {
-          setSumario(Boolean(existingMiolo.config.sumario));
-        }
         // Fetch fresh signed URL
         const res = await fetch(`/api/agentes/miolo?project_id=${projectId}`);
         if (res.ok) {
@@ -195,11 +188,11 @@ export default function MioloPage() {
     }, 2500);
 
     const config: MioloConfig = {
-      ...MIOLO_DEFAULTS,
-      template, formato,
-      sumario: deveExibirSumario({ template } as unknown as MioloConfig) ? sumario : false,
+      template, formato, corpo_pt: corpoPt,
+      capitular, ornamentos, sumario,
       dedicatoria, epigrafe_texto: epigrafeTexto,
       epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
+      marcas_corte: marcasCorte,
     };
 
     try {
@@ -478,23 +471,72 @@ export default function MioloPage() {
             </div>
           </section>
 
-          {/* Sumário — visível apenas em templates que comportam */}
-          {deveExibirSumario({ template } as unknown as MioloConfig) && (
-            <section className="bg-white rounded-2xl border border-zinc-100 p-5 mb-5">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <div
-                  onClick={() => setSumario(v => !v)}
-                  className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 mt-0.5 ${sumario ? "bg-brand-primary" : "bg-zinc-200"}`}
-                >
-                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario ? "translate-x-4" : "translate-x-0"}`} />
-                </div>
+          {/* Advanced options */}
+          <section className="bg-white rounded-2xl border border-zinc-100 overflow-hidden mb-5">
+            <button
+              onClick={() => setShowAdvanced(v => !v)}
+              className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-zinc-50 transition-colors"
+            >
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Opções tipográficas</span>
+              <span className="text-zinc-400 text-sm">{showAdvanced ? "▲" : "▼"}</span>
+            </button>
+            {showAdvanced && (
+              <div className="px-6 pb-6 space-y-4 border-t border-zinc-100 pt-4">
+                {/* Font size */}
                 <div>
-                  <span className="text-sm font-medium text-zinc-700">Incluir sumário</span>
-                  <p className="text-xs text-zinc-400 mt-0.5">Lista de capítulos com numeração de página automática.</p>
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-2">Tamanho do corpo</label>
+                  <div className="flex gap-2">
+                    {([10, 11, 12] as const).map(sz => (
+                      <button
+                        key={sz}
+                        onClick={() => setCorpoPt(sz)}
+                        className={`px-4 py-2 rounded-lg border text-sm transition-colors ${
+                          corpoPt === sz ? "border-brand-gold bg-brand-gold/5 text-brand-primary font-medium" : "border-zinc-200 text-zinc-600"
+                        }`}
+                      >
+                        {sz}pt
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1">11pt é o padrão editorial para leitura confortável.</p>
                 </div>
-              </label>
-            </section>
-          )}
+                {/* Toggles */}
+                {[
+                  { label: "Capitular (letra inicial grande) no início de cada capítulo", val: capitular, set: setCapitular },
+                  { label: "Ornamentos tipográficos entre seções (* * *)", val: ornamentos, set: setOrnamentos },
+                  { label: "Gerar sumário automático", val: sumario, set: setSumario },
+                ].map(({ label, val, set }) => (
+                  <label key={label} className="flex items-center gap-3 cursor-pointer">
+                    <div
+                      onClick={() => set(!val)}
+                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${val ? "bg-brand-primary" : "bg-zinc-200"}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? "translate-x-4" : "translate-x-0"}`} />
+                    </div>
+                    <span className="text-sm text-zinc-600">{label}</span>
+                  </label>
+                ))}
+
+                {/* Crop marks / bleed */}
+                <div className="border-t border-zinc-100 pt-4 mt-1">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div
+                      onClick={() => setMarcasCorte(v => !v)}
+                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 mt-0.5 ${marcasCorte ? "bg-brand-primary" : "bg-zinc-200"}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${marcasCorte ? "translate-x-4" : "translate-x-0"}`} />
+                    </div>
+                    <div>
+                      <span className="text-sm text-zinc-600">Marcas de corte e sangria (impressão profissional)</span>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Adiciona sangria de 3 mm e marcas de corte em cada página — necessário para gráficas e impressão sob demanda.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+          </section>
 
           {/* Pre-textual elements */}
           <section className="bg-white rounded-2xl border border-zinc-100 overflow-hidden mb-5">
@@ -583,7 +625,7 @@ export default function MioloPage() {
             <p className="text-sm text-zinc-700">
               Template: <strong>{TEMPLATES.find(t => t.id === template)?.nome}</strong> ·
               Formato: <strong>{FORMATOS.find(f => f.id === formato)?.label}</strong> ·
-              Fonte: <strong>{MIOLO_DEFAULTS.corpo_pt}pt</strong>
+              Fonte: <strong>{corpoPt}pt</strong>
             </p>
           </div>
         </main>
