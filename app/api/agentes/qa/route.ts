@@ -70,6 +70,8 @@ export async function POST(req: NextRequest) {
   let capaLarguraPx: number | null = null;
   let capaAlturaPx: number | null = null;
   let capaFormatoDpi = 300;
+  let capaMode: string | null = null;
+  let capaAjustadaEm: string | null = null;
 
   if (isDev) {
     texto = "Lorem ipsum ".repeat(3000);
@@ -114,23 +116,22 @@ export async function POST(req: NextRequest) {
     // Lombada cross-check data
     lombadaMioloMm = (miolo?.lombada_mm as number) ?? null;
 
-    // From upload: validacao has expected lombada embedded in expected dimensions
-    const validacao = capa?.validacao as Record<string, unknown> | null;
-    if (validacao) {
-      // Back-calculate lombada from expected width: totalW = sangria + orelha + frente + lombada + frente + orelha + sangria
-      // We stored largura_esperada_mm in validacao
-      // Simpler: just compare lombadaMm stored on upload result if available
-      lombadaCapaMm = (capa?.lombada_mm_na_validacao as number) ?? null;
-    }
-    if (!lombadaCapaMm && capa?.modo === "manual") {
-      // Manual editor uses paginas too
-      const pags = (capa.paginas as number) ?? 0;
-      if (pags) lombadaCapaMm = Math.round(pags * 0.07 * 10) / 10;
+    if (capa) {
+      if (capa.modo === "ia" && typeof capa.lombada_mm === "number") {
+        lombadaCapaMm = capa.lombada_mm;
+      } else if (capa.modo === "upload" && typeof capa.lombada_mm_na_validacao === "number") {
+        lombadaCapaMm = capa.lombada_mm_na_validacao;
+      } else if (capa.modo === "manual") {
+        const pags = (capa.paginas as number) ?? 0;
+        if (pags) lombadaCapaMm = Math.round(pags * 0.07 * 10) / 10;
+      }
     }
 
-    capaLarguraPx = (capa?.largura_px as number) ?? null;
-    capaAlturaPx  = (capa?.altura_px  as number) ?? null;
-    capaFormatoDpi = (capa?.dpi as number) ?? 300;
+    capaLarguraPx  = (capa?.largura_px as number) ?? null;
+    capaAlturaPx   = (capa?.altura_px  as number) ?? null;
+    capaFormatoDpi = (capa?.dpi        as number) ?? 300;
+    capaMode       = (capa?.modo       as string) ?? null;
+    capaAjustadaEm = (capa?.ajustado_em as string) ?? null;
   }
 
   // ── Structural checks ─────────────────────────────────────────────────────
@@ -194,11 +195,25 @@ export async function POST(req: NextRequest) {
     if (lombadaCapaMm !== null && lombadaMioloMm !== null) {
       const diff = Math.abs(lombadaCapaMm - lombadaMioloMm);
       if (diff > 2) {
-        itens.push({
-          categoria: "capa",
-          status: "erro",
-          mensagem: `Lombada da capa (${lombadaCapaMm}mm) diverge do miolo real (${lombadaMioloMm}mm) em ${diff.toFixed(1)}mm. Re-envie a capa com a lombada correta.`,
-        });
+        if (capaMode === "ia") {
+          itens.push({
+            categoria: "capa",
+            status: "erro",
+            mensagem: `Lombada da capa (${lombadaCapaMm}mm) diverge do miolo (${lombadaMioloMm}mm) em ${diff.toFixed(1)}mm. Use o botão "Ajustar lombada" na página de capa ou miolo para correção automática.`,
+          });
+        } else if (capaMode === "upload") {
+          itens.push({
+            categoria: "capa",
+            status: "erro",
+            mensagem: `Lombada da capa enviada (${lombadaCapaMm}mm) diverge do miolo real (${lombadaMioloMm}mm) em ${diff.toFixed(1)}mm. Reenvie a capa com a lombada correta de ${lombadaMioloMm}mm.`,
+          });
+        } else {
+          itens.push({
+            categoria: "capa",
+            status: "erro",
+            mensagem: `Lombada da capa (${lombadaCapaMm}mm) diverge do miolo (${lombadaMioloMm}mm) em ${diff.toFixed(1)}mm. Revise a capa antes de publicar.`,
+          });
+        }
       } else {
         itens.push({
           categoria: "capa",
@@ -211,6 +226,15 @@ export async function POST(req: NextRequest) {
         categoria: "capa",
         status: "aviso",
         mensagem: `Lombada do miolo real: ${lombadaMioloMm}mm. Verifique se a capa foi dimensionada com este valor.`,
+      });
+    }
+
+    // Confirm automatic adjustment if it happened
+    if (capaAjustadaEm) {
+      itens.push({
+        categoria: "capa",
+        status: "ok",
+        mensagem: `Lombada ajustada automaticamente em ${new Date(capaAjustadaEm).toLocaleDateString("pt-BR")} para refletir o número real de páginas do miolo.`,
       });
     }
   }

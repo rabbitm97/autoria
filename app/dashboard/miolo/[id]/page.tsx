@@ -123,6 +123,12 @@ export default function MioloPage() {
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "processing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // ── Lombada divergence state ─────────────────────────────────────────────────
+  const [dadosCapa, setDadosCapa] = useState<{ lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null>(null);
+  const [lombadaAjusteDisponivel, setLombadaAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
+  const [lombadaUploadAvisoAtivo, setLombadaUploadAvisoAtivo] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
+  const [ajustando, setAjustando] = useState(false);
+
   // ── Load ─────────────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
@@ -144,8 +150,9 @@ export default function MioloPage() {
       setTemplate(suggestTemplate(g));
 
       // Inherit format from Capa step (single source of truth)
-      const capaData = project.dados_capa as { formato?: string } | null;
+      const capaData = project.dados_capa as { formato?: string; lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
       if (capaData?.formato) setFormato(capaData.formato as FormatoId);
+      setDadosCapa(capaData);
 
       // If already generated, show preview directly
       const existingMiolo = project.dados_miolo as MioloResult | null;
@@ -206,6 +213,25 @@ export default function MioloPage() {
 
       setProcessingPct(100);
       setMiolo(data.miolo!);
+
+      // Check lombada divergence
+      const lombadaMiolo = data.miolo!.lombada_mm;
+      if (dadosCapa?.modo === "ia" && dadosCapa?.lombada_mm) {
+        const diff = Math.abs(dadosCapa.lombada_mm - lombadaMiolo);
+        if (diff > 2) {
+          setLombadaAjusteDisponivel({ anterior: dadosCapa.lombada_mm, nova: lombadaMiolo, diff });
+        } else {
+          setLombadaAjusteDisponivel(null);
+        }
+      } else if (dadosCapa?.modo === "upload" && dadosCapa?.lombada_mm_na_validacao) {
+        const diff = Math.abs(dadosCapa.lombada_mm_na_validacao - lombadaMiolo);
+        if (diff > 2) {
+          setLombadaUploadAvisoAtivo({ anterior: dadosCapa.lombada_mm_na_validacao, nova: lombadaMiolo, diff });
+        } else {
+          setLombadaUploadAvisoAtivo(null);
+        }
+      }
+
       if (data.html) {
         const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
         setPreviewUrl(URL.createObjectURL(blob));
@@ -796,6 +822,80 @@ export default function MioloPage() {
               </div>
             </div>
           </div>
+
+          {/* Lombada divergence — IA cover: offer auto-adjust */}
+          {lombadaAjusteDisponivel && (
+            <div className="mx-6 mt-4 p-5 bg-amber-50 border border-amber-200 rounded-2xl">
+              <h3 className="font-semibold text-amber-900 text-sm mb-2">
+                Lombada da capa precisa de ajuste
+              </h3>
+              <p className="text-xs text-amber-800 leading-relaxed mb-4">
+                O miolo final ficou com <strong>{lombadaAjusteDisponivel.nova}mm</strong> de lombada, mas sua capa foi gerada
+                com <strong>{lombadaAjusteDisponivel.anterior}mm</strong> (diferença
+                de {lombadaAjusteDisponivel.diff.toFixed(1)}mm). Posso ajustar automaticamente — regenero só a lombada
+                e recomponho a capa, sem custo de créditos.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setAjustando(true);
+                    try {
+                      const res = await fetch("/api/agentes/ajustar-lombada", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ project_id: projectId }),
+                      });
+                      if (res.ok) {
+                        setLombadaAjusteDisponivel(null);
+                        await loadData();
+                      }
+                    } finally {
+                      setAjustando(false);
+                    }
+                  }}
+                  disabled={ajustando}
+                  className="px-4 py-2 bg-amber-700 text-white rounded-lg text-xs font-medium hover:bg-amber-800 transition-colors disabled:opacity-50"
+                >
+                  {ajustando ? "Ajustando…" : "Ajustar automaticamente"}
+                </button>
+                <button
+                  onClick={() => setLombadaAjusteDisponivel(null)}
+                  className="px-4 py-2 bg-transparent text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
+                >
+                  Ignorar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lombada divergence — upload cover: must re-upload */}
+          {lombadaUploadAvisoAtivo && (
+            <div className="mx-6 mt-4 p-5 bg-red-50 border border-red-200 rounded-2xl">
+              <h3 className="font-semibold text-red-900 text-sm mb-2">
+                Capa enviada por upload está fora de medida
+              </h3>
+              <p className="text-xs text-red-800 leading-relaxed mb-4">
+                O miolo final ficou com <strong>{lombadaUploadAvisoAtivo.nova}mm</strong> de lombada, mas sua capa enviada
+                foi calibrada para <strong>{lombadaUploadAvisoAtivo.anterior}mm</strong> (diferença
+                de {lombadaUploadAvisoAtivo.diff.toFixed(1)}mm). Como você enviou a capa pronta, é necessário refazer
+                o upload com a lombada correta.
+              </p>
+              <div className="flex gap-2">
+                <a
+                  href={`/dashboard/capa/${projectId}`}
+                  className="inline-block px-4 py-2 bg-red-700 text-white rounded-lg text-xs font-medium hover:bg-red-800 transition-colors"
+                >
+                  Refazer upload da capa
+                </a>
+                <button
+                  onClick={() => setLombadaUploadAvisoAtivo(null)}
+                  className="px-4 py-2 bg-transparent text-red-800 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors"
+                >
+                  Ignorar
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Bottom CTA bar — apenas avançar para próxima etapa */}
           <div className="bg-white border-t border-zinc-100 px-6 py-4 flex items-center justify-end">

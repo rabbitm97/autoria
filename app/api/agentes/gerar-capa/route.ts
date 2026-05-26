@@ -33,6 +33,8 @@ export interface CapaGeradaResult {
   url_escolhida: string | null;
   gerado_em: string;
   is_regeneracao: boolean;
+  paginas_estimadas: number;
+  lombada_mm: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,6 +109,8 @@ export async function POST(req: NextRequest) {
     quarta_capa_texto?: string;
     imagemRef?: string;
     is_regeneracao?: boolean;
+    paginas?: number;
+    formato?: string;
   };
   try {
     body = await req.json();
@@ -126,6 +130,7 @@ export async function POST(req: NextRequest) {
     quarta_capa_texto = sinopse?.slice(0, 500) ?? "",
     imagemRef,
     is_regeneracao = false,
+    paginas = 200,
   } = body;
 
   if (!project_id || !titulo || !sinopse) {
@@ -228,6 +233,8 @@ export async function POST(req: NextRequest) {
     url_escolhida: opcoes[0]?.url ?? null,
     gerado_em: new Date().toISOString(),
     is_regeneracao,
+    paginas_estimadas: paginas,
+    lombada_mm: Math.round(paginas * 0.07 * 10) / 10,
   };
 
   await supabase

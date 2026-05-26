@@ -130,17 +130,25 @@ function ModoUpload({
   projectId,
   formatoInicial,
   lombadaReal,
+  estimativaPaginas,
+  fonteEstimativa,
   onSalvo,
   onVoltar,
 }: {
   projectId: string;
   formatoInicial: FormatoId;
   lombadaReal: number | null;
+  estimativaPaginas: number | null;
+  fonteEstimativa: "miolo_real" | "estimado" | null;
   onSalvo: (result: CapaUploadResult) => void;
   onVoltar: () => void;
 }) {
   const formato = formatoInicial; // inherited from page-level selector
-  const [paginas, setPaginas] = useState(200);
+  const [paginas, setPaginas] = useState(estimativaPaginas ?? 200);
+
+  useEffect(() => {
+    if (estimativaPaginas != null) setPaginas(estimativaPaginas);
+  }, [estimativaPaginas]);
   const [usarOrelhas, setUsarOrelhas] = useState(false);
   const [dpi, setDpi] = useState<300 | 150>(300);
 
@@ -252,6 +260,18 @@ function ModoUpload({
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-zinc-500 mb-1.5">Páginas</label>
+            {fonteEstimativa === "miolo_real" && (
+              <p className="text-xs text-emerald-700 mb-2 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                Número real do miolo já diagramado ({paginas} págs., lombada {calcLombadaMm(paginas)}mm).
+              </p>
+            )}
+            {fonteEstimativa === "estimado" && (
+              <p className="text-xs text-zinc-500 mb-2 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                Estimativa baseada no manuscrito. Ajustamos automaticamente após a diagramação se a lombada divergir.
+              </p>
+            )}
             <input type="number" min={10} max={1500} value={paginas}
               onChange={e => setPaginas(Number(e.target.value))}
               className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-gold" />
@@ -360,6 +380,7 @@ function ModoIA({
   autor,
   sinopse,
   genero,
+  estimativaPaginas,
   onSalvo,
   onVoltar,
 }: {
@@ -368,9 +389,16 @@ function ModoIA({
   autor: string;
   sinopse: string;
   genero: string;
+  estimativaPaginas: number | null;
   onSalvo: (result: CapaGeradaResult, escolhida: string) => void;
   onVoltar: () => void;
 }) {
+  const [paginas, setPaginas] = useState(estimativaPaginas ?? 200);
+
+  useEffect(() => {
+    if (estimativaPaginas != null) setPaginas(estimativaPaginas);
+  }, [estimativaPaginas]);
+
   const [estilo, setEstilo] = useState<EstiloCapa>("minimalista");
   const [cor, setCor] = useState(CORES_PRESET[0].value);
   const [corHex, setCorHex] = useState(CORES_PRESET[0].hex);
@@ -404,6 +432,7 @@ function ModoIA({
           quarta_capa_texto: quartaTexto,
           imagemRef: imgRef ?? undefined,
           is_regeneracao: regen,
+          paginas,
         }),
       });
       const data = await r.json();
@@ -710,6 +739,8 @@ function ModoManual({
   autor: autorInicial,
   sinopse,
   formatoInicial,
+  estimativaPaginas,
+  fonteEstimativa,
   onSalvo,
   onVoltar,
 }: {
@@ -718,11 +749,17 @@ function ModoManual({
   autor: string;
   sinopse: string;
   formatoInicial: FormatoId;
+  estimativaPaginas: number | null;
+  fonteEstimativa: "miolo_real" | "estimado" | null;
   onSalvo: () => void;
   onVoltar: () => void;
 }) {
   const formato = formatoInicial; // inherited from page-level selector
-  const [paginas, setPaginas] = useState(200);
+  const [paginas, setPaginas] = useState(estimativaPaginas ?? 200);
+
+  useEffect(() => {
+    if (estimativaPaginas != null) setPaginas(estimativaPaginas);
+  }, [estimativaPaginas]);
   const [usarOrelhas, setUsarOrelhas] = useState(false);
   const [exportDpi, setExportDpi] = useState<150 | 300>(300);
   const [saving, setSaving] = useState(false);
@@ -929,6 +966,18 @@ function ModoManual({
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-500 mb-1.5">Páginas</label>
+          {fonteEstimativa === "miolo_real" && (
+            <p className="text-xs text-emerald-700 mb-1.5 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              Número real do miolo já diagramado ({paginas} págs., lombada {calcLombadaMm(paginas)}mm).
+            </p>
+          )}
+          {fonteEstimativa === "estimado" && (
+            <p className="text-xs text-zinc-500 mb-1.5 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+              Estimativa baseada no manuscrito. Ajustamos automaticamente após a diagramação se a lombada divergir.
+            </p>
+          )}
           <input type="number" min={10} max={1500} value={paginas}
             onChange={e => setPaginas(Number(e.target.value))}
             className="w-24 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-gold" />
@@ -1147,6 +1196,12 @@ export default function CapaPage() {
   const [formatoGlobal, setFormatoGlobal] = useState<FormatoId>("16x23");
   // Real lombada calculated after Diagramação (paginas_reais × 0.07 mm)
   const [lombadaReal, setLombadaReal] = useState<number | null>(null);
+  // Estimated pages from manuscript (or real pages if miolo already generated)
+  const [estimativaPaginas, setEstimativaPaginas] = useState<number | null>(null);
+  const [fonteEstimativa, setFonteEstimativa] = useState<"miolo_real" | "estimado" | null>(null);
+  // Lombada adjustment
+  const [ajusteDisponivel, setAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
+  const [ajustando, setAjustando] = useState(false);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
@@ -1177,8 +1232,18 @@ export default function CapaPage() {
       }
 
       // Load real lombada if diagramação was already done
-      const miolo = data?.dados_miolo as { lombada_mm?: number } | null;
-      if (miolo?.lombada_mm) setLombadaReal(miolo.lombada_mm);
+      const miolo = data?.dados_miolo as { lombada_mm?: number; paginas_reais?: number } | null;
+      if (miolo?.lombada_mm) {
+        setLombadaReal(miolo.lombada_mm);
+        // Detect divergence with the lombada used when the IA cover was generated
+        const capaDados = data?.dados_capa as { lombada_mm?: number; modo?: string } | null;
+        if (capaDados?.modo === "ia" && capaDados?.lombada_mm) {
+          const diff = Math.abs(capaDados.lombada_mm - miolo.lombada_mm);
+          setAjusteDisponivel(diff > 2 ? { anterior: capaDados.lombada_mm, nova: miolo.lombada_mm, diff } : null);
+        } else {
+          setAjusteDisponivel(null);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -1194,6 +1259,18 @@ export default function CapaPage() {
   }
 
   useEffect(() => { loadProject(); }, [loadProject]);
+
+  useEffect(() => {
+    if (!id || !formatoGlobal) return;
+    fetch(`/api/projects/${id}/estimativa-paginas?formato=${formatoGlobal}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setEstimativaPaginas(data.paginas_estimadas);
+        setFonteEstimativa(data.fonte === "miolo_real" ? "miolo_real" : "estimado");
+      })
+      .catch(() => { /* fall back to default 200 */ });
+  }, [id, formatoGlobal]);
 
   async function handleContinuar() {
     await supabase
@@ -1281,6 +1358,50 @@ export default function CapaPage() {
               )}
             </div>
 
+            {/* Lombada adjustment banner — shown when miolo is done and spine diverges */}
+            {ajusteDisponivel && (
+              <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl">
+                <h3 className="font-semibold text-amber-900 text-sm mb-1.5">
+                  Lombada da capa precisa de ajuste
+                </h3>
+                <p className="text-xs text-amber-800 leading-relaxed mb-3">
+                  O miolo ficou com <strong>{ajusteDisponivel.nova}mm</strong> de lombada, mas sua capa foi gerada
+                  com <strong>{ajusteDisponivel.anterior}mm</strong> (diferença de {ajusteDisponivel.diff.toFixed(1)}mm).
+                  Ajuste automático regenera só a lombada, sem custo de créditos.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      setAjustando(true);
+                      try {
+                        const res = await fetch("/api/agentes/ajustar-lombada", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ project_id: id }),
+                        });
+                        if (res.ok) {
+                          setAjusteDisponivel(null);
+                          await loadProject();
+                        }
+                      } finally {
+                        setAjustando(false);
+                      }
+                    }}
+                    disabled={ajustando}
+                    className="px-4 py-2 bg-amber-700 text-white rounded-lg text-xs font-medium hover:bg-amber-800 transition-colors disabled:opacity-50"
+                  >
+                    {ajustando ? "Ajustando…" : "Ajustar automaticamente"}
+                  </button>
+                  <button
+                    onClick={() => setAjusteDisponivel(null)}
+                    className="px-4 py-2 bg-transparent text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
+                  >
+                    Ignorar
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <ModoCard
                 icon={<UploadIcon />}
@@ -1314,6 +1435,8 @@ export default function CapaPage() {
             projectId={id}
             formatoInicial={formatoGlobal}
             lombadaReal={lombadaReal}
+            estimativaPaginas={estimativaPaginas}
+            fonteEstimativa={fonteEstimativa}
             onSalvo={r => { handleSalvoUpload(r); setModo("escolha"); }}
             onVoltar={() => setModo("escolha")}
           />
@@ -1324,6 +1447,7 @@ export default function CapaPage() {
             autor={autor}
             sinopse={sinopse}
             genero={genero}
+            estimativaPaginas={estimativaPaginas}
             onSalvo={(r, escolhida) => { handleSalvoIA(r, escolhida); setModo("escolha"); }}
             onVoltar={() => setModo("escolha")}
           />
@@ -1334,6 +1458,8 @@ export default function CapaPage() {
             autor={autor}
             sinopse={sinopse}
             formatoInicial={formatoGlobal}
+            estimativaPaginas={estimativaPaginas}
+            fonteEstimativa={fonteEstimativa}
             onSalvo={() => { handleSalvoManual(); setModo("escolha"); }}
             onVoltar={() => setModo("escolha")}
           />
