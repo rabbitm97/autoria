@@ -1415,12 +1415,23 @@ export default function CapaPage() {
                 desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
                 onClick={() => setModo("ia")}
               />
-              <ModoCard
-                icon={<PencilIcon />}
-                title="Editor interativo"
-                desc="Monte a capa com suas próprias imagens. Painel com guias de sangria e dobras — você tem controle total."
-                onClick={() => setModo("manual")}
-              />
+              <button
+                onClick={() => router.push(`/editor/capa/${id}`)}
+                className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
+                  hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
+              >
+                <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center
+                  group-hover:bg-brand-gold/20 transition-colors">
+                  <PencilIcon />
+                </div>
+                <div>
+                  <p className="font-semibold text-brand-primary text-sm">Editor interativo</p>
+                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                    Crie sua capa do zero com texto, imagens e elementos da marca em um editor visual fullscreen.
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
+              </button>
             </div>
 
             <div className="text-center">
@@ -1451,7 +1462,10 @@ export default function CapaPage() {
             onSalvo={(r, escolhida) => { handleSalvoIA(r, escolhida); setModo("escolha"); }}
             onVoltar={() => setModo("escolha")}
           />
-        ) : modo === "manual" ? (
+        ) : null}
+        {/* TODO Onda 3: remover editor antigo após validar novo editor */}
+        {/*
+        modo === "manual" ? (
           <ModoManual
             projectId={id}
             titulo={titulo}
@@ -1463,7 +1477,8 @@ export default function CapaPage() {
             onSalvo={() => { handleSalvoManual(); setModo("escolha"); }}
             onVoltar={() => setModo("escolha")}
           />
-        ) : null}
+        ) : null
+        */}
 
       </main>
     </div>
