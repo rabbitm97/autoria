@@ -35,7 +35,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
       const res = await fetch(`/api/projects/${projectData.projectId}/cover-editor`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ editor_data: snapshot }),
+        body: JSON.stringify(snapshot),
       });
       if (!res.ok) throw new Error("Save failed");
       const data = await res.json();

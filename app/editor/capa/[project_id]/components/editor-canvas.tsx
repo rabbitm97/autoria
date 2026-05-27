@@ -390,15 +390,17 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     const node = e.target;
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    const newW = Math.max(20, node.width() * scaleX);
+    const newH = Math.max(20, node.height() * scaleY);
     updateElement(elId, {
       x_mm: node.x() / MM_TO_PX,
       y_mm: node.y() / MM_TO_PX,
-      width_mm: (node.width() * scaleX) / MM_TO_PX,
-      height_mm: (node.height() * scaleY) / MM_TO_PX,
+      width_mm: newW / MM_TO_PX,
+      height_mm: newH / MM_TO_PX,
       rotation_deg: node.rotation(),
     });
-    node.scaleX(1);
-    node.scaleY(1);
   }
 
   // Inline text editing
@@ -632,7 +634,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
               "middle-right",
             ]}
             boundBoxFunc={(oldBox, newBox) => {
-              if (newBox.width < 5 || newBox.height < 5) return oldBox;
+              if (newBox.width < 20 || newBox.height < 20) return oldBox;
               return newBox;
             }}
           />
