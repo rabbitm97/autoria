@@ -8,6 +8,7 @@ import { EditorSidebar } from "./components/editor-sidebar";
 import { useEditorStore } from "./lib/editor-store";
 import { serializeEditorState } from "./lib/editor-serializer";
 import { isEditableTarget } from "./lib/keyboard-utils";
+import { hashElements, hashFills } from "./lib/state-hash";
 import type { ProjectData } from "./types";
 
 const EditorCanvas = dynamic(
@@ -62,6 +63,15 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         elements: projectData.initialEditorData.elements,
         fills: projectData.initialEditorData.fills,
         isbn: projectData.initialEditorData.isbn,
+      });
+    }
+    // Hydrate confirmed snapshot: the loaded editor_data IS the confirmed baseline
+    if (projectData.confirmedAt) {
+      const state = useEditorStore.getState();
+      useEditorStore.getState().setConfirmedSnapshot({
+        elementsHash: hashElements(state.elements),
+        fillsHash: hashFills(state.fills),
+        confirmedAt: projectData.confirmedAt,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

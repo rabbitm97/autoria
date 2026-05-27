@@ -1,0 +1,105 @@
+"use client";
+
+import { useState } from "react";
+import { useEditorStore } from "../lib/editor-store";
+import { captureStageAsBlob } from "../lib/png-export";
+import { hashElements, hashFills } from "../lib/state-hash";
+
+interface EditorConfirmButtonProps {
+  projectId: string;
+}
+
+type ConfirmState = "idle" | "confirming" | "success" | "error";
+
+export function EditorConfirmButton({ projectId }: EditorConfirmButtonProps) {
+  const [state, setState] = useState<ConfirmState>("idle");
+
+  const { stageInstance, format, pages, comOrelhas } = useEditorStore();
+
+  async function handleConfirm() {
+    if (!stageInstance) return;
+    setState("confirming");
+
+    try {
+      const blob = await captureStageAsBlob(stageInstance, format, pages, comOrelhas);
+      const form = new FormData();
+      form.append("png", blob, "cover.png");
+
+      const res = await fetch(`/api/projects/${projectId}/cover-editor/confirm`, {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok && res.status !== 207) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any).error ?? "Erro ao confirmar");
+      }
+
+      const data = await res.json() as { confirmed_at: string };
+      const { elements, fills, setConfirmedSnapshot } = useEditorStore.getState();
+      setConfirmedSnapshot({
+        elementsHash: hashElements(elements),
+        fillsHash: hashFills(fills),
+        confirmedAt: data.confirmed_at,
+      });
+
+      setState("success");
+      setTimeout(() => setState("idle"), 3000);
+    } catch {
+      setState("error");
+      setTimeout(() => setState("idle"), 5000);
+    }
+  }
+
+  if (state === "confirming") {
+    return (
+      <button
+        disabled
+        className="flex items-center gap-1.5 rounded-lg bg-[#1a1a2e] px-4 py-1.5 text-xs font-medium text-[#c9a84c] opacity-70"
+      >
+        <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        Confirmando…
+      </button>
+    );
+  }
+
+  if (state === "success") {
+    return (
+      <button
+        disabled
+        className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        Publicado!
+      </button>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <button
+        onClick={handleConfirm}
+        className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+      >
+        Erro — Tentar novamente
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleConfirm}
+      className="flex items-center gap-1.5 rounded-lg bg-[#1a1a2e] px-4 py-1.5 text-xs font-medium text-[#c9a84c] transition-opacity hover:opacity-90"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      Confirmar capa
+    </button>
+  );
+}

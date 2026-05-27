@@ -614,8 +614,8 @@ function ResultadoCard({
   onContinuar: () => void;
   onRefazer: () => void;
 }) {
-  const modo = dados.modo as string;
-  const url = (dados.url_escolhida ?? dados.url) as string | undefined;
+  const modo = (dados.source === "editor" ? "editor" : dados.modo) as string;
+  const url = (dados.imagem_url ?? dados.url_escolhida ?? dados.url) as string | undefined;
 
   return (
     <div className="space-y-6">
@@ -628,7 +628,8 @@ function ResultadoCard({
             <p className="font-medium text-brand-primary text-sm">
               {modo === "upload" ? "Capa enviada com sucesso" :
                modo === "ia" ? "Capa gerada com IA" :
-               "Capa criada no editor"}
+               modo === "editor" ? "Capa criada no editor" :
+               "Capa registrada"}
             </p>
             <p className="text-xs text-zinc-400">
               {dados.gerado_em ? new Date(dados.gerado_em as string).toLocaleString("pt-BR") : ""}

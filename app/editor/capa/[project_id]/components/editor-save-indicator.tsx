@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import { useEditorStore } from "../lib/editor-store";
+import { hashElements, hashFills } from "../lib/state-hash";
 
 function formatTime(iso: string): string {
   try {
@@ -19,6 +21,17 @@ interface EditorSaveIndicatorProps {
 
 export function EditorSaveIndicator({ onRetry }: EditorSaveIndicatorProps) {
   const saveStatus = useEditorStore((s) => s.saveStatus);
+  const confirmedSnapshot = useEditorStore((s) => s.confirmedSnapshot);
+  const elements = useEditorStore((s) => s.elements);
+  const fills = useEditorStore((s) => s.fills);
+
+  const hasUnconfirmedChanges = useMemo(() => {
+    if (!confirmedSnapshot) return false;
+    return (
+      hashElements(elements) !== confirmedSnapshot.elementsHash ||
+      hashFills(fills) !== confirmedSnapshot.fillsHash
+    );
+  }, [confirmedSnapshot, elements, fills]);
 
   if (saveStatus.kind === "idle") {
     return (
@@ -48,6 +61,14 @@ export function EditorSaveIndicator({ onRetry }: EditorSaveIndicatorProps) {
   }
 
   if (saveStatus.kind === "saved") {
+    if (hasUnconfirmedChanges) {
+      return (
+        <span className="flex items-center gap-1.5 text-xs text-amber-500">
+          <span className="text-amber-500">●</span>
+          Edições não publicadas
+        </span>
+      );
+    }
     return (
       <span className="flex items-center gap-1.5 text-xs text-emerald-600">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

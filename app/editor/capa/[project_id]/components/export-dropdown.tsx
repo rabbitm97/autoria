@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useEditorStore } from "../lib/editor-store";
-import { serializeEditorState } from "../lib/editor-serializer";
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada, MM_TO_PX } from "../lib/dimensions";
+import { captureStageAsDataUrl, captureStageAsBlob, dataUrlToBlob } from "../lib/png-export";
+import { hashElements, hashFills } from "../lib/state-hash";
 
 const CLIENT_PDF_TIMEOUT_MS = 50_000;
 
@@ -67,44 +67,34 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
     setOpen(false);
 
     try {
-      const f = FORMATS[format];
-      const lombadaMm = calcularLombada(pages);
-      const orelhaMm = comOrelhas ? ORELHA_MM : 0;
-      const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
-      const physicalWidthPx = totalWMm * (300 / 25.4);
-      const stageWidthPx = stageInstance.width() / stageInstance.scaleX();
-      const pixelRatio = physicalWidthPx / stageWidthPx;
+      const dataUrl = await captureStageAsDataUrl(stageInstance, format, pages, comOrelhas);
 
-      // Hide UI-only layers before export
-      const layers = stageInstance.getLayers();
-      const guideLayer = layers[layers.length - 1];   // guides are last
-      const labelLayer = layers[layers.length - 2];
-      const wasGuideVisible = guideLayer?.visible();
-      const wasLabelVisible = labelLayer?.visible();
-      guideLayer?.visible(false);
-      labelLayer?.visible(false);
-
-      // Hide transformer
-      const transformer = stageInstance.findOne("Transformer");
-      const wasTransformerVisible = transformer?.visible();
-      transformer?.visible(false);
-
-      stageInstance.batchDraw();
-
-      const dataUrl = stageInstance.toDataURL({ mimeType: "image/png", pixelRatio, quality: 1 });
-
-      // Restore
-      guideLayer?.visible(wasGuideVisible ?? true);
-      labelLayer?.visible(wasLabelVisible ?? true);
-      transformer?.visible(wasTransformerVisible ?? true);
-      stageInstance.batchDraw();
-
+      // Download locally
       const link = document.createElement("a");
       link.download = `${slugify(projectTitle)}-capa-300dpi.png`;
       link.href = dataUrl;
       link.click();
 
       setExportState({ kind: "idle" });
+
+      // Fire-and-forget confirm (saves PNG to storage and updates dados_capa)
+      const blob = dataUrlToBlob(dataUrl);
+      const form = new FormData();
+      form.append("png", blob, "cover.png");
+      fetch(`/api/projects/${projectId}/cover-editor/confirm`, {
+        method: "POST",
+        body: form,
+      }).then(async (res) => {
+        if (res.ok || res.status === 207) {
+          const data = await res.json() as { confirmed_at: string };
+          const { elements: els, fills: fls, setConfirmedSnapshot } = useEditorStore.getState();
+          setConfirmedSnapshot({
+            elementsHash: hashElements(els),
+            fillsHash: hashFills(fls),
+            confirmedAt: data.confirmed_at,
+          });
+        }
+      }).catch(() => {});
     } catch (err) {
       setExportState({ kind: "error", message: String(err) });
     }
@@ -113,39 +103,60 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
   async function handleExportPdf() {
     const warning = validateBeforeExport();
     if (warning) { alert(warning); return; }
+    if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
 
-    setExportState({ kind: "exporting-pdf", step: "Renderizando capa…" });
+    setExportState({ kind: "exporting-pdf", step: "Capturando capa…" });
     setOpen(false);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CLIENT_PDF_TIMEOUT_MS);
 
     try {
+      const blob = await captureStageAsBlob(stageInstance, format, pages, comOrelhas);
+
       setExportState({ kind: "exporting-pdf", step: "Gerando PDF…" });
 
-      const res = await fetch(`/api/projects/${projectId}/cover-editor/export-pdf`, {
+      const form = new FormData();
+      form.append("png", blob, "cover.png");
+      form.append("download_format", "pdf");
+
+      const res = await fetch(`/api/projects/${projectId}/cover-editor/confirm`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: form,
         signal: controller.signal,
       });
 
       clearTimeout(timeout);
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Erro desconhecido" }));
-        throw new Error(data.error ?? "Falha ao gerar PDF");
+      const data = await res.json() as {
+        imagem_url: string | null;
+        pdf_url: string | null;
+        confirmed_at: string;
+        warning?: string;
+      };
+
+      if (!res.ok && res.status !== 207) {
+        throw new Error((data as any).error ?? "Falha ao gerar PDF");
       }
 
-      const data = await res.json();
-      if (!data.url) throw new Error("URL de download não retornada.");
+      // Update confirmed snapshot
+      const { elements: els, fills: fls, setConfirmedSnapshot } = useEditorStore.getState();
+      setConfirmedSnapshot({
+        elementsHash: hashElements(els),
+        fillsHash: hashFills(fls),
+        confirmedAt: data.confirmed_at,
+      });
 
-      setExportState({ kind: "pdf-done", url: data.url, filename: data.filename });
+      if (!data.pdf_url) {
+        throw new Error(data.warning ?? "PDF não gerado. Tente novamente ou use PNG 300dpi.");
+      }
 
-      // Auto-download
+      const filename = `${slugify(projectTitle)}-capa-300dpi.pdf`;
+      setExportState({ kind: "pdf-done", url: data.pdf_url, filename });
+
       const link = document.createElement("a");
-      link.href = data.url;
-      link.download = data.filename;
+      link.href = data.pdf_url;
+      link.download = filename;
       link.click();
     } catch (err: any) {
       clearTimeout(timeout);
@@ -168,7 +179,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
       <button
         onClick={() => !isExporting && setOpen(!open)}
         disabled={isExporting}
-        className="flex items-center gap-1.5 rounded-lg bg-[#1a1a2e] px-4 py-1.5 text-xs font-medium text-[#c9a84c] transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="flex items-center gap-1.5 rounded-lg border border-[#e0ddd2] px-4 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:text-zinc-800 disabled:opacity-60"
       >
         {isExporting ? (
           <>
@@ -181,7 +192,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
           </>
         ) : (
           <>
-            Exportar capa
+            Exportar
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="m6 9 6 6 6-6" />
             </svg>

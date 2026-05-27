@@ -1,5 +1,11 @@
 import { create } from "zustand";
 import type { FormatKey } from "../types";
+
+export interface ConfirmedSnapshot {
+  elementsHash: string;
+  fillsHash: string;
+  confirmedAt: string;
+}
 import {
   ZOOM_MIN,
   ZOOM_MAX,
@@ -38,6 +44,9 @@ interface EditorState {
   saveStatus: SaveStatus;
   autosaveCount: number;
 
+  // Confirmed snapshot (for tracking unpublished changes)
+  confirmedSnapshot: ConfirmedSnapshot | null;
+
   // Konva stage reference (set by canvas on mount)
   stageInstance: Konva.Stage | null;
 
@@ -68,6 +77,7 @@ interface EditorState {
   // Persistence
   setSaveStatus: (status: SaveStatus) => void;
   setStageInstance: (stage: Konva.Stage | null) => void;
+  setConfirmedSnapshot: (snap: ConfirmedSnapshot | null) => void;
   hydrate: (data: Pick<EditorData, "elements" | "fills" | "isbn">) => void;
 
   // Reset — call on mount to prevent state leaking between projects
@@ -90,6 +100,7 @@ const DEFAULT_STATE = {
   isbn: null as string | null,
   saveStatus: { kind: "idle" } as SaveStatus,
   autosaveCount: 0,
+  confirmedSnapshot: null as ConfirmedSnapshot | null,
   stageInstance: null as Konva.Stage | null,
 };
 
@@ -205,6 +216,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setStageInstance: (stage) => set({ stageInstance: stage }),
 
+  setConfirmedSnapshot: (snap) => set({ confirmedSnapshot: snap }),
+
   hydrate: (data) =>
     set({
       elements: data.elements ?? [],
@@ -221,6 +234,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       legendasAtivas: false,
       saveStatus: { kind: "idle" },
       autosaveCount: 0,
+      confirmedSnapshot: null,
       stageInstance: null,
     }),
 }));

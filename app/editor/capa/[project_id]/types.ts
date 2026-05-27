@@ -15,4 +15,6 @@ export interface ProjectData {
   synopsisLong: string;
   pagesSource: "real" | "estimated" | "default";
   initialEditorData: EditorData | null;
+  confirmedAt: string | null;
+  confirmedImageUrl: string | null;
 }

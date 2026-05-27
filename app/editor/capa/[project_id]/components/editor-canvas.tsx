@@ -37,6 +37,7 @@ import {
 import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget } from "../lib/keyboard-utils";
+import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
 import { EditorZoomControls } from "./editor-zoom-controls";
@@ -705,19 +706,42 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           )}
         </Layer>
 
-        {/* Region labels */}
+        {/* Region labels — shown when legendasAtivas OR (no fill AND no elements in that region) */}
         <Layer listening={false}>
-          <KonvaText x={xLombadaEnd} y={totalHPx / 2} width={frontePx} align="center" offsetY={8 / zoom} text="CAPA" fontSize={14 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
-          <KonvaText x={xOrelhaVersoEnd} y={totalHPx / 2} width={frontePx} align="center" offsetY={8 / zoom} text="CONTRACAPA" fontSize={14 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
-          {lombadaPx * zoom > 18 && (
-            <KonvaText x={xLombadaCenter} y={totalHPx / 2} text="LOMBADA" fontSize={9 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" rotation={-90} align="center" />
-          )}
-          {comOrelhas && orelhaPx * zoom > 30 && (
-            <>
-              <KonvaText x={sangriaPx} y={totalHPx / 2} width={orelhaPx} align="center" offsetY={10 / zoom} text={"ORELHA\nTRASEIRA"} fontSize={11 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
-              <KonvaText x={xFrenteEnd} y={totalHPx / 2} width={orelhaPx} align="center" offsetY={10 / zoom} text={"ORELHA\nFRONTAL"} fontSize={11 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
-            </>
-          )}
+          {(() => {
+            // Region x-bounds in mm for element detection
+            const xContracapaStartMm = SANGRIA_MM + orelhaMm;
+            const xContracapaEndMm = xContracapaStartMm + f.width_mm;
+            const xLombadaStartMm = xContracapaEndMm;
+            const xLombadaEndMm = xLombadaStartMm + lombadaMm;
+            const xCapaStartMm = xLombadaEndMm;
+            const xCapaEndMm = xCapaStartMm + f.width_mm;
+            const xOrelhaFrenteStartMm = xCapaEndMm;
+            const xOrelhaFrenteEndMm = xOrelhaFrenteStartMm + orelhaMm;
+            return (
+              <>
+                {shouldShowLabel(!!fills.capa, hasElementsInXRange(elements, xCapaStartMm, xCapaEndMm), legendasAtivas) && (
+                  <KonvaText x={xLombadaEnd} y={totalHPx / 2} width={frontePx} align="center" offsetY={8 / zoom} text="CAPA" fontSize={14 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
+                )}
+                {shouldShowLabel(!!fills.contracapa, hasElementsInXRange(elements, xContracapaStartMm, xContracapaEndMm), legendasAtivas) && (
+                  <KonvaText x={xOrelhaVersoEnd} y={totalHPx / 2} width={frontePx} align="center" offsetY={8 / zoom} text="CONTRACAPA" fontSize={14 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
+                )}
+                {lombadaPx * zoom > 18 && shouldShowLabel(!!fills.lombada, hasElementsInXRange(elements, xLombadaStartMm, xLombadaEndMm), legendasAtivas) && (
+                  <KonvaText x={xLombadaCenter} y={totalHPx / 2} text="LOMBADA" fontSize={9 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" rotation={-90} align="center" />
+                )}
+                {comOrelhas && orelhaPx * zoom > 30 && (
+                  <>
+                    {shouldShowLabel(!!fills.orelha_verso, hasElementsInXRange(elements, SANGRIA_MM, xContracapaStartMm), legendasAtivas) && (
+                      <KonvaText x={sangriaPx} y={totalHPx / 2} width={orelhaPx} align="center" offsetY={10 / zoom} text={"ORELHA\nTRASEIRA"} fontSize={11 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
+                    )}
+                    {shouldShowLabel(!!fills.orelha_frente, hasElementsInXRange(elements, xOrelhaFrenteStartMm, xOrelhaFrenteEndMm), legendasAtivas) && (
+                      <KonvaText x={xFrenteEnd} y={totalHPx / 2} width={orelhaPx} align="center" offsetY={10 / zoom} text={"ORELHA\nFRONTAL"} fontSize={11 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
+                    )}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </Layer>
       </Stage>
 

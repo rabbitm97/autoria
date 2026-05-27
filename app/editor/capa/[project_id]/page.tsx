@@ -71,6 +71,9 @@ export default async function EditorCapaPage({
   const subtitle = (elementos?.subtitulo as string) ?? "";
   const isbn = (capa?.isbn as string) ?? null;
 
+  const confirmedAt = (capa?.confirmed_at as string) ?? null;
+  const confirmedImageUrl = (capa?.imagem_url as string) ?? null;
+
   // Load saved editor state if it exists
   const rawEditorData = capa?.editor_data;
   let initialEditorData: EditorData | null = null;
@@ -94,6 +97,8 @@ export default async function EditorCapaPage({
     synopsisLong,
     pagesSource: miolo?.paginas_reais ? "real" : "default",
     initialEditorData,
+    confirmedAt,
+    confirmedImageUrl,
   };
 
   return <EditorClient projectData={projectData} />;

@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEditorStore } from "../lib/editor-store";
+import { captureStageAsDataUrl } from "../lib/png-export";
 import { EditorSaveIndicator } from "./editor-save-indicator";
 import { ExportDropdown } from "./export-dropdown";
+import { EditorConfirmButton } from "./editor-confirm-button";
 import type { ProjectData } from "../types";
 
 interface EditorTopbarProps {
@@ -14,8 +16,29 @@ interface EditorTopbarProps {
 
 export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
   const router = useRouter();
-  const { legendasAtivas, toggleLegendas } = useEditorStore();
+  const { legendasAtivas, toggleLegendas, stageInstance, format, pages, comOrelhas } = useEditorStore();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<"live" | "confirmed">("live");
+  const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
+
+  async function handleOpenPreview() {
+    setPreviewOpen(true);
+    setPreviewTab("live");
+    setLivePreviewUrl(null);
+    if (stageInstance) {
+      try {
+        const url = await captureStageAsDataUrl(stageInstance, format, pages, comOrelhas);
+        setLivePreviewUrl(url);
+      } catch {
+        // ignore capture errors
+      }
+    }
+  }
+
+  function handleClosePreview() {
+    setPreviewOpen(false);
+    setLivePreviewUrl(null);
+  }
 
   return (
     <>
@@ -55,7 +78,7 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
         {/* Legendas toggle */}
         <button
           onClick={toggleLegendas}
-          title="Ativar legendas: passe o mouse sobre cada região da capa para ver descrições"
+          title="Mostrar legendas de cada região da capa — útil para identificar áreas enquanto projeta"
           className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
             legendasAtivas
               ? "border-[#c9a84c] bg-[#c9a84c]/10 text-[#1a1a2e]"
@@ -80,7 +103,7 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
 
         {/* Preview button */}
         <button
-          onClick={() => setPreviewOpen(true)}
+          onClick={handleOpenPreview}
           className="flex items-center gap-1.5 rounded-lg border border-[#e0ddd2] px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600"
         >
           <svg
@@ -101,46 +124,99 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
 
         <EditorSaveIndicator onRetry={onSaveRetry} />
 
+        <EditorConfirmButton projectId={projectData.projectId} />
+
         <ExportDropdown projectId={projectData.projectId} projectTitle={projectData.title} />
       </div>
 
-      {/* Preview modal placeholder */}
+      {/* Preview modal — 2 tabs: live capture vs confirmed image */}
       {previewOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => setPreviewOpen(false)}
+          onClick={handleClosePreview}
         >
           <div
-            className="mx-4 w-full max-w-sm rounded-2xl bg-[#fdfcf9] p-8 text-center shadow-xl"
+            className="mx-4 w-full max-w-2xl rounded-2xl bg-[#fdfcf9] shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex justify-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#9a9a9a"
-                  strokeWidth="2"
-                >
-                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                  <circle cx="12" cy="12" r="3" />
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#e0ddd2] px-5 py-4">
+              <p className="text-sm font-semibold text-[#1a1a2e]">Pré-visualização</p>
+              <button
+                onClick={handleClosePreview}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
-              </div>
+              </button>
             </div>
-            <p className="mb-1 text-base font-medium text-[#1a1a2e]">
-              Pré-visualização
-            </p>
-            <p className="mb-6 text-sm text-zinc-400">
-              A pré-visualização da capa completa estará disponível em breve.
-            </p>
-            <button
-              onClick={() => setPreviewOpen(false)}
-              className="rounded-xl border border-zinc-200 px-6 py-2 text-sm text-zinc-500 transition-colors hover:border-zinc-300"
-            >
-              Fechar
-            </button>
+
+            {/* Tabs */}
+            <div className="flex border-b border-[#e0ddd2]">
+              <button
+                onClick={() => setPreviewTab("live")}
+                className={`px-5 py-2.5 text-xs font-medium transition-colors ${
+                  previewTab === "live"
+                    ? "border-b-2 border-[#c9a84c] text-[#1a1a2e]"
+                    : "text-zinc-400 hover:text-zinc-600"
+                }`}
+              >
+                Ao vivo
+              </button>
+              <button
+                onClick={() => setPreviewTab("confirmed")}
+                className={`px-5 py-2.5 text-xs font-medium transition-colors ${
+                  previewTab === "confirmed"
+                    ? "border-b-2 border-[#c9a84c] text-[#1a1a2e]"
+                    : "text-zinc-400 hover:text-zinc-600"
+                }`}
+              >
+                Confirmado
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5">
+              {previewTab === "live" ? (
+                livePreviewUrl ? (
+                  <img
+                    src={livePreviewUrl}
+                    alt="Preview atual da capa"
+                    className="w-full rounded-lg border border-[#e0ddd2]"
+                  />
+                ) : (
+                  <div className="flex h-40 items-center justify-center text-sm text-zinc-400">
+                    <svg className="mr-2 animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Capturando canvas…
+                  </div>
+                )
+              ) : projectData.confirmedImageUrl ? (
+                <div className="space-y-3">
+                  <img
+                    src={projectData.confirmedImageUrl}
+                    alt="Capa confirmada"
+                    className="w-full rounded-lg border border-[#e0ddd2]"
+                  />
+                  {projectData.confirmedAt && (
+                    <p className="text-center text-xs text-zinc-400">
+                      Confirmado em{" "}
+                      {new Date(projectData.confirmedAt).toLocaleString("pt-BR")}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-40 flex-col items-center justify-center gap-2">
+                  <p className="text-sm text-zinc-500">Nenhuma confirmação registrada</p>
+                  <p className="text-xs text-zinc-400">
+                    Use "Confirmar capa" para publicar uma versão oficial.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
