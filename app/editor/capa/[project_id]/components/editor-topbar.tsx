@@ -7,6 +7,7 @@ import { captureStageAsDataUrl } from "../lib/png-export";
 import { EditorSaveIndicator } from "./editor-save-indicator";
 import { ExportDropdown } from "./export-dropdown";
 import { EditorConfirmButton } from "./editor-confirm-button";
+import { EditorConfirmSuccessModal } from "./editor-confirm-success-modal";
 import type { ProjectData } from "../types";
 
 interface EditorTopbarProps {
@@ -20,6 +21,10 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTab, setPreviewTab] = useState<"live" | "confirmed">("live");
   const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; confirmedAt: string }>({
+    open: false,
+    confirmedAt: "",
+  });
 
   async function handleOpenPreview() {
     setPreviewOpen(true);
@@ -124,10 +129,20 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
 
         <EditorSaveIndicator onRetry={onSaveRetry} />
 
-        <EditorConfirmButton projectId={projectData.projectId} />
+        <EditorConfirmButton
+          projectId={projectData.projectId}
+          onConfirmed={(confirmedAt) => setSuccessModal({ open: true, confirmedAt })}
+        />
 
         <ExportDropdown projectId={projectData.projectId} projectTitle={projectData.title} />
       </div>
+
+      <EditorConfirmSuccessModal
+        open={successModal.open}
+        onClose={() => setSuccessModal((s) => ({ ...s, open: false }))}
+        projectId={projectData.projectId}
+        confirmedAt={successModal.confirmedAt}
+      />
 
       {/* Preview modal — 2 tabs: live capture vs confirmed image */}
       {previewOpen && (

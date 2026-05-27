@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
@@ -54,11 +55,13 @@ function ModoCard({
   title,
   desc,
   onClick,
+  warning,
 }: {
   icon: React.ReactNode;
   title: string;
   desc: string;
   onClick: () => void;
+  warning?: string;
 }) {
   return (
     <button
@@ -73,6 +76,9 @@ function ModoCard({
       <div>
         <p className="font-semibold text-brand-primary text-sm">{title}</p>
         <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{desc}</p>
+        {warning && (
+          <p className="text-[11px] text-amber-600 mt-2 leading-relaxed">⚠ {warning}</p>
+        )}
       </div>
       <span className="text-xs font-medium text-brand-gold mt-auto">Selecionar →</span>
     </button>
@@ -807,8 +813,8 @@ export default function CapaPage() {
           </p>
         </div>
 
-        {/* Already has result */}
-        {dados && modo === "escolha" ? (
+        {/* Already has result — only show ResultadoCard for upload/IA, not editor (handled in grid) */}
+        {dados && modo === "escolha" && dados.source !== "editor" ? (
           <ResultadoCard
             dados={dados}
             onContinuar={handleContinuar}
@@ -884,37 +890,83 @@ export default function CapaPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <ModoCard
-                icon={<UploadIcon />}
-                title="Upload de capa pronta"
-                desc="Você já tem o arquivo final. Vamos verificar se as dimensões estão corretas para o formato e número de páginas."
-                onClick={() => setModo("upload")}
-              />
-              <ModoCard
-                icon={<SparklesIcon />}
-                title="Gerar com IA"
-                desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
-                onClick={() => setModo("ia")}
-              />
-              <button
-                onClick={() => router.push(`/editor/capa/${id}`)}
-                className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
-                  hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center
-                  group-hover:bg-brand-gold/20 transition-colors">
-                  <PencilIcon />
+            {(() => {
+              const editorConfirmed = dados?.source === "editor" && dados?.confirmed_at;
+              const editorThumbnail = editorConfirmed ? (dados?.imagem_url as string | undefined) : null;
+              const editorConfirmedAt = editorConfirmed ? (dados?.confirmed_at as string) : null;
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <ModoCard
+                    icon={<UploadIcon />}
+                    title="Upload de capa pronta"
+                    desc="Você já tem o arquivo final. Vamos verificar se as dimensões estão corretas para o formato e número de páginas."
+                    warning={editorConfirmed ? "Substituirá a capa atual feita no editor." : undefined}
+                    onClick={() => setModo("upload")}
+                  />
+                  <ModoCard
+                    icon={<SparklesIcon />}
+                    title="Gerar com IA"
+                    desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
+                    warning={editorConfirmed ? "Substituirá a capa atual feita no editor." : undefined}
+                    onClick={() => setModo("ia")}
+                  />
+                  {editorConfirmed ? (
+                    <div className="flex flex-col p-6 bg-white rounded-2xl border border-emerald-200 text-left">
+                      {editorThumbnail ? (
+                        <div className="mb-3 w-[120px] overflow-hidden rounded-lg border border-zinc-200">
+                          <img src={editorThumbnail} alt="Capa atual" className="h-20 w-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="mb-3 w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
+                          <PencilIcon />
+                        </div>
+                      )}
+                      <p className="font-semibold text-brand-primary text-sm">
+                        Editor interativo{" "}
+                        <span className="text-xs font-normal text-emerald-600">✓ Capa confirmada</span>
+                      </p>
+                      {editorConfirmedAt && (
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Confirmada em {new Date(editorConfirmedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}.
+                        </p>
+                      )}
+                      <div className="mt-auto pt-4 flex flex-col gap-2">
+                        <Link
+                          href={`/editor/capa/${id}`}
+                          className="text-xs font-medium text-brand-gold hover:underline"
+                        >
+                          Continuar editando →
+                        </Link>
+                        <button
+                          onClick={handleContinuar}
+                          className="text-xs font-medium text-emerald-600 hover:underline text-left"
+                        >
+                          Avançar para Créditos →
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => router.push(`/editor/capa/${id}`)}
+                      className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
+                        hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center
+                        group-hover:bg-brand-gold/20 transition-colors">
+                        <PencilIcon />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-brand-primary text-sm">Editor interativo</p>
+                        <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                          Crie sua capa do zero com texto, imagens e elementos da marca em um editor visual fullscreen.
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
+                    </button>
+                  )}
                 </div>
-                <div>
-                  <p className="font-semibold text-brand-primary text-sm">Editor interativo</p>
-                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                    Crie sua capa do zero com texto, imagens e elementos da marca em um editor visual fullscreen.
-                  </p>
-                </div>
-                <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
-              </button>
-            </div>
+              );
+            })()}
 
             <div className="text-center">
               <button onClick={handleSkip}

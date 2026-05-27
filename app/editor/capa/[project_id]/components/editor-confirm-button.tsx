@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { useEditorStore } from "../lib/editor-store";
 import { captureStageAsBlob } from "../lib/png-export";
+import { serializeEditorState } from "../lib/editor-serializer";
 import { hashElements, hashFills } from "../lib/state-hash";
 
 interface EditorConfirmButtonProps {
   projectId: string;
+  onConfirmed?: (confirmedAt: string) => void;
 }
 
-type ConfirmState = "idle" | "confirming" | "success" | "error";
+type ConfirmState = "idle" | "confirming" | "error";
 
-export function EditorConfirmButton({ projectId }: EditorConfirmButtonProps) {
+export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmButtonProps) {
   const [state, setState] = useState<ConfirmState>("idle");
 
   const { stageInstance, format, pages, comOrelhas } = useEditorStore();
@@ -21,6 +23,15 @@ export function EditorConfirmButton({ projectId }: EditorConfirmButtonProps) {
     setState("confirming");
 
     try {
+      // Ensure editor_data (including comOrelhas) is saved before confirming
+      const currentState = useEditorStore.getState();
+      const snapshot = serializeEditorState(currentState);
+      await fetch(`/api/projects/${projectId}/cover-editor`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(snapshot),
+      });
+
       const blob = await captureStageAsBlob(stageInstance, format, pages, comOrelhas);
       const form = new FormData();
       form.append("png", blob, "cover.png");
@@ -43,8 +54,8 @@ export function EditorConfirmButton({ projectId }: EditorConfirmButtonProps) {
         confirmedAt: data.confirmed_at,
       });
 
-      setState("success");
-      setTimeout(() => setState("idle"), 3000);
+      setState("idle");
+      onConfirmed?.(data.confirmed_at);
     } catch {
       setState("error");
       setTimeout(() => setState("idle"), 5000);
@@ -61,20 +72,6 @@ export function EditorConfirmButton({ projectId }: EditorConfirmButtonProps) {
           <path d="M21 12a9 9 0 1 1-6.219-8.56" />
         </svg>
         Confirmando…
-      </button>
-    );
-  }
-
-  if (state === "success") {
-    return (
-      <button
-        disabled
-        className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-        Publicado!
       </button>
     );
   }

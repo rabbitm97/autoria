@@ -96,7 +96,7 @@ export async function POST(
         const format =
           rawFormat && rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "16x23";
         const pages = miolo?.paginas_reais ?? 200;
-        const comOrelhas = Boolean(capa?.usar_orelhas);
+        const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
 
         const logoDouradoBase64 = readLogoBase64("logo-autoria-dourado.png");
         const logoAzulBase64 = readLogoBase64("logo-autoria-azul.png");
