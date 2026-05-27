@@ -7,6 +7,7 @@ import { EditorTopbar } from "./components/editor-topbar";
 import { EditorSidebar } from "./components/editor-sidebar";
 import { useEditorStore } from "./lib/editor-store";
 import { serializeEditorState } from "./lib/editor-serializer";
+import { isEditableTarget } from "./lib/keyboard-utils";
 import type { ProjectData } from "./types";
 
 const EditorCanvas = dynamic(
@@ -83,12 +84,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const active = document.activeElement;
-      const isInput =
-        active instanceof HTMLInputElement ||
-        active instanceof HTMLTextAreaElement;
-
-      // Cmd/Ctrl+S — force save
+      // Cmd/Ctrl+S — force save (works even when typing)
       if ((e.key === "s" || e.key === "S") && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         debouncedSave.cancel();
@@ -96,7 +92,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         return;
       }
 
-      if (isInput) return;
+      if (isEditableTarget(e)) return;
 
       const state = useEditorStore.getState();
 

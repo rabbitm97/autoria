@@ -36,6 +36,7 @@ import {
 } from "../lib/constants";
 import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
+import { isEditableTarget } from "../lib/keyboard-utils";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
 import { EditorZoomControls } from "./editor-zoom-controls";
@@ -263,6 +264,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   // Keyboard: space for pan cursor
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e)) return;
       if (e.code === "Space" && !spaceDownRef.current) {
         e.preventDefault();
         spaceDownRef.current = true;
