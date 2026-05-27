@@ -4,6 +4,7 @@ import type { TextElement, RegionFills } from "./elements";
 import type { SmartField } from "./elements";
 import type { FormatKey } from "../types";
 import { nanoid } from "nanoid";
+import { getContrastColor } from "./color-utils";
 
 const MARGIN_MM = 8;
 const PT_TO_KONVA = 300 / 72;
@@ -103,15 +104,17 @@ export function createSmartFieldElement(
   const { PT_TO_KONVA: _pt } = { PT_TO_KONVA };
 
   const defaults = SMART_FIELD_DEFAULTS[field];
-  const fillColor =
-    field === "sinopse_curta" || field === "bio" || field === "sinopse_longa"
-      ? (fills.contracapa ?? null)
-      : field === "lombada"
-      ? (fills.lombada ?? null)
-      : (fills.capa ?? null);
-  const textColor = fillColor
-    ? (fillColor.toLowerCase() === "#ffffff" || !fillColor ? "#1a1a2e" : "#1a1a2e")
-    : "#1a1a2e";
+  const regionFill: string | undefined =
+    field === "lombada"
+      ? fills.lombada
+      : field === "bio"
+      ? fills.orelha_frente
+      : field === "sinopse_longa"
+      ? (comOrelhas ? fills.orelha_verso : fills.contracapa)
+      : field === "sinopse_curta"
+      ? fills.contracapa
+      : fills.capa;
+  const textColor = getContrastColor(regionFill ?? "#ffffff");
 
   let x_mm: number;
   let y_mm: number;

@@ -7,6 +7,7 @@ import { FONT_CATALOG, FONT_CATALOG_BY_ID } from "../lib/fonts";
 import { generateBarcodeDataUrl } from "../lib/barcode";
 import { createSmartFieldElement, type SmartFieldContentMap } from "../lib/smart-field-layout";
 import { createImageElement, createLogoElement, createBarcodeElement } from "../lib/elements";
+import { getContrastColor } from "../lib/color-utils";
 import { ColorPickerPopover } from "./color-picker-popover";
 import { SmartFieldModal } from "./smart-field-modal";
 import { nanoid } from "nanoid";
@@ -234,7 +235,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
           ))}
           <button
             onClick={() => {
-              const { elements, addElement, format, pages, comOrelhas } = useEditorStore.getState();
+              const { elements, addElement, format, pages, comOrelhas, fills } = useEditorStore.getState();
               const f = FORMATS[format];
               addElement({
                 id: nanoid(),
@@ -254,7 +255,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
                 fontWeight: "400",
                 fontStyle: "normal",
                 textAlign: "left",
-                color: "#1a1a2e",
+                color: getContrastColor(fills.capa ?? "#ffffff"),
                 smartField: null,
               });
             }}
