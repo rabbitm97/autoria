@@ -159,6 +159,10 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
   const { elements, fills, format, pages, comOrelhas, addElement } = useEditorStore();
   const [pendingField, setPendingField] = useState<SmartField | null>(null);
 
+  const lombadaContent = [projectData.title, projectData.authorName]
+    .filter(Boolean)
+    .join(" · ");
+
   const contentMap: SmartFieldContentMap = {
     titulo: projectData.title,
     subtitulo: projectData.subtitle,
@@ -166,6 +170,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
     sinopse_curta: projectData.synopsisShort,
     sinopse_longa: projectData.synopsisLong,
     bio: "",
+    lombada: lombadaContent,
   };
 
   const smartFields: { field: SmartField; label: string; preview: string }[] = [
@@ -175,6 +180,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
     { field: "sinopse_curta", label: "Sinopse curta", preview: (projectData.synopsisShort || "").slice(0, 40) + ((projectData.synopsisShort?.length ?? 0) > 40 ? "…" : "") },
     { field: "sinopse_longa", label: "Sinopse longa", preview: (projectData.synopsisLong || "").slice(0, 40) + ((projectData.synopsisLong?.length ?? 0) > 40 ? "…" : "") || "Orelha traseira" },
     { field: "bio", label: "Bio do autor", preview: "Texto inserido manualmente" },
+    { field: "lombada", label: "Lombada", preview: lombadaContent.slice(0, 40) || "Título · Autor (rotacionado 90°)" },
   ];
 
   function insertElement(field: SmartField, resolvedContent: SmartFieldContentMap) {

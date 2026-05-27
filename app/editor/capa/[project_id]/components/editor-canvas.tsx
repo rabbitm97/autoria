@@ -392,17 +392,31 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     const node = e.target;
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
+    // Reset scale BEFORE state update to avoid double-scale on re-render
     node.scaleX(1);
     node.scaleY(1);
-    const newW = Math.max(20, node.width() * scaleX);
-    const newH = Math.max(20, node.height() * scaleY);
-    updateElement(elId, {
-      x_mm: node.x() / MM_TO_PX,
-      y_mm: node.y() / MM_TO_PX,
-      width_mm: newW / MM_TO_PX,
-      height_mm: newH / MM_TO_PX,
-      rotation_deg: node.rotation(),
-    });
+    const el = elements.find((el) => el.id === elId);
+    const newW = Math.max(20, node.width() * scaleX) / MM_TO_PX;
+    if (el?.type === "text") {
+      // For text: scaleX widens the text box; scaleY scales the font size
+      const newFontSizePt = Math.max(6, (el as TextElement).fontSize_pt * scaleY);
+      updateElement(elId, {
+        x_mm: node.x() / MM_TO_PX,
+        y_mm: node.y() / MM_TO_PX,
+        width_mm: newW,
+        fontSize_pt: newFontSizePt,
+        rotation_deg: node.rotation(),
+      } as any);
+    } else {
+      const newH = Math.max(20, node.height() * scaleY) / MM_TO_PX;
+      updateElement(elId, {
+        x_mm: node.x() / MM_TO_PX,
+        y_mm: node.y() / MM_TO_PX,
+        width_mm: newW,
+        height_mm: newH,
+        rotation_deg: node.rotation(),
+      });
+    }
   }
 
   // Inline text editing
@@ -463,8 +477,10 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
       if (ptr) lastPointerRef.current = ptr;
       if (containerRef.current) containerRef.current.style.cursor = "grabbing";
     }
-    // Deselect when clicking empty area (not on an element)
-    if (e.target === e.target.getStage() || e.target.getClassName() === "Rect" && !e.target.id()) {
+    // Deselect only when clicking the Stage background (Transformer handles are also
+    // Rect nodes without ids — excluding them here prevents the transformer from
+    // being detached the moment the user clicks a resize handle).
+    if (e.target === e.target.getStage()) {
       setSelectedId(null);
     }
   }, [setSelectedId]);
@@ -627,13 +643,17 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           <Transformer
             ref={transformerRef}
             rotateEnabled={true}
+            resizeEnabled={true}
+            keepRatio={false}
             enabledAnchors={[
               "top-left",
+              "top-center",
               "top-right",
-              "bottom-left",
-              "bottom-right",
               "middle-left",
               "middle-right",
+              "bottom-left",
+              "bottom-center",
+              "bottom-right",
             ]}
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < 20 || newBox.height < 20) return oldBox;

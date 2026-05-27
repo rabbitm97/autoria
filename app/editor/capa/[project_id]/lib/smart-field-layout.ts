@@ -16,6 +16,7 @@ interface SmartFieldConfig {
   fontWeight: TextElement["fontWeight"];
   textAlign: TextElement["textAlign"];
   color: string;
+  rotation_deg?: number;
 }
 
 const SMART_FIELD_DEFAULTS: Record<SmartField, Omit<SmartFieldConfig, "content" | "color">> = {
@@ -61,6 +62,14 @@ const SMART_FIELD_DEFAULTS: Record<SmartField, Omit<SmartFieldConfig, "content" 
     fontWeight: "400",
     textAlign: "left",
   },
+  lombada: {
+    smartField: "lombada",
+    fontId: "syne",
+    fontSize_pt: 12,
+    fontWeight: "700",
+    textAlign: "center",
+    rotation_deg: 90,
+  },
 };
 
 export interface SmartFieldContentMap {
@@ -70,6 +79,7 @@ export interface SmartFieldContentMap {
   sinopse_curta?: string;
   bio?: string;
   sinopse_longa?: string;
+  lombada?: string;
 }
 
 export function createSmartFieldElement(
@@ -93,7 +103,12 @@ export function createSmartFieldElement(
   const { PT_TO_KONVA: _pt } = { PT_TO_KONVA };
 
   const defaults = SMART_FIELD_DEFAULTS[field];
-  const fillColor = field === "sinopse_curta" ? (fills.contracapa ?? null) : (fills.capa ?? null);
+  const fillColor =
+    field === "sinopse_curta" || field === "bio" || field === "sinopse_longa"
+      ? (fills.contracapa ?? null)
+      : field === "lombada"
+      ? (fills.lombada ?? null)
+      : (fills.capa ?? null);
   const textColor = fillColor
     ? (fillColor.toLowerCase() === "#ffffff" || !fillColor ? "#1a1a2e" : "#1a1a2e")
     : "#1a1a2e";
@@ -147,6 +162,19 @@ export function createSmartFieldElement(
         height_mm = 60;
       }
       break;
+    case "lombada": {
+      // Text is rotated 90° clockwise (Brazilian standard: read top-to-bottom on spine).
+      // With rotation=90° on a KonvaText at (x0,y0):
+      //   world_x range: [x0 - lineHeight, x0]  → center = x0 - lineHeight/2
+      //   world_y range: [y0, y0 + width_mm]
+      // Approximate lineHeight at 12pt/300dpi: ~12 * 300/72 / MM_TO_PX ≈ 4.2mm
+      const xLombadaStart = xContraStart + f.width_mm;
+      x_mm = xLombadaStart + lombadaMm / 2 + 2.5;
+      y_mm = sangria + MARGIN_MM;
+      width_mm = f.height_mm - MARGIN_MM * 2;
+      height_mm = lombadaMm;
+      break;
+    }
     default:
       x_mm = xCapaStart + MARGIN_MM;
       y_mm = sangria + 25;

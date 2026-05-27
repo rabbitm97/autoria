@@ -43,6 +43,12 @@ const FIELD_CONFIG: Record<
     multiline: true,
     placeholder: "Em um mundo onde…",
   },
+  lombada: {
+    title: "Texto da lombada",
+    label: "Geralmente título e nome do autor (ex: Meu Livro · Maria Silva)",
+    multiline: false,
+    placeholder: "Ex: O Último Horizonte · Maria Silva",
+  },
 };
 
 interface SmartFieldModalProps {
