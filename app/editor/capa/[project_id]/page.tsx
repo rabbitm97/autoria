@@ -23,18 +23,20 @@ export default async function EditorCapaPage({
   } = await supabase.auth.getUser();
 
   if (authError || !user) {
+    console.log("[editor/capa] redirect: usuário não autenticado. error =", authError?.message);
     redirect("/login");
   }
 
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, subtitulo, isbn)",
+      "dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome)",
     )
     .eq("id", project_id)
     .single();
 
   if (projectError || !project) {
+    console.log("[editor/capa] redirect: projeto não encontrado ou sem acesso. project_id =", project_id, "error =", projectError?.message);
     redirect("/dashboard");
   }
 
@@ -47,8 +49,6 @@ export default async function EditorCapaPage({
   const manuscript = project.manuscripts as {
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
-    subtitulo?: string;
-    isbn?: string;
   } | null;
 
   const rawFormat = capa?.formato as string | undefined;
@@ -68,8 +68,8 @@ export default async function EditorCapaPage({
     .join(" ");
   const synopsisShort = (elementos?.sinopse_curta as string) ?? "";
   const synopsisLong = (elementos?.sinopse_longa as string) ?? "";
-  const subtitle = manuscript?.subtitulo ?? "";
-  const isbn = manuscript?.isbn ?? null;
+  const subtitle = (elementos?.subtitulo as string) ?? "";
+  const isbn = (capa?.isbn as string) ?? null;
 
   // Load saved editor state if it exists
   const rawEditorData = capa?.editor_data;
