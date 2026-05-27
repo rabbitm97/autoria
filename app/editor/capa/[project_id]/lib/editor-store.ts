@@ -78,7 +78,7 @@ interface EditorState {
   setSaveStatus: (status: SaveStatus) => void;
   setStageInstance: (stage: Konva.Stage | null) => void;
   setConfirmedSnapshot: (snap: ConfirmedSnapshot | null) => void;
-  hydrate: (data: Pick<EditorData, "elements" | "fills" | "isbn">) => void;
+  hydrate: (data: Pick<EditorData, "comOrelhas" | "elements" | "fills" | "isbn">) => void;
 
   // Reset — call on mount to prevent state leaking between projects
   reset: () => void;
@@ -220,6 +220,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   hydrate: (data) =>
     set({
+      comOrelhas: data.comOrelhas ?? false,
       elements: data.elements ?? [],
       fills: data.fills ?? {},
       isbn: data.isbn ?? null,
@@ -227,6 +228,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   reset: () =>
     set({
+      comOrelhas: false,
       elements: [],
       selectedId: null,
       fills: {},

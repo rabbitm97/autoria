@@ -8,6 +8,7 @@ export interface EditorMeta {
 
 export interface EditorData {
   version: 1;
+  comOrelhas: boolean;
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
@@ -21,6 +22,7 @@ export type SaveStatus =
   | { kind: "error"; error: string };
 
 export function serializeEditorState(state: {
+  comOrelhas: boolean;
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
@@ -28,6 +30,7 @@ export function serializeEditorState(state: {
 }): EditorData {
   return {
     version: 1,
+    comOrelhas: state.comOrelhas,
     elements: state.elements,
     fills: state.fills,
     isbn: state.isbn,
@@ -41,7 +44,7 @@ export function serializeEditorState(state: {
 
 export function deserializeEditorState(
   data: unknown,
-): Pick<EditorData, "elements" | "fills" | "isbn"> | null {
+): Pick<EditorData, "comOrelhas" | "elements" | "fills" | "isbn"> | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.version !== 1) {
@@ -49,6 +52,8 @@ export function deserializeEditorState(
     return null;
   }
   return {
+    // Compat: projects saved before this fix won't have comOrelhas — default false
+    comOrelhas: typeof d.comOrelhas === "boolean" ? d.comOrelhas : false,
     elements: Array.isArray(d.elements) ? (d.elements as AnyElement[]) : [],
     fills: (d.fills as RegionFills) ?? {},
     isbn: typeof d.isbn === "string" ? d.isbn : null,
