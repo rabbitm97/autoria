@@ -1,4 +1,16 @@
+"use client";
+
+import { useEditorStore } from "../lib/editor-store";
+
 export function EditorEmptyState() {
+  const elements = useEditorStore((s) => s.elements);
+  const fills = useEditorStore((s) => s.fills);
+
+  const isCompletelyEmpty =
+    elements.length === 0 && Object.values(fills).every((v) => v == null);
+
+  if (!isCompletelyEmpty) return null;
+
   return (
     <div
       className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center"

@@ -1,5 +1,6 @@
 import { FORMATS, SANGRIA_MM, ORELHA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
 import { FONT_CATALOG_BY_ID } from "./fonts";
+import { getFillRect } from "./region-rects";
 import type { AnyElement, TextElement, ImageElement, LogoElement, BarcodeElement, RegionFills, Region } from "./elements";
 import type { FormatKey } from "../types";
 
@@ -77,49 +78,16 @@ function renderBarcodeElement(el: BarcodeElement): string {
   return `<img src="${el.cachedDataUrl}" style="${style.replace(/\n\s*/g, " ")}" alt="Código de barras">`;
 }
 
+const ALL_REGIONS: Region[] = ["orelha_verso", "contracapa", "lombada", "capa", "orelha_frente"];
+
 function renderFills(fills: RegionFills, meta: CoverMeta): string {
-  const f = FORMATS[meta.format];
-  const lombadaMm = calcularLombada(meta.pages);
-  const orelhaMm = meta.comOrelhas ? ORELHA_MM : 0;
-
-  const regions: { key: Region; xMm: number; yMm: number; wMm: number; hMm: number }[] = [
-    {
-      key: "contracapa",
-      xMm: SANGRIA_MM + orelhaMm,
-      yMm: SANGRIA_MM,
-      wMm: f.width_mm,
-      hMm: f.height_mm,
-    },
-    {
-      key: "lombada",
-      xMm: SANGRIA_MM + orelhaMm + f.width_mm,
-      yMm: SANGRIA_MM,
-      wMm: lombadaMm,
-      hMm: f.height_mm,
-    },
-    {
-      key: "capa",
-      xMm: SANGRIA_MM + orelhaMm + f.width_mm + lombadaMm,
-      yMm: SANGRIA_MM,
-      wMm: f.width_mm,
-      hMm: f.height_mm,
-    },
-  ];
-
-  if (meta.comOrelhas) {
-    regions.push(
-      { key: "orelha_verso", xMm: SANGRIA_MM, yMm: SANGRIA_MM, wMm: orelhaMm, hMm: f.height_mm },
-      { key: "orelha_frente", xMm: SANGRIA_MM + orelhaMm + f.width_mm * 2 + lombadaMm, yMm: SANGRIA_MM, wMm: orelhaMm, hMm: f.height_mm },
-    );
-  }
-
-  return regions
-    .map(({ key, xMm, yMm, wMm, hMm }) => {
-      const color = fills[key];
-      if (!color) return "";
-      return `<div style="position:absolute;left:${xMm}mm;top:${yMm}mm;width:${wMm}mm;height:${hMm}mm;background:${color};"></div>`;
-    })
-    .join("\n");
+  return ALL_REGIONS.map((key) => {
+    const color = fills[key];
+    if (!color) return "";
+    const rect = getFillRect(key, meta.format, meta.pages, meta.comOrelhas);
+    if (!rect) return "";
+    return `<div style="position:absolute;left:${rect.x}mm;top:${rect.y}mm;width:${rect.width}mm;height:${rect.height}mm;background:${color};"></div>`;
+  }).join("\n");
 }
 
 export function renderCoverAsHtml(

@@ -38,6 +38,7 @@ import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget } from "../lib/keyboard-utils";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
+import { getFillRect } from "../lib/region-rects";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
 import { EditorZoomControls } from "./editor-zoom-controls";
@@ -333,18 +334,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   const xLombadaCenter = (xContraEnd + xLombadaEnd) / 2;
   const gs = 1.5 / zoom;
 
-  // Region fill rects (in paper px)
-  const regionRects: { key: Region; x: number; y: number; w: number; h: number }[] = [
-    { key: "contracapa", x: xOrelhaVersoEnd, y: sangriaPx, w: frontePx, h: totalHPx - sangriaPx * 2 },
-    { key: "lombada", x: xContraEnd, y: sangriaPx, w: lombadaPx, h: totalHPx - sangriaPx * 2 },
-    { key: "capa", x: xLombadaEnd, y: sangriaPx, w: frontePx, h: totalHPx - sangriaPx * 2 },
-    ...(comOrelhas
-      ? ([
-          { key: "orelha_verso" as Region, x: sangriaPx, y: sangriaPx, w: orelhaPx, h: totalHPx - sangriaPx * 2 },
-          { key: "orelha_frente" as Region, x: xFrenteEnd, y: sangriaPx, w: orelhaPx, h: totalHPx - sangriaPx * 2 },
-        ] as const)
-      : []),
-  ];
+  const ALL_REGIONS: Region[] = ["orelha_verso", "contracapa", "lombada", "capa", "orelha_frente"];
 
   // Tooltip region detection
   function getRegionAt(xPaper: number, yPaper: number): { region: string; message: string } | null {
@@ -546,12 +536,23 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           />
         </Layer>
 
-        {/* Region fill layer */}
+        {/* Region fill layer — rects extend into bleed on outer edges, stop at inner folds */}
         <Layer listening={false}>
-          {regionRects.map(({ key, x, y, w, h }) => {
+          {ALL_REGIONS.map((key) => {
             const color = fills[key];
             if (!color) return null;
-            return <Rect key={key} x={x} y={y} width={w} height={h} fill={color} />;
+            const rect = getFillRect(key, format, pages, comOrelhas);
+            if (!rect) return null;
+            return (
+              <Rect
+                key={key}
+                x={rect.x * MM_TO_PX}
+                y={rect.y * MM_TO_PX}
+                width={rect.width * MM_TO_PX}
+                height={rect.height * MM_TO_PX}
+                fill={color}
+              />
+            );
           })}
         </Layer>
 
