@@ -1,10 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useMemo, useCallback } from "react";
+import debounce from "lodash.debounce";
 import { EditorTopbar } from "./components/editor-topbar";
 import { EditorSidebar } from "./components/editor-sidebar";
 import { useEditorStore } from "./lib/editor-store";
+import { serializeEditorState } from "./lib/editor-serializer";
 import type { ProjectData } from "./types";
 
 const EditorCanvas = dynamic(
@@ -25,39 +27,91 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
 
   const { reset, setIsbn } = useEditorStore();
 
-  // Reset element state when project changes; keeps viewport settings
+  const saveNow = useCallback(async () => {
+    const state = useEditorStore.getState();
+    const snapshot = serializeEditorState(state);
+    useEditorStore.getState().setSaveStatus({ kind: "saving" });
+    try {
+      const res = await fetch(`/api/projects/${projectData.projectId}/cover-editor`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editor_data: snapshot }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      const data = await res.json();
+      useEditorStore.getState().setSaveStatus({ kind: "saved", at: data.saved_at });
+      useEditorStore.setState((s) => ({ autosaveCount: s.autosaveCount + 1 }));
+    } catch {
+      useEditorStore.getState().setSaveStatus({ kind: "error", error: "Falha ao salvar" });
+    }
+  }, [projectData.projectId]);
+
+  const debouncedSave = useMemo(() => debounce(saveNow, 1000), [saveNow]);
+
+  useEffect(() => {
+    return () => { debouncedSave.cancel(); };
+  }, [debouncedSave]);
+
+  // Reset element state when project changes; hydrate from saved data if available
   useEffect(() => {
     reset();
     if (projectData.isbn) setIsbn(projectData.isbn);
+    if (projectData.initialEditorData) {
+      useEditorStore.getState().hydrate({
+        elements: projectData.initialEditorData.elements,
+        fills: projectData.initialEditorData.fills,
+        isbn: projectData.initialEditorData.isbn,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectData.projectId]);
 
+  // Autosave on elements/fills/isbn change
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe((state, prev) => {
+      if (
+        state.elements !== prev.elements ||
+        state.fills !== prev.fills ||
+        state.isbn !== prev.isbn
+      ) {
+        debouncedSave();
+      }
+    });
+    return unsubscribe;
+  }, [debouncedSave]);
+
   // Keyboard shortcuts
   useEffect(() => {
-    const { deleteElement, selectedId, duplicateElement, moveElementZ } =
-      useEditorStore.getState();
-
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement;
       const isInput =
         active instanceof HTMLInputElement ||
         active instanceof HTMLTextAreaElement;
+
+      // Cmd/Ctrl+S — force save
+      if ((e.key === "s" || e.key === "S") && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        debouncedSave.cancel();
+        saveNow();
+        return;
+      }
+
       if (isInput) return;
 
       const state = useEditorStore.getState();
 
       if ((e.key === "Delete" || e.key === "Backspace") && state.selectedId) {
-        deleteElement(state.selectedId);
+        state.deleteElement(state.selectedId);
       }
       if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey) && state.selectedId) {
         e.preventDefault();
-        duplicateElement(state.selectedId);
+        state.duplicateElement(state.selectedId);
       }
       if (e.key === "]" && state.selectedId) {
-        moveElementZ(state.selectedId, 1);
+        state.moveElementZ(state.selectedId, 1);
       }
       if (e.key === "[" && state.selectedId) {
-        moveElementZ(state.selectedId, -1);
+        state.moveElementZ(state.selectedId, -1);
       }
       if (e.key === "Escape") {
         useEditorStore.setState({ selectedId: null });
@@ -66,12 +120,11 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [debouncedSave, saveNow]);
 
   return (
     <div className="flex h-full w-full flex-col">
-      <EditorTopbar projectData={projectData} />
+      <EditorTopbar projectData={projectData} onSaveRetry={saveNow} />
       <div className="flex min-h-0 flex-1">
         <EditorSidebar projectData={projectData} />
         <div className="relative min-w-0 flex-1">

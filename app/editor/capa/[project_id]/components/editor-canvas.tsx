@@ -35,7 +35,7 @@ import {
   PAPER_COLOR,
 } from "../lib/constants";
 import { getStructuralGuides, snapToGuides } from "../lib/snap";
-import { FONT_CATALOG_BY_ID } from "../lib/fonts";
+import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
 import { EditorZoomControls } from "./editor-zoom-controls";
@@ -212,11 +212,19 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     message: "",
   });
 
+  const fontsReady = useFontsReady();
   const isPanningRef = useRef(false);
   const spaceDownRef = useRef(false);
   const lastPointerRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Register Stage in Zustand so ExportDropdown can access it
+  useEffect(() => {
+    if (!mounted || !stageRef.current) return;
+    useEditorStore.getState().setStageInstance(stageRef.current);
+    return () => { useEditorStore.getState().setStageInstance(null); };
+  }, [mounted]);
 
   // ResizeObserver
   useEffect(() => {
@@ -402,8 +410,8 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     const absPos = node.getAbsolutePosition();
     setInlineEdit({
       id: el.id,
-      x: panX + absPos.x * zoom,
-      y: panY + absPos.y * zoom,
+      x: el.x_mm * MM_TO_PX * zoom + panX,
+      y: el.y_mm * MM_TO_PX * zoom + panY,
       w: el.width_mm * MM_TO_PX * zoom,
       h: Math.max(40, el.height_mm * MM_TO_PX * zoom),
     });
@@ -471,7 +479,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     isPanningRef.current = false;
   }, []);
 
-  if (!mounted) {
+  if (!mounted || !fontsReady) {
     return (
       <div ref={containerRef} className="absolute inset-0 bg-[#e8e6e0]">
         <div className="flex h-full items-center justify-center text-sm text-zinc-400">

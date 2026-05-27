@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { EditorClient } from "./editor-client";
 import { FORMATS } from "./lib/dimensions";
 import type { FormatKey, ProjectData } from "./types";
+import type { EditorData } from "./lib/editor-serializer";
 
 export const metadata = {
   title: "Editor de Capa · Autoria",
@@ -70,6 +71,17 @@ export default async function EditorCapaPage({
   const subtitle = manuscript?.subtitulo ?? "";
   const isbn = manuscript?.isbn ?? null;
 
+  // Load saved editor state if it exists
+  const rawEditorData = capa?.editor_data;
+  let initialEditorData: EditorData | null = null;
+  if (
+    rawEditorData &&
+    typeof rawEditorData === "object" &&
+    (rawEditorData as Record<string, unknown>).version === 1
+  ) {
+    initialEditorData = rawEditorData as EditorData;
+  }
+
   const projectData: ProjectData = {
     projectId: project_id,
     format,
@@ -81,6 +93,7 @@ export default async function EditorCapaPage({
     synopsisShort,
     synopsisLong,
     pagesSource: miolo?.paginas_reais ? "real" : "default",
+    initialEditorData,
   };
 
   return <EditorClient projectData={projectData} />;

@@ -8,6 +8,7 @@ import { generateBarcodeDataUrl } from "../lib/barcode";
 import { createSmartFieldElement, type SmartFieldContentMap } from "../lib/smart-field-layout";
 import { createImageElement, createLogoElement, createBarcodeElement } from "../lib/elements";
 import { ColorPickerPopover } from "./color-picker-popover";
+import { SmartFieldModal } from "./smart-field-modal";
 import { nanoid } from "nanoid";
 import type { ProjectData } from "../types";
 import type { Region, SmartField } from "../lib/elements";
@@ -156,12 +157,14 @@ function SectionCores({ comOrelhas }: { comOrelhas: boolean }) {
 // ── Seção 3: Texto (smart fields) ─────────────────────────────────────────────
 function SectionTexto({ projectData }: { projectData: ProjectData }) {
   const { elements, fills, format, pages, comOrelhas, addElement } = useEditorStore();
+  const [pendingField, setPendingField] = useState<SmartField | null>(null);
 
   const contentMap: SmartFieldContentMap = {
     titulo: projectData.title,
     subtitulo: projectData.subtitle,
     autor: projectData.authorName,
     sinopse_curta: projectData.synopsisShort,
+    sinopse_longa: projectData.synopsisLong,
     bio: "",
   };
 
@@ -169,104 +172,136 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
     { field: "titulo", label: "Título", preview: projectData.title || "Sem título" },
     { field: "subtitulo", label: "Subtítulo", preview: projectData.subtitle || "—" },
     { field: "autor", label: "Autor", preview: projectData.authorName || "—" },
-    { field: "sinopse_curta", label: "Sinopse curta", preview: (projectData.synopsisShort || "").slice(0, 40) + (projectData.synopsisShort?.length > 40 ? "…" : "") },
+    { field: "sinopse_curta", label: "Sinopse curta", preview: (projectData.synopsisShort || "").slice(0, 40) + ((projectData.synopsisShort?.length ?? 0) > 40 ? "…" : "") },
+    { field: "sinopse_longa", label: "Sinopse longa", preview: (projectData.synopsisLong || "").slice(0, 40) + ((projectData.synopsisLong?.length ?? 0) > 40 ? "…" : "") || "Orelha traseira" },
     { field: "bio", label: "Bio do autor", preview: "Texto inserido manualmente" },
   ];
 
-  function handleAddSmartField(field: SmartField) {
-    const existing = elements.filter((e) => e.type === "text" && (e as any).smartField === field);
+  function insertElement(field: SmartField, resolvedContent: SmartFieldContentMap) {
     const el = createSmartFieldElement(
       field,
       format,
       pages,
       comOrelhas,
       fills,
-      contentMap,
+      resolvedContent,
       elements.length,
     );
     addElement(el);
   }
 
+  function handleAddSmartField(field: SmartField) {
+    const content = contentMap[field];
+    if (!content?.trim()) {
+      setPendingField(field);
+      return;
+    }
+    insertElement(field, contentMap);
+  }
+
+  function handleModalConfirm(text: string) {
+    if (!pendingField) return;
+    insertElement(pendingField, { ...contentMap, [pendingField]: text });
+    setPendingField(null);
+  }
+
   return (
-    <Section title="Texto" defaultOpen={false}>
-      <div className="space-y-1.5">
-        {smartFields.map(({ field, label, preview }) => (
+    <>
+      {pendingField && (
+        <SmartFieldModal
+          field={pendingField}
+          onConfirm={handleModalConfirm}
+          onCancel={() => setPendingField(null)}
+        />
+      )}
+      <Section title="Texto" defaultOpen={false}>
+        <div className="space-y-1.5">
+          {smartFields.map(({ field, label, preview }) => (
+            <button
+              key={field}
+              onClick={() => handleAddSmartField(field)}
+              className="flex w-full flex-col gap-0.5 rounded-lg border border-[#e0ddd2] px-3 py-2.5 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+            >
+              <span className="text-xs font-medium text-zinc-600">+ {label}</span>
+              <span className="truncate text-[10px] text-zinc-400">{preview}</span>
+            </button>
+          ))}
           <button
-            key={field}
-            onClick={() => handleAddSmartField(field)}
-            className="flex w-full flex-col gap-0.5 rounded-lg border border-[#e0ddd2] px-3 py-2.5 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+            onClick={() => {
+              const { elements, addElement, format, pages, comOrelhas } = useEditorStore.getState();
+              const f = FORMATS[format];
+              addElement({
+                id: nanoid(),
+                type: "text",
+                x_mm: SANGRIA_MM + (comOrelhas ? ORELHA_MM : 0) + f.width_mm / 4,
+                y_mm: SANGRIA_MM + 30,
+                width_mm: f.width_mm / 2,
+                height_mm: 20,
+                rotation_deg: 0,
+                opacity: 1,
+                visible: true,
+                locked: false,
+                zIndex: elements.length,
+                content: "Texto livre",
+                fontId: "inter",
+                fontSize_pt: 14,
+                fontWeight: "400",
+                fontStyle: "normal",
+                textAlign: "left",
+                color: "#1a1a2e",
+                smartField: null,
+              });
+            }}
+            className="flex w-full items-center gap-2 rounded-lg border border-dashed border-[#e0ddd2] px-3 py-2.5 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-500"
           >
-            <span className="text-xs font-medium text-zinc-600">+ {label}</span>
-            <span className="truncate text-[10px] text-zinc-400">{preview}</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 7V4h16v3M9 20h6M12 4v16" />
+            </svg>
+            + Texto livre
           </button>
-        ))}
-        <button
-          onClick={() => {
-            const { elements, addElement, format, pages, comOrelhas } = useEditorStore.getState();
-            const f = FORMATS[format];
-            addElement({
-              id: nanoid(),
-              type: "text",
-              x_mm: SANGRIA_MM + (comOrelhas ? ORELHA_MM : 0) + f.width_mm / 4,
-              y_mm: SANGRIA_MM + 30,
-              width_mm: f.width_mm / 2,
-              height_mm: 20,
-              rotation_deg: 0,
-              opacity: 1,
-              visible: true,
-              locked: false,
-              zIndex: elements.length,
-              content: "Texto livre",
-              fontId: "inter",
-              fontSize_pt: 14,
-              fontWeight: "400",
-              fontStyle: "normal",
-              textAlign: "left",
-              color: "#1a1a2e",
-              smartField: null,
-            });
-          }}
-          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-[#e0ddd2] px-3 py-2.5 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-500"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 7V4h16v3M9 20h6M12 4v16" />
-          </svg>
-          + Texto livre
-        </button>
-      </div>
-    </Section>
+        </div>
+      </Section>
+    </>
   );
 }
 
 // ── Seção 4: Imagens ──────────────────────────────────────────────────────────
-function SectionImagens() {
-  const { addElement, elements, format, comOrelhas } = useEditorStore();
+function SectionImagens({ projectId }: { projectId: string }) {
+  const { addElement, format, comOrelhas } = useEditorStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  function handleFile(file: File) {
+  async function handleFile(file: File) {
     if (!file.type.startsWith("image/")) return;
     if (file.size > 10 * 1024 * 1024) {
       alert("Arquivo muito grande (máx. 10 MB).");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const src = e.target?.result as string;
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch(`/api/projects/${projectId}/images`, { method: "POST", body });
+      if (!res.ok) throw new Error("Falha no upload");
+      const { url } = await res.json();
       const f = FORMATS[format];
       const orelhaMm = comOrelhas ? ORELHA_MM : 0;
       addElement(
         createImageElement({
           id: nanoid(),
-          src,
+          src: url,
           x_mm: SANGRIA_MM + orelhaMm + f.width_mm + 3,
           y_mm: SANGRIA_MM + 3,
           width_mm: f.width_mm - 6,
           height_mm: f.height_mm - 6,
         }),
       );
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      alert("Erro ao enviar imagem: " + String(err));
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -280,20 +315,33 @@ function SectionImagens() {
           const file = e.dataTransfer.files[0];
           if (file) handleFile(file);
         }}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => !uploading && inputRef.current?.click()}
         className={`cursor-pointer rounded-lg border-2 border-dashed px-3 py-6 text-center transition-colors ${
           dragging
             ? "border-[#c9a84c] bg-[#c9a84c]/5"
+            : uploading
+            ? "border-zinc-200 opacity-60"
             : "border-[#e0ddd2] hover:border-zinc-300"
         }`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="1.5" className="mx-auto mb-2">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
-        <p className="text-xs text-zinc-400">Clique ou arraste uma imagem</p>
-        <p className="mt-0.5 text-[10px] text-zinc-300">PNG, JPG, WebP · máx. 10 MB</p>
+        {uploading ? (
+          <>
+            <svg className="mx-auto mb-2 animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            <p className="text-xs text-zinc-400">Enviando…</p>
+          </>
+        ) : (
+          <>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="1.5" className="mx-auto mb-2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            <p className="text-xs text-zinc-400">Clique ou arraste uma imagem</p>
+            <p className="mt-0.5 text-[10px] text-zinc-300">PNG, JPG, WebP · máx. 10 MB</p>
+          </>
+        )}
       </div>
       <input
         ref={inputRef}
@@ -516,7 +564,7 @@ export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
       <SectionFormato />
       <SectionCores comOrelhas={comOrelhas} />
       <SectionTexto projectData={projectData} />
-      <SectionImagens />
+      <SectionImagens projectId={projectData.projectId} />
       <SectionMarca projectData={projectData} />
       <SectionCamadas />
     </div>

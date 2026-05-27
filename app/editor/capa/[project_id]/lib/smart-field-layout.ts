@@ -54,6 +54,13 @@ const SMART_FIELD_DEFAULTS: Record<SmartField, Omit<SmartFieldConfig, "content" 
     fontWeight: "400",
     textAlign: "left",
   },
+  sinopse_longa: {
+    smartField: "sinopse_longa",
+    fontId: "dm-sans",
+    fontSize_pt: 11,
+    fontWeight: "400",
+    textAlign: "left",
+  },
 };
 
 export interface SmartFieldContentMap {
@@ -62,6 +69,7 @@ export interface SmartFieldContentMap {
   autor?: string;
   sinopse_curta?: string;
   bio?: string;
+  sinopse_longa?: string;
 }
 
 export function createSmartFieldElement(
@@ -123,8 +131,21 @@ export function createSmartFieldElement(
     case "bio":
       x_mm = xOrelhaFrenteStart + 5;
       y_mm = sangria + 30;
-      width_mm = orelhaMm - 10;
+      width_mm = Math.max(orelhaMm - 10, 20);
       height_mm = 80;
+      break;
+    case "sinopse_longa":
+      if (orelhaMm > 0) {
+        x_mm = sangria + 5;
+        y_mm = sangria + 30;
+        width_mm = orelhaMm - 10;
+        height_mm = 80;
+      } else {
+        x_mm = xContraStart + MARGIN_MM;
+        y_mm = sangria + 120;
+        width_mm = f.width_mm - MARGIN_MM * 2;
+        height_mm = 60;
+      }
       break;
     default:
       x_mm = xCapaStart + MARGIN_MM;

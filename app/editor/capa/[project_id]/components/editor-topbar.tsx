@@ -3,9 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEditorStore } from "../lib/editor-store";
+import { EditorSaveIndicator } from "./editor-save-indicator";
+import { ExportDropdown } from "./export-dropdown";
 import type { ProjectData } from "../types";
 
-export function EditorTopbar({ projectData }: { projectData: ProjectData }) {
+interface EditorTopbarProps {
+  projectData: ProjectData;
+  onSaveRetry: () => void;
+}
+
+export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
   const router = useRouter();
   const { legendasAtivas, toggleLegendas } = useEditorStore();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -92,19 +99,9 @@ export function EditorTopbar({ projectData }: { projectData: ProjectData }) {
           Pré-visualizar
         </button>
 
-        {/* Save indicator */}
-        <span className="select-none text-xs text-zinc-200">
-          Não implementado
-        </span>
+        <EditorSaveIndicator onRetry={onSaveRetry} />
 
-        {/* Export — disabled with tooltip */}
-        <button
-          disabled
-          title="Disponível na próxima atualização"
-          className="cursor-not-allowed rounded-lg bg-[#1a1a2e] px-4 py-1.5 text-xs font-medium text-[#c9a84c] opacity-35"
-        >
-          Exportar capa
-        </button>
+        <ExportDropdown projectId={projectData.projectId} projectTitle={projectData.title} />
       </div>
 
       {/* Preview modal placeholder */}

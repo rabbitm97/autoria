@@ -1,6 +1,6 @@
 import type { FontId } from "./fonts";
 
-export type SmartField = "titulo" | "subtitulo" | "autor" | "sinopse_curta" | "bio";
+export type SmartField = "titulo" | "subtitulo" | "autor" | "sinopse_curta" | "bio" | "sinopse_longa";
 
 export interface BaseElement {
   id: string;

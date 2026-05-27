@@ -8,7 +8,9 @@ import {
 } from "./constants";
 import { FORMATS, SANGRIA_MM, ORELHA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
 import type { AnyElement, RegionFills, Region } from "./elements";
+import type { SaveStatus, EditorData } from "./editor-serializer";
 import { nanoid } from "nanoid";
+import type Konva from "konva";
 
 interface EditorState {
   // Viewport
@@ -31,6 +33,13 @@ interface EditorState {
 
   // Project
   isbn: string | null;
+
+  // Persistence
+  saveStatus: SaveStatus;
+  autosaveCount: number;
+
+  // Konva stage reference (set by canvas on mount)
+  stageInstance: Konva.Stage | null;
 
   // Viewport actions
   setComOrelhas: (v: boolean) => void;
@@ -56,6 +65,11 @@ interface EditorState {
   // Project
   setIsbn: (isbn: string | null) => void;
 
+  // Persistence
+  setSaveStatus: (status: SaveStatus) => void;
+  setStageInstance: (stage: Konva.Stage | null) => void;
+  hydrate: (data: Pick<EditorData, "elements" | "fills" | "isbn">) => void;
+
   // Reset — call on mount to prevent state leaking between projects
   reset: () => void;
 }
@@ -74,6 +88,9 @@ const DEFAULT_STATE = {
   selectedId: null as string | null,
   fills: {} as RegionFills,
   isbn: null as string | null,
+  saveStatus: { kind: "idle" } as SaveStatus,
+  autosaveCount: 0,
+  stageInstance: null as Konva.Stage | null,
 };
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -184,6 +201,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setIsbn: (isbn) => set({ isbn }),
 
+  setSaveStatus: (status) => set({ saveStatus: status }),
+
+  setStageInstance: (stage) => set({ stageInstance: stage }),
+
+  hydrate: (data) =>
+    set({
+      elements: data.elements ?? [],
+      fills: data.fills ?? {},
+      isbn: data.isbn ?? null,
+    }),
+
   reset: () =>
     set({
       elements: [],
@@ -191,5 +219,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       fills: {},
       isbn: null,
       legendasAtivas: false,
+      saveStatus: { kind: "idle" },
+      autosaveCount: 0,
+      stageInstance: null,
     }),
 }));

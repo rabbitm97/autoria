@@ -1,4 +1,5 @@
 import type { FORMATS } from "./lib/dimensions";
+import type { EditorData } from "./lib/editor-serializer";
 
 export type FormatKey = keyof typeof FORMATS;
 
@@ -13,4 +14,5 @@ export interface ProjectData {
   synopsisShort: string;
   synopsisLong: string;
   pagesSource: "real" | "estimated" | "default";
+  initialEditorData: EditorData | null;
 }
