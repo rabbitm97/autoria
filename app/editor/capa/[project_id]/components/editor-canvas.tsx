@@ -11,6 +11,7 @@ import {
   Layer,
   Rect,
   Line,
+  Ellipse as KonvaEllipse,
   Text as KonvaText,
   Image as KonvaImage,
   Transformer,
@@ -50,6 +51,7 @@ import type {
   ImageElement,
   LogoElement,
   BarcodeElement,
+  ShapeElement,
   Region,
 } from "../lib/elements";
 import type Konva from "konva";
@@ -174,6 +176,64 @@ function BarcodeNode({
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
       onTransformEnd={onTransformEnd}
+    />
+  );
+}
+
+// ── Shape element node ────────────────────────────────────────────────────────
+function ShapeNode({
+  el,
+  onSelect,
+  onDragMove,
+  onDragEnd,
+  onTransformEnd,
+}: {
+  el: ShapeElement;
+  selected: boolean;
+  onSelect: () => void;
+  onDragMove: (e: any) => void;
+  onDragEnd: (e: any) => void;
+  onTransformEnd: (e: any) => void;
+}) {
+  const w = el.width_mm * MM_TO_PX;
+  const h = el.height_mm * MM_TO_PX;
+  const strokeWidth = el.strokeWidth_pt * PT_TO_PX;
+  const fill = el.fill ?? "transparent";
+  const stroke = el.stroke ?? "transparent";
+  const common = {
+    id: el.id,
+    opacity: el.opacity,
+    rotation: el.rotation_deg,
+    visible: el.visible,
+    draggable: !el.locked,
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragMove,
+    onDragEnd,
+    onTransformEnd,
+  };
+
+  if (el.shape === "rect") {
+    return <Rect x={el.x_mm * MM_TO_PX} y={el.y_mm * MM_TO_PX} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={strokeWidth} {...common} />;
+  }
+  if (el.shape === "ellipse") {
+    // Konva Ellipse uses center-origin: x/y = center, radiusX/Y = half-dimensions
+    return <KonvaEllipse x={(el.x_mm + el.width_mm / 2) * MM_TO_PX} y={(el.y_mm + el.height_mm / 2) * MM_TO_PX} radiusX={w / 2} radiusY={h / 2} fill={fill} stroke={stroke} strokeWidth={strokeWidth} {...common} />;
+  }
+  if (el.shape === "line") {
+    return <Rect x={el.x_mm * MM_TO_PX} y={el.y_mm * MM_TO_PX} width={w} height={h} fill={el.fill ?? "#c9a84c"} stroke="transparent" strokeWidth={0} {...common} />;
+  }
+  // triangle: closed Line polygon with top-left origin
+  return (
+    <Line
+      x={el.x_mm * MM_TO_PX}
+      y={el.y_mm * MM_TO_PX}
+      points={[w / 2, 0, w, h, 0, h]}
+      closed={true}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      {...common}
     />
   );
 }
@@ -373,9 +433,11 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   function handleDragEnd(e: any, elId: string) {
     setSnapLines({ x: null, y: null });
     const node = e.target;
+    const el = elements.find((el) => el.id === elId);
+    const isEllipse = el?.type === "shape" && (el as ShapeElement).shape === "ellipse";
     updateElement(elId, {
-      x_mm: node.x() / MM_TO_PX,
-      y_mm: node.y() / MM_TO_PX,
+      x_mm: node.x() / MM_TO_PX - (isEllipse ? (el as ShapeElement).width_mm / 2 : 0),
+      y_mm: node.y() / MM_TO_PX - (isEllipse ? (el as ShapeElement).height_mm / 2 : 0),
     });
   }
 
@@ -387,6 +449,23 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     node.scaleX(1);
     node.scaleY(1);
     const el = elements.find((el) => el.id === elId);
+
+    if (el?.type === "shape") {
+      const sh = el as ShapeElement;
+      const isEllipse = sh.shape === "ellipse";
+      const minH = sh.shape === "line" ? 0.1 : 2;
+      const newW = Math.max(2, sh.width_mm * scaleX);
+      const newH = Math.max(minH, sh.height_mm * scaleY);
+      updateElement(elId, {
+        x_mm: node.x() / MM_TO_PX - (isEllipse ? newW / 2 : 0),
+        y_mm: node.y() / MM_TO_PX - (isEllipse ? newH / 2 : 0),
+        width_mm: newW,
+        height_mm: newH,
+        rotation_deg: node.rotation(),
+      });
+      return;
+    }
+
     const newW = Math.max(20, node.width() * scaleX) / MM_TO_PX;
     if (el?.type === "text") {
       // For text: scaleX widens the text box; scaleY scales the font size
@@ -632,6 +711,18 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                 <BarcodeNode
                   key={el.id}
                   el={el as BarcodeElement}
+                  onSelect={() => setSelectedId(el.id)}
+                  {...commonDragProps}
+                />
+              );
+            }
+
+            if (el.type === "shape") {
+              return (
+                <ShapeNode
+                  key={el.id}
+                  el={el as ShapeElement}
+                  selected={isSelected}
                   onSelect={() => setSelectedId(el.id)}
                   {...commonDragProps}
                 />

@@ -3,7 +3,7 @@
 import { useEditorStore } from "../lib/editor-store";
 import { FONT_CATALOG } from "../lib/fonts";
 import { generateBarcodeDataUrl } from "../lib/barcode";
-import type { TextElement, ImageElement, LogoElement, BarcodeElement } from "../lib/elements";
+import type { TextElement, ImageElement, LogoElement, BarcodeElement, ShapeElement } from "../lib/elements";
 
 const PT_OPTIONS = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 60, 72, 96];
 
@@ -213,6 +213,107 @@ function LogoPanel({ el }: { el: LogoElement }) {
   );
 }
 
+function ShapePanel({ el }: { el: ShapeElement }) {
+  const { updateElement } = useEditorStore();
+  const up = (patch: Partial<ShapeElement>) => updateElement(el.id, patch as any);
+  const isLine = el.shape === "line";
+
+  return (
+    <div className="space-y-2.5">
+      {!isLine && (
+        <PanelRow label="Preenchimento">
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={el.fill ?? "#c9a84c"}
+              onChange={(e) => up({ fill: e.target.value })}
+              className="h-7 w-7 cursor-pointer rounded border border-[#e0ddd2]"
+            />
+            <button
+              onClick={() => up({ fill: null })}
+              title="Remover preenchimento"
+              className="text-xs text-zinc-300 hover:text-zinc-500"
+            >
+              ×
+            </button>
+            <span className="font-mono text-xs text-zinc-500">{el.fill ?? "—"}</span>
+          </div>
+        </PanelRow>
+      )}
+
+      {isLine ? (
+        <PanelRow label="Cor">
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={el.fill ?? "#c9a84c"}
+              onChange={(e) => up({ fill: e.target.value })}
+              className="h-7 w-7 cursor-pointer rounded border border-[#e0ddd2]"
+            />
+            <span className="font-mono text-xs text-zinc-500">{el.fill ?? "—"}</span>
+          </div>
+        </PanelRow>
+      ) : (
+        <>
+          <PanelRow label="Borda">
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={el.stroke ?? "#000000"}
+                onChange={(e) => up({ stroke: e.target.value })}
+                className="h-7 w-7 cursor-pointer rounded border border-[#e0ddd2]"
+              />
+              <button
+                onClick={() => up({ stroke: null, strokeWidth_pt: 0 })}
+                title="Remover borda"
+                className="text-xs text-zinc-300 hover:text-zinc-500"
+              >
+                ×
+              </button>
+              <span className="font-mono text-xs text-zinc-500">{el.stroke ?? "—"}</span>
+            </div>
+          </PanelRow>
+
+          {el.stroke && (
+            <PanelRow label="Espessura">
+              <select
+                value={el.strokeWidth_pt}
+                onChange={(e) => up({ strokeWidth_pt: Number(e.target.value) })}
+                className="w-full rounded-lg border border-[#e0ddd2] px-2 py-1.5 text-xs outline-none focus:border-[#c9a84c]"
+              >
+                {[0.5, 1, 2, 3, 4, 6, 8, 10, 12].map((pt) => (
+                  <option key={pt} value={pt}>{pt}pt</option>
+                ))}
+              </select>
+            </PanelRow>
+          )}
+        </>
+      )}
+
+      <PanelRow label="Opacidade">
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={el.opacity}
+          onChange={(e) => up({ opacity: Number(e.target.value) })}
+          className="w-full"
+        />
+      </PanelRow>
+
+      <PanelRow label="Rotação">
+        <input
+          type="number"
+          value={Math.round(el.rotation_deg)}
+          onChange={(e) => up({ rotation_deg: Number(e.target.value) })}
+          className="w-full rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
+        />
+      </PanelRow>
+    </div>
+  );
+}
+
 function BarcodePanel({ el }: { el: BarcodeElement }) {
   const { updateElement } = useEditorStore();
   const up = (patch: Partial<BarcodeElement>) => updateElement(el.id, patch as any);
@@ -263,7 +364,12 @@ export function EditorPropertyPanel() {
     <div className="pointer-events-auto absolute right-4 top-4 z-20 w-64 rounded-xl border border-[#e0ddd2] bg-[#fdfcf9] shadow-lg">
       <div className="flex items-center justify-between border-b border-[#e0ddd2] px-4 py-2.5">
         <span className="text-xs font-medium text-zinc-600">
-          {el.type === "text" ? "Texto" : el.type === "image" ? "Imagem" : el.type === "logo" ? "Logo" : "Código de barras"}
+          {el.type === "text" ? "Texto"
+            : el.type === "image" ? "Imagem"
+            : el.type === "logo" ? "Logo"
+            : el.type === "barcode" ? "Código de barras"
+            : el.type === "shape" ? ({ rect: "Retângulo", ellipse: "Elipse", line: "Linha", triangle: "Triângulo" } as Record<string, string>)[(el as ShapeElement).shape] ?? "Forma"
+            : "Elemento"}
         </span>
         <button
           onClick={() => setSelectedId(null)}
@@ -280,6 +386,7 @@ export function EditorPropertyPanel() {
         {el.type === "image" && <ImagePanel el={el as ImageElement} />}
         {el.type === "logo" && <LogoPanel el={el as LogoElement} />}
         {el.type === "barcode" && <BarcodePanel el={el as BarcodeElement} />}
+        {el.type === "shape" && <ShapePanel el={el as ShapeElement} />}
       </div>
 
       <div className="flex items-center justify-between border-t border-[#e0ddd2] px-4 py-2.5">

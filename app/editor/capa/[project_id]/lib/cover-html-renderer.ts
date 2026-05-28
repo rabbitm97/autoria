@@ -1,7 +1,7 @@
 import { FORMATS, SANGRIA_MM, ORELHA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
 import { FONT_CATALOG_BY_ID } from "./fonts";
 import { getFillRect } from "./region-rects";
-import type { AnyElement, TextElement, ImageElement, LogoElement, BarcodeElement, RegionFills, Region } from "./elements";
+import type { AnyElement, TextElement, ImageElement, LogoElement, BarcodeElement, ShapeElement, RegionFills, Region } from "./elements";
 import type { FormatKey } from "../types";
 
 const PT_TO_MM = 25.4 / 72;
@@ -83,6 +83,30 @@ function renderBarcodeElement(el: BarcodeElement, offsetXMm = 0, offsetYMm = 0):
   return `<img src="${el.cachedDataUrl}" style="${style.replace(/\n\s*/g, " ")}" alt="Código de barras">`;
 }
 
+function renderShapeElement(el: ShapeElement, offsetXMm = 0, offsetYMm = 0): string {
+  const style = elementStyle(el, offsetXMm, offsetYMm);
+  const swMm = el.strokeWidth_pt * PT_TO_MM;
+  const fill = el.fill ?? "none";
+  const stroke = el.stroke ?? "none";
+  const attrs = `fill="${fill}" stroke="${stroke}" stroke-width="${swMm}"`;
+  const w = el.width_mm;
+  const h = el.height_mm;
+
+  let inner: string;
+  if (el.shape === "rect") {
+    inner = `<rect x="0" y="0" width="${w}" height="${h}" ${attrs}/>`;
+  } else if (el.shape === "ellipse") {
+    inner = `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}" ${attrs}/>`;
+  } else if (el.shape === "triangle") {
+    inner = `<polygon points="${w / 2},0 ${w},${h} 0,${h}" ${attrs}/>`;
+  } else {
+    // line: solid rectangle filled with the line color
+    inner = `<rect x="0" y="0" width="${w}" height="${h}" fill="${el.fill ?? "#000"}" stroke="none"/>`;
+  }
+
+  return `<div style="${style.replace(/\n\s*/g, " ")}"><svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible;">${inner}</svg></div>`;
+}
+
 const ALL_REGIONS: Region[] = ["orelha_verso", "contracapa", "lombada", "capa", "orelha_frente"];
 
 function renderFills(fills: RegionFills, meta: CoverMeta, offsetXMm = 0, offsetYMm = 0): string {
@@ -102,6 +126,7 @@ function renderElements(elements: AnyElement[], meta: CoverMeta, offsetXMm = 0, 
     if (el.type === "image") return renderImageElement(el as ImageElement, offsetXMm, offsetYMm);
     if (el.type === "logo") return renderLogoElement(el as LogoElement, meta, offsetXMm, offsetYMm);
     if (el.type === "barcode") return renderBarcodeElement(el as BarcodeElement, offsetXMm, offsetYMm);
+    if (el.type === "shape") return renderShapeElement(el as ShapeElement, offsetXMm, offsetYMm);
     return "";
   }).join("\n");
 }

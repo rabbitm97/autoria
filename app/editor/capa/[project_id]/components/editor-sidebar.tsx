@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, type JSX } from "react";
 import { useEditorStore } from "../lib/editor-store";
 import { FORMATS, calcularLombada, SANGRIA_MM, ORELHA_MM } from "../lib/dimensions";
 import { FONT_CATALOG, FONT_CATALOG_BY_ID } from "../lib/fonts";
 import { generateBarcodeDataUrl } from "../lib/barcode";
 import { createSmartFieldElement, type SmartFieldContentMap } from "../lib/smart-field-layout";
-import { createImageElement, createLogoElement, createBarcodeElement } from "../lib/elements";
+import { createImageElement, createLogoElement, createBarcodeElement, createShapeElement } from "../lib/elements";
+import type { ShapeKind } from "../lib/elements";
 import { getContrastColor } from "../lib/color-utils";
 import { ColorPickerPopover } from "./color-picker-popover";
 import { SmartFieldModal } from "./smart-field-modal";
@@ -462,7 +463,90 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
   );
 }
 
-// ── Seção 6: Camadas ──────────────────────────────────────────────────────────
+// ── Seção 6: Formas ───────────────────────────────────────────────────────────
+function SectionFormas() {
+  const { addElement, elements, format, pages, comOrelhas, setSelectedId } = useEditorStore();
+
+  function addShape(shape: ShapeKind) {
+    const f = FORMATS[format];
+    const lombada = calcularLombada(pages);
+    const orelha = comOrelhas ? ORELHA_MM : 0;
+    const capaStartMm = SANGRIA_MM + orelha + f.width_mm + lombada;
+    const centerX = capaStartMm + f.width_mm / 2;
+    const centerY = SANGRIA_MM + f.height_mm / 2;
+    const W = 40;
+    const H = shape === "line" ? 2 : 40;
+    const el = createShapeElement({
+      id: nanoid(),
+      shape,
+      x_mm: centerX - W / 2,
+      y_mm: centerY - H / 2,
+      width_mm: W,
+      height_mm: H,
+      zIndex: elements.length,
+    });
+    addElement(el);
+    setSelectedId(el.id);
+  }
+
+  const shapes: { kind: ShapeKind; label: string; icon: JSX.Element }[] = [
+    {
+      kind: "rect",
+      label: "Retângulo",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="1.5">
+          <rect x="3" y="6" width="18" height="12" rx="1" />
+        </svg>
+      ),
+    },
+    {
+      kind: "ellipse",
+      label: "Elipse",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="1.5">
+          <ellipse cx="12" cy="12" rx="9" ry="6" />
+        </svg>
+      ),
+    },
+    {
+      kind: "line",
+      label: "Linha",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="2">
+          <line x1="3" y1="12" x2="21" y2="12" />
+        </svg>
+      ),
+    },
+    {
+      kind: "triangle",
+      label: "Triângulo",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="1.5">
+          <polygon points="12,4 21,20 3,20" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <Section title="Formas" defaultOpen={false}>
+      <div className="grid grid-cols-2 gap-2">
+        {shapes.map(({ kind, label, icon }) => (
+          <button
+            key={kind}
+            onClick={() => addShape(kind)}
+            className="flex flex-col items-center gap-1.5 rounded-lg border border-[#e0ddd2] px-2 py-3 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+          >
+            {icon}
+            <span className="text-[10px] text-zinc-400">{label}</span>
+          </button>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// ── Seção 7: Camadas ──────────────────────────────────────────────────────────
 function SectionCamadas() {
   const { elements, selectedId, setSelectedId, deleteElement, moveElementZ, updateElement } =
     useEditorStore();
@@ -473,6 +557,14 @@ function SectionCamadas() {
     image: "⬜",
     logo: "★",
     barcode: "▦",
+    shape: "◆",
+  };
+
+  const shapeLabel: Record<string, string> = {
+    rect: "Retângulo",
+    ellipse: "Elipse",
+    line: "Linha",
+    triangle: "Triângulo",
   };
 
   if (sorted.length === 0) {
@@ -506,6 +598,8 @@ function SectionCamadas() {
                 ? `Logo ${(el as any).variant}`
                 : el.type === "barcode"
                 ? `ISBN ${(el as any).isbn || ""}`
+                : el.type === "shape"
+                ? (shapeLabel[(el as any).shape] ?? "Forma")
                 : "Imagem"}
             </span>
             <div className="flex shrink-0 items-center gap-1">
@@ -573,6 +667,7 @@ export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
       <SectionTexto projectData={projectData} />
       <SectionImagens projectId={projectData.projectId} />
       <SectionMarca projectData={projectData} />
+      <SectionFormas />
       <SectionCamadas />
     </div>
   );

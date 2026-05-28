@@ -44,7 +44,18 @@ export interface BarcodeElement extends BaseElement {
   cachedDataUrl: string | null;
 }
 
-export type AnyElement = TextElement | ImageElement | LogoElement | BarcodeElement;
+export type ShapeKind = "rect" | "ellipse" | "line" | "triangle";
+
+export interface ShapeElement extends BaseElement {
+  type: "shape";
+  shape: ShapeKind;
+  fill: string | null;
+  stroke: string | null;
+  strokeWidth_pt: number;
+}
+
+// NOTE: future extensibility — RegionFill elements may be added to this union
+export type AnyElement = TextElement | ImageElement | LogoElement | BarcodeElement | ShapeElement;
 
 export type Region = "capa" | "contracapa" | "lombada" | "orelha_frente" | "orelha_verso";
 export type RegionFills = Partial<Record<Region, string>>;
@@ -97,6 +108,23 @@ export function createLogoElement(
     visible: true,
     locked: false,
     variant: "dourado",
+    ...overrides,
+  };
+}
+
+export function createShapeElement(
+  overrides: Partial<ShapeElement> & { id: string; shape: ShapeKind; x_mm: number; y_mm: number; width_mm: number; height_mm: number },
+): ShapeElement {
+  return {
+    type: "shape",
+    zIndex: 0,
+    rotation_deg: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    fill: "#c9a84c",
+    stroke: null,
+    strokeWidth_pt: 0,
     ...overrides,
   };
 }
