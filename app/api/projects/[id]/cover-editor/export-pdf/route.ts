@@ -7,6 +7,10 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import sharp from "sharp";
 import { renderCoverFromImage } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
+import {
+  buildGraficaPdf,
+  ICC_PROFILE_PATH,
+} from "@/app/editor/capa/[project_id]/lib/cover-grafica-pdf";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
 import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib/elements";
 import {
@@ -129,59 +133,63 @@ export async function POST(
   }
   const fullCoverBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-  // Derive version-specific image as a base64 data URL to embed in HTML
-  let coverImageSrc: string;
+  let pdfBuffer: Buffer;
 
-  if (versao === "digital") {
-    // Remove sangria from all 4 edges with Sharp
+  if (versao === "grafica") {
+    // Convert RGB JPEG → CMYK JPEG using FOGRA39 ICC profile, then build PDF with pdf-lib
+    const cmykJpegBuffer = await sharp(fullCoverBuffer)
+      .withIccProfile(ICC_PROFILE_PATH)
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, { format, pages, comOrelhas, projectName });
+    pdfBuffer = Buffer.from(pdfBytes);
+  } else {
+    // Digital: trim sangria from all 4 edges, then render with Puppeteer
     const imgMeta = await sharp(fullCoverBuffer).metadata();
     const imgW = imgMeta.width ?? 0;
     const imgH = imgMeta.height ?? 0;
-    const left = SANGRIA_PX;
-    const top = SANGRIA_PX;
-    const width = Math.max(1, imgW - SANGRIA_PX * 2);
-    const height = Math.max(1, imgH - SANGRIA_PX * 2);
     const trimmedBuffer = await sharp(fullCoverBuffer)
-      .extract({ left, top, width, height })
+      .extract({
+        left: SANGRIA_PX,
+        top: SANGRIA_PX,
+        width: Math.max(1, imgW - SANGRIA_PX * 2),
+        height: Math.max(1, imgH - SANGRIA_PX * 2),
+      })
       .jpeg({ quality: 92 })
       .toBuffer();
-    coverImageSrc = `data:image/jpeg;base64,${trimmedBuffer.toString("base64")}`;
-  } else {
-    // Grafica: use full image (sangria included) — already a JPEG
-    coverImageSrc = `data:image/jpeg;base64,${fullCoverBuffer.toString("base64")}`;
-  }
 
-  const html = renderCoverFromImage(coverImageSrc, { format, pages, comOrelhas, projectName }, versao);
+    const coverImageSrc = `data:image/jpeg;base64,${trimmedBuffer.toString("base64")}`;
+    const html = renderCoverFromImage(coverImageSrc, { format, pages, comOrelhas, projectName }, "digital");
 
-  const f = FORMATS[format];
-  const lombadaMm = calcularLombada(pages);
-  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
-  const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
-  const totalHMm = f.height_mm + SANGRIA_MM * 2;
-  const docWMm = versao === "grafica" ? totalWMm + MARKS_MM * 2 : totalWMm - SANGRIA_MM * 2;
-  const docHMm = versao === "grafica" ? totalHMm + MARKS_MM * 2 : totalHMm - SANGRIA_MM * 2;
+    const f = FORMATS[format];
+    const lombadaMm = calcularLombada(pages);
+    const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+    const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
+    const totalHMm = f.height_mm + SANGRIA_MM * 2;
+    const docWMm = totalWMm - SANGRIA_MM * 2;
+    const docHMm = totalHMm - SANGRIA_MM * 2;
 
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    executablePath: await chromium.executablePath(),
-    headless: true,
-  });
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
 
-  let pdfBuffer: Buffer;
-  try {
-    const page = await browser.newPage();
-    // All resources are inline (base64 image) — no network needed
-    await page.setContent(html, { waitUntil: "load" });
-    pdfBuffer = Buffer.from(
-      await page.pdf({
-        width: `${docWMm}mm`,
-        height: `${docHMm}mm`,
-        printBackground: true,
-        margin: { top: 0, right: 0, bottom: 0, left: 0 },
-      }),
-    );
-  } finally {
-    await browser.close();
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "load" });
+      pdfBuffer = Buffer.from(
+        await page.pdf({
+          width: `${docWMm}mm`,
+          height: `${docHMm}mm`,
+          printBackground: true,
+          margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        }),
+      );
+    } finally {
+      await browser.close();
+    }
   }
 
   await deleteOldPdfs(storageClient, userId, id, versao);
