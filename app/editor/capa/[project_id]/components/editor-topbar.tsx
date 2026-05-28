@@ -147,6 +147,7 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
         <EditorConfirmSuccessModal
           onClose={() => setSuccessModal((s) => ({ ...s, open: false }))}
           projectId={projectData.projectId}
+          projectTitle={projectData.title || ""}
           confirmedAt={successModal.confirmedAt}
         />
       )}

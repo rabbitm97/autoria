@@ -1,37 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useEditorStore } from "../lib/editor-store";
-import { captureStageAsDataUrl, dataUrlToBlob } from "../lib/png-export";
-import { serializeEditorState } from "../lib/editor-serializer";
-
-const CLIENT_PDF_TIMEOUT_MS = 55_000;
-
-type ExportState =
-  | { kind: "idle" }
-  | { kind: "busy"; label: string }
-  | { kind: "error"; message: string };
-
-function slugify(s: string): string {
-  return (
-    s
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .slice(0, 40) || "capa"
-  );
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+import { useCoverExport } from "../lib/use-cover-export";
 
 interface ExportDropdownProps {
   projectId: string;
@@ -40,10 +10,8 @@ interface ExportDropdownProps {
 
 export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps) {
   const [open, setOpen] = useState(false);
-  const [exportState, setExportState] = useState<ExportState>({ kind: "idle" });
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const { elements, isbn, format, pages, comOrelhas, stageInstance } = useEditorStore();
+  const { states, isBusy, exportPng, exportPdf, clearErrors } = useCoverExport(projectId, projectTitle);
 
   useEffect(() => {
     if (!open) return;
@@ -56,100 +24,16 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  function validateBeforeExport(): string | null {
-    if (elements.length === 0) return "Adicione pelo menos um elemento antes de exportar.";
-    const hasBarcode = elements.some((e) => e.type === "barcode");
-    const hasIsbn = elements.some(
-      (e) => e.type === "barcode" && (e as any).isbn?.length >= 10,
-    );
-    if (hasBarcode && !hasIsbn) {
-      return "Há um código de barras sem ISBN válido. Adicione o ISBN ou remova o código de barras.";
-    }
-    return null;
-  }
+  // Derive a single label for the busy button (whichever item is exporting)
+  const busyLabel =
+    states["png"].status === "busy" ? "Exportando PNG…" :
+    states["pdf-digital"].status === "busy" ? "Gerando PDF digital…" :
+    states["pdf-grafica"].status === "busy" ? "Gerando PDF gráfica…" :
+    "Exportando…";
 
-  async function handleExportPng() {
-    const warning = validateBeforeExport();
-    if (warning) { alert(warning); return; }
-    if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
-
-    setExportState({ kind: "busy", label: "Exportando PNG…" });
-    setOpen(false);
-
-    try {
-      const dataUrl = await captureStageAsDataUrl(stageInstance, format, pages, comOrelhas);
-      const blob = dataUrlToBlob(dataUrl);
-      downloadBlob(blob, `${slugify(projectTitle)}-capa-300dpi.png`);
-      setExportState({ kind: "idle" });
-    } catch (err) {
-      setExportState({ kind: "error", message: String(err) });
-    }
-  }
-
-  async function handleExportPdf(versao: "digital" | "grafica") {
-    const warning = validateBeforeExport();
-    if (warning) { alert(warning); return; }
-
-    const label = versao === "digital" ? "Gerando PDF digital…" : "Gerando PDF gráfica…";
-    setExportState({ kind: "busy", label });
-    setOpen(false);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), CLIENT_PDF_TIMEOUT_MS);
-
-    try {
-      // Read state imperatively at click time — same as autosave, guarantees
-      // the PDF reflects exactly what's on canvas even before autosave fires.
-      const storeState = useEditorStore.getState();
-      const editorData = serializeEditorState(storeState);
-
-      const res = await fetch(`/api/projects/${projectId}/cover-editor/export-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          versao,
-          editorData,
-          format: storeState.format,
-          pages: storeState.pages,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      const data = await res.json() as { url?: string | null; filename?: string; error?: string; dev?: boolean };
-
-      if (!res.ok) throw new Error(data.error ?? "Falha ao gerar PDF");
-
-      if (data.dev) {
-        // Dev mode — no real PDF
-        setExportState({ kind: "idle" });
-        return;
-      }
-
-      if (!data.url) throw new Error("URL do PDF não retornada.");
-
-      // Fetch the PDF as a blob so it downloads directly instead of opening a new tab
-      const pdfRes = await fetch(data.url);
-      if (!pdfRes.ok) throw new Error("Falha ao baixar o PDF do storage.");
-      const pdfBlob = await pdfRes.blob();
-      const filename = data.filename ?? `capa-${versao}.pdf`;
-      downloadBlob(pdfBlob, filename);
-
-      setExportState({ kind: "idle" });
-    } catch (err: any) {
-      clearTimeout(timeout);
-      if (err.name === "AbortError") {
-        setExportState({
-          kind: "error",
-          message: "PDF demorou demais (>55s). Tente exportar PNG 300dpi enquanto investigamos.",
-        });
-      } else {
-        setExportState({ kind: "error", message: String(err.message ?? err) });
-      }
-    }
-  }
-
-  const isBusy = exportState.kind === "busy";
+  // First error across all items (shown in toast)
+  const firstError = Object.values(states).find((s) => s.status === "error");
+  const errorMessage = firstError?.status === "error" ? firstError.message : null;
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -163,7 +47,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
             <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             </svg>
-            {exportState.label}
+            {busyLabel}
           </>
         ) : (
           <>
@@ -178,7 +62,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
       {open && !isBusy && (
         <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-[#e0ddd2] bg-[#fdfcf9] py-1 shadow-lg">
           <button
-            onClick={handleExportPng}
+            onClick={() => { exportPng(); setOpen(false); }}
             className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
@@ -193,7 +77,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
           <div className="mx-4 border-t border-[#e0ddd2]" />
 
           <button
-            onClick={() => handleExportPdf("digital")}
+            onClick={() => { exportPdf("digital"); setOpen(false); }}
             className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
@@ -208,7 +92,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
           <div className="mx-4 border-t border-[#e0ddd2]" />
 
           <button
-            onClick={() => handleExportPdf("grafica")}
+            onClick={() => { exportPdf("grafica"); setOpen(false); }}
             className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
@@ -222,12 +106,12 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
         </div>
       )}
 
-      {exportState.kind === "error" && (
+      {errorMessage && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-xl border border-red-200 bg-white p-4 shadow-lg">
           <p className="mb-1 text-sm font-medium text-red-600">Falha na exportação</p>
-          <p className="text-xs text-zinc-500">{exportState.message}</p>
+          <p className="text-xs text-zinc-500">{errorMessage}</p>
           <button
-            onClick={() => setExportState({ kind: "idle" })}
+            onClick={clearErrors}
             className="mt-2 text-xs text-zinc-400 underline hover:text-zinc-600"
           >
             Fechar
