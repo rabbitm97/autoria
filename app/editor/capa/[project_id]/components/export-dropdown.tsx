@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useEditorStore } from "../lib/editor-store";
 import { captureStageAsDataUrl, dataUrlToBlob } from "../lib/png-export";
+import { serializeEditorState } from "../lib/editor-serializer";
 
 const CLIENT_PDF_TIMEOUT_MS = 55_000;
 
@@ -97,10 +98,20 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
     const timeout = setTimeout(() => controller.abort(), CLIENT_PDF_TIMEOUT_MS);
 
     try {
+      // Read state imperatively at click time — same as autosave, guarantees
+      // the PDF reflects exactly what's on canvas even before autosave fires.
+      const storeState = useEditorStore.getState();
+      const editorData = serializeEditorState(storeState);
+
       const res = await fetch(`/api/projects/${projectId}/cover-editor/export-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ versao }),
+        body: JSON.stringify({
+          versao,
+          editorData,
+          format: storeState.format,
+          pages: storeState.pages,
+        }),
         signal: controller.signal,
       });
       clearTimeout(timeout);

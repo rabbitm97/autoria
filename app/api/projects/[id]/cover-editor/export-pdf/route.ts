@@ -9,6 +9,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { renderCoverAsHtml } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
+import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib/elements";
 import {
   FORMATS,
   SANGRIA_MM,
@@ -35,6 +36,13 @@ async function deleteOldPdfs(storageClient: any, userId: string, projectId: stri
   await storageClient.storage.from("editor-assets").remove(paths);
 }
 
+function extractTitle(elements: AnyElement[]): string {
+  const el = elements.find(
+    (e): e is TextElement => e.type === "text" && (e as TextElement).smartField === "titulo",
+  );
+  return el?.content.trim() ?? "";
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -58,38 +66,41 @@ export async function POST(
     }
   }
 
-  const body = await req.json().catch(() => ({})) as { versao?: string };
+  const body = await req.json().catch(() => ({})) as {
+    versao?: string;
+    editorData?: EditorData;
+    format?: string;
+    pages?: number;
+  };
+
   const versao: "digital" | "grafica" =
     body.versao === "grafica" ? "grafica" : "digital";
 
-  // Load project + editor_data
-  const { data: project, error: loadErr } = await supabase
-    .from("projects")
-    .select("title, dados_capa, dados_miolo")
-    .eq("id", id)
-    .eq("user_id", userId)
-    .single();
-
-  if (loadErr || !project) {
-    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
-  }
-
-  const capa = project.dados_capa as Record<string, unknown> | null;
-  const miolo = project.dados_miolo as { paginas_reais?: number } | null;
-
-  const editorData = capa?.editor_data as EditorData | null;
+  const editorData = body.editorData ?? null;
   if (!editorData || editorData.version !== 1) {
     return NextResponse.json(
-      { error: "Salve o projeto no editor antes de exportar." },
+      { error: "Dados do editor ausentes ou inválidos. Recarregue o editor e tente de novo." },
       { status: 422 },
     );
   }
 
-  const rawFormat = capa?.formato as string | undefined;
-  const format = rawFormat && rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "16x23";
-  const pages = miolo?.paginas_reais ?? 200;
+  // Read format and page count from DB; fall back to values from body/defaults.
+  // Use maybeSingle so a DB hiccup doesn't block the export.
+  const { data: project } = await supabase
+    .from("projects")
+    .select("dados_capa, dados_miolo")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const capa = (project?.dados_capa ?? null) as Record<string, unknown> | null;
+  const miolo = (project?.dados_miolo ?? null) as { paginas_reais?: number } | null;
+
+  const rawFormat = (capa?.formato ?? body.format ?? "") as string;
+  const format = rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "16x23";
+  const pages = miolo?.paginas_reais ?? body.pages ?? 200;
   const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
-  const projectName = (project.title as string | null) ?? "";
+  const projectName = extractTitle(editorData.elements);
 
   const logoDouradoBase64 = readLogoBase64("logo-autoria-dourado.png");
   const logoAzulBase64 = readLogoBase64("logo-autoria-azul.png");
@@ -149,7 +160,6 @@ export async function POST(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // Clean up previous PDFs of this versao
   await deleteOldPdfs(storageClient, userId, id, versao);
 
   const timestamp = Date.now();
