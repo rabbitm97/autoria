@@ -3,21 +3,17 @@
 import { useRouter } from "next/navigation";
 
 interface EditorConfirmSuccessModalProps {
-  open: boolean;
   onClose: () => void;
   projectId: string;
   confirmedAt: string;
 }
 
 export function EditorConfirmSuccessModal({
-  open,
   onClose,
   projectId,
   confirmedAt,
 }: EditorConfirmSuccessModalProps) {
   const router = useRouter();
-
-  if (!open) return null;
 
   const formattedTime = new Date(confirmedAt).toLocaleString("pt-BR", {
     day: "2-digit",

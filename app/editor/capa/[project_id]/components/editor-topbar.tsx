@@ -137,12 +137,13 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
         <ExportDropdown projectId={projectData.projectId} projectTitle={projectData.title} />
       </div>
 
-      <EditorConfirmSuccessModal
-        open={successModal.open}
-        onClose={() => setSuccessModal((s) => ({ ...s, open: false }))}
-        projectId={projectData.projectId}
-        confirmedAt={successModal.confirmedAt}
-      />
+      {successModal.open && (
+        <EditorConfirmSuccessModal
+          onClose={() => setSuccessModal((s) => ({ ...s, open: false }))}
+          projectId={projectData.projectId}
+          confirmedAt={successModal.confirmedAt}
+        />
+      )}
 
       {/* Preview modal — 2 tabs: live capture vs confirmed image */}
       {previewOpen && (

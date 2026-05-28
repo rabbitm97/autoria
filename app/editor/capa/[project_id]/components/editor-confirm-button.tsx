@@ -16,10 +16,15 @@ type ConfirmState = "idle" | "confirming" | "error";
 export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmButtonProps) {
   const [state, setState] = useState<ConfirmState>("idle");
 
-  const { stageInstance, format, pages, comOrelhas } = useEditorStore();
-
   async function handleConfirm() {
-    if (!stageInstance) return;
+    // Read imperatively to guarantee we have the current store value at click time,
+    // not a stale value from a previous render's closure
+    const { stageInstance, format, pages, comOrelhas } = useEditorStore.getState();
+    if (!stageInstance) {
+      setState("error");
+      setTimeout(() => setState("idle"), 3000);
+      return;
+    }
     setState("confirming");
 
     try {
