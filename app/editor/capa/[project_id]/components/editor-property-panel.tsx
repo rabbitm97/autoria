@@ -115,12 +115,12 @@ function TextPanel({ el }: { el: TextElement }) {
             min={0.8}
             max={2.5}
             step={0.05}
-            value={el.lineHeight}
+            value={el.lineHeight ?? 1.2}
             onChange={(e) => up({ lineHeight: Number(e.target.value) })}
             className="flex-1"
           />
           <span className="w-8 text-right font-mono text-xs text-zinc-500">
-            {el.lineHeight.toFixed(2)}
+            {(el.lineHeight ?? 1.2).toFixed(2)}
           </span>
         </div>
       </PanelRow>
