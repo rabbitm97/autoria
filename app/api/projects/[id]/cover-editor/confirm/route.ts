@@ -107,6 +107,7 @@ export async function POST(
           comOrelhas,
           logoDouradoBase64,
           logoAzulBase64,
+          versao: "digital",
         });
 
         const f = FORMATS[format];
@@ -114,6 +115,8 @@ export async function POST(
         const orelhaMm = comOrelhas ? ORELHA_MM : 0;
         const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
         const totalHMm = f.height_mm + SANGRIA_MM * 2;
+        const docWMm = totalWMm - SANGRIA_MM * 2;
+        const docHMm = totalHMm - SANGRIA_MM * 2;
 
         const browser = await puppeteer.launch({
           args: chromium.args,
@@ -128,8 +131,8 @@ export async function POST(
           await page.evaluateHandle("document.fonts.ready");
           pdfBuffer = Buffer.from(
             await page.pdf({
-              width: `${totalWMm}mm`,
-              height: `${totalHMm}mm`,
+              width: `${docWMm}mm`,
+              height: `${docHMm}mm`,
               printBackground: true,
               margin: { top: 0, right: 0, bottom: 0, left: 0 },
             }),

@@ -12,9 +12,15 @@ export async function captureStageAsDataUrl(
   const lombadaMm = calcularLombada(pages);
   const orelhaMm = comOrelhas ? ORELHA_MM : 0;
   const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
-  const physicalWidthPx = totalWMm * (300 / 25.4);
-  const stageWidthPx = stage.width() / stage.scaleX();
-  const pixelRatio = physicalWidthPx / stageWidthPx;
+  const totalWPx = totalWMm * (300 / 25.4);
+  const totalHPx = (f.height_mm + SANGRIA_MM * 2) * (300 / 25.4);
+
+  // Paper sits at (0,0) in Konva content space; the stage pan/zoom moves it to
+  // screen space. pixelRatio=1/zoom makes the output exactly 300 DPI.
+  const zoom = stage.scaleX();
+  const panX = stage.x();
+  const panY = stage.y();
+  const pixelRatio = 1 / zoom;
 
   const layers = stage.getLayers();
   const guideLayer = layers[layers.length - 1];
@@ -30,7 +36,15 @@ export async function captureStageAsDataUrl(
 
   stage.batchDraw();
 
-  const dataUrl = stage.toDataURL({ mimeType: "image/png", pixelRatio, quality: 1 });
+  const dataUrl = stage.toDataURL({
+    mimeType: "image/png",
+    pixelRatio,
+    quality: 1,
+    x: panX,
+    y: panY,
+    width: totalWPx * zoom,
+    height: totalHPx * zoom,
+  });
 
   guideLayer?.visible(wasGuideVisible ?? true);
   labelLayer?.visible(wasLabelVisible ?? true);

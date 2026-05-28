@@ -9,7 +9,12 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { renderCoverAsHtml } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import {
+  FORMATS,
+  SANGRIA_MM,
+  ORELHA_MM,
+  calcularLombada,
+} from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 function readLogoBase64(filename: string): string | null {
   try {
@@ -18,6 +23,16 @@ function readLogoBase64(filename: string): string | null {
   } catch {
     return null;
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function deleteOldPdfs(storageClient: any, userId: string, projectId: string, versao: "digital" | "grafica") {
+  const { data: files } = await storageClient.storage
+    .from("editor-assets")
+    .list(`${userId}/${projectId}/exports`, { search: `capa-${versao}-` });
+  if (!files?.length) return;
+  const paths = files.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
+  await storageClient.storage.from("editor-assets").remove(paths);
 }
 
 export async function POST(
@@ -43,10 +58,14 @@ export async function POST(
     }
   }
 
+  const body = await req.json().catch(() => ({})) as { versao?: string };
+  const versao: "digital" | "grafica" =
+    body.versao === "grafica" ? "grafica" : "digital";
+
   // Load project + editor_data
   const { data: project, error: loadErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo")
+    .select("title, dados_capa, dados_miolo")
     .eq("id", id)
     .eq("user_id", userId)
     .single();
@@ -68,37 +87,36 @@ export async function POST(
 
   const rawFormat = capa?.formato as string | undefined;
   const format = rawFormat && rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "16x23";
-  const pages = miolo?.paginas_reais ?? editorData.meta?.autosave_count ?? 200;
-  const comOrelhas = Boolean(capa?.usar_orelhas);
+  const pages = miolo?.paginas_reais ?? 200;
+  const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
+  const projectName = (project.title as string | null) ?? "";
 
-  // Read logo images from filesystem (available in server context)
   const logoDouradoBase64 = readLogoBase64("logo-autoria-dourado.png");
   const logoAzulBase64 = readLogoBase64("logo-autoria-azul.png");
 
-  // Render HTML
   const html = renderCoverAsHtml(editorData.elements, editorData.fills, {
     format,
     pages,
     comOrelhas,
     logoDouradoBase64,
     logoAzulBase64,
+    versao,
+    projectName,
   });
 
-  // Calculate paper dimensions
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
   const orelhaMm = comOrelhas ? ORELHA_MM : 0;
   const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
   const totalHMm = f.height_mm + SANGRIA_MM * 2;
-
-  // Generate PDF with Puppeteer
-  let pdfBuffer: Buffer;
+  const MARKS_MM = 10;
+  const docWMm = versao === "grafica" ? totalWMm + MARKS_MM * 2 : totalWMm - SANGRIA_MM * 2;
+  const docHMm = versao === "grafica" ? totalHMm + MARKS_MM * 2 : totalHMm - SANGRIA_MM * 2;
 
   if (isDev) {
-    // In dev, return a minimal PDF placeholder to avoid Chromium dependency
     return NextResponse.json({
       url: "https://placehold.co/1/1/png",
-      filename: `capa-${id}.pdf`,
+      filename: `capa-${versao}-${id}.pdf`,
       dev: true,
     });
   }
@@ -109,17 +127,15 @@ export async function POST(
     headless: true,
   });
 
+  let pdfBuffer: Buffer;
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-
-    // Wait for Google Fonts to be ready
     await page.evaluateHandle("document.fonts.ready");
-
     pdfBuffer = Buffer.from(
       await page.pdf({
-        width: `${totalWMm}mm`,
-        height: `${totalHMm}mm`,
+        width: `${docWMm}mm`,
+        height: `${docHMm}mm`,
         printBackground: true,
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
       }),
@@ -128,14 +144,16 @@ export async function POST(
     await browser.close();
   }
 
-  // Upload to Storage
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
+  // Clean up previous PDFs of this versao
+  await deleteOldPdfs(storageClient, userId, id, versao);
+
   const timestamp = Date.now();
-  const storagePath = `${userId}/${id}/exports/capa-${timestamp}.pdf`;
+  const storagePath = `${userId}/${id}/exports/capa-${versao}-${timestamp}.pdf`;
 
   const { error: uploadErr } = await storageClient.storage
     .from("editor-assets")
@@ -145,7 +163,6 @@ export async function POST(
     });
 
   if (uploadErr) {
-    console.error("[export-pdf] upload error:", uploadErr);
     return NextResponse.json(
       { error: "PDF gerado mas falhou ao salvar no storage. Tente novamente." },
       { status: 500 },
@@ -154,10 +171,10 @@ export async function POST(
 
   const { data: signedData } = await storageClient.storage
     .from("editor-assets")
-    .createSignedUrl(storagePath, 3600);
+    .createSignedUrl(storagePath, 365 * 24 * 3600);
 
   return NextResponse.json({
     url: signedData?.signedUrl ?? null,
-    filename: `capa-${id}-${timestamp}.pdf`,
+    filename: `capa-${versao}-${timestamp}.pdf`,
   });
 }
