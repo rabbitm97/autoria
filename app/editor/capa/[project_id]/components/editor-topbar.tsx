@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useEditorStore } from "../lib/editor-store";
 import { captureStageAsDataUrl } from "../lib/png-export";
@@ -25,6 +25,12 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
     open: false,
     confirmedAt: "",
   });
+
+  // If the page is restored from Next.js router cache with the modal open
+  // (e.g. user clicked "Próximo passo" and came back), close it on mount
+  useEffect(() => {
+    setSuccessModal({ open: false, confirmedAt: "" });
+  }, []);
 
   async function handleOpenPreview() {
     setPreviewOpen(true);

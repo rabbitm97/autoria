@@ -59,7 +59,13 @@ export function EditorConfirmSuccessModal({
 
           <div className="mt-6 flex flex-col gap-2.5">
             <button
-              onClick={() => router.push(`/dashboard/creditos/${projectId}`)}
+              onClick={() => {
+                // Close modal BEFORE navigating so the router cache stores open=false.
+                // If we push without closing, Next.js caches open=true; on back-navigation
+                // the modal restores and its fixed backdrop silently intercepts all clicks.
+                onClose();
+                router.push(`/dashboard/creditos/${projectId}`);
+              }}
               className="w-full rounded-xl bg-[#1a1a2e] px-5 py-3 text-sm font-medium text-[#c9a84c] transition-opacity hover:opacity-90"
             >
               Próximo passo: Créditos →
