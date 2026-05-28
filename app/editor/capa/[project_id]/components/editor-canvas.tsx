@@ -78,7 +78,7 @@ function ImageNode({
   onDragEnd: (e: any) => void;
   onTransformEnd: (e: any) => void;
 }) {
-  const [img] = useImage(el.src);
+  const [img] = useImage(el.src, "anonymous");
   if (!img) return null;
   return (
     <KonvaImage
@@ -118,7 +118,7 @@ function LogoNode({
   onTransformEnd: (e: any) => void;
 }) {
   const src = `/brand/logo-autoria-${el.variant}.png`;
-  const [img] = useImage(src);
+  const [img] = useImage(src, "anonymous");
   if (!img) return null;
   return (
     <KonvaImage
