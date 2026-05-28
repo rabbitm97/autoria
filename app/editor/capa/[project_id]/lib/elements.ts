@@ -22,9 +22,10 @@ export interface TextElement extends BaseElement {
   fontSize_pt: number;
   fontWeight: "400" | "700";
   fontStyle: "normal" | "italic";
-  textAlign: "left" | "center" | "right";
+  textAlign: "left" | "center" | "right" | "justify";
   color: string;
   smartField: SmartField | null;
+  lineHeight: number;
 }
 
 export interface ImageElement extends BaseElement {
@@ -78,6 +79,7 @@ export function createTextElement(
     textAlign: "left",
     color: "#1a1a2e",
     smartField: null,
+    lineHeight: 1.2,
     ...overrides,
   };
 }

@@ -8,6 +8,7 @@ import puppeteer from "puppeteer-core";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { renderCoverAsHtml } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
+import { buildEmbeddedFontFaceCss } from "@/app/editor/capa/[project_id]/lib/font-embedding";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
 import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib/elements";
 import {
@@ -105,6 +106,7 @@ export async function POST(
   const logoDouradoBase64 = readLogoBase64("logo-autoria-dourado.png");
   const logoAzulBase64 = readLogoBase64("logo-autoria-azul.png");
 
+  const embeddedFontCss = buildEmbeddedFontFaceCss();
   const html = renderCoverAsHtml(editorData.elements, editorData.fills, {
     format,
     pages,
@@ -113,7 +115,7 @@ export async function POST(
     logoAzulBase64,
     versao,
     projectName,
-  });
+  }, embeddedFontCss);
 
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);

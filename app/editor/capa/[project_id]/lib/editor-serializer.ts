@@ -54,7 +54,14 @@ export function deserializeEditorState(
   return {
     // Compat: projects saved before this fix won't have comOrelhas — default false
     comOrelhas: typeof d.comOrelhas === "boolean" ? d.comOrelhas : false,
-    elements: Array.isArray(d.elements) ? (d.elements as AnyElement[]) : [],
+    elements: Array.isArray(d.elements)
+      ? (d.elements as AnyElement[]).map((el) => {
+          if (el.type === "text" && typeof (el as any).lineHeight !== "number") {
+            return { ...el, lineHeight: 1.2 };
+          }
+          return el;
+        })
+      : [],
     fills: (d.fills as RegionFills) ?? {},
     isbn: typeof d.isbn === "string" ? d.isbn : null,
   };

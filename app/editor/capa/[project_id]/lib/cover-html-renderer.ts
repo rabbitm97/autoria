@@ -56,7 +56,7 @@ function renderTextElement(el: TextElement, offsetXMm = 0, offsetYMm = 0): strin
     font-style: ${el.fontStyle};
     text-align: ${el.textAlign};
     color: ${el.color};
-    line-height: 1.4;
+    line-height: ${el.lineHeight};
     white-space: pre-wrap;
     word-break: break-word;
     overflow: visible;
@@ -248,6 +248,7 @@ export function renderCoverAsHtml(
   elements: AnyElement[],
   fills: RegionFills,
   meta: CoverMeta,
+  embeddedFontCss = "",
 ): string {
   const versao = meta.versao ?? "digital";
   const f = FORMATS[meta.format];
@@ -257,6 +258,10 @@ export function renderCoverAsHtml(
   const totalHMm = f.height_mm + SANGRIA_MM * 2;
 
   const printCss = `* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }`;
+  // Use embedded base64 fonts when available; fall back to Google Fonts link
+  const fontHtml = embeddedFontCss
+    ? `<style>${embeddedFontCss}</style>`
+    : `<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link href="${GOOGLE_FONTS_URL}" rel="stylesheet">`;
 
   if (versao === "digital") {
     // Trim-only: clip to book dimensions (no bleed visible, no marks)
@@ -271,9 +276,7 @@ export function renderCoverAsHtml(
 <html>
 <head>
 <meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="${GOOGLE_FONTS_URL}" rel="stylesheet">
+${fontHtml}
 <style>
   ${printCss}
   @page { size: ${trimWMm}mm ${trimHMm}mm; margin: 0; }
@@ -310,9 +313,7 @@ ${elementsHtml}
 <html>
 <head>
 <meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="${GOOGLE_FONTS_URL}" rel="stylesheet">
+${fontHtml}
 <style>
   ${printCss}
   @page { size: ${graficaWMm}mm ${graficaHMm}mm; margin: 0; }

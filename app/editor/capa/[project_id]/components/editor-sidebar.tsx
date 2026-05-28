@@ -258,6 +258,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
                 textAlign: "left",
                 color: getContrastColor(fills.capa ?? "#ffffff"),
                 smartField: null,
+                lineHeight: 1.2,
               });
             }}
             className="flex w-full items-center gap-2 rounded-lg border border-dashed border-[#e0ddd2] px-3 py-2.5 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-500"

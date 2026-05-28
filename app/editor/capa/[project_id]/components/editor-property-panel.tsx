@@ -84,20 +84,44 @@ function TextPanel({ el }: { el: TextElement }) {
 
       <PanelRow label="Alinhamento">
         <div className="flex gap-1">
-          {(["left", "center", "right"] as const).map((align) => (
+          {(
+            [
+              { value: "left", title: "Esquerda", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg> },
+              { value: "center", title: "Centro", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg> },
+              { value: "right", title: "Direita", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg> },
+              { value: "justify", title: "Justificado", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> },
+            ] as { value: TextElement["textAlign"]; title: string; icon: React.ReactNode }[]
+          ).map(({ value, title, icon }) => (
             <button
-              key={align}
-              onClick={() => up({ textAlign: align })}
-              title={align}
-              className={`flex-1 rounded py-1 text-xs transition-colors ${
-                el.textAlign === align
+              key={value}
+              onClick={() => up({ textAlign: value })}
+              title={title}
+              className={`flex flex-1 items-center justify-center rounded py-1.5 transition-colors ${
+                el.textAlign === value
                   ? "bg-[#1a1a2e] text-white"
                   : "border border-[#e0ddd2] text-zinc-400"
               }`}
             >
-              {align === "left" ? "⬅" : align === "center" ? "⬛" : "➡"}
+              {icon}
             </button>
           ))}
+        </div>
+      </PanelRow>
+
+      <PanelRow label="Entrelinha">
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={0.8}
+            max={2.5}
+            step={0.05}
+            value={el.lineHeight}
+            onChange={(e) => up({ lineHeight: Number(e.target.value) })}
+            className="flex-1"
+          />
+          <span className="w-8 text-right font-mono text-xs text-zinc-500">
+            {el.lineHeight.toFixed(2)}
+          </span>
         </div>
       </PanelRow>
 

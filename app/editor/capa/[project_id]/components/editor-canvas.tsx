@@ -668,6 +668,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                   fontSize={t.fontSize_pt * PT_TO_PX}
                   fontStyle={konvaFontStyle}
                   align={t.textAlign}
+                  lineHeight={t.lineHeight}
                   fill={t.color}
                   opacity={t.opacity}
                   rotation={t.rotation_deg}
@@ -865,7 +866,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
               padding: "2px 4px",
               resize: "none",
               outline: "none",
-              lineHeight: 1.4,
+              lineHeight: el.lineHeight,
               zIndex: 30,
             }}
           />
