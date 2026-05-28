@@ -68,6 +68,12 @@ interface EditorState {
   moveElementZ: (id: string, delta: 1 | -1) => void;
   setSelectedId: (id: string | null) => void;
 
+  // Clipboard (internal — persisted in localStorage)
+  clipboard: AnyElement | null;
+  copyElement: (el: AnyElement) => void;
+  pasteElement: () => AnyElement | null;
+  hydrateClipboard: (el: AnyElement | null) => void;
+
   // Fills
   setFill: (region: Region, color: string | null) => void;
 
@@ -96,6 +102,7 @@ const DEFAULT_STATE = {
   snapThreshold: 8,
   elements: [] as AnyElement[],
   selectedId: null as string | null,
+  clipboard: null as AnyElement | null,
   fills: {} as RegionFills,
   isbn: null as string | null,
   saveStatus: { kind: "idle" } as SaveStatus,
@@ -198,6 +205,44 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
 
   setSelectedId: (id) => set({ selectedId: id }),
+
+  copyElement: (el) => {
+    try {
+      localStorage.setItem(
+        "autoria:clipboard:v1",
+        JSON.stringify({ version: 1, element: el }),
+      );
+    } catch {}
+    set({ clipboard: el });
+  },
+
+  pasteElement: () => {
+    const { elements } = get();
+    let source = get().clipboard;
+
+    if (!source) {
+      try {
+        const raw = localStorage.getItem("autoria:clipboard:v1");
+        if (raw) {
+          const parsed = JSON.parse(raw) as { version?: number; element?: AnyElement };
+          if (parsed?.version === 1 && parsed.element) source = parsed.element;
+        }
+      } catch {}
+    }
+
+    if (!source) return null;
+
+    const maxZ = elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
+    const base = { id: nanoid(), x_mm: source.x_mm + 10, y_mm: source.y_mm + 10, zIndex: maxZ + 1 };
+    const newEl: AnyElement = source.type === "barcode"
+      ? { ...source, ...base, cachedDataUrl: null }
+      : { ...source, ...base };
+
+    set((s) => ({ elements: [...s.elements, newEl], selectedId: newEl.id }));
+    return newEl;
+  },
+
+  hydrateClipboard: (el) => set({ clipboard: el }),
 
   setFill: (region, color) =>
     set((s) => {
