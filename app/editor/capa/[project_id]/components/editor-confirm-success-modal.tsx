@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCoverExport } from "../lib/use-cover-export";
+import { CmykDisclaimerModal } from "./cmyk-disclaimer-modal";
 
 interface EditorConfirmSuccessModalProps {
   onClose: () => void;
@@ -17,7 +18,7 @@ export function EditorConfirmSuccessModal({
   confirmedAt,
 }: EditorConfirmSuccessModalProps) {
   const router = useRouter();
-  const { states, exportPng, exportPdf, clearErrors } = useCoverExport(projectId, projectTitle);
+  const { states, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId, projectTitle);
 
   const formattedTime = new Date(confirmedAt).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -163,6 +164,11 @@ export function EditorConfirmSuccessModal({
           </div>
         </div>
       </div>
+      <CmykDisclaimerModal
+        open={cmykDisclaimer.open}
+        onConfirm={confirmDisclaimer}
+        onCancel={cancelDisclaimer}
+      />
     </div>
   );
 }

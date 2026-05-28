@@ -13,6 +13,12 @@ type ItemState =
 
 const IDLE: ItemState = { status: "idle" };
 const TIMEOUT_MS = 55_000;
+const CMYK_DISCLAIMER_KEY = "autoria:cmyk-disclaimer-seen";
+
+export interface CmykDisclaimerState {
+  open: boolean;
+  pending: (() => void) | null;
+}
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").slice(0, 40) || "capa";
@@ -34,6 +40,11 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     "png": IDLE,
     "pdf-digital": IDLE,
     "pdf-grafica": IDLE,
+  });
+
+  const [cmykDisclaimer, setCmykDisclaimer] = useState<CmykDisclaimerState>({
+    open: false,
+    pending: null,
   });
 
   function setItem(key: ExportItemKey, next: ItemState) {
@@ -69,10 +80,7 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     }
   }
 
-  async function exportPdf(versao: "digital" | "grafica") {
-    const warning = validate();
-    if (warning) { alert(warning); return; }
-
+  async function runExportPdf(versao: "digital" | "grafica") {
     const key: ExportItemKey = versao === "digital" ? "pdf-digital" : "pdf-grafica";
     setItem(key, { status: "busy" });
 
@@ -86,7 +94,6 @@ export function useCoverExport(projectId: string, projectTitle: string) {
 
       const editorData = serializeEditorState(storeState);
 
-      // Step 1: capture cover JPEG at 300 DPI and upload to temp storage path
       const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, comOrelhas);
       const jpegBlob = dataUrlToBlob(jpegDataUrl);
 
@@ -102,7 +109,6 @@ export function useCoverExport(projectId: string, projectTitle: string) {
       }
       const { path: coverImagePath } = await uploadRes.json() as { path: string };
 
-      // Step 2: generate PDF from the uploaded image
       const res = await fetch(`/api/projects/${projectId}/cover-editor/export-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,6 +136,34 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     }
   }
 
+  async function exportPdf(versao: "digital" | "grafica") {
+    const warning = validate();
+    if (warning) { alert(warning); return; }
+
+    if (versao === "grafica") {
+      const seen = localStorage.getItem(CMYK_DISCLAIMER_KEY) === "true";
+      if (seen) {
+        runExportPdf("grafica");
+      } else {
+        setCmykDisclaimer({ open: true, pending: () => runExportPdf("grafica") });
+      }
+      return;
+    }
+
+    runExportPdf("digital");
+  }
+
+  function confirmDisclaimer(remember: boolean) {
+    if (remember) localStorage.setItem(CMYK_DISCLAIMER_KEY, "true");
+    const pending = cmykDisclaimer.pending;
+    setCmykDisclaimer({ open: false, pending: null });
+    pending?.();
+  }
+
+  function cancelDisclaimer() {
+    setCmykDisclaimer({ open: false, pending: null });
+  }
+
   function clearErrors() {
     setStates((prev) => {
       const next = { ...prev } as Record<ExportItemKey, ItemState>;
@@ -142,5 +176,14 @@ export function useCoverExport(projectId: string, projectTitle: string) {
 
   const isBusy = Object.values(states).some((s) => s.status === "busy");
 
-  return { states, isBusy, exportPng, exportPdf, clearErrors };
+  return {
+    states,
+    isBusy,
+    exportPng,
+    exportPdf,
+    clearErrors,
+    cmykDisclaimer,
+    confirmDisclaimer,
+    cancelDisclaimer,
+  };
 }

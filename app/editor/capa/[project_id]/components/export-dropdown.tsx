@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useCoverExport } from "../lib/use-cover-export";
+import { CmykDisclaimerModal } from "./cmyk-disclaimer-modal";
 
 interface ExportDropdownProps {
   projectId: string;
@@ -11,7 +12,7 @@ interface ExportDropdownProps {
 export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { states, isBusy, exportPng, exportPdf, clearErrors } = useCoverExport(projectId, projectTitle);
+  const { states, isBusy, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId, projectTitle);
 
   useEffect(() => {
     if (!open) return;
@@ -118,6 +119,12 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
           </button>
         </div>
       )}
+
+      <CmykDisclaimerModal
+        open={cmykDisclaimer.open}
+        onConfirm={confirmDisclaimer}
+        onCancel={cancelDisclaimer}
+      />
     </div>
   );
 }
