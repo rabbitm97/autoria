@@ -5,10 +5,8 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { renderCoverAsHtml } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
-import { buildEmbeddedFontFaceCss } from "@/app/editor/capa/[project_id]/lib/font-embedding";
+import sharp from "sharp";
+import { renderCoverFromImage } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
 import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib/elements";
 import {
@@ -18,14 +16,8 @@ import {
   calcularLombada,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
-function readLogoBase64(filename: string): string | null {
-  try {
-    const buf = readFileSync(join(process.cwd(), "public", "brand", filename));
-    return buf.toString("base64");
-  } catch {
-    return null;
-  }
-}
+const MARKS_MM = 10;
+const SANGRIA_PX = Math.round(SANGRIA_MM * 300 / 25.4); // ≈ 35px at 300 DPI
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function deleteOldPdfs(storageClient: any, userId: string, projectId: string, versao: "digital" | "grafica") {
@@ -70,12 +62,12 @@ export async function POST(
   const body = await req.json().catch(() => ({})) as {
     versao?: string;
     editorData?: EditorData;
+    coverImagePath?: string; // storage path of the uploaded cover JPEG
     format?: string;
     pages?: number;
   };
 
-  const versao: "digital" | "grafica" =
-    body.versao === "grafica" ? "grafica" : "digital";
+  const versao: "digital" | "grafica" = body.versao === "grafica" ? "grafica" : "digital";
 
   const editorData = body.editorData ?? null;
   if (!editorData || editorData.version !== 1) {
@@ -85,8 +77,14 @@ export async function POST(
     );
   }
 
-  // Read format and page count from DB; fall back to values from body/defaults.
-  // Use maybeSingle so a DB hiccup doesn't block the export.
+  if (!body.coverImagePath) {
+    return NextResponse.json(
+      { error: "coverImagePath é obrigatório." },
+      { status: 422 },
+    );
+  }
+
+  // Read format and page count from DB; fall back to body/defaults.
   const { data: project } = await supabase
     .from("projects")
     .select("dados_capa, dados_miolo")
@@ -103,29 +101,6 @@ export async function POST(
   const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
   const projectName = extractTitle(editorData.elements);
 
-  const logoDouradoBase64 = readLogoBase64("logo-autoria-dourado.png");
-  const logoAzulBase64 = readLogoBase64("logo-autoria-azul.png");
-
-  const embeddedFontCss = buildEmbeddedFontFaceCss();
-  const html = renderCoverAsHtml(editorData.elements, editorData.fills, {
-    format,
-    pages,
-    comOrelhas,
-    logoDouradoBase64,
-    logoAzulBase64,
-    versao,
-    projectName,
-  }, embeddedFontCss);
-
-  const f = FORMATS[format];
-  const lombadaMm = calcularLombada(pages);
-  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
-  const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
-  const totalHMm = f.height_mm + SANGRIA_MM * 2;
-  const MARKS_MM = 10;
-  const docWMm = versao === "grafica" ? totalWMm + MARKS_MM * 2 : totalWMm - SANGRIA_MM * 2;
-  const docHMm = versao === "grafica" ? totalHMm + MARKS_MM * 2 : totalHMm - SANGRIA_MM * 2;
-
   if (isDev) {
     return NextResponse.json({
       url: "https://placehold.co/1/1/png",
@@ -133,6 +108,58 @@ export async function POST(
       dev: true,
     });
   }
+
+  const storageClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  // Download the cover image from storage
+  const { data: signedData } = await storageClient.storage
+    .from("editor-assets")
+    .createSignedUrl(body.coverImagePath, 300);
+
+  if (!signedData?.signedUrl) {
+    return NextResponse.json({ error: "Imagem da capa não encontrada no storage." }, { status: 404 });
+  }
+
+  const imgRes = await fetch(signedData.signedUrl);
+  if (!imgRes.ok) {
+    return NextResponse.json({ error: "Falha ao baixar imagem da capa." }, { status: 500 });
+  }
+  const fullCoverBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+  // Derive version-specific image as a base64 data URL to embed in HTML
+  let coverImageSrc: string;
+
+  if (versao === "digital") {
+    // Remove sangria from all 4 edges with Sharp
+    const imgMeta = await sharp(fullCoverBuffer).metadata();
+    const imgW = imgMeta.width ?? 0;
+    const imgH = imgMeta.height ?? 0;
+    const left = SANGRIA_PX;
+    const top = SANGRIA_PX;
+    const width = Math.max(1, imgW - SANGRIA_PX * 2);
+    const height = Math.max(1, imgH - SANGRIA_PX * 2);
+    const trimmedBuffer = await sharp(fullCoverBuffer)
+      .extract({ left, top, width, height })
+      .jpeg({ quality: 92 })
+      .toBuffer();
+    coverImageSrc = `data:image/jpeg;base64,${trimmedBuffer.toString("base64")}`;
+  } else {
+    // Grafica: use full image (sangria included) — already a JPEG
+    coverImageSrc = `data:image/jpeg;base64,${fullCoverBuffer.toString("base64")}`;
+  }
+
+  const html = renderCoverFromImage(coverImageSrc, { format, pages, comOrelhas, projectName }, versao);
+
+  const f = FORMATS[format];
+  const lombadaMm = calcularLombada(pages);
+  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+  const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
+  const totalHMm = f.height_mm + SANGRIA_MM * 2;
+  const docWMm = versao === "grafica" ? totalWMm + MARKS_MM * 2 : totalWMm - SANGRIA_MM * 2;
+  const docHMm = versao === "grafica" ? totalHMm + MARKS_MM * 2 : totalHMm - SANGRIA_MM * 2;
 
   const browser = await puppeteer.launch({
     args: chromium.args,
@@ -143,8 +170,8 @@ export async function POST(
   let pdfBuffer: Buffer;
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    await page.evaluateHandle("document.fonts.ready");
+    // All resources are inline (base64 image) — no network needed
+    await page.setContent(html, { waitUntil: "load" });
     pdfBuffer = Buffer.from(
       await page.pdf({
         width: `${docWMm}mm`,
@@ -156,11 +183,6 @@ export async function POST(
   } finally {
     await browser.close();
   }
-
-  const storageClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 
   await deleteOldPdfs(storageClient, userId, id, versao);
 
@@ -181,12 +203,12 @@ export async function POST(
     );
   }
 
-  const { data: signedData } = await storageClient.storage
+  const { data: pdfSigned } = await storageClient.storage
     .from("editor-assets")
     .createSignedUrl(storagePath, 365 * 24 * 3600);
 
   return NextResponse.json({
-    url: signedData?.signedUrl ?? null,
+    url: pdfSigned?.signedUrl ?? null,
     filename: `capa-${versao}-${timestamp}.pdf`,
   });
 }

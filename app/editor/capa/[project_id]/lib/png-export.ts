@@ -2,11 +2,13 @@ import type Konva from "konva";
 import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "./dimensions";
 import type { FormatKey } from "../types";
 
-export async function captureStageAsDataUrl(
+async function captureStageRegion(
   stage: Konva.Stage,
   format: FormatKey,
   pages: number,
   comOrelhas: boolean,
+  mimeType: "image/png" | "image/jpeg",
+  quality: number,
 ): Promise<string> {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
@@ -15,8 +17,8 @@ export async function captureStageAsDataUrl(
   const totalWPx = totalWMm * (300 / 25.4);
   const totalHPx = (f.height_mm + SANGRIA_MM * 2) * (300 / 25.4);
 
-  // Paper sits at (0,0) in Konva content space; the stage pan/zoom moves it to
-  // screen space. pixelRatio=1/zoom makes the output exactly 300 DPI.
+  // Paper sits at (0,0) in Konva content space; pan/zoom moves it to screen space.
+  // pixelRatio = 1/zoom maps screen-space capture region back to content resolution (300 DPI).
   const zoom = stage.scaleX();
   const panX = stage.x();
   const panY = stage.y();
@@ -37,9 +39,9 @@ export async function captureStageAsDataUrl(
   stage.batchDraw();
 
   const dataUrl = stage.toDataURL({
-    mimeType: "image/png",
+    mimeType,
     pixelRatio,
-    quality: 1,
+    quality,
     x: panX,
     y: panY,
     width: totalWPx * zoom,
@@ -52,6 +54,27 @@ export async function captureStageAsDataUrl(
   stage.batchDraw();
 
   return dataUrl;
+}
+
+// PNG for "Baixar PNG" download — lossless, client-side only
+export async function captureStageAsDataUrl(
+  stage: Konva.Stage,
+  format: FormatKey,
+  pages: number,
+  comOrelhas: boolean,
+): Promise<string> {
+  return captureStageRegion(stage, format, pages, comOrelhas, "image/png", 1);
+}
+
+// JPEG for server-bound PDF pipeline — substantially smaller than PNG
+export async function captureStageAsJpegDataUrl(
+  stage: Konva.Stage,
+  format: FormatKey,
+  pages: number,
+  comOrelhas: boolean,
+  quality = 0.92,
+): Promise<string> {
+  return captureStageRegion(stage, format, pages, comOrelhas, "image/jpeg", quality);
 }
 
 export function dataUrlToBlob(dataUrl: string): Blob {

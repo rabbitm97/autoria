@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useEditorStore } from "./editor-store";
-import { captureStageAsDataUrl, dataUrlToBlob } from "./png-export";
+import { captureStageAsDataUrl, captureStageAsJpegDataUrl, dataUrlToBlob } from "./png-export";
 import { serializeEditorState } from "./editor-serializer";
 
 export type ExportItemKey = "png" | "pdf-digital" | "pdf-grafica";
@@ -81,12 +81,32 @@ export function useCoverExport(projectId: string, projectTitle: string) {
 
     try {
       const storeState = useEditorStore.getState();
+      const { stageInstance, format, pages, comOrelhas } = storeState;
+      if (!stageInstance) throw new Error("Canvas não pronto. Tente novamente.");
+
       const editorData = serializeEditorState(storeState);
 
+      // Step 1: capture cover JPEG at 300 DPI and upload to temp storage path
+      const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, comOrelhas);
+      const jpegBlob = dataUrlToBlob(jpegDataUrl);
+
+      const uploadRes = await fetch(`/api/projects/${projectId}/cover-editor/upload-cover-image`, {
+        method: "POST",
+        headers: { "Content-Type": "image/jpeg" },
+        body: jpegBlob,
+        signal: controller.signal,
+      });
+      if (!uploadRes.ok) {
+        const d = await uploadRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? "Falha ao enviar imagem da capa.");
+      }
+      const { path: coverImagePath } = await uploadRes.json() as { path: string };
+
+      // Step 2: generate PDF from the uploaded image
       const res = await fetch(`/api/projects/${projectId}/cover-editor/export-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ versao, editorData, format: storeState.format, pages: storeState.pages }),
+        body: JSON.stringify({ versao, editorData, coverImagePath, format: storeState.format, pages: storeState.pages }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
