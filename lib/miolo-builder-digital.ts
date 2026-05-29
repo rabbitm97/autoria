@@ -56,21 +56,15 @@ const FORMATO_SPECS: Record<FormatoId, FormatoSpec> = {
   a4:        { w_mm: 210, h_mm: 297, top_mm: 30, outer_mm: 20, bottom_mm: 30, inner_mm: 25, label: "A4 (21×29,7cm)",      wpp: 380 },
 };
 
-// ─── CSS de @page para um formato ────────────────────────────────────────────
-// Versão DIGITAL: sem marcas de corte, sem sangria.
+// ─── CSS de @page principal (sem sangria, sem marcas) ────────────────────────
+// Apenas o @page principal precisa ser redefinido. Os blocos @page no-num e
+// @page :first herdam size/margin do @page principal — então não precisam ser
+// alterados.
 
-function buildPageCss(spec: FormatoSpec): string {
-  const W = spec.w_mm + 2 * BLEED_MM;  // = spec.w_mm (BLEED_MM=0)
-  const H = spec.h_mm + 2 * BLEED_MM;  // = spec.h_mm
-  const mT = spec.top_mm + BLEED_MM;   // = spec.top_mm
-  const mO = spec.outer_mm + BLEED_MM;
-  const mB = spec.bottom_mm + BLEED_MM;
-  const mI = spec.inner_mm + BLEED_MM;
-
-  return `
-@page {
-  size: ${W}mm ${H}mm;
-  margin: ${mT}mm ${mO}mm ${mB}mm ${mI}mm;
+function buildMainPageCss(spec: FormatoSpec): string {
+  return `@page {
+  size: ${spec.w_mm}mm ${spec.h_mm}mm;
+  margin: ${spec.top_mm}mm ${spec.outer_mm}mm ${spec.bottom_mm}mm ${spec.inner_mm}mm;
   @bottom-center {
     content: counter(page);
     font-family: inherit;
@@ -78,16 +72,30 @@ function buildPageCss(spec: FormatoSpec): string {
     color: #555;
     margin-bottom: 12mm;
   }
+}`;
 }
 
-@page no-num {
-  @bottom-center { content: ""; }
-}
+// ─── Substituir o @page principal do HTML, contando chaves manualmente ──────
+// Estratégia robusta a aninhamentos (margin boxes do CSS contam como chaves
+// aninhadas dentro do @page principal).
 
-@page :first {
-  @bottom-center { content: ""; }
-}
-`;
+function replaceMainPageBlock(html: string, novoBloco: string): string {
+  const idx = html.indexOf("@page {");
+  if (idx === -1) return html;
+  let depth = 0;
+  let i = idx;
+  while (i < html.length) {
+    const c = html[i];
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        return html.substring(0, idx) + novoBloco + html.substring(i + 1);
+      }
+    }
+    i++;
+  }
+  return html;
 }
 
 // ─── A partir daqui, é IDÊNTICO ao miolo-builder.ts ──────────────────────────
@@ -135,21 +143,15 @@ export function buildBookHtmlDigital(params: {
     config: configDigital,
   });
 
-  // Substituir o bloco @page do HTML gerado pelo CSS sem sangria
+  // Substituir apenas o @page principal por uma versão sem sangria e sem marcas.
+  // Os blocos @page no-num e @page :first herdam size/margin do @page principal,
+  // então não precisam ser tocados.
   const spec = FORMATO_SPECS[params.config.formato];
-  const newPageCss = buildPageCss(spec);
+  const newMainPageCss = buildMainPageCss(spec);
+  const htmlComCssDigital = replaceMainPageBlock(result.html, newMainPageCss);
 
-  // Regex captura o @page principal (com @bottom-center contendo counter(page))
-  // e as variantes @page no-num e @page :first. Substituímos todos os 3 de
-  // uma vez pelo bloco novo.
-  const pageBlockRegex = /@page\s*\{[^}]*@bottom-center[^}]*\}[^}]*\}\s*@page\s+no-num\s*\{[^}]*\}\s*@page\s*:first\s*\{[^}]*\}/s;
-
-  const htmlComCssDigital = result.html.replace(pageBlockRegex, newPageCss.trim());
-
-  // Se a regex não casou (mudança futura no builder original poderia quebrar
-  // isso), logar warning e seguir com HTML original.
   if (htmlComCssDigital === result.html) {
-    console.warn("[buildBookHtmlDigital] AVISO: regex de @page não casou — PDF digital pode ter sangria");
+    console.warn("[buildBookHtmlDigital] AVISO: bloco @page principal não foi encontrado — PDF digital pode ter sangria");
   }
 
   return {
@@ -165,11 +167,10 @@ export function buildBookHtmlDigital(params: {
  */
 export function applyDigitalCss(html: string, formato: FormatoId): string {
   const spec = FORMATO_SPECS[formato];
-  const newPageCss = buildPageCss(spec);
-  const pageBlockRegex = /@page\s*\{[^}]*@bottom-center[^}]*\}[^}]*\}\s*@page\s+no-num\s*\{[^}]*\}\s*@page\s*:first\s*\{[^}]*\}/s;
-  const result = html.replace(pageBlockRegex, newPageCss.trim());
+  const newMainPageCss = buildMainPageCss(spec);
+  const result = replaceMainPageBlock(html, newMainPageCss);
   if (result === html) {
-    console.warn("[applyDigitalCss] AVISO: regex de @page não casou — PDF digital pode ter sangria");
+    console.warn("[applyDigitalCss] AVISO: bloco @page principal não foi encontrado — PDF digital pode ter sangria");
   }
   return result;
 }
