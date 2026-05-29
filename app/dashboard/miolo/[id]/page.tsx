@@ -6,6 +6,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoId } from "@/app/api/agentes/miolo/route";
 import { supabase } from "@/lib/supabase";
 import { DocxDisclaimer } from "./docx-disclaimer";
+import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -796,93 +797,123 @@ export default function MioloPage() {
               className="bg-white shadow-xl flex-1 flex flex-col items-center justify-center overflow-hidden p-8 sm:p-12"
               style={{ margin: "24px 24px 24px 0", borderRadius: "0 4px 4px 0" }}
             >
-              <div className="max-w-md w-full text-center">
-                {/* Ícone */}
-                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-brand-gold/10 flex items-center justify-center">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-brand-gold">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                  </svg>
+              <div className="max-w-xl w-full">
+                {/* Cabeçalho */}
+                <div className="text-center mb-8">
+                  <div className="w-14 h-14 mx-auto mb-5 rounded-xl bg-white border border-zinc-200 flex items-center justify-center">
+                    <BookOpen className="w-7 h-7 text-brand-primary" strokeWidth={1.5} />
+                  </div>
+                  <h2 className="font-heading text-2xl sm:text-3xl text-brand-primary mb-2">
+                    Seu livro está pronto
+                  </h2>
+                  <p className="text-sm text-zinc-500 max-w-md mx-auto leading-relaxed">
+                    Quatro formatos para quatro propósitos: imprimir, vender online, editar e ler em e-reader.
+                  </p>
                 </div>
 
-                {/* Headline */}
-                <h2 className="font-heading text-2xl sm:text-3xl text-brand-primary mb-3">
-                  Seu livro está pronto
-                </h2>
-                <p className="text-zinc-500 text-sm leading-relaxed mb-8">
-                  Baixe o PDF para conferir como ficou seu livro impresso — com margens, marcas de corte e diagramação profissional.
+                {/* Grupo 1 — Para publicar */}
+                <p className="text-[11px] font-semibold tracking-wider uppercase text-zinc-400 mb-2.5">
+                  Para publicar
                 </p>
-
-                {/* CTAs primários — 2 versões de PDF lado a lado */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                  {/* PDF Impressão — protagonista (dark) */}
                   <button
                     onClick={downloadPdf}
                     disabled={!htmlContent || downloadingPdf}
-                    className="bg-brand-primary text-brand-gold px-5 py-4 rounded-xl text-sm font-semibold hover:bg-[#2a2a4e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1"
+                    className="group bg-brand-primary border border-brand-primary rounded-xl p-4 text-left transition-all hover:bg-[#2a2a4e] disabled:opacity-50 disabled:cursor-not-allowed"
                     title="PDF com sangria de 3mm e marcas de corte — formato exigido por gráficas para impressão profissional"
                   >
-                    {downloadingPdf ? (
-                      <>
-                        <span className="inline-block w-4 h-4 rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
-                        <span>Gerando…</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>⬇ PDF Impressão</span>
-                        <span className="text-[10px] font-normal opacity-70">com marcas de corte</span>
-                      </>
-                    )}
+                    <div className="flex items-center justify-between mb-3">
+                      {downloadingPdf ? (
+                        <span className="inline-block w-[22px] h-[22px] rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
+                      ) : (
+                        <Printer className="w-[22px] h-[22px] text-brand-gold" strokeWidth={1.75} />
+                      )}
+                      <Download className="w-4 h-4 text-brand-gold/50" strokeWidth={1.75} />
+                    </div>
+                    <p className="text-sm font-semibold text-brand-gold mb-1">
+                      {downloadingPdf ? "Gerando…" : "PDF Impressão"}
+                    </p>
+                    <p className="text-xs text-brand-gold/60 leading-snug">
+                      Com sangria e marcas de corte. Para gráficas.
+                    </p>
                   </button>
 
+                  {/* PDF Digital — secundário (branco) */}
                   <button
                     onClick={downloadPdfDigital}
                     disabled={!htmlContent || downloadingPdfDigital}
-                    className="bg-brand-primary text-brand-gold px-5 py-4 rounded-xl text-sm font-semibold hover:bg-[#2a2a4e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1"
+                    className="group bg-white border border-zinc-200 rounded-xl p-4 text-left transition-all hover:border-brand-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     title="PDF sem sangria e sem marcas de corte — formato exigido pelas plataformas digitais (Amazon KDP, Apple Books, Google Play Books, Kobo)"
                   >
-                    {downloadingPdfDigital ? (
-                      <>
-                        <span className="inline-block w-4 h-4 rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
-                        <span>Gerando…</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>⬇ PDF Digital</span>
-                        <span className="text-[10px] font-normal opacity-70">para plataformas</span>
-                      </>
-                    )}
+                    <div className="flex items-center justify-between mb-3">
+                      {downloadingPdfDigital ? (
+                        <span className="inline-block w-[22px] h-[22px] rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
+                      ) : (
+                        <Laptop className="w-[22px] h-[22px] text-brand-gold" strokeWidth={1.75} />
+                      )}
+                      <Download className="w-4 h-4 text-zinc-300" strokeWidth={1.75} />
+                    </div>
+                    <p className="text-sm font-semibold text-brand-primary mb-1">
+                      {downloadingPdfDigital ? "Gerando…" : "PDF Digital"}
+                    </p>
+                    <p className="text-xs text-zinc-500 leading-snug">
+                      Sem marcas. Para Amazon, Apple, Kobo.
+                    </p>
                   </button>
                 </div>
 
-                {/* CTAs secundários — DOCX + EPUB lado a lado */}
-                <div className="flex gap-3 mb-2">
-                  <div className="flex-1 flex flex-col gap-1">
-                    <button
-                      onClick={handleDocxClick}
-                      disabled={!miolo || downloadingDocx}
-                      className="w-full border border-zinc-200 text-zinc-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-zinc-400 transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
-                    >
-                      {downloadingDocx ? "Gerando…" : "⬇ DOCX"}
-                    </button>
-                    <p className="text-[10px] text-zinc-400 text-center">Para edição. Fontes adaptadas para Word.</p>
-                  </div>
+                {/* Grupo 2 — Para editar e ler */}
+                <p className="text-[11px] font-semibold tracking-wider uppercase text-zinc-400 mb-2.5">
+                  Para editar e ler
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-7">
+                  {/* DOCX — terciário, com ressalva */}
+                  <button
+                    onClick={handleDocxClick}
+                    disabled={!miolo || downloadingDocx}
+                    className="border border-zinc-200 rounded-lg px-4 py-3 text-left transition-all hover:border-zinc-400 disabled:opacity-40 flex items-center gap-2.5"
+                    title="Para revisar e editar o texto. O PDF é a versão fiel da diagramação."
+                  >
+                    <FileText className="w-5 h-5 text-zinc-400 flex-shrink-0" strokeWidth={1.5} />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-brand-primary leading-tight">
+                        {downloadingDocx ? "Gerando…" : "DOCX"}
+                      </p>
+                      <p className="text-[11px] text-zinc-400 leading-tight truncate">
+                        Editar texto · layout aproximado
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* EPUB — terciário */}
                   <button
                     onClick={handleEpub}
-                    className="flex-1 border border-violet-200 text-violet-700 px-4 py-3 rounded-xl text-sm font-medium hover:border-violet-400 transition-colors flex items-center justify-center gap-2"
+                    className="border border-zinc-200 rounded-lg px-4 py-3 text-left transition-all hover:border-violet-400 flex items-center gap-2.5"
+                    title="Formato para leitura em e-readers (Kindle, Kobo, Apple Books)"
                   >
-                    ⬇ EPUB
+                    <BookOpen className="w-5 h-5 text-violet-400 flex-shrink-0" strokeWidth={1.5} />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-brand-primary leading-tight">EPUB</p>
+                      <p className="text-[11px] text-zinc-400 leading-tight truncate">
+                        Leitura em e-reader
+                      </p>
+                    </div>
                   </button>
                 </div>
 
                 {/* Mensagem de verificação */}
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  Abra o arquivo baixado e confira margens, tipografia, títulos de capítulos, dedicatória e epígrafe.
-                  Se algo não estiver como esperado, ajuste as configurações no painel ao lado e baixe novamente.
-                </p>
+                <div className="flex gap-2.5 items-start px-4 py-3 bg-white rounded-lg border border-zinc-200">
+                  <Info className="w-4 h-4 text-zinc-400 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
+                  <p className="text-xs text-zinc-500 leading-relaxed">
+                    Abra o arquivo baixado e confira margens, tipografia, títulos de capítulos, dedicatória e epígrafe.
+                    Se algo não estiver como esperado, ajuste no painel ao lado e baixe novamente.
+                  </p>
+                </div>
 
                 {/* Erro */}
                 {error && (
-                  <div className="mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 text-left">
+                  <div className="mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
                     {error}
                   </div>
                 )}
