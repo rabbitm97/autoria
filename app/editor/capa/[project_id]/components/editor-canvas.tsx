@@ -67,18 +67,15 @@ interface EditorCanvasProps {
 // ── Image element node ────────────────────────────────────────────────────────
 function ImageNode({
   el,
-  selected,
   onSelect,
   onDragMove,
   onDragEnd,
-  onTransformEnd,
 }: {
   el: ImageElement;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (shift: boolean) => void;
   onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
-  onTransformEnd: (e: any) => void;
 }) {
   const [img] = useImage(el.src, "anonymous");
   if (!img) return null;
@@ -94,11 +91,10 @@ function ImageNode({
       opacity={el.opacity}
       visible={el.visible}
       draggable={!el.locked}
-      onClick={onSelect}
-      onTap={onSelect}
+      onClick={(e) => onSelect(e.evt.shiftKey)}
+      onTap={(e) => onSelect(e.evt.shiftKey)}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onTransformEnd={onTransformEnd}
     />
   );
 }
@@ -106,18 +102,15 @@ function ImageNode({
 // ── Logo element node ─────────────────────────────────────────────────────────
 function LogoNode({
   el,
-  selected,
   onSelect,
   onDragMove,
   onDragEnd,
-  onTransformEnd,
 }: {
   el: LogoElement;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (shift: boolean) => void;
   onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
-  onTransformEnd: (e: any) => void;
 }) {
   const src = `/brand/logo-autoria-${el.variant}.png`;
   const [img] = useImage(src, "anonymous");
@@ -134,11 +127,10 @@ function LogoNode({
       opacity={el.opacity}
       visible={el.visible}
       draggable={!el.locked}
-      onClick={onSelect}
-      onTap={onSelect}
+      onClick={(e) => onSelect(e.evt.shiftKey)}
+      onTap={(e) => onSelect(e.evt.shiftKey)}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onTransformEnd={onTransformEnd}
     />
   );
 }
@@ -149,13 +141,11 @@ function BarcodeNode({
   onSelect,
   onDragMove,
   onDragEnd,
-  onTransformEnd,
 }: {
   el: BarcodeElement;
-  onSelect: () => void;
+  onSelect: (shift: boolean) => void;
   onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
-  onTransformEnd: (e: any) => void;
 }) {
   const [img] = useImage(el.cachedDataUrl ?? "");
   if (!img) return null;
@@ -171,11 +161,10 @@ function BarcodeNode({
       opacity={el.opacity}
       visible={el.visible}
       draggable={!el.locked}
-      onClick={onSelect}
-      onTap={onSelect}
+      onClick={(e) => onSelect(e.evt.shiftKey)}
+      onTap={(e) => onSelect(e.evt.shiftKey)}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onTransformEnd={onTransformEnd}
     />
   );
 }
@@ -186,14 +175,12 @@ function ShapeNode({
   onSelect,
   onDragMove,
   onDragEnd,
-  onTransformEnd,
 }: {
   el: ShapeElement;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (shift: boolean) => void;
   onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
-  onTransformEnd: (e: any) => void;
 }) {
   const w = el.width_mm * MM_TO_PX;
   const h = el.height_mm * MM_TO_PX;
@@ -206,24 +193,21 @@ function ShapeNode({
     rotation: el.rotation_deg,
     visible: el.visible,
     draggable: !el.locked,
-    onClick: onSelect,
-    onTap: onSelect,
+    onClick: (e: any) => onSelect(e.evt.shiftKey),
+    onTap: (e: any) => onSelect(e.evt.shiftKey),
     onDragMove,
     onDragEnd,
-    onTransformEnd,
   };
 
   if (el.shape === "rect") {
     return <Rect x={el.x_mm * MM_TO_PX} y={el.y_mm * MM_TO_PX} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={strokeWidth} {...common} />;
   }
   if (el.shape === "ellipse") {
-    // Konva Ellipse uses center-origin: x/y = center, radiusX/Y = half-dimensions
     return <KonvaEllipse x={(el.x_mm + el.width_mm / 2) * MM_TO_PX} y={(el.y_mm + el.height_mm / 2) * MM_TO_PX} radiusX={w / 2} radiusY={h / 2} fill={fill} stroke={stroke} strokeWidth={strokeWidth} {...common} />;
   }
   if (el.shape === "line") {
     return <Rect x={el.x_mm * MM_TO_PX} y={el.y_mm * MM_TO_PX} width={w} height={h} fill={el.fill ?? "#c9a84c"} stroke="transparent" strokeWidth={0} {...common} />;
   }
-  // triangle: closed Line polygon with top-left origin
   return (
     <Line
       x={el.x_mm * MM_TO_PX}
@@ -248,6 +232,11 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   const [inlineEdit, setInlineEdit] = useState<{ id: string; x: number; y: number; w: number; h: number } | null>(null);
   const [snapLines, setSnapLines] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
+  // Marquee state: start in paper-px coords, rect for visual rendering
+  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const marqueeRectDataRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
   const {
     format,
     pages,
@@ -259,12 +248,15 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     snapEnabled,
     snapThreshold,
     elements,
-    selectedId,
+    selectedIds,
     fills,
     setPan,
     fitToScreen,
     updateElement,
-    setSelectedId,
+    selectElement,
+    toggleElementInSelection,
+    selectElements,
+    clearSelection,
   } = useEditorStore();
 
   const [tooltip, setTooltip] = useState<TooltipInfo>({
@@ -308,20 +300,19 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerSize.w, containerSize.h, format, pages, comOrelhas]);
 
-  // Attach Transformer to selected node
+  // Attach Transformer to selected nodes
   useEffect(() => {
     if (!transformerRef.current || !stageRef.current) return;
-    if (selectedId) {
-      const node = stageRef.current.findOne(`#${selectedId}`);
-      if (node) {
-        transformerRef.current.nodes([node]);
-        transformerRef.current.getLayer()?.batchDraw();
-        return;
-      }
+    if (selectedIds.length > 0) {
+      const nodes = selectedIds
+        .map((id) => stageRef.current!.findOne(`#${id}`))
+        .filter(Boolean) as Konva.Node[];
+      transformerRef.current.nodes(nodes);
+    } else {
+      transformerRef.current.nodes([]);
     }
-    transformerRef.current.nodes([]);
     transformerRef.current.getLayer()?.batchDraw();
-  }, [selectedId, elements]);
+  }, [selectedIds, elements]);
 
   // Keyboard: space for pan cursor
   useEffect(() => {
@@ -396,14 +387,10 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
 
   const ALL_REGIONS: Region[] = ["orelha_verso", "contracapa", "lombada", "capa", "orelha_frente"];
 
-  // Tooltip region detection
   function getRegionAt(xPaper: number, yPaper: number): { region: string; message: string } | null {
     if (!legendasAtivas) return null;
     const inSangria =
-      xPaper < sangriaPx ||
-      xPaper > xSangriaR ||
-      yPaper < sangriaPx ||
-      yPaper > totalHPx - sangriaPx;
+      xPaper < sangriaPx || xPaper > xSangriaR || yPaper < sangriaPx || yPaper > totalHPx - sangriaPx;
     if (inSangria) return { region: "SANGRIA", message: "3mm de margem de corte. Não coloque texto importante aqui." };
     if (comOrelhas && xPaper >= sangriaPx && xPaper < xOrelhaVersoEnd) return { region: "ORELHA TRASEIRA", message: "Dobra de 8cm. Outros livros do autor ou texto institucional." };
     if (xPaper >= xOrelhaVersoEnd && xPaper < xContraEnd) return { region: "CONTRACAPA", message: "Verso. Sinopse, código de barras ISBN e logo da editora." };
@@ -441,52 +428,57 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     });
   }
 
-  function handleTransformEnd(e: any, elId: string) {
-    const node = e.target;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-    // Reset scale BEFORE state update to avoid double-scale on re-render
-    node.scaleX(1);
-    node.scaleY(1);
-    const el = elements.find((el) => el.id === elId);
+  // Single transformer-level handler for resize/rotate (handles both single and multi-node)
+  function handleGroupTransformEnd() {
+    const nodes = transformerRef.current?.nodes() ?? [];
+    const storeElements = useEditorStore.getState().elements;
+    nodes.forEach((node) => {
+      const elId = node.id();
+      if (!elId) return;
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      node.scaleX(1);
+      node.scaleY(1);
+      const el = storeElements.find((e) => e.id === elId);
+      if (!el) return;
 
-    if (el?.type === "shape") {
-      const sh = el as ShapeElement;
-      const isEllipse = sh.shape === "ellipse";
-      const minH = sh.shape === "line" ? 0.1 : 2;
-      const newW = Math.max(2, sh.width_mm * scaleX);
-      const newH = Math.max(minH, sh.height_mm * scaleY);
-      updateElement(elId, {
-        x_mm: node.x() / MM_TO_PX - (isEllipse ? newW / 2 : 0),
-        y_mm: node.y() / MM_TO_PX - (isEllipse ? newH / 2 : 0),
-        width_mm: newW,
-        height_mm: newH,
-        rotation_deg: node.rotation(),
-      });
-      return;
-    }
+      if (el.type === "shape") {
+        const sh = el as ShapeElement;
+        const isEllipse = sh.shape === "ellipse";
+        const minH = sh.shape === "line" ? 0.1 : 2;
+        const newW = Math.max(2, sh.width_mm * scaleX);
+        const newH = Math.max(minH, sh.height_mm * scaleY);
+        updateElement(elId, {
+          x_mm: node.x() / MM_TO_PX - (isEllipse ? newW / 2 : 0),
+          y_mm: node.y() / MM_TO_PX - (isEllipse ? newH / 2 : 0),
+          width_mm: newW,
+          height_mm: newH,
+          rotation_deg: node.rotation(),
+        });
+        return;
+      }
 
-    const newW = Math.max(20, node.width() * scaleX) / MM_TO_PX;
-    if (el?.type === "text") {
-      // For text: scaleX widens the text box; scaleY scales the font size
-      const newFontSizePt = Math.max(6, (el as TextElement).fontSize_pt * scaleY);
-      updateElement(elId, {
-        x_mm: node.x() / MM_TO_PX,
-        y_mm: node.y() / MM_TO_PX,
-        width_mm: newW,
-        fontSize_pt: newFontSizePt,
-        rotation_deg: node.rotation(),
-      } as any);
-    } else {
-      const newH = Math.max(20, node.height() * scaleY) / MM_TO_PX;
-      updateElement(elId, {
-        x_mm: node.x() / MM_TO_PX,
-        y_mm: node.y() / MM_TO_PX,
-        width_mm: newW,
-        height_mm: newH,
-        rotation_deg: node.rotation(),
-      });
-    }
+      const newW = Math.max(20, node.width() * scaleX) / MM_TO_PX;
+      if (el.type === "text") {
+        const newFontSizePt = Math.max(6, (el as TextElement).fontSize_pt * scaleY);
+        updateElement(elId, {
+          x_mm: node.x() / MM_TO_PX,
+          y_mm: node.y() / MM_TO_PX,
+          width_mm: newW,
+          fontSize_pt: newFontSizePt,
+          rotation_deg: node.rotation(),
+        } as any);
+      } else {
+        const newH = Math.max(20, node.height() * scaleY) / MM_TO_PX;
+        updateElement(elId, {
+          x_mm: node.x() / MM_TO_PX,
+          y_mm: node.y() / MM_TO_PX,
+          width_mm: newW,
+          height_mm: newH,
+          rotation_deg: node.rotation(),
+        });
+      }
+    });
   }
 
   // Inline text editing
@@ -494,8 +486,6 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     if (!stageRef.current || !containerRef.current) return;
     const node = stageRef.current.findOne(`#${el.id}`) as Konva.Text | undefined;
     if (!node) return;
-    const container = containerRef.current.getBoundingClientRect();
-    const absPos = node.getAbsolutePosition();
     setInlineEdit({
       id: el.id,
       x: el.x_mm * MM_TO_PX * zoom + panX,
@@ -519,13 +509,34 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
         setPan(panX + ptr.x - lastPointerRef.current.x, panY + ptr.y - lastPointerRef.current.y);
         lastPointerRef.current = ptr;
       }
+
+      // Update marquee
+      if (marqueeStartRef.current !== null) {
+        const stage = e.target.getStage?.() ?? e.target.getStage?.();
+        const ptr = stage?.getPointerPosition();
+        if (!ptr) return;
+        const { zoom: z, panX: px, panY: py } = useEditorStore.getState();
+        const paperX = (ptr.x - px) / z;
+        const paperY = (ptr.y - py) / z;
+        const startX = marqueeStartRef.current.x;
+        const startY = marqueeStartRef.current.y;
+        const rect = {
+          x: Math.min(startX, paperX),
+          y: Math.min(startY, paperY),
+          w: Math.abs(paperX - startX),
+          h: Math.abs(paperY - startY),
+        };
+        marqueeRectDataRef.current = rect;
+        setMarqueeRect(rect);
+      }
+
       if (!legendasAtivas) return;
       const stage = e.target.getStage();
       const ptr = stage.getPointerPosition();
       if (!ptr) return;
-      const { zoom, panX, panY } = useEditorStore.getState();
-      const xPaper = (ptr.x - panX) / zoom;
-      const yPaper = (ptr.y - panY) / zoom;
+      const { zoom: z, panX: px, panY: py } = useEditorStore.getState();
+      const xPaper = (ptr.x - px) / z;
+      const yPaper = (ptr.y - py) / z;
       const info = getRegionAt(xPaper, yPaper);
       if (info) {
         setTooltip({ visible: true, x: ptr.x, y: ptr.y, region: info.region, message: info.message });
@@ -546,27 +557,73 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
       const ptr = stage.getPointerPosition();
       if (ptr) lastPointerRef.current = ptr;
       if (containerRef.current) containerRef.current.style.cursor = "grabbing";
+      return;
     }
-    // Deselect only when clicking the Stage background (Transformer handles are also
-    // Rect nodes without ids — excluding them here prevents the transformer from
-    // being detached the moment the user clicks a resize handle).
-    if (e.target === e.target.getStage()) {
-      setSelectedId(null);
-    }
-  }, [setSelectedId]);
 
-  const handleStageMouseUp = useCallback(() => {
+    if (e.target === e.target.getStage()) {
+      // Clicked on empty canvas
+      if (!e.evt.shiftKey) {
+        clearSelection();
+      }
+      // Start marquee
+      const stage = e.target.getStage();
+      const ptr = stage.getPointerPosition();
+      if (!ptr) return;
+      const { zoom: z, panX: px, panY: py } = useEditorStore.getState();
+      const paperX = (ptr.x - px) / z;
+      const paperY = (ptr.y - py) / z;
+      marqueeStartRef.current = { x: paperX, y: paperY };
+      marqueeRectDataRef.current = { x: paperX, y: paperY, w: 0, h: 0 };
+      setMarqueeRect({ x: paperX, y: paperY, w: 0, h: 0 });
+    }
+  }, [clearSelection]);
+
+  const handleStageMouseUp = useCallback((e: any) => {
     isPanningRef.current = false;
     if (containerRef.current && spaceDownRef.current) {
       containerRef.current.style.cursor = "grab";
     } else if (containerRef.current) {
       containerRef.current.style.cursor = "";
     }
-  }, []);
+
+    // Finish marquee
+    if (marqueeStartRef.current !== null) {
+      const rect = marqueeRectDataRef.current;
+      marqueeStartRef.current = null;
+      marqueeRectDataRef.current = null;
+      setMarqueeRect(null);
+
+      // Ignore tiny movements (treat as click)
+      if (!rect || (rect.w < 5 && rect.h < 5)) return;
+
+      const { elements: els } = useEditorStore.getState();
+      const intersecting = els.filter((el) => {
+        const elX = el.x_mm * MM_TO_PX;
+        const elY = el.y_mm * MM_TO_PX;
+        const elW = el.width_mm * MM_TO_PX;
+        const elH = el.height_mm * MM_TO_PX;
+        return !(elX + elW < rect.x || elX > rect.x + rect.w || elY + elH < rect.y || elY > rect.y + rect.h);
+      });
+
+      if (intersecting.length > 0) {
+        const newIds = intersecting.map((el) => el.id);
+        if (e.evt.shiftKey) {
+          const current = useEditorStore.getState().selectedIds;
+          selectElements([...new Set([...current, ...newIds])]);
+        } else {
+          selectElements(newIds);
+        }
+      }
+    }
+  }, [selectElements]);
 
   const handleStageMouseLeave = useCallback(() => {
     setTooltip((t) => ({ ...t, visible: false }));
     isPanningRef.current = false;
+    // Cancel marquee if mouse leaves stage
+    marqueeStartRef.current = null;
+    marqueeRectDataRef.current = null;
+    setMarqueeRect(null);
   }, []);
 
   if (!mounted || !fontsReady) {
@@ -580,6 +637,14 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   }
 
   const sortedElements = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+
+  // Disable resize anchors if any selected element has rotation (group resize is unreliable)
+  const hasRotatedInSelection = selectedIds.length >= 2 && elements.some(
+    (e) => selectedIds.includes(e.id) && e.rotation_deg !== 0,
+  );
+  const transformerAnchors = hasRotatedInSelection
+    ? []
+    : ["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
 
   return (
     <div
@@ -615,7 +680,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           />
         </Layer>
 
-        {/* Region fill layer — rects extend into bleed on outer edges, stop at inner folds */}
+        {/* Region fill layer */}
         <Layer listening={false}>
           {ALL_REGIONS.map((key) => {
             const color = fills[key];
@@ -638,11 +703,18 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
         {/* Content layer */}
         <Layer>
           {sortedElements.map((el) => {
-            const isSelected = el.id === selectedId;
+            const isSelected = selectedIds.includes(el.id);
             const commonDragProps = {
               onDragMove: (e: any) => handleDragMove(e, el.id),
               onDragEnd: (e: any) => handleDragEnd(e, el.id),
-              onTransformEnd: (e: any) => handleTransformEnd(e, el.id),
+            };
+
+            const handleSelect = (shift: boolean) => {
+              if (shift) {
+                toggleElementInSelection(el.id);
+              } else {
+                selectElement(el.id);
+              }
             };
 
             if (el.type === "text") {
@@ -675,8 +747,8 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                   visible={t.visible}
                   draggable={!t.locked}
                   wrap="word"
-                  onClick={() => setSelectedId(el.id)}
-                  onTap={() => setSelectedId(el.id)}
+                  onClick={(e) => handleSelect(e.evt.shiftKey)}
+                  onTap={(e) => handleSelect(e.evt.shiftKey)}
                   onDblClick={() => openInlineEdit(t)}
                   {...commonDragProps}
                 />
@@ -689,7 +761,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                   key={el.id}
                   el={el as ImageElement}
                   selected={isSelected}
-                  onSelect={() => setSelectedId(el.id)}
+                  onSelect={handleSelect}
                   {...commonDragProps}
                 />
               );
@@ -701,7 +773,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                   key={el.id}
                   el={el as LogoElement}
                   selected={isSelected}
-                  onSelect={() => setSelectedId(el.id)}
+                  onSelect={handleSelect}
                   {...commonDragProps}
                 />
               );
@@ -712,7 +784,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                 <BarcodeNode
                   key={el.id}
                   el={el as BarcodeElement}
-                  onSelect={() => setSelectedId(el.id)}
+                  onSelect={handleSelect}
                   {...commonDragProps}
                 />
               );
@@ -724,7 +796,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                   key={el.id}
                   el={el as ShapeElement}
                   selected={isSelected}
-                  onSelect={() => setSelectedId(el.id)}
+                  onSelect={handleSelect}
                   {...commonDragProps}
                 />
               );
@@ -733,25 +805,33 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
             return null;
           })}
 
-          {/* Transformer */}
+          {/* Transformer — single handler for all resize/rotate operations */}
           <Transformer
             ref={transformerRef}
             rotateEnabled={true}
             resizeEnabled={true}
             keepRatio={false}
-            enabledAnchors={[
-              "top-left",
-              "top-center",
-              "top-right",
-              "middle-left",
-              "middle-right",
-              "bottom-left",
-              "bottom-center",
-              "bottom-right",
-            ]}
+            enabledAnchors={transformerAnchors}
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < 20 || newBox.height < 20) return oldBox;
               return newBox;
+            }}
+            onTransformEnd={handleGroupTransformEnd}
+            onDragEnd={(e) => {
+              // Group drag via transformer — update all attached nodes
+              const nodes = transformerRef.current?.nodes() ?? [];
+              const storeElements = useEditorStore.getState().elements;
+              nodes.forEach((node) => {
+                const elId = node.id();
+                if (!elId) return;
+                const el = storeElements.find((el) => el.id === elId);
+                const isEllipse = el?.type === "shape" && (el as ShapeElement).shape === "ellipse";
+                updateElement(elId, {
+                  x_mm: node.x() / MM_TO_PX - (isEllipse ? (el as ShapeElement).width_mm / 2 : 0),
+                  y_mm: node.y() / MM_TO_PX - (isEllipse ? (el as ShapeElement).height_mm / 2 : 0),
+                });
+              });
+              setSnapLines({ x: null, y: null });
             }}
           />
         </Layer>
@@ -770,6 +850,22 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
             <Line
               points={[0, snapLines.y, totalWPx, snapLines.y]}
               stroke="#f97316"
+              strokeWidth={1 / zoom}
+              dash={[4 / zoom, 4 / zoom]}
+            />
+          )}
+        </Layer>
+
+        {/* Marquee selection rectangle */}
+        <Layer listening={false}>
+          {marqueeRect && marqueeRect.w > 1 && marqueeRect.h > 1 && (
+            <Rect
+              x={marqueeRect.x}
+              y={marqueeRect.y}
+              width={marqueeRect.w}
+              height={marqueeRect.h}
+              fill="rgba(100,130,255,0.08)"
+              stroke="rgba(100,130,255,0.6)"
               strokeWidth={1 / zoom}
               dash={[4 / zoom, 4 / zoom]}
             />
@@ -799,10 +895,9 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           )}
         </Layer>
 
-        {/* Region labels — shown when legendasAtivas OR (no fill AND no elements in that region) */}
+        {/* Region labels */}
         <Layer listening={false}>
           {(() => {
-            // Region x-bounds in mm for element detection
             const xContracapaStartMm = SANGRIA_MM + orelhaMm;
             const xContracapaEndMm = xContracapaStartMm + f.width_mm;
             const xLombadaStartMm = xContracapaEndMm;

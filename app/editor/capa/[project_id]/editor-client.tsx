@@ -17,14 +17,13 @@ const EditorCanvas = dynamic(
 );
 
 export function EditorClient({ projectData }: { projectData: ProjectData }) {
-  const [copiedToast, setCopiedToast] = useState(false);
+  const [copiedCount, setCopiedCount] = useState<number | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stable ref so the keyboard handler can call the latest showToast without re-registering
-  const showCopiedToastRef = useRef<() => void>(() => {});
-  showCopiedToastRef.current = () => {
+  const showCopiedToastRef = useRef<(count: number) => void>(() => {});
+  showCopiedToastRef.current = (count: number) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setCopiedToast(true);
-    toastTimerRef.current = setTimeout(() => setCopiedToast(false), 1500);
+    setCopiedCount(count);
+    toastTimerRef.current = setTimeout(() => setCopiedCount(null), 1500);
   };
 
   const initialized = useRef(false);
@@ -91,11 +90,19 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
   // Hydrate clipboard from localStorage on mount (SSR-safe — runs only in browser)
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("autoria:clipboard:v1");
-      if (raw) {
-        const parsed = JSON.parse(raw) as { version?: number; element?: unknown };
-        if (parsed?.version === 1 && parsed.element) {
-          useEditorStore.getState().hydrateClipboard(parsed.element as import("./lib/elements").AnyElement);
+      const raw2 = localStorage.getItem("autoria:clipboard:v2");
+      if (raw2) {
+        const p = JSON.parse(raw2) as { version?: number; elements?: import("./lib/elements").AnyElement[] };
+        if (p?.version === 2 && Array.isArray(p.elements) && p.elements.length > 0) {
+          useEditorStore.getState().hydrateClipboard(p.elements);
+          return;
+        }
+      }
+      const raw1 = localStorage.getItem("autoria:clipboard:v1");
+      if (raw1) {
+        const p = JSON.parse(raw1) as { version?: number; element?: import("./lib/elements").AnyElement };
+        if (p?.version === 1 && p.element) {
+          useEditorStore.getState().hydrateClipboard([p.element]);
         }
       }
     } catch {}
@@ -131,37 +138,48 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
       if (isEditableTarget(e)) return;
 
       const state = useEditorStore.getState();
+      const { selectedIds } = state;
 
-      if ((e.key === "Delete" || e.key === "Backspace") && state.selectedId) {
-        state.deleteElement(state.selectedId);
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
+        selectedIds.forEach((id) => state.deleteElement(id));
       }
-      if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey) && state.selectedId) {
+      if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey) && selectedIds.length > 0) {
         e.preventDefault();
-        state.duplicateElement(state.selectedId);
+        state.duplicateSelected(selectedIds);
       }
-      if (e.key === "]" && state.selectedId) {
-        state.moveElementZ(state.selectedId, 1);
+      if (e.key === "]" && selectedIds.length === 1) {
+        state.moveElementZ(selectedIds[0], 1);
       }
-      if (e.key === "[" && state.selectedId) {
-        state.moveElementZ(state.selectedId, -1);
+      if (e.key === "[" && selectedIds.length === 1) {
+        state.moveElementZ(selectedIds[0], -1);
       }
       if (e.key === "Escape") {
-        useEditorStore.setState({ selectedId: null });
+        state.clearSelection();
+      }
+
+      // Arrow keys — 1mm, Shift+arrow 10mm
+      const isArrow = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key);
+      if (isArrow && selectedIds.length > 0) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        state.moveSelectedElements(selectedIds, dx, dy);
       }
 
       if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey)) {
-        const { selectedId, elements } = useEditorStore.getState();
-        if (!selectedId) return;
-        const el = elements.find((elem) => elem.id === selectedId);
-        if (!el) return;
+        if (selectedIds.length === 0) return;
+        const { elements } = useEditorStore.getState();
+        const els = selectedIds.map((id) => elements.find((el) => el.id === id)).filter(Boolean) as import("./lib/elements").AnyElement[];
+        if (els.length === 0) return;
         e.preventDefault();
-        useEditorStore.getState().copyElement(el);
-        showCopiedToastRef.current();
+        useEditorStore.getState().copyElement(els);
+        showCopiedToastRef.current(els.length);
       }
 
       if ((e.key === "v" || e.key === "V") && (e.ctrlKey || e.metaKey)) {
-        const newEl = useEditorStore.getState().pasteElement();
-        if (!newEl) return;
+        const newEls = useEditorStore.getState().pasteElement();
+        if (!newEls) return;
         e.preventDefault();
       }
     };
@@ -179,9 +197,9 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
           <EditorCanvas format={projectData.format} pages={projectData.pages} />
         </div>
       </div>
-      {copiedToast && (
+      {copiedCount !== null && (
         <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-[#1a1a2e]/90 px-4 py-2 text-xs text-[#c9a84c] shadow-lg backdrop-blur-sm">
-          Elemento copiado
+          {copiedCount === 1 ? "Elemento copiado" : `${copiedCount} elementos copiados`}
         </div>
       )}
     </div>

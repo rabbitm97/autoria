@@ -466,7 +466,7 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
 
 // ── Seção 6: Formas ───────────────────────────────────────────────────────────
 function SectionFormas() {
-  const { addElement, elements, format, pages, comOrelhas, setSelectedId } = useEditorStore();
+  const { addElement, elements, format, pages, comOrelhas, selectElement } = useEditorStore();
 
   function addShape(shape: ShapeKind) {
     const f = FORMATS[format];
@@ -487,7 +487,7 @@ function SectionFormas() {
       zIndex: elements.length,
     });
     addElement(el);
-    setSelectedId(el.id);
+    selectElement(el.id);
   }
 
   const shapes: { kind: ShapeKind; label: string; icon: JSX.Element }[] = [
@@ -549,7 +549,7 @@ function SectionFormas() {
 
 // ── Seção 7: Camadas ──────────────────────────────────────────────────────────
 function SectionCamadas() {
-  const { elements, selectedId, setSelectedId, deleteElement, moveElementZ, updateElement } =
+  const { elements, selectedIds, selectElement, deleteElement, moveElementZ, updateElement } =
     useEditorStore();
   const sorted = [...elements].sort((a, b) => b.zIndex - a.zIndex);
 
@@ -582,9 +582,9 @@ function SectionCamadas() {
         {sorted.map((el) => (
           <div
             key={el.id}
-            onClick={() => setSelectedId(el.id)}
+            onClick={() => selectElement(el.id)}
             className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer ${
-              selectedId === el.id
+              selectedIds.includes(el.id)
                 ? "bg-[#c9a84c]/10 text-[#1a1a2e]"
                 : "text-zinc-500 hover:bg-zinc-50"
             }`}

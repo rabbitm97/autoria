@@ -18,6 +18,9 @@ import type { SaveStatus, EditorData } from "./editor-serializer";
 import { nanoid } from "nanoid";
 import type Konva from "konva";
 
+const CLIPBOARD_KEY_V2 = "autoria:clipboard:v2";
+const CLIPBOARD_KEY_V1 = "autoria:clipboard:v1"; // back-compat read
+
 interface EditorState {
   // Viewport
   format: FormatKey;
@@ -32,7 +35,7 @@ interface EditorState {
 
   // Elements
   elements: AnyElement[];
-  selectedId: string | null;
+  selectedIds: string[];
 
   // Region fills
   fills: RegionFills;
@@ -65,14 +68,17 @@ interface EditorState {
   updateElement: (id: string, patch: Partial<AnyElement>) => void;
   deleteElement: (id: string) => void;
   duplicateElement: (id: string) => void;
+  duplicateSelected: (ids: string[]) => void;
   moveElementZ: (id: string, delta: 1 | -1) => void;
-  setSelectedId: (id: string | null) => void;
+  moveSelectedElements: (ids: string[], dx_mm: number, dy_mm: number) => void;
+  bringSelectionToFront: (ids: string[]) => void;
+  sendSelectionToBack: (ids: string[]) => void;
 
-  // Clipboard (internal — persisted in localStorage)
-  clipboard: AnyElement | null;
-  copyElement: (el: AnyElement) => void;
-  pasteElement: () => AnyElement | null;
-  hydrateClipboard: (el: AnyElement | null) => void;
+  // Selection
+  selectElement: (id: string) => void;
+  toggleElementInSelection: (id: string) => void;
+  selectElements: (ids: string[]) => void;
+  clearSelection: () => void;
 
   // Fills
   setFill: (region: Region, color: string | null) => void;
@@ -85,6 +91,12 @@ interface EditorState {
   setStageInstance: (stage: Konva.Stage | null) => void;
   setConfirmedSnapshot: (snap: ConfirmedSnapshot | null) => void;
   hydrate: (data: Pick<EditorData, "comOrelhas" | "elements" | "fills" | "isbn">) => void;
+
+  // Clipboard (internal — persisted in localStorage v2)
+  clipboard: AnyElement[] | null;
+  copyElement: (els: AnyElement[]) => void;
+  pasteElement: () => AnyElement[] | null;
+  hydrateClipboard: (els: AnyElement[] | null) => void;
 
   // Reset — call on mount to prevent state leaking between projects
   reset: () => void;
@@ -101,14 +113,14 @@ const DEFAULT_STATE = {
   snapEnabled: true,
   snapThreshold: 8,
   elements: [] as AnyElement[],
-  selectedId: null as string | null,
-  clipboard: null as AnyElement | null,
+  selectedIds: [] as string[],
   fills: {} as RegionFills,
   isbn: null as string | null,
   saveStatus: { kind: "idle" } as SaveStatus,
   autosaveCount: 0,
   confirmedSnapshot: null as ConfirmedSnapshot | null,
   stageInstance: null as Konva.Stage | null,
+  clipboard: null as AnyElement[] | null,
 };
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -167,7 +179,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   deleteElement: (id) =>
     set((s) => ({
       elements: s.elements.filter((e) => e.id !== id),
-      selectedId: s.selectedId === id ? null : s.selectedId,
+      selectedIds: s.selectedIds.filter((sid) => sid !== id),
     })),
 
   duplicateElement: (id) =>
@@ -175,14 +187,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const el = s.elements.find((e) => e.id === id);
       if (!el) return s;
       const maxZ = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
-      const copy: AnyElement = {
-        ...el,
-        id: nanoid(),
-        x_mm: el.x_mm + 5,
-        y_mm: el.y_mm + 5,
-        zIndex: maxZ + 1,
-      };
-      return { elements: [...s.elements, copy], selectedId: copy.id };
+      const copy: AnyElement = { ...el, id: nanoid(), x_mm: el.x_mm + 5, y_mm: el.y_mm + 5, zIndex: maxZ + 1 };
+      return { elements: [...s.elements, copy], selectedIds: [copy.id] };
+    }),
+
+  duplicateSelected: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return s;
+      const maxZ = s.elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
+      const copies: AnyElement[] = [];
+      ids.forEach((id, i) => {
+        const el = s.elements.find((e) => e.id === id);
+        if (!el) return;
+        copies.push({ ...el, id: nanoid(), x_mm: el.x_mm + 5, y_mm: el.y_mm + 5, zIndex: maxZ + 1 + i } as AnyElement);
+      });
+      if (copies.length === 0) return s;
+      return { elements: [...s.elements, ...copies], selectedIds: copies.map((c) => c.id) };
     }),
 
   moveElementZ: (id, delta) =>
@@ -204,45 +224,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
-  setSelectedId: (id) => set({ selectedId: id }),
+  moveSelectedElements: (ids, dx_mm, dy_mm) =>
+    set((s) => ({
+      elements: s.elements.map((e) =>
+        ids.includes(e.id)
+          ? ({ ...e, x_mm: e.x_mm + dx_mm, y_mm: e.y_mm + dy_mm } as AnyElement)
+          : e,
+      ),
+    })),
 
-  copyElement: (el) => {
-    try {
-      localStorage.setItem(
-        "autoria:clipboard:v1",
-        JSON.stringify({ version: 1, element: el }),
-      );
-    } catch {}
-    set({ clipboard: el });
-  },
+  bringSelectionToFront: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return s;
+      const idSet = new Set(ids);
+      const selected = [...s.elements].filter((e) => idSet.has(e.id)).sort((a, b) => a.zIndex - b.zIndex);
+      const unselected = [...s.elements].filter((e) => !idSet.has(e.id)).sort((a, b) => a.zIndex - b.zIndex);
+      const combined = [
+        ...unselected.map((e, i) => ({ ...e, zIndex: i + 1 })),
+        ...selected.map((e, i) => ({ ...e, zIndex: unselected.length + 1 + i })),
+      ];
+      return { elements: combined as AnyElement[] };
+    }),
 
-  pasteElement: () => {
-    const { elements } = get();
-    let source = get().clipboard;
+  sendSelectionToBack: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return s;
+      const idSet = new Set(ids);
+      const selected = [...s.elements].filter((e) => idSet.has(e.id)).sort((a, b) => a.zIndex - b.zIndex);
+      const unselected = [...s.elements].filter((e) => !idSet.has(e.id)).sort((a, b) => a.zIndex - b.zIndex);
+      const combined = [
+        ...selected.map((e, i) => ({ ...e, zIndex: i + 1 })),
+        ...unselected.map((e, i) => ({ ...e, zIndex: selected.length + 1 + i })),
+      ];
+      return { elements: combined as AnyElement[] };
+    }),
 
-    if (!source) {
-      try {
-        const raw = localStorage.getItem("autoria:clipboard:v1");
-        if (raw) {
-          const parsed = JSON.parse(raw) as { version?: number; element?: AnyElement };
-          if (parsed?.version === 1 && parsed.element) source = parsed.element;
-        }
-      } catch {}
-    }
+  selectElement: (id) => set({ selectedIds: [id] }),
 
-    if (!source) return null;
+  toggleElementInSelection: (id) =>
+    set((s) => ({
+      selectedIds: s.selectedIds.includes(id)
+        ? s.selectedIds.filter((sid) => sid !== id)
+        : [...s.selectedIds, id],
+    })),
 
-    const maxZ = elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
-    const base = { id: nanoid(), x_mm: source.x_mm + 10, y_mm: source.y_mm + 10, zIndex: maxZ + 1 };
-    const newEl: AnyElement = source.type === "barcode"
-      ? { ...source, ...base, cachedDataUrl: null }
-      : { ...source, ...base };
+  selectElements: (ids) => set({ selectedIds: ids }),
 
-    set((s) => ({ elements: [...s.elements, newEl], selectedId: newEl.id }));
-    return newEl;
-  },
-
-  hydrateClipboard: (el) => set({ clipboard: el }),
+  clearSelection: () => set({ selectedIds: [] }),
 
   setFill: (region, color) =>
     set((s) => {
@@ -271,11 +299,59 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       isbn: data.isbn ?? null,
     }),
 
+  copyElement: (els) => {
+    try {
+      localStorage.setItem(CLIPBOARD_KEY_V2, JSON.stringify({ version: 2, elements: els }));
+    } catch {}
+    set({ clipboard: els });
+  },
+
+  pasteElement: () => {
+    const { elements } = get();
+    let sources: AnyElement[] | null = get().clipboard;
+
+    if (!sources || sources.length === 0) {
+      try {
+        // Try v2
+        const raw2 = localStorage.getItem(CLIPBOARD_KEY_V2);
+        if (raw2) {
+          const p = JSON.parse(raw2) as { version?: number; elements?: AnyElement[] };
+          if (p?.version === 2 && Array.isArray(p.elements) && p.elements.length > 0) {
+            sources = p.elements;
+          }
+        }
+        // Back-compat: v1 had a single element
+        if (!sources) {
+          const raw1 = localStorage.getItem(CLIPBOARD_KEY_V1);
+          if (raw1) {
+            const p = JSON.parse(raw1) as { version?: number; element?: AnyElement };
+            if (p?.version === 1 && p.element) sources = [p.element];
+          }
+        }
+      } catch {}
+    }
+
+    if (!sources || sources.length === 0) return null;
+
+    const maxZ = elements.reduce((m, e) => Math.max(m, e.zIndex), 0);
+    const newEls: AnyElement[] = sources.map((src, i) => {
+      const base = { id: nanoid(), x_mm: src.x_mm + 10, y_mm: src.y_mm + 10, zIndex: maxZ + 1 + i };
+      return src.type === "barcode"
+        ? { ...src, ...base, cachedDataUrl: null }
+        : { ...src, ...base };
+    });
+
+    set((s) => ({ elements: [...s.elements, ...newEls], selectedIds: newEls.map((e) => e.id) }));
+    return newEls;
+  },
+
+  hydrateClipboard: (els) => set({ clipboard: els }),
+
   reset: () =>
     set({
       comOrelhas: false,
       elements: [],
-      selectedId: null,
+      selectedIds: [],
       fills: {},
       isbn: null,
       legendasAtivas: false,
