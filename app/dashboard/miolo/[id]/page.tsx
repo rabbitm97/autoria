@@ -97,6 +97,7 @@ export default function MioloPage() {
   const [currentCapIdx, setCurrentCapIdx] = useState(0);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingPdfDigital, setDownloadingPdfDigital] = useState(false);
   const [docxModalOpen, setDocxModalOpen] = useState(false);
 
   // ── Config form state ───────────────────────────────────────────────────────
@@ -360,6 +361,50 @@ export default function MioloPage() {
       setError(e instanceof Error ? e.message : "Erro ao gerar PDF");
     } finally {
       setDownloadingPdf(false);
+    }
+  }
+
+  async function downloadPdfDigital() {
+    if (!miolo) return;
+    setDownloadingPdfDigital(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agentes/gerar-pdf-digital", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+
+      const ctype = res.headers.get("content-type") ?? "";
+      if (!ctype.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Servidor retornou ${ctype || "resposta desconhecida"} (status ${res.status}). Resposta: ${text.slice(0, 200)}`);
+      }
+
+      const data = await res.json() as { url_download?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status} ao gerar PDF digital`);
+      if (!data.url_download) throw new Error("URL de download não retornada pelo servidor");
+
+      const pdfRes = await fetch(data.url_download);
+      if (!pdfRes.ok) throw new Error(`Falha ao baixar PDF do Storage (${pdfRes.status})`);
+
+      const pdfCtype = pdfRes.headers.get("content-type") ?? "";
+      if (!pdfCtype.includes("pdf")) {
+        throw new Error(`Storage retornou ${pdfCtype}, esperado PDF. Geração falhou silenciosamente no servidor.`);
+      }
+
+      const blob = await pdfRes.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${safeName}_digital.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(link.href), 5_000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao gerar PDF digital");
+    } finally {
+      setDownloadingPdfDigital(false);
     }
   }
 
@@ -768,24 +813,46 @@ export default function MioloPage() {
                   Baixe o PDF para conferir como ficou seu livro impresso — com margens, marcas de corte e diagramação profissional.
                 </p>
 
-                {/* CTA primário — PDF */}
-                <button
-                  onClick={downloadPdf}
-                  disabled={!htmlContent || downloadingPdf}
-                  className="w-full bg-brand-primary text-brand-gold px-6 py-4 rounded-xl text-sm font-semibold hover:bg-[#2a2a4e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
-                  title={miolo?.config.marcas_corte ? "PDF com marcas de corte e sangria de 3mm" : "PDF pronto para impressão"}
-                >
-                  {downloadingPdf ? (
-                    <>
-                      <span className="inline-block w-4 h-4 rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
-                      Gerando PDF…
-                    </>
-                  ) : (
-                    <>
-                      ⬇ Baixar PDF{miolo?.config.marcas_corte ? " (com marcas de corte)" : ""}
-                    </>
-                  )}
-                </button>
+                {/* CTAs primários — 2 versões de PDF lado a lado */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <button
+                    onClick={downloadPdf}
+                    disabled={!htmlContent || downloadingPdf}
+                    className="bg-brand-primary text-brand-gold px-5 py-4 rounded-xl text-sm font-semibold hover:bg-[#2a2a4e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1"
+                    title="PDF com sangria de 3mm e marcas de corte — formato exigido por gráficas para impressão profissional"
+                  >
+                    {downloadingPdf ? (
+                      <>
+                        <span className="inline-block w-4 h-4 rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
+                        <span>Gerando…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⬇ PDF Impressão</span>
+                        <span className="text-[10px] font-normal opacity-70">com marcas de corte</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={downloadPdfDigital}
+                    disabled={!htmlContent || downloadingPdfDigital}
+                    className="bg-brand-primary text-brand-gold px-5 py-4 rounded-xl text-sm font-semibold hover:bg-[#2a2a4e] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1"
+                    title="PDF sem sangria e sem marcas de corte — formato exigido pelas plataformas digitais (Amazon KDP, Apple Books, Google Play Books, Kobo)"
+                  >
+                    {downloadingPdfDigital ? (
+                      <>
+                        <span className="inline-block w-4 h-4 rounded-full border-2 border-brand-gold/40 border-t-brand-gold animate-spin" />
+                        <span>Gerando…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⬇ PDF Digital</span>
+                        <span className="text-[10px] font-normal opacity-70">para plataformas</span>
+                      </>
+                    )}
+                  </button>
+                </div>
 
                 {/* CTAs secundários — DOCX + EPUB lado a lado */}
                 <div className="flex gap-3 mb-2">

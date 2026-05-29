@@ -20,6 +20,9 @@ const nextConfig: NextConfig = {
     "/api/agentes/gerar-pdf": [
       "./node_modules/@sparticuz/chromium/bin/**/*",
     ],
+    "/api/agentes/gerar-pdf-digital": [
+      "./node_modules/@sparticuz/chromium/bin/**/*",
+    ],
     "/api/projects/[id]/cover-editor/export-pdf": [
       "./node_modules/@sparticuz/chromium/bin/**/*",
     ],
