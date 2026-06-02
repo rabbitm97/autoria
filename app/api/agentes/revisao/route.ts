@@ -315,7 +315,13 @@ export async function POST(request: NextRequest) {
       params: {
         model: "claude-sonnet-4-6",
         max_tokens: 16000,
-        system: SYSTEM_PROMPT,
+        system: [
+          {
+            type: "text" as const,
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral" as const },
+          },
+        ],
         tools: [REVISAO_TOOL],
         tool_choice: { type: "tool" as const, name: "registrar_sugestoes" },
         messages: [
@@ -405,6 +411,10 @@ export async function GET(request: NextRequest) {
   const allSugestoes: SugestaoRevisao[] = [];
   const chunksFailed: Array<{ custom_id: string; reason: string }> = [];
   let chunksSucceeded = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalCacheCreation = 0;
+  let totalCacheRead = 0;
 
   for await (const result of await anthropic.messages.batches.results(batch_id)) {
     const customId = result.custom_id;
@@ -429,6 +439,21 @@ export async function GET(request: NextRequest) {
       allSugestoes.push(...sugestoesDoChunk);
       chunksSucceeded++;
 
+      const usage = result.result.message.usage as {
+        input_tokens: number;
+        output_tokens: number;
+        cache_creation_input_tokens?: number | null;
+        cache_read_input_tokens?: number | null;
+      };
+      const inputTokens = usage.input_tokens ?? 0;
+      const outputTokens = usage.output_tokens ?? 0;
+      const cacheCreationTokens = usage.cache_creation_input_tokens ?? 0;
+      const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+      totalInputTokens += inputTokens;
+      totalOutputTokens += outputTokens;
+      totalCacheCreation += cacheCreationTokens;
+      totalCacheRead += cacheReadTokens;
+
       void (async () => {
         try {
           langfuse?.trace({
@@ -439,6 +464,10 @@ export async function GET(request: NextRequest) {
               custom_id: customId,
               sugestoes_count: sugestoesDoChunk.length,
               content_blocks: message.content.map((b) => b.type),
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              cache_creation_input_tokens: cacheCreationTokens,
+              cache_read_input_tokens: cacheReadTokens,
             },
           });
           await langfuse?.flushAsync();
@@ -484,12 +513,24 @@ export async function GET(request: NextRequest) {
     chunks_total: number;
     chunks_succeeded: number;
     chunks_failed_count: number;
+    usage: {
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_input_tokens: number;
+      cache_read_input_tokens: number;
+    };
   } = {
     sugestoes: deduplicateAndRenumber(allSugestoes),
     revisado_em: new Date().toISOString(),
     chunks_total: total_chunks,
     chunks_succeeded: chunksSucceeded,
     chunks_failed_count: chunksFailed.length,
+    usage: {
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens,
+      cache_creation_input_tokens: totalCacheCreation,
+      cache_read_input_tokens: totalCacheRead,
+    },
   };
 
   await supabase.from("projects")
@@ -504,8 +545,12 @@ export async function GET(request: NextRequest) {
         metadata: {
           project_id,
           total_sugestoes: revisao.sugestoes.length,
-          chunks_succeeded: revisao.chunks_succeeded,
-          chunks_failed_count: revisao.chunks_failed_count,
+          chunks_succeeded: chunksSucceeded,
+          chunks_failed_count: chunksFailed.length,
+          total_input_tokens: totalInputTokens,
+          total_output_tokens: totalOutputTokens,
+          total_cache_creation: totalCacheCreation,
+          total_cache_read: totalCacheRead,
         },
       });
       await langfuse?.flushAsync();
