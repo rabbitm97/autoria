@@ -53,13 +53,28 @@ export function parseLLMJson<T>(rawText: string): T {
 
   try {
     return JSON.parse(clean) as T;
-  } catch {
+  } catch (firstErr) {
     // Greedy regex fails when Claude adds trailing text that contains ] or }
     // (e.g. "sugestões [1, 2] identificadas." after the array).
     // Bracket-balanced scan stops at the correct closing bracket regardless.
     const extracted = extractFirstJsonValue(clean);
-    if (!extracted) throw new Error("Nenhum JSON válido na resposta da IA.");
-    return JSON.parse(extracted) as T;
+    if (!extracted) {
+      throw new Error(
+        `Nenhum JSON válido na resposta da IA. Preview: ${clean.slice(0, 300)}`
+      );
+    }
+    try {
+      return JSON.parse(extracted) as T;
+    } catch (secondErr) {
+      const firstMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+      const secondMsg = secondErr instanceof Error ? secondErr.message : String(secondErr);
+      throw new Error(
+        `JSON inválido mesmo após extração balanceada. ` +
+          `Primeira tentativa: ${firstMsg}. ` +
+          `Segunda tentativa: ${secondMsg}. ` +
+          `Preview do extraído: ${extracted.slice(0, 300)}`
+      );
+    }
   }
 }
 

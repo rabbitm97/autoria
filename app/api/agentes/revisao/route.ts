@@ -91,25 +91,72 @@ REGRAS ABSOLUTAS:
 - Nunca escreva "Sem alteração necessária" — se não há mudança real, não inclua o item
 - Preserve o estilo e a voz do autor; sugira com "Considere..." em vez de impor
 
-Retorne EXCLUSIVAMENTE um array JSON — começando com [ e terminando com ]. \
-Nunca retorne um objeto JSON, nunca inclua markdown, comentários ou texto fora do array. \
-Se não houver sugestões, retorne [].
+Use SEMPRE a tool registrar_sugestoes para devolver suas sugestões. Não escreva nenhum texto em prosa antes ou depois da chamada da tool. Se não houver sugestões, chame a tool com sugestoes: []. O schema da tool define os campos e seus valores permitidos — siga-o rigorosamente.`;
 
-Schema de cada item:
-{
-  "id": "r001",
-  "tipo": "ortografia" | "gramatica" | "coesao" | "consistencia" | "ritmo",
-  "severidade": "critico" | "recomendado" | "opcional",
-  "localizacao": {
-    "capitulo": <número inteiro — 1 se não identificável>,
-    "paragrafo": <número sequencial no texto analisado>,
-    "linha_aproximada": <número inteiro estimado>
+// ─── Tool schema ──────────────────────────────────────────────────────────────
+
+const REVISAO_TOOL = {
+  name: "registrar_sugestoes",
+  description:
+    "Registra a lista de sugestões de revisão editorial encontradas no trecho analisado. Use esta tool exatamente uma vez, com TODAS as sugestões encontradas. Se não houver nenhuma sugestão, chame a tool com sugestoes: [].",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      sugestoes: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            tipo: {
+              type: "string",
+              enum: ["ortografia", "gramatica", "coesao", "consistencia", "ritmo"],
+            },
+            severidade: {
+              type: "string",
+              enum: ["critico", "recomendado", "opcional"],
+            },
+            localizacao: {
+              type: "object",
+              properties: {
+                capitulo: { type: "integer", minimum: 1 },
+                paragrafo: { type: "integer", minimum: 1 },
+                linha_aproximada: { type: "integer", minimum: 1 },
+              },
+              required: ["capitulo", "paragrafo", "linha_aproximada"],
+            },
+            trecho_original: {
+              type: "string",
+              maxLength: 200,
+              description: "Substring exata do texto analisado, máximo 200 caracteres.",
+            },
+            sugestao: {
+              type: "string",
+              description: "Texto substituto concreto, diferente do trecho_original.",
+            },
+            explicacao: {
+              type: "string",
+              description: "1-2 frases explicando o motivo da sugestão.",
+            },
+            referencia_norma: {
+              type: "string",
+              description: "Norma ou convenção que embasa a sugestão.",
+            },
+          },
+          required: [
+            "tipo",
+            "severidade",
+            "localizacao",
+            "trecho_original",
+            "sugestao",
+            "explicacao",
+            "referencia_norma",
+          ],
+        },
+      },
+    },
+    required: ["sugestoes"],
   },
-  "trecho_original": "<substring EXATA do texto — máx 200 chars>",
-  "sugestao": "<texto substituto concreto e diferente do original>",
-  "explicacao": "<1-2 frases explicando o motivo>",
-  "referencia_norma": "<ex: Acordo Ortográfico 2009 / Gramática Normativa / Convenção editorial>"
-}`;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -121,37 +168,55 @@ function splitIntoChunks(text: string, size: number): string[] {
   return chunks;
 }
 
-function extractSugestoes(text: string): SugestaoRevisao[] {
-  const parsed = parseLLMJson<unknown>(text);
-  let sugestoes: SugestaoRevisao[];
+type AnyBlock = { type: string; [key: string]: unknown };
 
-  if (Array.isArray(parsed)) {
-    sugestoes = parsed as SugestaoRevisao[];
-  } else if (parsed && typeof parsed === "object") {
-    const obj = parsed as Record<string, unknown>;
-    let inner: unknown[] | undefined = Object.values(obj).find(Array.isArray) as unknown[] | undefined;
-    if (!inner) {
-      for (const v of Object.values(obj)) {
-        if (v && typeof v === "object" && !Array.isArray(v)) {
-          inner = Object.values(v as Record<string, unknown>).find(Array.isArray) as unknown[] | undefined;
-          if (inner) break;
-        }
-      }
-    }
-    if (inner) {
-      sugestoes = inner as SugestaoRevisao[];
-    } else if (obj.id && obj.tipo && obj.severidade) {
-      sugestoes = [obj as unknown as SugestaoRevisao];
-    } else {
-      console.warn("[revisao] Resposta inesperada da IA:", JSON.stringify(parsed).slice(0, 200));
-      sugestoes = [];
+function extractSugestoesFromMessage(message: { content: unknown[] }): SugestaoRevisao[] {
+  const blocks = message.content as AnyBlock[];
+
+  // Caminho preferido: tool_use estruturado — o SDK garante escape correto de todos os campos.
+  const toolBlock = blocks.find(
+    (b) => b["type"] === "tool_use" && b["name"] === "registrar_sugestoes"
+  );
+
+  let sugestoes: SugestaoRevisao[] = [];
+
+  if (toolBlock) {
+    const input = toolBlock["input"] as { sugestoes?: SugestaoRevisao[] } | undefined;
+    if (Array.isArray(input?.sugestoes)) {
+      sugestoes = input!.sugestoes!;
     }
   } else {
-    sugestoes = [];
+    // Fallback defensivo: Claude eventualmente devolve text apesar do tool_choice.
+    // Aceita, loga, mas não quebra.
+    const textBlock = blocks.find((b) => b["type"] === "text");
+    if (textBlock && typeof textBlock["text"] === "string") {
+      console.warn(
+        "[revisao] Claude retornou text em vez de tool_use — tentando parse defensivo."
+      );
+      try {
+        const parsed = parseLLMJson<unknown>(textBlock["text"] as string);
+        if (Array.isArray(parsed)) {
+          sugestoes = parsed as SugestaoRevisao[];
+        } else if (
+          parsed &&
+          typeof parsed === "object" &&
+          "sugestoes" in parsed &&
+          Array.isArray((parsed as { sugestoes: unknown }).sugestoes)
+        ) {
+          sugestoes = (parsed as { sugestoes: SugestaoRevisao[] }).sugestoes;
+        }
+      } catch (err) {
+        console.error("[revisao] Fallback de parse também falhou:", err);
+        sugestoes = [];
+      }
+    }
   }
 
   return sugestoes.filter(
-    s => s.trecho_original?.trim() && s.sugestao?.trim() && s.trecho_original.trim() !== s.sugestao.trim()
+    (s) =>
+      s.trecho_original?.trim() &&
+      s.sugestao?.trim() &&
+      s.trecho_original.trim() !== s.sugestao.trim()
   );
 }
 
@@ -249,12 +314,16 @@ export async function POST(request: NextRequest) {
       custom_id: `chunk-${i}`,
       params: {
         model: "claude-sonnet-4-6",
-        max_tokens: 8096,
+        max_tokens: 16000,
         system: SYSTEM_PROMPT,
-        messages: [{
-          role: "user" as const,
-          content: `Revise o seguinte trecho do manuscrito com minúcia (parte ${i + 1} de ${chunks.length}). Analise do início ao fim, distribuindo as sugestões uniformemente. Retorne apenas o array JSON de sugestões:\n\n${chunk}`,
-        }],
+        tools: [REVISAO_TOOL],
+        tool_choice: { type: "tool" as const, name: "registrar_sugestoes" },
+        messages: [
+          {
+            role: "user" as const,
+            content: `Revise o seguinte trecho do manuscrito com minúcia (parte ${i + 1} de ${chunks.length}). Analise do início ao fim, distribuindo as sugestões uniformemente. Use a tool registrar_sugestoes para devolver as sugestões encontradas:\n\n${chunk}`,
+          },
+        ],
       },
     })),
   });
@@ -334,18 +403,93 @@ export async function GET(request: NextRequest) {
 
   // Batch concluído — coleta, faz merge e salva resultado final
   const allSugestoes: SugestaoRevisao[] = [];
+  const chunksFailed: Array<{ custom_id: string; reason: string }> = [];
+  let chunksSucceeded = 0;
+
   for await (const result of await anthropic.messages.batches.results(batch_id)) {
-    if (result.result.type === "succeeded") {
-      const block = result.result.message.content[0];
-      if (block?.type === "text") {
-        allSugestoes.push(...extractSugestoes(block.text));
+    const customId = result.custom_id;
+    try {
+      if (result.result.type !== "succeeded") {
+        chunksFailed.push({
+          custom_id: customId,
+          reason: `result.type=${result.result.type}`,
+        });
+        continue;
       }
+
+      const message = result.result.message;
+      const sugestoesDoChunk = extractSugestoesFromMessage(
+        message as { content: unknown[] }
+      );
+
+      if (sugestoesDoChunk.length === 0) {
+        console.warn(`[revisao] Chunk ${customId} retornou 0 sugestões.`);
+      }
+
+      allSugestoes.push(...sugestoesDoChunk);
+      chunksSucceeded++;
+
+      void (async () => {
+        try {
+          langfuse?.trace({
+            name: "revisao-chunk-processed",
+            userId: user.id,
+            metadata: {
+              project_id,
+              custom_id: customId,
+              sugestoes_count: sugestoesDoChunk.length,
+              content_blocks: message.content.map((b) => b.type),
+            },
+          });
+          await langfuse?.flushAsync();
+        } catch {}
+      })();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(`[revisao] Falha ao processar chunk ${customId}:`, reason);
+      chunksFailed.push({ custom_id: customId, reason });
+
+      void (async () => {
+        try {
+          langfuse?.trace({
+            name: "revisao-chunk-failed",
+            userId: user.id,
+            metadata: {
+              project_id,
+              custom_id: customId,
+              error: reason,
+              raw_message:
+                result.result.type === "succeeded"
+                  ? JSON.stringify(result.result.message).slice(0, 2000)
+                  : null,
+            },
+          });
+          await langfuse?.flushAsync();
+        } catch {}
+      })();
     }
   }
 
-  const revisao: RevisaoResult = {
+  if (chunksSucceeded === 0) {
+    return NextResponse.json(
+      {
+        error: "Todos os chunks da revisão falharam. Tente novamente.",
+        chunks_failed: chunksFailed,
+      },
+      { status: 500 }
+    );
+  }
+
+  const revisao: RevisaoResult & {
+    chunks_total: number;
+    chunks_succeeded: number;
+    chunks_failed_count: number;
+  } = {
     sugestoes: deduplicateAndRenumber(allSugestoes),
     revisado_em: new Date().toISOString(),
+    chunks_total: total_chunks,
+    chunks_succeeded: chunksSucceeded,
+    chunks_failed_count: chunksFailed.length,
   };
 
   await supabase.from("projects")
@@ -357,7 +501,12 @@ export async function GET(request: NextRequest) {
       langfuse?.trace({
         name: "revisao-batch-completed",
         userId: user.id,
-        metadata: { project_id, total_sugestoes: revisao.sugestoes.length },
+        metadata: {
+          project_id,
+          total_sugestoes: revisao.sugestoes.length,
+          chunks_succeeded: revisao.chunks_succeeded,
+          chunks_failed_count: revisao.chunks_failed_count,
+        },
       });
       await langfuse?.flushAsync();
     } catch {}
