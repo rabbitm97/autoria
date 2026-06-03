@@ -62,6 +62,7 @@ function buildContents(prompt: string, ref: string | undefined): Part[] {
 // ─── POST /api/agentes/gerar-elemento-capa ────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  try {
   const isDev = process.env.NODE_ENV === "development";
   const supabase = await createSupabaseServerClient();
 
@@ -176,4 +177,14 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ elemento, opcoes } satisfies ElementoGerado);
+  } catch (err) {
+    console.error("[gerar-elemento-capa] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao gerar o elemento da capa. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

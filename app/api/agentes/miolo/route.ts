@@ -8,6 +8,7 @@ import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml, FORMAT_DIMS } from "@/lib/miolo-builder";
+import { isFormatoValido, FORMATOS_VALORES } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -189,6 +190,7 @@ async function detectChaptersWithClaude(
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  try {
   let user: { id: string };
   let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
@@ -208,6 +210,16 @@ export async function POST(request: NextRequest) {
   const { project_id, config } = body;
   if (!project_id || !config) {
     return NextResponse.json({ error: "Campos obrigatórios: project_id, config." }, { status: 400 });
+  }
+
+  if (!isFormatoValido(config.formato)) {
+    return NextResponse.json(
+      {
+        error: `Formato inválido. Valores aceitos: ${FORMATOS_VALORES.join(", ")}.`,
+        received: (config as { formato?: unknown }).formato ?? null,
+      },
+      { status: 400 }
+    );
   }
 
   // Load project data including credits for injection
@@ -382,11 +394,22 @@ export async function POST(request: NextRequest) {
     preview_url: signed?.signedUrl ?? null,
     html,
   });
+  } catch (err) {
+    console.error("[miolo] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao gerar o miolo. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // ─── GET — refresh signed URL ─────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
+  try {
   let user: { id: string };
   let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
@@ -424,4 +447,14 @@ export async function GET(request: NextRequest) {
   const html = htmlBlob ? await htmlBlob.text() : null;
 
   return NextResponse.json({ miolo, preview_url: signed?.signedUrl ?? null, html });
+  } catch (err) {
+    console.error("[miolo] Erro não tratado no handler GET:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao obter o miolo. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

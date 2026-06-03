@@ -53,6 +53,7 @@ async function blankPanel(w: number, h: number, r = 245, g = 245, b = 245): Prom
 //   [orelha_verso?] | contra-capa | lombada | frente | [orelha_frente?]
 
 export async function POST(req: NextRequest) {
+  try {
   const isDev = process.env.NODE_ENV === "development";
   const supabase = await createSupabaseServerClient();
 
@@ -249,4 +250,14 @@ export async function POST(req: NextRequest) {
     dimensoes: { largura_px: totalW, altura_px: frontH, dpi: DPI },
     tempo_ms: elapsed,
   });
+  } catch (err) {
+    console.error("[montar-capa] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao montar a capa. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

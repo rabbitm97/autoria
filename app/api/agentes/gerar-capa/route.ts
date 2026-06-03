@@ -72,6 +72,7 @@ function buildPrompt(opts: {
 // ─── POST /api/agentes/gerar-capa ─────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  try {
   const isDev = process.env.NODE_ENV === "development";
 
   let userId: string;
@@ -244,11 +245,22 @@ export async function POST(req: NextRequest) {
     .eq("user_id", userId);
 
   return NextResponse.json(result);
+  } catch (err) {
+    console.error("[gerar-capa] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao gerar a capa. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // ─── GET /api/agentes/gerar-capa?project_id=... ───────────────────────────────
 
 export async function GET(req: NextRequest) {
+  try {
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
@@ -270,4 +282,14 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(data.dados_capa ?? null);
+  } catch (err) {
+    console.error("[gerar-capa] Erro não tratado no handler GET:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao obter a capa. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

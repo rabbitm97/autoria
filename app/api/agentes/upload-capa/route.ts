@@ -76,6 +76,7 @@ export function calcExpectedDims(opts: {
 // ─── POST /api/agentes/upload-capa ────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  try {
   const isDev = process.env.NODE_ENV === "development";
 
   let userId: string;
@@ -196,4 +197,14 @@ export async function POST(req: NextRequest) {
     .eq("user_id", userId);
 
   return NextResponse.json(result);
+  } catch (err) {
+    console.error("[upload-capa] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao processar o upload da capa. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -185,6 +185,7 @@ ${spine}
 // Body: { project_id }
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
@@ -352,11 +353,22 @@ export async function POST(req: NextRequest) {
     .eq("user_id", userId);
 
   return NextResponse.json(result);
+  } catch (err) {
+    console.error("[gerar-epub] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao gerar o EPUB. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // ─── GET /api/agentes/gerar-epub?project_id=... ───────────────────────────────
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createSupabaseServerClient();
 
   const project_id = req.nextUrl.searchParams.get("project_id");
@@ -384,4 +396,14 @@ export async function GET(req: NextRequest) {
     .createSignedUrl(r.storage_path, 3600);
 
   return NextResponse.json({ ...r, url_download: signed?.signedUrl ?? r.url_download } satisfies EpubResult);
+  } catch (err) {
+    console.error("[gerar-epub] Erro não tratado no handler GET:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao obter o EPUB. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

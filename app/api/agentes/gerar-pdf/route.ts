@@ -30,6 +30,7 @@ export interface PdfResult {
 // comes from the @page CSS already embedded in the miolo HTML.
 
 export async function POST(req: NextRequest) {
+  try {
   const isDev = process.env.NODE_ENV === "development";
   const supabase = await createSupabaseServerClient();
 
@@ -206,12 +207,23 @@ export async function POST(req: NextRequest) {
     .eq("user_id", userId);
 
   return NextResponse.json(dados_pdf);
+  } catch (err) {
+    console.error("[gerar-pdf] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao gerar o PDF. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // ─── GET /api/agentes/gerar-pdf?project_id=... ────────────────────────────────
 // Returns saved PDF metadata + fresh signed URL.
 
 export async function GET(req: NextRequest) {
+  try {
   const supabase = await createSupabaseServerClient();
 
   const project_id = req.nextUrl.searchParams.get("project_id");
@@ -245,4 +257,14 @@ export async function GET(req: NextRequest) {
     ...pdf,
     url_download: signedData?.signedUrl ?? pdf.url_download,
   } satisfies PdfResult);
+  } catch (err) {
+    console.error("[gerar-pdf] Erro não tratado no handler GET:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao obter o PDF. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
