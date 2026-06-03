@@ -3,20 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { CreditosConfig, CreditosResult, CreditosFormato } from "@/app/api/agentes/creditos/route";
+import type { CreditosConfig, CreditosResult } from "@/app/api/agentes/creditos/route";
+import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
+import { CAPA_TO_MIOLO, type CapaFormatoId } from "@/lib/format-mapping";
 import { supabase } from "@/lib/supabase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 type Step = "config" | "processing" | "preview";
 
-const FORMATOS: { id: CreditosFormato; label: string; dim: string }[] = [
-  { id: "bolso",     label: "Bolso",     dim: "11×18 cm"   },
-  { id: "a5",        label: "A5",        dim: "14,8×21 cm" },
-  { id: "padrao_br", label: "Padrão BR", dim: "16×23 cm"   },
-  { id: "quadrado",  label: "Quadrado",  dim: "20×20 cm"   },
-  { id: "a4",        label: "A4",        dim: "21×29,7 cm" },
-];
 
 const PROCESSING_MSGS = [
   "Verificando normas ABNT NBR 6029…",
@@ -115,7 +110,7 @@ export default function CreditosPage() {
   const [secFicha, setSecFicha] = useState(true);
 
   // ── Config form — Direitos ──────────────────────────────────────────────────
-  const [formato, setFormato] = useState<CreditosFormato>("padrao_br");
+  const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
   const [anoCopyright, setAnoCopyright] = useState(new Date().getFullYear().toString());
   const [titularDireitos, setTitularDireitos] = useState("");
   const [numeroEdicao, setNumeroEdicao] = useState("1ª edição");
@@ -170,9 +165,12 @@ export default function CreditosPage() {
       setManuscritoNome(ms?.nome ?? "Manuscrito");
       if (nomeCompleto && !titularDireitos) setTitularDireitos(nomeCompleto);
 
-      // Inherit format from Capa step (single source of truth)
+      // Inherit format from Capa step; convert CapaFormatoId ("16x23") → canonical slug ("padrao_br")
       const capaData = project.dados_capa as { formato?: string } | null;
-      if (capaData?.formato) setFormato(capaData.formato as CreditosFormato);
+      if (capaData?.formato) {
+        const canonico = CAPA_TO_MIOLO[capaData.formato as CapaFormatoId] ?? capaData.formato as FormatoLivro;
+        setFormato(canonico);
+      }
 
       const existing = project.dados_creditos as CreditosResult | null;
       if (existing) {
@@ -389,7 +387,7 @@ export default function CreditosPage() {
               <div>
                 <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Formato do livro</p>
                 <p className="text-sm font-medium text-brand-primary mt-0.5">
-                  {FORMATOS.find(f => f.id === formato)?.label} — {FORMATOS.find(f => f.id === formato)?.dim}
+                  {FORMATOS_LIVRO.find(f => f.value === formato)?.label} — {FORMATOS_LIVRO.find(f => f.value === formato)?.dimensoes}
                 </p>
               </div>
               <p className="text-xs text-zinc-400">Definido na etapa de Capa</p>
