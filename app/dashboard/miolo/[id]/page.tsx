@@ -32,6 +32,24 @@ const FORMATOS: Formato[] = [
   { id: "a4",        label: "A4",          dim: "21 × 29,7 cm", desc: "Acadêmico, técnico" },
 ];
 
+// Normalises any format string (CapaFormatoId legado ou slug canônico) para FormatoId canônico.
+const LEGADO_PARA_SLUG: Record<string, FormatoId> = {
+  "16x23": "padrao_br",
+  "14x21": "a5",
+  "11x18": "bolso",
+  "20x20": "quadrado",
+  "a4":    "a4",
+  "A4":    "a4",
+};
+
+function normalizarFormato(v: unknown): FormatoId {
+  if (typeof v === "string") {
+    if (FORMATOS.some(f => f.id === v)) return v as FormatoId;
+    if (LEGADO_PARA_SLUG[v]) return LEGADO_PARA_SLUG[v];
+  }
+  return "padrao_br";
+}
+
 // Map genre → template
 function suggestTemplate(genero: string | null): TemplateId {
   const g = (genero ?? "").toLowerCase();
@@ -151,9 +169,9 @@ export default function MioloPage() {
       // Pre-select template from genre
       setTemplate(suggestTemplate(g));
 
-      // Inherit format from Capa step (single source of truth)
+      // Inherit format from Capa step; convert CapaFormatoId ("16x23") → canonical slug ("padrao_br")
       const capaData = project.dados_capa as { formato?: string; lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
-      if (capaData?.formato) setFormato(capaData.formato as FormatoId);
+      if (capaData?.formato) setFormato(normalizarFormato(capaData.formato));
       setDadosCapa(capaData);
 
       // If already generated, show preview directly
