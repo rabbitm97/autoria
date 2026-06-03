@@ -79,6 +79,12 @@ const FORMATO_DIMS: Record<CreditosFormato, { w: string; h: string }> = {
   a4:        { w: "21cm",   h: "29.7cm" },
 };
 
+const FORMATOS_VALIDOS = Object.keys(FORMATO_DIMS) as CreditosFormato[];
+
+function isFormatoValido(f: unknown): f is CreditosFormato {
+  return typeof f === "string" && (FORMATOS_VALIDOS as string[]).includes(f);
+}
+
 // ─── Claude prompt — ficha catalográfica ─────────────────────────────────────
 
 const FALLBACK_PROMPT = `\
@@ -135,7 +141,8 @@ async function gerarFichaCatalografica(params: {
     const data = parseLLMJson<FichaCatalografica>(raw);
     if (!data?.numero_chamada) return null;
     return data;
-  } catch {
+  } catch (err) {
+    console.error("[creditos] gerarFichaCatalografica falhou:", err);
     return null;
   }
 }
@@ -315,6 +322,7 @@ body {
 // ─── POST — generate credits page ────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  try {
   let user: { id: string };
   let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
@@ -335,6 +343,37 @@ export async function POST(request: NextRequest) {
   if (!project_id || !config) {
     return NextResponse.json(
       { error: "Campos obrigatórios: project_id, config." },
+      { status: 400 }
+    );
+  }
+
+  if (!isFormatoValido(config.formato)) {
+    return NextResponse.json(
+      {
+        error: `Formato inválido. Valores aceitos: ${FORMATOS_VALIDOS.join(", ")}.`,
+        received: config.formato ?? null,
+      },
+      { status: 400 }
+    );
+  }
+
+  if (typeof config.ano_copyright !== "number" || !Number.isFinite(config.ano_copyright)) {
+    return NextResponse.json(
+      { error: "Campo obrigatório: ano_copyright (número)." },
+      { status: 400 }
+    );
+  }
+
+  if (!config.titular_direitos || typeof config.titular_direitos !== "string" || !config.titular_direitos.trim()) {
+    return NextResponse.json(
+      { error: "Campo obrigatório: titular_direitos (texto não vazio)." },
+      { status: 400 }
+    );
+  }
+
+  if (typeof config.incluir_ficha !== "boolean") {
+    return NextResponse.json(
+      { error: "Campo obrigatório: incluir_ficha (booleano)." },
       { status: 400 }
     );
   }
@@ -431,11 +470,22 @@ export async function POST(request: NextRequest) {
     .createSignedUrl(storagePath, 3600);
 
   return NextResponse.json({ ok: true, creditos: result, preview_url: signed?.signedUrl ?? null, html });
+  } catch (err) {
+    console.error("[creditos] Erro não tratado no handler POST:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao gerar a página de créditos. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // ─── GET — refresh signed URL ─────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
+  try {
   let user: { id: string };
   let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
@@ -472,4 +522,14 @@ export async function GET(request: NextRequest) {
   const html = htmlBlob ? await htmlBlob.text() : null;
 
   return NextResponse.json({ creditos, preview_url: signed?.signedUrl ?? null, html });
+  } catch (err) {
+    console.error("[creditos] Erro não tratado no handler GET:", err);
+    return NextResponse.json(
+      {
+        error: "Erro interno ao obter a página de créditos. A equipe foi notificada.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
