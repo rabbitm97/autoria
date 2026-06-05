@@ -501,27 +501,62 @@ export function fixTypography(text: string): string {
 function buildParagraphsForChapter(text: string, config: MioloConfig): string {
   console.log("[buildParagraphsForChapter] tamanho:", text.length);
 
+  // Normaliza quebras de linha (Windows/Mac → Unix)
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-  // Heurística: detecta se o texto usa \n simples como separador (>3x mais
-  // parágrafos do que com \n{2,}) ou \n duplo (formatação tradicional).
-  const parasDuplo = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-  const parasSimples = normalized.split("\n").map(p => p.trim()).filter(Boolean);
-  const finalParas =
-    parasSimples.length >= parasDuplo.length * 3 ? parasSimples
-    : parasDuplo.length >= 2 ? parasDuplo
-    : parasSimples;
+  // Parágrafos reais são blocos separados por linha em branco (\n\n+).
+  // Dentro de cada bloco, \n simples são hardwraps (quebras forçadas de TXT
+  // monoespaçado) e viram espaço — JUNTANDO as linhas num único parágrafo.
+  // Exceção: linhas iniciadas por travessão de diálogo (—, –, -) abrem
+  // parágrafo novo, porque diálogos são sempre parágrafos próprios.
 
-  return finalParas.map((para, idx) => {
+  const blocos = normalized.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+
+  // Fallback defensivo: se não há separação por linha em branco (texto colado
+  // como uma corrida só), trata o texto inteiro como um bloco. A lógica de
+  // diálogo abaixo ainda separa o que for diálogo.
+  const blocosEffective = blocos.length >= 2
+    ? blocos
+    : [normalized.trim()];
+
+  const paragraphs: string[] = [];
+
+  for (const bloco of blocosEffective) {
+    const linhas = bloco.split("\n").map(l => l.trim()).filter(Boolean);
+    if (linhas.length === 0) continue;
+
+    let buffer: string[] = [];
+    const flush = () => {
+      if (buffer.length > 0) {
+        paragraphs.push(buffer.join(" "));
+        buffer = [];
+      }
+    };
+
+    for (const linha of linhas) {
+      const isDialogue = /^[—–-]\s/.test(linha);
+      if (isDialogue) {
+        flush();
+        paragraphs.push(linha);   // diálogo é parágrafo próprio
+      } else {
+        buffer.push(linha);
+      }
+    }
+    flush();
+  }
+
+  // Renderiza cada parágrafo final como <p>, aplicando tipografia,
+  // classe `first-para` no primeiro parágrafo do capítulo, e
+  // classe `dialogo` para linhas iniciadas por travessão.
+  return paragraphs.map((para, idx) => {
     const p = fixTypography(para.trim());
     const isFirst = idx === 0;
-    const isDialogue = p.startsWith("—") || p.startsWith("- ");
+    const isDialogue = /^[—–-]\s/.test(p);
 
     if (isDialogue) return `<p class="dialogo">${escHtml(p)}</p>`;
 
     const classes: string[] = [];
     if (isFirst) classes.push("first-para");
-
     const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
     return `<p${classAttr}>${escHtml(p)}</p>`;
   }).join("\n");
