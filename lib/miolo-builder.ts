@@ -52,7 +52,7 @@ interface FormatoSpec {
 
 const FORMATO_SPECS: Record<FormatoId, FormatoSpec> = {
   bolso:     { w_mm: 110, h_mm: 180, top_mm: 20, outer_mm: 14, bottom_mm: 22, inner_mm: 18, label: "Bolso (11×18cm)",    wpp: 200 },
-  a5:        { w_mm: 148, h_mm: 210, top_mm: 22, outer_mm: 16, bottom_mm: 25, inner_mm: 20, label: "A5 (14,8×21cm)",      wpp: 230 },
+  a5:        { w_mm: 140, h_mm: 210, top_mm: 22, outer_mm: 16, bottom_mm: 25, inner_mm: 20, label: "14×21 cm",            wpp: 230 },
   padrao_br: { w_mm: 160, h_mm: 230, top_mm: 25, outer_mm: 18, bottom_mm: 28, inner_mm: 22, label: "Padrão BR (16×23cm)", wpp: 260 },
   quadrado:  { w_mm: 200, h_mm: 200, top_mm: 22, outer_mm: 18, bottom_mm: 25, inner_mm: 22, label: "Quadrado (20×20cm)",  wpp: 300 },
   a4:        { w_mm: 210, h_mm: 297, top_mm: 30, outer_mm: 20, bottom_mm: 30, inner_mm: 25, label: "A4 (21×29,7cm)",      wpp: 380 },
@@ -62,7 +62,7 @@ const FORMATO_SPECS: Record<FormatoId, FormatoSpec> = {
 // (gerar-epub, qa, gerar-audio). Internamente o builder usa FORMATO_SPECS em mm.
 export const FORMAT_DIMS: Record<FormatoId, { w: string; h: string; label: string; wpp: number }> = {
   bolso:     { w: "11cm",   h: "18cm",   label: FORMATO_SPECS.bolso.label,     wpp: FORMATO_SPECS.bolso.wpp },
-  a5:        { w: "14.8cm", h: "21cm",   label: FORMATO_SPECS.a5.label,        wpp: FORMATO_SPECS.a5.wpp },
+  a5:        { w: "14cm",   h: "21cm",   label: FORMATO_SPECS.a5.label,        wpp: FORMATO_SPECS.a5.wpp },
   padrao_br: { w: "16cm",   h: "23cm",   label: FORMATO_SPECS.padrao_br.label, wpp: FORMATO_SPECS.padrao_br.wpp },
   quadrado:  { w: "20cm",   h: "20cm",   label: FORMATO_SPECS.quadrado.label,  wpp: FORMATO_SPECS.quadrado.wpp },
   a4:        { w: "21cm",   h: "29.7cm", label: FORMATO_SPECS.a4.label,        wpp: FORMATO_SPECS.a4.wpp },
