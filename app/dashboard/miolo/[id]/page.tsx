@@ -8,10 +8,11 @@ import { FORMATOS_LIVRO } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 import { DocxDisclaimer } from "./docx-disclaimer";
 import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-react";
+import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-type Step = "config" | "processing" | "preview";
+type Step = "config" | "capitulos" | "processing" | "preview";
 
 interface Template { id: TemplateId; nome: string; desc: string; generos: string[]; icon: string }
 const TEMPLATES: Template[] = [
@@ -113,6 +114,18 @@ export default function MioloPage() {
   const [processingPct, setProcessingPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Capitulos state ─────────────────────────────────────────────────────────
+  interface CandidatoCapitulo {
+    id: string; titulo: string; pos: number;
+    origem: "marcador_explicito" | "marcador_divisor" | "secao_nomeada" | "markdown_heading" | "all_caps_isolado" | "numero_isolado";
+    score: number; sugerido: boolean;
+    preview_antes: string; preview_depois: string;
+    palavras_no_segmento: number; motivo_descartado?: string;
+  }
+  const [candidatos, setCandidatos] = useState<CandidatoCapitulo[]>([]);
+  const [loadingCandidatos, setLoadingCandidatos] = useState(false);
+  const [pendingConfig, setPendingConfig] = useState<MioloConfig | null>(null);
+
   // ── Upload state ────────────────────────────────────────────────────────────
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "processing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -176,18 +189,6 @@ export default function MioloPage() {
   // ── Process book ─────────────────────────────────────────────────────────────
 
   async function handleGenerate() {
-    setStep("processing");
-    setError(null);
-    setProcessingPct(0);
-
-    // Animate progress messages
-    let msgIdx = 0;
-    const interval = setInterval(() => {
-      msgIdx = Math.min(msgIdx + 1, PROCESSING_MSGS.length - 1);
-      setProcessingMsg(PROCESSING_MSGS[msgIdx]);
-      setProcessingPct(Math.min(95, Math.round((msgIdx / (PROCESSING_MSGS.length - 1)) * 95)));
-    }, 2500);
-
     const config: MioloConfig = {
       template, formato, corpo_pt: corpoPt,
       capitular, ornamentos, sumario,
@@ -195,12 +196,62 @@ export default function MioloPage() {
       epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
       marcas_corte: marcasCorte,
     };
+    setError(null);
+    setPendingConfig(config);
+    setStep("capitulos");
+    setLoadingCandidatos(true);
 
     try {
+      const res = await fetch("/api/agentes/miolo/propor-capitulos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      const data = await res.json() as { candidatos?: CandidatoCapitulo[]; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Erro ao detectar capítulos");
+        setStep("config");
+        return;
+      }
+      setCandidatos(data.candidatos ?? []);
+    } catch {
+      setError("Erro de rede ao detectar capítulos");
+      setStep("config");
+    } finally {
+      setLoadingCandidatos(false);
+    }
+  }
+
+  async function handleConfirmCapitulos(aprovados: { titulo: string; pos: number }[]) {
+    if (!pendingConfig) return;
+    setError(null);
+    setStep("processing");
+    setProcessingPct(0);
+
+    let msgIdx = 0;
+    const interval = setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, PROCESSING_MSGS.length - 1);
+      setProcessingMsg(PROCESSING_MSGS[msgIdx]);
+      setProcessingPct(Math.min(95, Math.round((msgIdx / (PROCESSING_MSGS.length - 1)) * 95)));
+    }, 2500);
+
+    try {
+      // 1. Salvar capítulos aprovados
+      const resApr = await fetch("/api/agentes/miolo/aprovar-capitulos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: aprovados }),
+      });
+      if (!resApr.ok) {
+        const d = await resApr.json() as { error?: string };
+        throw new Error(d.error ?? "Erro ao salvar capítulos aprovados");
+      }
+
+      // 2. Gerar o miolo com a lista aprovada (lida do banco pelo agente)
       const res = await fetch("/api/agentes/miolo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, config }),
+        body: JSON.stringify({ project_id: projectId, config: pendingConfig }),
       });
       const data = await res.json() as { ok?: boolean; miolo?: MioloResult; preview_url?: string; html?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar miolo.");
@@ -212,18 +263,10 @@ export default function MioloPage() {
       const lombadaMiolo = data.miolo!.lombada_mm;
       if (dadosCapa?.modo === "ia" && dadosCapa?.lombada_mm) {
         const diff = Math.abs(dadosCapa.lombada_mm - lombadaMiolo);
-        if (diff > 2) {
-          setLombadaAjusteDisponivel({ anterior: dadosCapa.lombada_mm, nova: lombadaMiolo, diff });
-        } else {
-          setLombadaAjusteDisponivel(null);
-        }
+        setLombadaAjusteDisponivel(diff > 2 ? { anterior: dadosCapa.lombada_mm, nova: lombadaMiolo, diff } : null);
       } else if (dadosCapa?.modo === "upload" && dadosCapa?.lombada_mm_na_validacao) {
         const diff = Math.abs(dadosCapa.lombada_mm_na_validacao - lombadaMiolo);
-        if (diff > 2) {
-          setLombadaUploadAvisoAtivo({ anterior: dadosCapa.lombada_mm_na_validacao, nova: lombadaMiolo, diff });
-        } else {
-          setLombadaUploadAvisoAtivo(null);
-        }
+        setLombadaUploadAvisoAtivo(diff > 2 ? { anterior: dadosCapa.lombada_mm_na_validacao, nova: lombadaMiolo, diff } : null);
       }
 
       if (data.html) {
@@ -236,9 +279,8 @@ export default function MioloPage() {
       setCurrentCapIdx(0);
       setTimeout(() => setStep("preview"), 400);
     } catch (e) {
-      clearInterval(interval);
       setError(e instanceof Error ? e.message : "Erro desconhecido.");
-      setStep("config");
+      setStep("capitulos");
     } finally {
       clearInterval(interval);
     }
@@ -668,6 +710,26 @@ export default function MioloPage() {
           </p>
         </main>
 
+      ) : step === "capitulos" ? (
+        /* ── CAPITULOS ── */
+        <main className="mx-auto max-w-4xl px-6 py-8">
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+          )}
+          {loadingCandidatos ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+              <p className="mt-4 text-sm text-zinc-500">Detectando capítulos no manuscrito...</p>
+            </div>
+          ) : (
+            <AprovacaoCapitulos
+              candidatos={candidatos}
+              onConfirmar={handleConfirmCapitulos}
+              onVoltar={() => setStep("config")}
+            />
+          )}
+        </main>
+
       ) : step === "processing" ? (
         /* ── PROCESSING ── */
         <main className="max-w-lg mx-auto px-4 py-24 text-center">
@@ -779,6 +841,24 @@ export default function MioloPage() {
                   className="w-full text-xs border border-zinc-200 rounded-lg px-3 py-2 text-zinc-500 hover:border-zinc-300 transition-colors"
                 >
                   ↺ Alterar configurações
+                </button>
+                <button
+                  onClick={() => {
+                    setStep("capitulos");
+                    setLoadingCandidatos(true);
+                    fetch("/api/agentes/miolo/propor-capitulos", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ project_id: projectId }),
+                    })
+                      .then(r => r.json())
+                      .then((d: { candidatos?: CandidatoCapitulo[] }) => setCandidatos(d.candidatos ?? []))
+                      .catch(() => setError("Erro de rede"))
+                      .finally(() => setLoadingCandidatos(false));
+                  }}
+                  className="w-full text-xs border border-zinc-200 rounded-lg px-3 py-2 text-zinc-500 hover:border-zinc-300 transition-colors"
+                >
+                  ✎ Editar capítulos
                 </button>
                 {uploadError && <p className="text-red-500 text-[10px]">{uploadError}</p>}
               </div>

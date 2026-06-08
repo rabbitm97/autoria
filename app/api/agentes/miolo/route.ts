@@ -1,10 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
-import { getAgentPrompt } from "@/lib/agent-prompts";
-import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml } from "@/lib/miolo-builder";
@@ -24,167 +21,6 @@ export interface MioloResult {
   lombada_mm: number;          // paginas_reais × 0.07 mm (80gsm paper)
   palavras: number;
   gerado_em: string;
-}
-
-// ─── Chapter detection (regex + Claude-assisted) ─────────────────────────────
-
-const FALLBACK_STRUCTURE_PROMPT = `\
-Você analisa manuscritos em português brasileiro para detectar capítulos.
-
-IMPORTANTE: Respeite a estrutura já definida pelo autor. Se o autor já separou capítulos \
-com títulos explícitos, use esses títulos EXATAMENTE como aparecem no texto — não invente \
-nem altere nomes de capítulos.
-
-Retorne EXCLUSIVAMENTE um array JSON de capítulos encontrados.
-Se não houver capítulos claros, retorne [].
-
-Schema:
-[{ "titulo": "string — título EXATO como aparece no texto", "pos": number — posição de início em chars }]
-
-Padrões a detectar (linhas isoladas por linhas em branco):
-- "Capítulo 1", "Capítulo I", "CAPÍTULO 1", "Cap. 1", "Capítulo 1: Título"
-- "Parte Um", "Parte 1", "PARTE I"
-- Números isolados: "1.", "I.", "2.", "III"
-- Títulos ALL CAPS isolados (< 80 chars, linha própria)
-- Nomes próprios de capítulos isolados (ex: "O Despertar", "A Chegada") se seguirem padrão consistente
-- Prefácio, Prólogo, Epílogo, Introdução, Apresentação, Conclusão quando isolados`;
-
-function isChapterHeading(s: string): boolean {
-  if (!s || s.includes('\n') || s.length > 100) return false;
-  // Explicit chapter/part keywords
-  if (/^(cap[íi]tulo|cap\.|parte)\s+/i.test(s)) return true;
-  // Roman numerals alone (I, II, III, IV, V ... XX)
-  if (/^[IVXLCDM]{1,6}\.?\s*$/.test(s)) return true;
-  // Simple number alone (1. / 2 / 3.)
-  if (/^\d{1,2}\.?\s*$/.test(s)) return true;
-  // Common section names
-  if (/^(prefácio|prólogo|epílogo|conclusão|introdução|apresentação|posfácio|agradecimentos|dedicatória|nota do autor|sobre o autor)$/i.test(s)) return true;
-  // ALL CAPS short title (1-8 words, max 70 chars, must contain at least one letter)
-  if (
-    s.length <= 70 &&
-    s.trim() === s.trim().toUpperCase() &&
-    /[A-ZÁÀÂÃÉÈÊÍÏÓÔÕÚÜÇ]/.test(s) &&
-    s.trim().split(/\s+/).length <= 8
-  ) return true;
-  return false;
-}
-
-function detectChaptersRegex(texto: string): { titulo: string; pos: number }[] {
-  const results: { titulo: string; pos: number }[] = [];
-  const normalized = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = normalized.split('\n');
-  let charPos = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const trimmed = raw.trim();
-    const prevBlank = i === 0 || lines[i - 1].trim() === '';
-
-    if (!trimmed || !isChapterHeading(trimmed) || trimmed.length >= 80) {
-      charPos += raw.length + 1;
-      continue;
-    }
-
-    // Explicit chapter/part: don't require blank line after
-    // (e.g. "CAPITULO I\nObito do autor\n..." — no blank between heading and subtitle)
-    const isExplicitChapter = /^(cap[íi]tulo|cap\.|parte)\s+/i.test(trimmed);
-    if (isExplicitChapter && prevBlank) {
-      const pos = normalized.indexOf(trimmed, Math.max(0, charPos - 5));
-      if (pos >= 0) results.push({ titulo: trimmed, pos });
-    } else if (prevBlank) {
-      const nextBlank = i === lines.length - 1 || lines[i + 1].trim() === '';
-      if (nextBlank) {
-        const pos = normalized.indexOf(trimmed, Math.max(0, charPos - 5));
-        if (pos >= 0) results.push({ titulo: trimmed, pos });
-      }
-    }
-
-    charPos += raw.length + 1;
-  }
-  return results;
-}
-
-type Chapter = { titulo: string; pos: number };
-
-function filterByContentDensity(texto: string, chapters: Chapter[]): Chapter[] {
-  if (chapters.length < 2) return chapters;
-  return chapters.filter((cap, i) => {
-    const end = i < chapters.length - 1 ? chapters[i + 1].pos : texto.length;
-    const segment = texto.slice(cap.pos + cap.titulo.length, end).trim();
-    const wordCount = segment.split(/\s+/).filter(Boolean).length;
-    return wordCount >= 100;
-  });
-}
-
-function filterByDominantPattern(chapters: Chapter[]): Chapter[] {
-  const capituloPattern = /^(cap[íi]tulo|cap\.|parte)\s+/i;
-  const numericPattern = /^[IVXLCDM]+\.?\s*$|^\d+\.?\s*$/;
-  const explicit = chapters.filter(c => capituloPattern.test(c.titulo));
-  const numeric = chapters.filter(c => numericPattern.test(c.titulo));
-  if (explicit.length >= 5) return explicit;
-  if (numeric.length >= 5) return numeric;
-  return chapters;
-}
-
-function filterFrontMatter(chapters: Chapter[]): Chapter[] {
-  const firstExplicit = chapters.findIndex(c =>
-    /^(cap[íi]tulo|cap\.)\s+(1|i|um|primeiro)/i.test(c.titulo.trim())
-  );
-  if (firstExplicit > 0) return chapters.slice(firstExplicit);
-  return chapters;
-}
-
-function applyChapterFilters(texto: string, chapters: Chapter[]): Chapter[] {
-  let result = filterByContentDensity(texto, chapters);
-  result = filterFrontMatter(result);
-  result = filterByDominantPattern(result);
-  return result;
-}
-
-async function detectChaptersWithClaude(
-  texto: string,
-  context?: { userId?: string; projectId?: string }
-): Promise<{ titulo: string; pos: number }[]> {
-  // First: instant regex scan of full text — respects pre-defined author chapters
-  const regexChapters = applyChapterFilters(texto, detectChaptersRegex(texto));
-  if (regexChapters.length >= 2) {
-    console.log("[miolo] Capítulos após filtros:", regexChapters.length);
-    return regexChapters;
-  }
-
-  // Fallback: Claude on full text (up to 60k chars)
-  const sample = texto.length > 60_000
-    ? texto.slice(0, 60_000) + "\n\n[...texto truncado após 60.000 caracteres]"
-    : texto;
-
-  const STRUCTURE_PROMPT = await getAgentPrompt("miolo-estrutura", FALLBACK_STRUCTURE_PROMPT);
-
-  try {
-    const msg = await traceClaudeCall({
-      agentName: "miolo-estrutura",
-      projectId: context?.projectId,
-      userId: context?.userId,
-      metadata: { model: "claude-sonnet-4-6" },
-      fn: () => anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: STRUCTURE_PROMPT,
-        messages: [{ role: "user", content: `Detecte os capítulos neste manuscrito. Respeite a estrutura já definida pelo autor — use os títulos EXATAMENTE como aparecem no texto:\n\n${sample}` }],
-      }),
-    });
-    const raw = parseLLMJson<{ titulo: string; pos: number }[]>(extractText(msg.content));
-    if (!Array.isArray(raw)) return [];
-
-    // Re-anchor positions to actual text (Claude positions might be approximate)
-    const anchored = raw.map(c => {
-      const realPos = texto.indexOf(c.titulo);
-      return { titulo: c.titulo, pos: realPos >= 0 ? realPos : c.pos };
-    }).filter(c => c.pos >= 0);
-
-    return applyChapterFilters(texto, anchored);
-  } catch {
-    return [];
-  }
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -225,7 +61,7 @@ export async function POST(request: NextRequest) {
   // Load project data including credits for injection
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_detectados, texto_hash)")
+    .select("id, manuscript_id, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -238,8 +74,7 @@ export async function POST(request: NextRequest) {
     titulo?: string; subtitulo?: string; texto?: string; texto_revisado?: string;
     autor_primeiro_nome?: string; autor_sobrenome?: string;
     genero_principal?: string;
-    capitulos_detectados?: { titulo: string; pos: number }[] | null;
-    texto_hash?: string | null;
+    capitulos_aprovados?: { titulo: string; pos: number }[] | null;
   } | null;
 
   const titulo = ms?.titulo ?? "Sem título";
@@ -255,51 +90,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Detect chapters — MD5 cache to skip redundant Claude calls on re-generation
-  const textoHash = createHash("md5").update(texto).digest("hex");
-  let capitulos: { titulo: string; pos: number }[];
-  const persistCapitulos = (caps: { titulo: string; pos: number }[]) => {
-    void (async () => {
-      try {
-        await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-          .from("manuscripts")
-          .update({ capitulos_detectados: caps, texto_hash: textoHash })
-          .eq("id", project.manuscript_id as string);
-      } catch (e) {
-        console.error("[miolo] Falha ao persistir cache de capítulos:", {
-          project_id: project.manuscript_id,
-          texto_hash: textoHash,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    })();
-  };
+  // Read approved chapters from the manuscript. The author approves these via
+  // /api/agentes/miolo/propor-capitulos and /aprovar-capitulos before generating
+  // the miolo. No fallback heuristic — explicit approval is required.
+  const capitulosAprovados = ms?.capitulos_aprovados as
+    | { titulo: string; pos: number }[]
+    | null
+    | undefined;
 
-  if (ms?.texto_hash === textoHash && Array.isArray(ms?.capitulos_detectados)) {
-    const cached = ms.capitulos_detectados as { titulo: string; pos: number }[];
-    const tamTexto = texto.length;
-    const primeiroSeg = cached.length > 1 ? cached[1].pos - cached[0].pos : tamTexto - (cached[0]?.pos ?? 0);
-    const cacheRuim = cached.length < 3 || (primeiroSeg / tamTexto) > 0.7;
-
-    if (cacheRuim) {
-      console.log("[miolo] Cache INVÁLIDO — re-detectando:", { capitulos: cached.length, project_id });
-      capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
-      persistCapitulos(capitulos);
-    } else {
-      capitulos = cached;
-      console.log("[miolo] Cache HIT — usando capítulos persistidos:", { project_id, capitulos: cached.length });
-    }
-  } else {
-    capitulos = await detectChaptersWithClaude(texto, { userId: user.id, projectId: project_id });
-    console.log("[miolo] Cache MISS — detectando capítulos via Claude:", {
-      project_id,
-      texto_hash: textoHash,
-      capitulos_detectados: capitulos.length,
-    });
-    persistCapitulos(capitulos);
+  if (!Array.isArray(capitulosAprovados) || capitulosAprovados.length === 0) {
+    return NextResponse.json(
+      {
+        error: "Aprove os capítulos do livro antes de gerar o miolo.",
+        action: "approve_chapters",
+      },
+      { status: 422 }
+    );
   }
 
-  console.log("[miolo] DECISÃO FINAL — usando capítulos:", {
+  // Sort by position (defensive — UI should already send sorted, but enforce here)
+  const capitulos = [...capitulosAprovados].sort((a, b) => a.pos - b.pos);
+
+  console.log("[miolo] Capítulos aprovados:", {
+    project_id,
     total: capitulos.length,
     primeiros_5: capitulos.slice(0, 5).map(c => c.titulo),
   });
