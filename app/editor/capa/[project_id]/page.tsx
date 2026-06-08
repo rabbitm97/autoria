@@ -30,7 +30,7 @@ export default async function EditorCapaPage({
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome)",
+      "formato, dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome)",
     )
     .eq("id", project_id)
     .single();
@@ -51,9 +51,12 @@ export default async function EditorCapaPage({
     autor_sobrenome?: string;
   } | null;
 
-  const rawFormat = capa?.formato as string | undefined;
+  // Fonte única: projects.formato. Default temporário "padrao_br" só para o
+  // caso (raro) de o autor abrir o editor sem ter escolhido formato — o fluxo
+  // certo é forçar escolha em Elementos Editoriais antes de gerar a capa.
+  const rawFormat = project.formato as string | undefined;
   const format: FormatKey =
-    rawFormat && rawFormat in FORMATS ? (rawFormat as FormatKey) : "16x23";
+    rawFormat && rawFormat in FORMATS ? (rawFormat as FormatKey) : "padrao_br";
 
   const pages = miolo?.paginas_reais ?? 200;
   const title =

@@ -13,6 +13,7 @@ import { ColorPickerPopover } from "./color-picker-popover";
 import { SmartFieldModal } from "./smart-field-modal";
 import { nanoid } from "nanoid";
 import type { ProjectData } from "../types";
+import { getFormatoDef } from "@/lib/formatos";
 import type { Region, SmartField } from "../lib/elements";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
@@ -65,14 +66,6 @@ function SectionFormato() {
   const fmtInfo = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
 
-  const fmtLabel: Record<string, string> = {
-    "16x23": "16×23 cm",
-    "14x21": "14×21 cm",
-    "11x18": "11×18 cm",
-    "20x20": "20×20 cm",
-    "a4": "A4 (21×29,7 cm)",
-  };
-
   return (
     <Section title="Formato e estrutura">
       <div className="space-y-3">
@@ -80,15 +73,17 @@ function SectionFormato() {
           <p className="mb-1 text-[10px] text-zinc-400">Formato</p>
           <div
             className="flex items-center rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2"
-            title="Definido na diagramação"
+            title="Definido nos Elementos Editoriais"
           >
-            <span className="flex-1 text-xs text-zinc-500">{fmtLabel[format] ?? format}</span>
+            <span className="flex-1 text-xs text-zinc-500">
+              {getFormatoDef(format).dimensoes}
+            </span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9a9a9a" strokeWidth="2">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 16v-4M12 8h.01" />
             </svg>
           </div>
-          <p className="mt-1 text-[10px] text-zinc-300">Definido na diagramação</p>
+          <p className="mt-1 text-[10px] text-zinc-300">Definido nos Elementos Editoriais</p>
         </div>
         <div>
           <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>

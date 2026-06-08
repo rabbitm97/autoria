@@ -1,7 +1,7 @@
-import type { FORMATS } from "./lib/dimensions";
+import type { FormatoLivro } from "@/lib/formatos";
 import type { EditorData } from "./lib/editor-serializer";
 
-export type FormatKey = keyof typeof FORMATS;
+export type FormatKey = FormatoLivro;
 
 export interface ProjectData {
   projectId: string;

@@ -52,12 +52,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   // Check lock status before writing
   if (process.env.NODE_ENV !== "development") {
-    const { data: proj } = await supabase
+    const { data: proj, error: projError } = await supabase
       .from("projects")
       .select("formato_locked_at")
       .eq("id", id)
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
+
+    if (projError) {
+      console.error("[projects/formato] erro SELECT:", projError);
+      return NextResponse.json(
+        { error: "Erro ao buscar projeto no banco", detail: projError.message },
+        { status: 500 }
+      );
+    }
 
     if (!proj) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
     if (proj.formato_locked_at != null) {

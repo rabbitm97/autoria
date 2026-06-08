@@ -91,7 +91,7 @@ export async function POST(
   // Read format and page count from DB; fall back to body/defaults.
   const { data: project } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo")
+    .select("formato, dados_capa, dados_miolo")
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -99,8 +99,8 @@ export async function POST(
   const capa = (project?.dados_capa ?? null) as Record<string, unknown> | null;
   const miolo = (project?.dados_miolo ?? null) as { paginas_reais?: number } | null;
 
-  const rawFormat = (capa?.formato ?? body.format ?? "") as string;
-  const format = rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "16x23";
+  const rawFormat = (project?.formato ?? body.format ?? "") as string;
+  const format = rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "padrao_br";
   const pages = miolo?.paginas_reais ?? body.pages ?? 200;
   const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
   const projectName = extractTitle(editorData.elements);

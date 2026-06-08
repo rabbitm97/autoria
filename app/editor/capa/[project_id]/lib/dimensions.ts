@@ -2,13 +2,13 @@
 export const DPI = 300;
 export const MM_TO_PX = DPI / 25.4;
 
-// Format IDs match existing dashboard constants (lowercase "a4")
+// Format IDs use canonical slugs from lib/formatos.ts
 export const FORMATS = {
-  "16x23": { width_mm: 160, height_mm: 230 },
-  "14x21": { width_mm: 140, height_mm: 210 },
-  "11x18": { width_mm: 110, height_mm: 180 },
-  "20x20": { width_mm: 200, height_mm: 200 },
-  "a4":    { width_mm: 210, height_mm: 297 },
+  "padrao_br": { width_mm: 160, height_mm: 230 },
+  "compacto":  { width_mm: 140, height_mm: 210 },
+  "bolso":     { width_mm: 110, height_mm: 180 },
+  "quadrado":  { width_mm: 200, height_mm: 200 },
+  "a4":        { width_mm: 210, height_mm: 297 },
 } as const;
 
 export const SANGRIA_MM = 3;

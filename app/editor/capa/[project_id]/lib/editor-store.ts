@@ -103,7 +103,7 @@ interface EditorState {
 }
 
 const DEFAULT_STATE = {
-  format: "16x23" as FormatKey,
+  format: "padrao_br" as FormatKey,
   pages: 200,
   comOrelhas: false,
   zoom: 0.5,
