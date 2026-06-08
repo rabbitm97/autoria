@@ -125,6 +125,8 @@ export default function MioloPage() {
   const [candidatos, setCandidatos] = useState<CandidatoCapitulo[]>([]);
   const [loadingCandidatos, setLoadingCandidatos] = useState(false);
   const [pendingConfig, setPendingConfig] = useState<MioloConfig | null>(null);
+  interface StatusAprovacao { aprovado: boolean; total: number; hash_valido: boolean; }
+  const [statusAprovacao, setStatusAprovacao] = useState<StatusAprovacao | null>(null);
 
   // ── Upload state ────────────────────────────────────────────────────────────
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "processing">("idle");
@@ -158,8 +160,19 @@ export default function MioloPage() {
 
       const capaData = project.dados_capa as { lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
       setDadosCapa(capaData);
-      const fmtRes = await fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null);
+      const [fmtRes, aprRes] = await Promise.all([
+        fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null),
+        fetch(`/api/agentes/miolo/aprovar-capitulos?project_id=${projectId}`)
+          .then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
       if (fmtRes?.formato) setFormato(fmtRes.formato as FormatoLivro);
+      if (aprRes) {
+        setStatusAprovacao({
+          aprovado: !!aprRes.aprovado,
+          total: aprRes.total ?? 0,
+          hash_valido: !!aprRes.hash_valido,
+        });
+      }
 
       // If already generated, show preview directly
       const existingMiolo = project.dados_miolo as MioloResult | null;
@@ -188,19 +201,9 @@ export default function MioloPage() {
 
   // ── Process book ─────────────────────────────────────────────────────────────
 
-  async function handleGenerate() {
-    const config: MioloConfig = {
-      template, formato, corpo_pt: corpoPt,
-      capitular, ornamentos, sumario,
-      dedicatoria, epigrafe_texto: epigrafeTexto,
-      epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
-      marcas_corte: marcasCorte,
-    };
-    setError(null);
-    setPendingConfig(config);
+  async function abrirTelaAprovacao() {
     setStep("capitulos");
     setLoadingCandidatos(true);
-
     try {
       const res = await fetch("/api/agentes/miolo/propor-capitulos", {
         method: "POST",
@@ -222,8 +225,7 @@ export default function MioloPage() {
     }
   }
 
-  async function handleConfirmCapitulos(aprovados: { titulo: string; pos: number }[]) {
-    if (!pendingConfig) return;
+  async function executarGeracaoMiolo(cfg: MioloConfig) {
     setError(null);
     setStep("processing");
     setProcessingPct(0);
@@ -236,25 +238,32 @@ export default function MioloPage() {
     }, 2500);
 
     try {
-      // 1. Salvar capítulos aprovados
-      const resApr = await fetch("/api/agentes/miolo/aprovar-capitulos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: aprovados }),
-      });
-      if (!resApr.ok) {
-        const d = await resApr.json() as { error?: string };
-        throw new Error(d.error ?? "Erro ao salvar capítulos aprovados");
-      }
-
-      // 2. Gerar o miolo com a lista aprovada (lida do banco pelo agente)
       const res = await fetch("/api/agentes/miolo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, config: pendingConfig }),
+        body: JSON.stringify({ project_id: projectId, config: cfg }),
       });
-      const data = await res.json() as { ok?: boolean; miolo?: MioloResult; preview_url?: string; html?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar miolo.");
+      const data = await res.json() as {
+        ok?: boolean; miolo?: MioloResult; preview_url?: string;
+        html?: string; error?: string; action?: string; reason?: string;
+      };
+
+      // 422 com action=approve_chapters → forçar re-aprovação
+      if (!res.ok && data.action === "approve_chapters") {
+        const motivo = data.reason === "text_changed"
+          ? "O texto do manuscrito mudou. Confirme os capítulos novamente."
+          : "Aprove os capítulos antes de gerar o miolo.";
+        setError(motivo);
+        setStatusAprovacao({ aprovado: false, total: 0, hash_valido: false });
+        await abrirTelaAprovacao();
+        return;
+      }
+
+      if (!res.ok) {
+        setError(data.error ?? "Erro ao gerar miolo.");
+        setStep("config");
+        return;
+      }
 
       setProcessingPct(100);
       setMiolo(data.miolo!);
@@ -280,9 +289,56 @@ export default function MioloPage() {
       setTimeout(() => setStep("preview"), 400);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido.");
-      setStep("capitulos");
+      setStep("config");
     } finally {
       clearInterval(interval);
+    }
+  }
+
+  async function handleGenerate() {
+    const config: MioloConfig = {
+      template, formato, corpo_pt: corpoPt,
+      capitular, ornamentos, sumario,
+      dedicatoria, epigrafe_texto: epigrafeTexto,
+      epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
+      marcas_corte: marcasCorte,
+    };
+    setError(null);
+    setPendingConfig(config);
+
+    // Atalho: aprovação válida (hash bate) → pula tela de aprovação
+    if (statusAprovacao?.aprovado && statusAprovacao?.hash_valido) {
+      return executarGeracaoMiolo(config);
+    }
+
+    // Caminho longo: mostra tela de aprovação primeiro
+    await abrirTelaAprovacao();
+  }
+
+  async function handleConfirmCapitulos(aprovados: { titulo: string; pos: number }[]) {
+    if (!pendingConfig) return;
+    setError(null);
+
+    try {
+      // 1. Salvar capítulos aprovados (com hash)
+      const resApr = await fetch("/api/agentes/miolo/aprovar-capitulos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: aprovados }),
+      });
+      if (!resApr.ok) {
+        const d = await resApr.json() as { error?: string };
+        setError(d.error ?? "Erro ao salvar capítulos aprovados");
+        return;
+      }
+
+      // 2. Atualizar status local (aprovação fresca, hash válido)
+      setStatusAprovacao({ aprovado: true, total: aprovados.length, hash_valido: true });
+
+      // 3. Gerar o miolo
+      await executarGeracaoMiolo(pendingConfig);
+    } catch {
+      setError("Erro de rede ao salvar aprovação");
     }
   }
 
@@ -699,6 +755,23 @@ export default function MioloPage() {
             <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm mb-5">{error}</div>
           )}
 
+          {statusAprovacao?.aprovado && statusAprovacao?.hash_valido && (
+            <div className="flex items-start gap-2.5 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3 text-sm">
+              <span className="text-green-600 mt-0.5">✓</span>
+              <p className="text-green-800">
+                <strong>{statusAprovacao.total} capítulos aprovados.</strong> A diagramação usará essa estrutura sem pedir confirmação novamente.
+              </p>
+            </div>
+          )}
+          {statusAprovacao?.aprovado && !statusAprovacao?.hash_valido && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3 text-sm">
+              <span className="text-amber-600 mt-0.5">⚠</span>
+              <p className="text-amber-800">
+                O texto mudou desde a última aprovação. Você precisará confirmar os capítulos novamente antes de gerar.
+              </p>
+            </div>
+          )}
+
           <button
             onClick={handleGenerate}
             className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
@@ -844,17 +917,14 @@ export default function MioloPage() {
                 </button>
                 <button
                   onClick={() => {
-                    setStep("capitulos");
-                    setLoadingCandidatos(true);
-                    fetch("/api/agentes/miolo/propor-capitulos", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ project_id: projectId }),
-                    })
-                      .then(r => r.json())
-                      .then((d: { candidatos?: CandidatoCapitulo[] }) => setCandidatos(d.candidatos ?? []))
-                      .catch(() => setError("Erro de rede"))
-                      .finally(() => setLoadingCandidatos(false));
+                    setPendingConfig({
+                      template, formato, corpo_pt: corpoPt,
+                      capitular, ornamentos, sumario,
+                      dedicatoria, epigrafe_texto: epigrafeTexto,
+                      epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
+                      marcas_corte: marcasCorte,
+                    });
+                    abrirTelaAprovacao();
                   }}
                   className="w-full text-xs border border-zinc-200 rounded-lg px-3 py-2 text-zinc-500 hover:border-zinc-300 transition-colors"
                 >

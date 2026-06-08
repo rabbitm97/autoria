@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "crypto";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
   // Load project data including credits for injection
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados)")
+    .select("id, manuscript_id, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados, capitulos_aprovados_texto_hash)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
     autor_primeiro_nome?: string; autor_sobrenome?: string;
     genero_principal?: string;
     capitulos_aprovados?: { titulo: string; pos: number }[] | null;
+    capitulos_aprovados_texto_hash?: string | null;
   } | null;
 
   const titulo = ms?.titulo ?? "Sem título";
@@ -98,11 +100,32 @@ export async function POST(request: NextRequest) {
     | null
     | undefined;
 
+  const hashSalvo = ms?.capitulos_aprovados_texto_hash as string | null | undefined;
+
   if (!Array.isArray(capitulosAprovados) || capitulosAprovados.length === 0) {
     return NextResponse.json(
       {
         error: "Aprove os capítulos do livro antes de gerar o miolo.",
         action: "approve_chapters",
+        reason: "no_approval",
+      },
+      { status: 422 }
+    );
+  }
+
+  // Validar que o texto não mudou desde a aprovação
+  const hashAtual = createHash("md5").update(texto).digest("hex");
+  if (hashSalvo !== hashAtual) {
+    console.log("[miolo] Hash do texto mudou desde a aprovação — forçando re-aprovação", {
+      project_id,
+      hashSalvo: hashSalvo?.slice(0, 8),
+      hashAtual: hashAtual.slice(0, 8),
+    });
+    return NextResponse.json(
+      {
+        error: "O texto do manuscrito mudou desde a última aprovação de capítulos. Reaprove os capítulos.",
+        action: "approve_chapters",
+        reason: "text_changed",
       },
       { status: 422 }
     );
