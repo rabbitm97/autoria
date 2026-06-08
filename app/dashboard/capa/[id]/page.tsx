@@ -8,20 +8,12 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult, CapaValidacao } from "@/app/api/agentes/upload-capa/route";
+import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef } from "@/lib/formatos";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 type Modo = "escolha" | "upload" | "ia";
 
-const FORMATOS = [
-  { id: "16x23",   label: "16×23 cm",    sub: "Padrão editorial", w: 160, h: 230 },
-  { id: "14x21",   label: "14×21 cm",    sub: "Formato compacto", w: 148, h: 210 },
-  { id: "11x18",   label: "11×18 cm",    sub: "Bolso",            w: 110, h: 180 },
-  { id: "20x20",   label: "20×20 cm",    sub: "Quadrado",         w: 200, h: 200 },
-  { id: "a4",      label: "A4",          sub: "21×29,7 cm",       w: 210, h: 297 },
-] as const;
-
-type FormatoId = typeof FORMATOS[number]["id"];
 
 const ESTILOS: { id: EstiloCapa; label: string; emoji: string }[] = [
   { id: "minimalista",   label: "Minimalista",   emoji: "◻️" },
@@ -127,14 +119,14 @@ function ModoUpload({
   onVoltar,
 }: {
   projectId: string;
-  formatoInicial: FormatoId;
+  formatoInicial: FormatoLivro;
   lombadaReal: number | null;
   estimativaPaginas: number | null;
   fonteEstimativa: "miolo_real" | "estimado" | null;
   onSalvo: (result: CapaUploadResult) => void;
   onVoltar: () => void;
 }) {
-  const formato = formatoInicial; // inherited from page-level selector
+  const formato = formatoInicial;
   const [paginas, setPaginas] = useState(estimativaPaginas ?? 200);
 
   useEffect(() => {
@@ -152,11 +144,11 @@ function ModoUpload({
 
   // Use real lombada from diagramação if available, otherwise estimate
   const lombada = lombadaReal ?? calcLombadaMm(paginas);
-  const fmtInfo = FORMATOS.find(f => f.id === formato)!;
-  const sangria = 3;
+  const fmtSpecs = getFormatoDef(formato).specs;
+  const sangria = fmtSpecs.bleed_mm;
   const orelha = usarOrelhas ? 80 : 0;
-  const espWMm = sangria + orelha + fmtInfo.w + lombada + fmtInfo.w + orelha + sangria;
-  const espHMm = sangria + fmtInfo.h + sangria;
+  const espWMm = sangria + orelha + fmtSpecs.width_mm + lombada + fmtSpecs.width_mm + orelha + sangria;
+  const espHMm = sangria + fmtSpecs.height_mm + sangria;
   const mm2px = dpi / 25.4;
   const espWPx = Math.round(espWMm * mm2px);
   const espHPx = Math.round(espHMm * mm2px);
@@ -214,7 +206,6 @@ function ModoUpload({
           largura_px: dims.w,
           altura_px: dims.h,
           dpi,
-          formato,
           paginas,
           usar_orelhas: usarOrelhas,
         }),
@@ -241,7 +232,7 @@ function ModoUpload({
         {/* Format — inherited from page-level selector */}
         <div className="flex items-center gap-3 py-2 px-3 bg-zinc-50 rounded-xl">
           <p className="text-xs text-zinc-500">Formato:</p>
-          <p className="text-sm font-medium text-brand-primary">{fmtInfo?.label} ({fmtInfo?.sub})</p>
+          <p className="text-sm font-medium text-brand-primary">{getFormatoDef(formato).label} ({getFormatoDef(formato).dimensoes})</p>
           <p className="text-xs text-zinc-400 ml-auto">Alterável na tela anterior</p>
         </div>
         <div className="hidden">
@@ -294,7 +285,7 @@ function ModoUpload({
           <p className="font-medium mb-1">Dimensões esperadas para sua capa:</p>
           <p>{espWMm}mm × {espHMm}mm ({espWPx}px × {espHPx}px @ {dpi}dpi)</p>
           <p className="text-zinc-400 mt-1">
-            = {sangria}mm sangria + {usarOrelhas ? `${orelha}mm orelha + ` : ""}{fmtInfo.w}mm frente + {lombada}mm lombada{lombadaReal !== null ? " ✓ real" : " (estimativa)"} + {fmtInfo.w}mm verso{usarOrelhas ? ` + ${orelha}mm orelha` : ""} + {sangria}mm sangria
+            = {sangria}mm sangria + {usarOrelhas ? `${orelha}mm orelha + ` : ""}{fmtSpecs.width_mm}mm frente + {lombada}mm lombada{lombadaReal !== null ? " ✓ real" : " (estimativa)"} + {fmtSpecs.width_mm}mm verso{usarOrelhas ? ` + ${orelha}mm orelha` : ""} + {sangria}mm sangria
           </p>
         </div>
       </div>
@@ -685,7 +676,7 @@ export default function CapaPage() {
   const [genero, setGenero] = useState("literatura");
 
   // Single source of truth for book format — selected once here, propagates to Créditos + Diagramação
-  const [formatoGlobal, setFormatoGlobal] = useState<FormatoId>("16x23");
+  const [formatoGlobal, setFormatoGlobal] = useState<FormatoLivro>("padrao_br");
   // Real lombada calculated after Diagramação (paginas_reais × 0.07 mm)
   const [lombadaReal, setLombadaReal] = useState<number | null>(null);
   // Estimated pages from manuscript (or real pages if miolo already generated)
@@ -716,12 +707,11 @@ export default function CapaPage() {
         setAutor([ms.autor_primeiro_nome, ms.autor_sobrenome].filter(Boolean).join(" "));
       }
 
-      // Restore saved format (single source of truth)
       const capa = data?.dados_capa as Record<string, unknown> | null;
-      if (capa) {
-        setDados(capa);
-        if (capa.formato) setFormatoGlobal(capa.formato as FormatoId);
-      }
+      if (capa) setDados(capa);
+
+      const fmtRes = await fetch(`/api/projects/${id}/formato`).then(r => r.ok ? r.json() : null);
+      if (fmtRes?.formato) setFormatoGlobal(fmtRes.formato as FormatoLivro);
 
       // Load real lombada if diagramação was already done
       const miolo = data?.dados_miolo as { lombada_mm?: number; paginas_reais?: number } | null;
@@ -740,15 +730,6 @@ export default function CapaPage() {
       setLoading(false);
     }
   }, [id]);
-
-  // Persist format change immediately so downstream steps can read it
-  async function handleFormatoChange(f: FormatoId) {
-    setFormatoGlobal(f);
-    await supabase
-      .from("projects")
-      .update({ dados_capa: { ...(dados ?? {}), formato: f } })
-      .eq("id", id);
-  }
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
@@ -773,10 +754,9 @@ export default function CapaPage() {
   }
 
   async function handleSkip() {
-    // Always persist the selected format so Créditos and Diagramação have it
     await supabase
       .from("projects")
-      .update({ dados_capa: { modo: "skip", formato: formatoGlobal }, etapa_atual: "creditos" })
+      .update({ dados_capa: { modo: "skip" }, etapa_atual: "creditos" })
       .eq("id", id);
     router.push(`/dashboard/creditos/${id}`);
   }
@@ -822,28 +802,23 @@ export default function CapaPage() {
           />
         ) : modo === "escolha" ? (
           <div className="space-y-6">
-            {/* Format selector — single source of truth, propagates to Créditos and Diagramação */}
+            {/* Format — read-only; defined in Elementos step */}
             <div className="bg-white rounded-2xl border border-zinc-100 p-5">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
-                Formato do livro <span className="text-zinc-300 normal-case font-normal">(definido uma vez, usado em todas as etapas)</span>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                Formato do livro
               </p>
-              <div className="flex flex-wrap gap-2">
-                {FORMATOS.map(f => (
-                  <button key={f.id} type="button" onClick={() => handleFormatoChange(f.id)}
-                    className={`px-4 py-2 rounded-xl border-2 text-sm font-medium transition-all
-                      ${formatoGlobal === f.id
-                        ? "border-brand-gold bg-brand-gold/5 text-brand-primary"
-                        : "border-zinc-200 text-zinc-600 hover:border-zinc-300"}`}>
-                    {f.label}
-                    <span className="text-xs font-normal text-zinc-400 ml-1.5">{f.sub}</span>
-                  </button>
-                ))}
-              </div>
-              {lombadaReal !== null && (
-                <p className="text-xs text-emerald-600 mt-2">
-                  Lombada calculada após diagramação: <strong>{lombadaReal}mm</strong>
-                </p>
-              )}
+              <p className="text-sm font-medium text-brand-primary">
+                {FORMATOS_LIVRO.find(f => f.value === formatoGlobal)?.label ?? "—"}{" "}
+                <span className="text-zinc-400 font-normal">
+                  {FORMATOS_LIVRO.find(f => f.value === formatoGlobal)?.dimensoes}
+                </span>
+              </p>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Definido em Elementos.{" "}
+                {lombadaReal !== null && (
+                  <span className="text-emerald-600">Lombada após diagramação: <strong>{lombadaReal}mm</strong></span>
+                )}
+              </p>
             </div>
 
             {/* Lombada adjustment banner — shown when miolo is done and spine diverges */}

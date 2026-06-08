@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
+import { EscolhaFormato } from "@/components/escolha-formato";
 import type { ElementosEditoriais } from "@/app/api/agentes/elementos-editoriais/route";
+import type { FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -20,6 +22,8 @@ export default function ElementosPage() {
   const [triggering, setTriggering] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formato, setFormato] = useState<FormatoLivro | null>(null);
+  const [formatoLocked, setFormatoLocked] = useState(false);
 
   // Editable state
   const [sinopseCurta, setSinopseCurta] = useState("");
@@ -36,19 +40,28 @@ export default function ElementosPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    const { data: project } = await supabase
-      .from("projects")
-      .select("dados_elementos, manuscripts(nome)")
-      .eq("id", projectId)
-      .single();
+    const [projRes, fmtRes] = await Promise.all([
+      supabase
+        .from("projects")
+        .select("dados_elementos, manuscripts(nome)")
+        .eq("id", projectId)
+        .single(),
+      fetch(`/api/projects/${projectId}/formato`).then(r => r.json()).catch(() => null),
+    ]);
 
-    if (project) {
-      const el = project.dados_elementos as ElementosEditoriais | null;
+    if (projRes.data) {
+      const el = projRes.data.dados_elementos as ElementosEditoriais | null;
       if (el) populateFields(el);
       setManuscritoNome(
-        (project.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito"
+        (projRes.data.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito"
       );
     }
+
+    if (fmtRes) {
+      setFormato((fmtRes as { formato: FormatoLivro | null }).formato);
+      setFormatoLocked(!!(fmtRes as { locked: boolean }).locked);
+    }
+
     setLoading(false);
   }, [projectId, populateFields]);
 
@@ -172,6 +185,20 @@ export default function ElementosPage() {
             )}
 
             <div className="space-y-6 mb-10">
+              {/* Formato do livro */}
+              <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+                <h2 className="font-heading text-lg text-brand-primary mb-1">Formato do livro</h2>
+                <p className="text-zinc-400 text-xs mb-4">
+                  Define as dimensões físicas do miolo, capa e PDF. Bloqueado após a capa ser gerada.
+                </p>
+                <EscolhaFormato
+                  projectId={projectId}
+                  initialFormato={formato}
+                  locked={formatoLocked}
+                  onSaved={setFormato}
+                />
+              </div>
+
               {/* Título */}
               <div className="bg-white rounded-2xl border border-zinc-100 p-6">
                 <h2 className="font-heading text-lg text-brand-primary mb-4">Escolha o título</h2>

@@ -10,14 +10,12 @@ import type { MioloResult } from "@/app/api/agentes/miolo/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Includes legacy formats (kdp_6x9, letter) for backward compat + miolo formats.
-export type Formato =
-  | "kdp_6x9" | "a5" | "letter"           // legacy — accepted but ignored
-  | "bolso" | "padrao_br" | "quadrado" | "a4";  // miolo formats
+import type { FormatoLivro } from "@/lib/formatos";
+export type { FormatoLivro as Formato } from "@/lib/formatos";
 
 export interface PdfResult {
   project_id: string;
-  formato: Formato;
+  formato: FormatoLivro;
   storage_path: string;
   url_download: string;  // signed URL (1h)
   paginas: number;
@@ -47,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { project_id: string; formato?: Formato };
+  let body: { project_id: string; formato?: string };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
@@ -173,7 +171,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Persist dados_pdf ─────────────────────────────────────────────────────
-  const formato = (miolo.config?.formato ?? "padrao_br") as Formato;
+  const formato = (miolo.config?.formato ?? "padrao_br") as FormatoLivro;
 
   const dados_pdf: PdfResult = {
     project_id,

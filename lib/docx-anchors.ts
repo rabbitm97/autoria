@@ -1,9 +1,10 @@
-import type { TemplateId, FormatoId } from "./miolo-builder";
+import type { TemplateId } from "./miolo-builder";
+import type { FormatoLivro } from "./formatos";
 
 export function buildCustomXmlAnchors(params: {
   project_id: string;
   template: TemplateId;
-  formato: FormatoId;
+  formato: FormatoLivro;
   capitulos: { titulo: string }[];
 }): string {
   const { project_id, template, formato, capitulos } = params;

@@ -3,6 +3,8 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { getFormatoDef, type FormatoLivro } from "@/lib/formatos";
+import { getProjectFormato, lockFormato } from "@/lib/projects";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,37 +33,26 @@ export interface CapaValidacao {
 
 // ─── Dimension helpers ────────────────────────────────────────────────────────
 
-const FORMATO_DIMS: Record<string, { w: number; h: number }> = {
-  "16x23":   { w: 160, h: 230 },
-  "14x21":   { w: 148, h: 210 },
-  "11x18":   { w: 110, h: 180 },
-  "20x20":   { w: 200, h: 200 },
-  "a4":      { w: 210, h: 297 },
-  "kdp_6x9": { w: 152, h: 229 },
-  "a5":      { w: 148, h: 210 },
-  "letter":  { w: 216, h: 279 },
-};
-
 export function calcExpectedDims(opts: {
-  formato: string;
+  formato: FormatoLivro;
   paginas: number;
   usar_orelhas: boolean;
   dpi: number;
 }): { wMm: number; hMm: number; wPx: number; hPx: number; lombadaMm: number } {
-  const fmt = FORMATO_DIMS[opts.formato] ?? { w: 160, h: 230 };
+  const specs = getFormatoDef(opts.formato).specs;
   const lombadaMm = Math.round(opts.paginas * 0.07 * 10) / 10;
-  const sangriaMm = 3; // each side
-  const orelhasMm = opts.usar_orelhas ? 80 : 0; // 8cm per flap
+  const sangriaMm = specs.bleed_mm;
+  const orelhasMm = opts.usar_orelhas ? 80 : 0;
 
   const totalWMm =
     sangriaMm +
     orelhasMm +
-    fmt.w +
+    specs.width_mm +
     lombadaMm +
-    fmt.w +
+    specs.width_mm +
     orelhasMm +
     sangriaMm;
-  const totalHMm = sangriaMm + fmt.h + sangriaMm;
+  const totalHMm = sangriaMm + specs.height_mm + sangriaMm;
 
   const mm2px = opts.dpi / 25.4;
   return {
@@ -102,7 +93,6 @@ export async function POST(req: NextRequest) {
     largura_px: number;
     altura_px: number;
     dpi?: number;
-    formato: string;
     paginas: number;
     usar_orelhas: boolean;
   };
@@ -119,7 +109,6 @@ export async function POST(req: NextRequest) {
     largura_px,
     altura_px,
     dpi = 300,
-    formato,
     paginas,
     usar_orelhas,
   } = body;
@@ -128,6 +117,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "project_id, storage_path, largura_px e altura_px são obrigatórios" },
       { status: 400 }
+    );
+  }
+
+  // ── Resolve canonical format ──────────────────────────────────────────────
+  const formato = await getProjectFormato(project_id);
+  if (!formato) {
+    return NextResponse.json(
+      { error: "Formato do livro não definido. Configure em Elementos antes de fazer upload da capa." },
+      { status: 422 }
     );
   }
 
@@ -190,11 +188,14 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
   };
 
-  await supabase
-    .from("projects")
-    .update({ dados_capa: result, etapa_atual: "capa" })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  await Promise.all([
+    supabase
+      .from("projects")
+      .update({ dados_capa: result, etapa_atual: "capa" })
+      .eq("id", project_id)
+      .eq("user_id", userId),
+    lockFormato(project_id),
+  ]);
 
   return NextResponse.json(result);
   } catch (err) {

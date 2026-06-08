@@ -1,11 +1,13 @@
+import { type FormatoLivro, type FormatoSpecs, getFormatoDef } from "./formatos";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type TemplateId = "literario" | "nao_ficcao" | "abnt" | "infantil" | "poesia" | "religioso";
-export type FormatoId  = "bolso" | "a5" | "padrao_br" | "quadrado" | "a4";
+export type { FormatoLivro };
 
 export interface MioloConfig {
   template: TemplateId;
-  formato: FormatoId;
+  formato: FormatoLivro;
   corpo_pt: 10 | 11 | 12;
   capitular: boolean;
   ornamentos: boolean;
@@ -32,41 +34,8 @@ export function deveExibirSumario(config: MioloConfig): boolean {
   return config.sumario === true;
 }
 
-// ─── Dimensões e margens físicas (todas em mm) ───────────────────────────────
-// Cada formato tem dimensões da página final (sem sangria) e margens editoriais
-// proporcionais. A sangria de 3mm é adicionada uniformemente em torno da página
-// final para chegar ao tamanho da folha física que vai pra gráfica.
 
-const BLEED_MM = 3;
-
-interface FormatoSpec {
-  w_mm: number;      // largura da página final (sem sangria)
-  h_mm: number;      // altura da página final (sem sangria)
-  top_mm: number;    // margem editorial topo
-  outer_mm: number;  // margem editorial externa
-  bottom_mm: number; // margem editorial base
-  inner_mm: number;  // margem editorial interna (lombada)
-  label: string;
-  wpp: number;       // palavras por página (estimativa, usada para sumário)
-}
-
-const FORMATO_SPECS: Record<FormatoId, FormatoSpec> = {
-  bolso:     { w_mm: 110, h_mm: 180, top_mm: 20, outer_mm: 14, bottom_mm: 22, inner_mm: 18, label: "Bolso (11×18cm)",    wpp: 200 },
-  a5:        { w_mm: 140, h_mm: 210, top_mm: 22, outer_mm: 16, bottom_mm: 25, inner_mm: 20, label: "14×21 cm",            wpp: 230 },
-  padrao_br: { w_mm: 160, h_mm: 230, top_mm: 25, outer_mm: 18, bottom_mm: 28, inner_mm: 22, label: "Padrão BR (16×23cm)", wpp: 260 },
-  quadrado:  { w_mm: 200, h_mm: 200, top_mm: 22, outer_mm: 18, bottom_mm: 25, inner_mm: 22, label: "Quadrado (20×20cm)",  wpp: 300 },
-  a4:        { w_mm: 210, h_mm: 297, top_mm: 30, outer_mm: 20, bottom_mm: 30, inner_mm: 25, label: "A4 (21×29,7cm)",      wpp: 380 },
-};
-
-// Compatibilidade: FORMAT_DIMS é mantido com strings em cm para quem ainda usa
-// (gerar-epub, qa, gerar-audio). Internamente o builder usa FORMATO_SPECS em mm.
-export const FORMAT_DIMS: Record<FormatoId, { w: string; h: string; label: string; wpp: number }> = {
-  bolso:     { w: "11cm",   h: "18cm",   label: FORMATO_SPECS.bolso.label,     wpp: FORMATO_SPECS.bolso.wpp },
-  a5:        { w: "14cm",   h: "21cm",   label: FORMATO_SPECS.a5.label,        wpp: FORMATO_SPECS.a5.wpp },
-  padrao_br: { w: "16cm",   h: "23cm",   label: FORMATO_SPECS.padrao_br.label, wpp: FORMATO_SPECS.padrao_br.wpp },
-  quadrado:  { w: "20cm",   h: "20cm",   label: FORMATO_SPECS.quadrado.label,  wpp: FORMATO_SPECS.quadrado.wpp },
-  a4:        { w: "21cm",   h: "29.7cm", label: FORMATO_SPECS.a4.label,        wpp: FORMATO_SPECS.a4.wpp },
-};
+const BLEED_MM = 3; // universal bleed for print — all formats use 3mm
 
 // ─── Marcas de corte como SVG por canto ──────────────────────────────────────
 // Cada canto recebe um SVG de 5×5mm com duas linhas formando um L.
@@ -109,16 +78,17 @@ function cornerSvgUrl(corner: "tl" | "tr" | "bl" | "br"): string {
 // editoriais (sangria + margem), marcas de corte nos 4 cantos, numeração no
 // rodapé. Inclui também o @page no-num para o front matter.
 
-function buildPageCss(spec: FormatoSpec, includeMarks: boolean): string {
-  const W = spec.w_mm + 2 * BLEED_MM;
-  const H = spec.h_mm + 2 * BLEED_MM;
+function buildPageCss(spec: FormatoSpecs, includeMarks: boolean): string {
+  const B = spec.bleed_mm;
+  const W = spec.width_mm + 2 * B;
+  const H = spec.height_mm + 2 * B;
   // Margens da @page = sangria + margem editorial. Isso garante que a área
   // útil (mancha gráfica) tenha exatamente as margens editoriais especificadas
   // medidas a partir da linha de corte.
-  const mT = spec.top_mm + BLEED_MM;
-  const mO = spec.outer_mm + BLEED_MM;
-  const mB = spec.bottom_mm + BLEED_MM;
-  const mI = spec.inner_mm + BLEED_MM;
+  const mT = spec.margens.top_mm + B;
+  const mO = spec.margens.outer_mm + B;
+  const mB = spec.margens.bottom_mm + B;
+  const mI = spec.margens.inner_mm + B;
 
   const marksBlock = includeMarks ? `
   @top-left-corner    { content: ""; background-image: ${cornerSvgUrl("tl")}; background-repeat: no-repeat; background-position: top left; }
@@ -581,7 +551,7 @@ export function buildBookHtml(params: {
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml, chapterStartPagesOverride } = params;
 
-  const spec = FORMATO_SPECS[config.formato];
+  const spec = getFormatoDef(config.formato).specs;
 
   // CSS final: @page + base + template específico
   const css =

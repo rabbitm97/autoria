@@ -13,25 +13,18 @@ import {
 import type { ISectionOptions, IRunOptions } from "docx";
 import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
 import {
-  type MioloConfig, type TemplateId, type FormatoId,
+  type MioloConfig, type TemplateId, type FormatoLivro,
   deveExibirSumario, fixTypography,
 } from "./miolo-builder";
 import { buildCustomXmlAnchors } from "./docx-anchors";
 
-export type { MioloConfig, TemplateId, FormatoId };
+export type { MioloConfig, TemplateId, FormatoLivro };
 
-// ─── Format specs (mirrors FORMATO_SPECS in miolo-builder, minus BLEED_MM) ───
+// ─── DOCX always uses A4 with ABNT NBR 14724 margins ─────────────────────────
+// DOCX is a reflow document — physical format doesn't apply.
 
-const FORMATO_SPECS: Record<FormatoId, {
-  w_mm: number; h_mm: number;
-  top_mm: number; outer_mm: number; bottom_mm: number; inner_mm: number;
-}> = {
-  bolso:     { w_mm: 110, h_mm: 180, top_mm: 20, outer_mm: 14, bottom_mm: 22, inner_mm: 18 },
-  a5:        { w_mm: 148, h_mm: 210, top_mm: 22, outer_mm: 16, bottom_mm: 25, inner_mm: 20 },
-  padrao_br: { w_mm: 160, h_mm: 230, top_mm: 25, outer_mm: 18, bottom_mm: 28, inner_mm: 22 },
-  quadrado:  { w_mm: 200, h_mm: 200, top_mm: 22, outer_mm: 18, bottom_mm: 25, inner_mm: 22 },
-  a4:        { w_mm: 210, h_mm: 297, top_mm: 30, outer_mm: 20, bottom_mm: 30, inner_mm: 25 },
-};
+const PAGE_A4_MM = { w: 210, h: 297 };
+const MARGENS_ABNT_MM = { top: 30, outer: 20, bottom: 20, inner: 30 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -325,7 +318,6 @@ export async function buildBookDocx(params: {
 }): Promise<Buffer> {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosConfig, ficha, projectId } = params;
 
-  const spec = FORMATO_SPECS[config.formato];
   const font = FONT_MAP[config.template];
   const st = TEMPLATE_STYLES[config.template];
   const corpo_pt = config.corpo_pt;
@@ -355,10 +347,10 @@ export async function buildBookDocx(params: {
 
   // ── Page layout ───────────────────────────────────────────────────────────
 
-  const pageSize = { width: mm(spec.w_mm), height: mm(spec.h_mm) };
+  const pageSize = { width: mm(PAGE_A4_MM.w), height: mm(PAGE_A4_MM.h) };
   const pageMargin = {
-    top: mm(spec.top_mm), right: mm(spec.outer_mm),
-    bottom: mm(spec.bottom_mm), left: mm(spec.inner_mm),
+    top: mm(MARGENS_ABNT_MM.top), right: mm(MARGENS_ABNT_MM.outer),
+    bottom: mm(MARGENS_ABNT_MM.bottom), left: mm(MARGENS_ABNT_MM.inner),
     header: mm(10), footer: mm(10),
   };
 

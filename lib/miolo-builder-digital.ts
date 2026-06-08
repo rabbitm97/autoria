@@ -19,52 +19,28 @@
 
 import {
   type TemplateId,
-  type FormatoId,
+  type FormatoLivro,
   type MioloConfig,
   type CapituloInfo,
-  FORMAT_DIMS,
   deveExibirSumario,
   escHtml,
   fixTypography,
 } from "./miolo-builder";
+import { type FormatoSpecs, getFormatoDef } from "./formatos";
 
 // Re-exportar tipos para consumidores
-export type { TemplateId, FormatoId, MioloConfig, CapituloInfo };
-export { FORMAT_DIMS, deveExibirSumario, escHtml, fixTypography };
-
-// ─── Dimensões e margens físicas (todas em mm) ───────────────────────────────
-// IDÊNTICAS ao miolo-builder.ts EXCETO por BLEED_MM = 0.
-
-const BLEED_MM = 0;
-
-interface FormatoSpec {
-  w_mm: number;
-  h_mm: number;
-  top_mm: number;
-  outer_mm: number;
-  bottom_mm: number;
-  inner_mm: number;
-  label: string;
-  wpp: number;
-}
-
-const FORMATO_SPECS: Record<FormatoId, FormatoSpec> = {
-  bolso:     { w_mm: 110, h_mm: 180, top_mm: 20, outer_mm: 14, bottom_mm: 22, inner_mm: 18, label: "Bolso (11×18cm)",    wpp: 200 },
-  a5:        { w_mm: 148, h_mm: 210, top_mm: 22, outer_mm: 16, bottom_mm: 25, inner_mm: 20, label: "A5 (14,8×21cm)",      wpp: 230 },
-  padrao_br: { w_mm: 160, h_mm: 230, top_mm: 25, outer_mm: 18, bottom_mm: 28, inner_mm: 22, label: "Padrão BR (16×23cm)", wpp: 260 },
-  quadrado:  { w_mm: 200, h_mm: 200, top_mm: 22, outer_mm: 18, bottom_mm: 25, inner_mm: 22, label: "Quadrado (20×20cm)",  wpp: 300 },
-  a4:        { w_mm: 210, h_mm: 297, top_mm: 30, outer_mm: 20, bottom_mm: 30, inner_mm: 25, label: "A4 (21×29,7cm)",      wpp: 380 },
-};
+export type { TemplateId, FormatoLivro, MioloConfig, CapituloInfo };
+export { deveExibirSumario, escHtml, fixTypography };
 
 // ─── CSS de @page principal (sem sangria, sem marcas) ────────────────────────
 // Apenas o @page principal precisa ser redefinido. Os blocos @page no-num e
 // @page :first herdam size/margin do @page principal — então não precisam ser
 // alterados.
 
-function buildMainPageCss(spec: FormatoSpec): string {
+function buildMainPageCss(spec: FormatoSpecs): string {
   return `@page {
-  size: ${spec.w_mm}mm ${spec.h_mm}mm;
-  margin: ${spec.top_mm}mm ${spec.outer_mm}mm ${spec.bottom_mm}mm ${spec.inner_mm}mm;
+  size: ${spec.width_mm}mm ${spec.height_mm}mm;
+  margin: ${spec.margens.top_mm}mm ${spec.margens.outer_mm}mm ${spec.margens.bottom_mm}mm ${spec.margens.inner_mm}mm;
   @bottom-center {
     content: counter(page);
     font-family: inherit;
@@ -146,7 +122,7 @@ export function buildBookHtmlDigital(params: {
   // Substituir apenas o @page principal por uma versão sem sangria e sem marcas.
   // Os blocos @page no-num e @page :first herdam size/margin do @page principal,
   // então não precisam ser tocados.
-  const spec = FORMATO_SPECS[params.config.formato];
+  const spec = getFormatoDef(params.config.formato).specs;
   const newMainPageCss = buildMainPageCss(spec);
   const htmlComCssDigital = replaceMainPageBlock(result.html, newMainPageCss);
 
@@ -165,8 +141,8 @@ export function buildBookHtmlDigital(params: {
  * builder de gráfica. Usado pela rota gerar-pdf-digital que baixa o HTML
  * armazenado no Storage em vez de regenerar do zero.
  */
-export function applyDigitalCss(html: string, formato: FormatoId): string {
-  const spec = FORMATO_SPECS[formato];
+export function applyDigitalCss(html: string, formato: FormatoLivro): string {
+  const spec = getFormatoDef(formato).specs;
   const newMainPageCss = buildMainPageCss(spec);
   const result = replaceMainPageBlock(html, newMainPageCss);
   if (result === html) {

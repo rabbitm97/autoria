@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MioloConfig, FormatoId, TemplateId } from "@/lib/miolo-builder";
-import { FORMAT_DIMS } from "@/lib/miolo-builder";
+import type { MioloConfig, TemplateId } from "@/lib/miolo-builder";
+import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,9 +38,9 @@ const TEMPLATES: { value: TemplateId; label: string }[] = [
   { value: "religioso",   label: "Religioso (Gentium)" },
 ];
 
-const FORMATOS = Object.entries(FORMAT_DIMS).map(([k, v]) => ({
-  value: k as FormatoId,
-  label: v.label,
+const FORMATOS = FORMATOS_LIVRO.map(f => ({
+  value: f.value as FormatoLivro,
+  label: f.label,
 }));
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ export default function PreviewClient({ data }: { data: ProjectData }) {
           <Select
             value={config.formato}
             options={FORMATOS}
-            onChange={v => set("formato", v as FormatoId)}
+            onChange={v => set("formato", v as FormatoLivro)}
           />
         </Section>
 

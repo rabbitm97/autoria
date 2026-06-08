@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import sharp from "sharp";
+import { getFormatoDef } from "@/lib/formatos";
+import { getProjectFormato, lockFormato } from "@/lib/projects";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -11,14 +13,6 @@ const DPI_PREVIEW  = 150;   // fast composite for on-screen preview
 const DPI_PRINT    = 300;   // minimum required by KDP and most POD services
 const MM_PER_PAGE  = 0.07;  // spine thickness per page (75g offset paper)
 const MIN_SPINE_PX = 4;
-
-const FORMATO_DIMS: Record<string, { w: number; h: number }> = {
-  "16x23": { w: 16,   h: 23   },
-  "14x21": { w: 14,   h: 21   },
-  "11x18": { w: 11,   h: 18   },
-  "20x20": { w: 20,   h: 20   },
-  "a4":    { w: 21,   h: 29.7 },
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +64,6 @@ export async function POST(req: NextRequest) {
 
   let body: {
     project_id: string;
-    formato: string;
     paginas: number;
     usar_orelhas: boolean;
     titulo?: string;
@@ -90,7 +83,7 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    project_id, formato, paginas, usar_orelhas, elementos,
+    project_id, paginas, usar_orelhas, elementos,
     titulo = "", autor = "", qualidade = "preview",
   } = body;
 
@@ -107,14 +100,23 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // ── Resolve canonical format ──────────────────────────────────────────────
+  const formato = await getProjectFormato(project_id);
+  if (!formato) {
+    return NextResponse.json(
+      { error: "Formato do livro não definido. Configure em Elementos antes de montar a capa." },
+      { status: 422 }
+    );
+  }
+
   // ── Calculate dimensions ──────────────────────────────────────────────────
   const t0 = Date.now();
   const DPI = qualidade === "impressao" ? DPI_PRINT : DPI_PREVIEW;
   const PX_PER_CM = DPI / 2.54;
 
-  const dims = FORMATO_DIMS[formato] ?? FORMATO_DIMS["16x23"];
-  const frontW = Math.round(dims.w * PX_PER_CM);
-  const frontH = Math.round(dims.h * PX_PER_CM);
+  const def = getFormatoDef(formato);
+  const frontW = Math.round(def.specs.width_cm * PX_PER_CM);
+  const frontH = Math.round(def.specs.height_cm * PX_PER_CM);
   const spineW = Math.max(MIN_SPINE_PX, Math.round(paginas * MM_PER_PAGE * (DPI / 25.4)));
   const flapW  = usar_orelhas ? Math.round(frontW * 0.6) : 0;
 
@@ -237,11 +239,14 @@ export async function POST(req: NextRequest) {
   );
 
   // ── Persist in project ────────────────────────────────────────────────────
-  await supabase
-    .from("projects")
-    .update({ etapa_atual: "diagramacao" })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  await Promise.all([
+    supabase
+      .from("projects")
+      .update({ etapa_atual: "diagramacao" })
+      .eq("id", project_id)
+      .eq("user_id", userId),
+    lockFormato(project_id),
+  ]);
 
   return NextResponse.json({
     url: publicUrl,

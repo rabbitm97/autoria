@@ -111,7 +111,6 @@ export async function POST(req: NextRequest) {
     imagemRef?: string;
     is_regeneracao?: boolean;
     paginas?: number;
-    formato?: string;
   };
   try {
     body = await req.json();

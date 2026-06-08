@@ -162,7 +162,6 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json", Cookie: cookieHeader },
       body: JSON.stringify({
         project_id,
-        formato: (dados_capa as Record<string, unknown>).formato ?? "16x23",
         paginas: dados_miolo.paginas_reais,
         usar_orelhas: (dados_capa as Record<string, unknown>).usar_orelhas ?? false,
         titulo,

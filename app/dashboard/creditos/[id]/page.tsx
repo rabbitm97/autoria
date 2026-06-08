@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { CreditosConfig, CreditosResult } from "@/app/api/agentes/creditos/route";
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
-import { CAPA_TO_MIOLO, type CapaFormatoId } from "@/lib/format-mapping";
 import { supabase } from "@/lib/supabase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -165,12 +164,8 @@ export default function CreditosPage() {
       setManuscritoNome(ms?.nome ?? "Manuscrito");
       if (nomeCompleto && !titularDireitos) setTitularDireitos(nomeCompleto);
 
-      // Inherit format from Capa step; convert CapaFormatoId ("16x23") → canonical slug ("padrao_br")
-      const capaData = project.dados_capa as { formato?: string } | null;
-      if (capaData?.formato) {
-        const canonico = CAPA_TO_MIOLO[capaData.formato as CapaFormatoId] ?? capaData.formato as FormatoLivro;
-        setFormato(canonico);
-      }
+      const fmtRes = await fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null);
+      if (fmtRes?.formato) setFormato(fmtRes.formato as FormatoLivro);
 
       const existing = project.dados_creditos as CreditosResult | null;
       if (existing) {

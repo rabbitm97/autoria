@@ -8,18 +8,15 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
 import { applyDigitalCss } from "@/lib/miolo-builder-digital";
-import type { FormatoId } from "@/lib/miolo-builder-digital";
+import type { FormatoLivro } from "@/lib/miolo-builder-digital";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Includes legacy formats (kdp_6x9, letter) for backward compat + miolo formats.
-export type Formato =
-  | "kdp_6x9" | "a5" | "letter"           // legacy — accepted but ignored
-  | "bolso" | "padrao_br" | "quadrado" | "a4";  // miolo formats
+export type { FormatoLivro as Formato } from "@/lib/formatos";
 
 export interface PdfResult {
   project_id: string;
-  formato: Formato;
+  formato: FormatoLivro;
   storage_path: string;
   url_download: string;  // signed URL (1h)
   paginas: number;
@@ -48,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { project_id: string; formato?: Formato };
+  let body: { project_id: string; formato?: FormatoLivro };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
@@ -106,7 +103,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Remove bleed + crop marks: substitui @page CSS por versão sem sangria
-  const formato = (miolo.config?.formato ?? "padrao_br") as FormatoId;
+  const formato = (miolo.config?.formato ?? "padrao_br") as FormatoLivro;
   const html = applyDigitalCss(await htmlBlob.text(), formato);
 
   // ── Puppeteer: HTML → PDF ─────────────────────────────────────────────────
@@ -181,7 +178,7 @@ export async function POST(req: NextRequest) {
   //   ALTER TABLE projects ADD COLUMN dados_pdf_digital JSONB;
   const dados_pdf_digital: PdfResult = {
     project_id,
-    formato: (miolo.config?.formato ?? "padrao_br") as Formato,
+    formato: (miolo.config?.formato ?? "padrao_br") as FormatoLivro,
     storage_path: storagePath,
     url_download: signedData.signedUrl,
     paginas: numPaginas,

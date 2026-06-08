@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
-import type { CreditosConfig, CreditosFormato } from "@/app/api/agentes/creditos/route";
+import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
+import { type FormatoLivro, getFormatoDef } from "@/lib/formatos";
 
 // ─── Re-export for page use ───────────────────────────────────────────────────
 
-export type { CreditosConfig, CreditosFormato };
+export type { CreditosConfig };
+export type { FormatoLivro as CreditosFormato };
 
-// ─── Format dimensions ────────────────────────────────────────────────────────
+// ─── Format dimensions helper ─────────────────────────────────────────────────
 
-const FORMATO_DIMS: Record<CreditosFormato, { w: string; h: string }> = {
-  bolso:     { w: "11cm",   h: "18cm"   },
-  a5:        { w: "14.8cm", h: "21cm"   },
-  padrao_br: { w: "16cm",   h: "23cm"   },
-  quadrado:  { w: "20cm",   h: "20cm"   },
-  a4:        { w: "21cm",   h: "29.7cm" },
-};
+function fmtDim(formato: FormatoLivro) {
+  const { width_cm, height_cm } = getFormatoDef(formato).specs;
+  return { w: `${width_cm}cm`, h: `${height_cm}cm` };
+}
 
 // ─── Ficha catalográfica via Claude ───────────────────────────────────────────
 
@@ -46,9 +45,9 @@ seguindo AACR2/RDA e ABNT NBR 6029. Retorne EXCLUSIVAMENTE um objeto JSON com ex
 async function gerarFicha(params: {
   titulo: string; autor: string; genero: string;
   paginas: number; ano: number; editora: string;
-  local: string; isbn: string; formato: CreditosFormato;
+  local: string; isbn: string; formato: FormatoLivro;
 }): Promise<FichaCatalografica | null> {
-  const dim = FORMATO_DIMS[params.formato];
+  const dim = fmtDim(params.formato);
   try {
     const msg = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
@@ -83,7 +82,7 @@ export function buildCreditosHtml(params: {
   autor: string;
 }): string {
   const { config, ficha, titulo, autor } = params;
-  const fmt = FORMATO_DIMS[config.formato];
+  const fmt = fmtDim(config.formato);
 
   const teamFields: [string, string | undefined][] = [
     ["Título original",      config.titulo_original],

@@ -7,13 +7,13 @@ import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
-import { buildBookHtml, FORMAT_DIMS } from "@/lib/miolo-builder";
-import { isFormatoValido, FORMATOS_VALORES } from "@/lib/formatos";
+import { buildBookHtml } from "@/lib/miolo-builder";
+import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
-export type { FormatoId, TemplateId } from "@/lib/miolo-builder";
+export type { FormatoLivro, TemplateId } from "@/lib/miolo-builder";
 
 export interface MioloResult {
   config: MioloConfig;
@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
       : pass1;
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
-  const paginasEstimadas = Math.max(1, Math.round(numPalavras / FORMAT_DIMS[config.formato].wpp));
+  const paginasEstimadas = Math.max(1, Math.round(numPalavras / getFormatoDef(config.formato).specs.wpp));
   const lombadaMm = Math.round(paginasReais * 0.07 * 10) / 10;
 
   // Upload HTML to storage

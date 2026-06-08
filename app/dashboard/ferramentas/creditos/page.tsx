@@ -7,7 +7,7 @@ import type { CreditosConfig, CreditosFormato } from "@/app/api/ferramentas/cred
 
 const FORMATOS: { id: CreditosFormato; label: string; dim: string }[] = [
   { id: "bolso",     label: "Bolso",     dim: "11×18 cm"   },
-  { id: "a5",        label: "A5",        dim: "14,8×21 cm" },
+  { id: "compacto",  label: "Compacto",  dim: "14×21 cm"   },
   { id: "padrao_br", label: "Padrão BR", dim: "16×23 cm"   },
   { id: "quadrado",  label: "Quadrado",  dim: "20×20 cm"   },
   { id: "a4",        label: "A4",        dim: "21×29,7 cm" },

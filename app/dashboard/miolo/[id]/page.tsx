@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { MioloConfig, MioloResult, TemplateId, FormatoId } from "@/app/api/agentes/miolo/route";
+import type { MioloConfig, MioloResult, TemplateId, FormatoLivro } from "@/app/api/agentes/miolo/route";
+import { FORMATOS_LIVRO } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 import { DocxDisclaimer } from "./docx-disclaimer";
 import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-react";
@@ -13,8 +14,6 @@ import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-reac
 type Step = "config" | "processing" | "preview";
 
 interface Template { id: TemplateId; nome: string; desc: string; generos: string[]; icon: string }
-interface Formato  { id: FormatoId;  label: string; dim: string; desc: string; popular?: boolean }
-
 const TEMPLATES: Template[] = [
   { id: "literario",  nome: "Literário Clássico",    desc: "Garamond, margens generosas, capitular", generos: ["Romance","Ficção","Contos","Suspense"], icon: "📖" },
   { id: "nao_ficcao", nome: "Não-ficção Moderna",    desc: "Source Serif, subtítulos hierárquicos, caixas de destaque", generos: ["Autoajuda","Negócios","Biografia","Memórias"], icon: "💡" },
@@ -24,31 +23,6 @@ const TEMPLATES: Template[] = [
   { id: "religioso",  nome: "Religioso / Espiritual", desc: "Gentium, compacto, referências cruzadas", generos: ["Religioso","Espiritual","Devocional"], icon: "🕊️" },
 ];
 
-const FORMATOS: Formato[] = [
-  { id: "bolso",     label: "Bolso",       dim: "11 × 18 cm", desc: "Livros de bolso" },
-  { id: "a5",        label: "A5",          dim: "14,8 × 21 cm", desc: "Formato europeu" },
-  { id: "padrao_br", label: "Padrão BR",   dim: "16 × 23 cm", desc: "Mais usado no Brasil", popular: true },
-  { id: "quadrado",  label: "Quadrado",    dim: "20 × 20 cm", desc: "Arte, fotografia" },
-  { id: "a4",        label: "A4",          dim: "21 × 29,7 cm", desc: "Acadêmico, técnico" },
-];
-
-// Normalises any format string (CapaFormatoId legado ou slug canônico) para FormatoId canônico.
-const LEGADO_PARA_SLUG: Record<string, FormatoId> = {
-  "16x23": "padrao_br",
-  "14x21": "a5",
-  "11x18": "bolso",
-  "20x20": "quadrado",
-  "a4":    "a4",
-  "A4":    "a4",
-};
-
-function normalizarFormato(v: unknown): FormatoId {
-  if (typeof v === "string") {
-    if (FORMATOS.some(f => f.id === v)) return v as FormatoId;
-    if (LEGADO_PARA_SLUG[v]) return LEGADO_PARA_SLUG[v];
-  }
-  return "padrao_br";
-}
 
 // Map genre → template
 function suggestTemplate(genero: string | null): TemplateId {
@@ -121,7 +95,7 @@ export default function MioloPage() {
 
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
-  const [formato, setFormato] = useState<FormatoId>("padrao_br");
+  const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
   const [corpoPt, setCorpoPt] = useState<10 | 11 | 12>(11);
   const [capitular, setCapitular] = useState(true);
   const [ornamentos, setOrnamentos] = useState(true);
@@ -169,10 +143,10 @@ export default function MioloPage() {
       // Pre-select template from genre
       setTemplate(suggestTemplate(g));
 
-      // Inherit format from Capa step; convert CapaFormatoId ("16x23") → canonical slug ("padrao_br")
-      const capaData = project.dados_capa as { formato?: string; lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
-      if (capaData?.formato) setFormato(normalizarFormato(capaData.formato));
+      const capaData = project.dados_capa as { lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
       setDadosCapa(capaData);
+      const fmtRes = await fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null);
+      if (fmtRes?.formato) setFormato(fmtRes.formato as FormatoLivro);
 
       // If already generated, show preview directly
       const existingMiolo = project.dados_miolo as MioloResult | null;
@@ -485,11 +459,11 @@ export default function MioloPage() {
 
   // ── Estimated pages ──────────────────────────────────────────────────────
 
-  const wpps: Record<FormatoId, number> = { bolso: 200, a5: 230, padrao_br: 260, quadrado: 300, a4: 380 };
+  const wpps: Record<FormatoLivro, number> = { bolso: 200, compacto: 230, padrao_br: 260, quadrado: 300, a4: 380 };
   const paginasEst = palavrasTotal > 0 ? Math.max(1, Math.round(palavrasTotal / wpps[formato])) : null;
 
   const selectedTemplate = TEMPLATES.find(t => t.id === template);
-  const selectedFormato  = FORMATOS.find(f => f.id === formato);
+  const selectedFormato = FORMATOS_LIVRO.find(f => f.value === formato);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -548,9 +522,9 @@ export default function MioloPage() {
               <div>
                 <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Formato do livro</p>
                 <p className="text-sm font-medium text-brand-primary mt-0.5">
-                  {selectedFormato?.label ?? "Padrão BR"} — {selectedFormato?.dim}
+                  {selectedFormato?.label ?? "Padrão BR"} — {selectedFormato?.dimensoes}
                 </p>
-                <p className="text-xs text-zinc-400 mt-0.5">Definido na etapa de Capa</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Definido na etapa de Elementos</p>
               </div>
               {paginasEst && (
                 <p className="text-xs text-zinc-400 text-right">
@@ -714,7 +688,7 @@ export default function MioloPage() {
             <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Configurações aplicadas</p>
             <p className="text-sm text-zinc-700">
               Template: <strong>{TEMPLATES.find(t => t.id === template)?.nome}</strong> ·
-              Formato: <strong>{FORMATOS.find(f => f.id === formato)?.label}</strong> ·
+              Formato: <strong>{FORMATOS_LIVRO.find(f => f.value === formato)?.label}</strong> ·
               Fonte: <strong>{corpoPt}pt</strong>
             </p>
           </div>
@@ -749,7 +723,7 @@ export default function MioloPage() {
               {/* File info */}
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs">
                 <p className="font-semibold text-blue-700 mb-1.5">📄 Configurações do arquivo</p>
-                <p className="text-blue-600">Formato: <strong>{selectedFormato?.dim}</strong></p>
+                <p className="text-blue-600">Formato: <strong>{selectedFormato?.dimensoes}</strong></p>
                 <p className="text-blue-600">Template: <strong>{selectedTemplate?.nome}</strong></p>
                 <p className="text-blue-600">Páginas: <strong>{miolo?.paginas_reais ?? miolo?.paginas_estimadas}</strong></p>
                 {miolo?.lombada_mm && (

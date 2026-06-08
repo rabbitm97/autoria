@@ -5,13 +5,12 @@ import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/ant
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
+import { type FormatoLivro, getFormatoDef, isFormatoValido, FORMATOS_VALORES } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type CreditosFormato = "bolso" | "a5" | "padrao_br" | "quadrado" | "a4";
-
 export interface CreditosConfig {
-  formato: CreditosFormato;
+  formato: FormatoLivro;
 
   // Direitos autorais
   ano_copyright: number;
@@ -69,21 +68,6 @@ interface FichaCatalografica {
   cdu: string;
 }
 
-// ─── Format dimensions ────────────────────────────────────────────────────────
-
-const FORMATO_DIMS: Record<CreditosFormato, { w: string; h: string }> = {
-  bolso:     { w: "11cm",   h: "18cm"   },
-  a5:        { w: "14.8cm", h: "21cm"   },
-  padrao_br: { w: "16cm",   h: "23cm"   },
-  quadrado:  { w: "20cm",   h: "20cm"   },
-  a4:        { w: "21cm",   h: "29.7cm" },
-};
-
-const FORMATOS_VALIDOS = Object.keys(FORMATO_DIMS) as CreditosFormato[];
-
-function isFormatoValido(f: unknown): f is CreditosFormato {
-  return typeof f === "string" && (FORMATOS_VALIDOS as string[]).includes(f);
-}
 
 // ─── Claude prompt — ficha catalográfica ─────────────────────────────────────
 
@@ -112,11 +96,12 @@ async function gerarFichaCatalografica(params: {
   editora: string;
   local: string;
   isbn: string;
-  formato: CreditosFormato;
+  formato: FormatoLivro;
   context?: { userId?: string; projectId?: string };
 }): Promise<FichaCatalografica | null> {
   const { titulo, autor, genero, paginas, ano, editora, local, isbn, formato, context } = params;
-  const dim = FORMATO_DIMS[formato];
+  const { width_cm, height_cm } = getFormatoDef(formato).specs;
+  const dim = { w: `${width_cm}cm`, h: `${height_cm}cm` };
   const FICHA_PROMPT = await getAgentPrompt("creditos", FALLBACK_PROMPT);
 
   try {
@@ -160,7 +145,8 @@ function buildCreditosHtml(params: {
   autor: string;
 }): string {
   const { config, ficha, titulo, autor } = params;
-  const fmt = FORMATO_DIMS[config.formato];
+  const { width_cm, height_cm } = getFormatoDef(config.formato).specs;
+  const fmt = { w: `${width_cm}cm`, h: `${height_cm}cm` };
 
   // ── Team lines ────────────────────────────────────────────────────────────
   const teamFields: [string, string | undefined][] = [
@@ -350,7 +336,7 @@ export async function POST(request: NextRequest) {
   if (!isFormatoValido(config.formato)) {
     return NextResponse.json(
       {
-        error: `Formato inválido. Valores aceitos: ${FORMATOS_VALIDOS.join(", ")}.`,
+        error: `Formato inválido. Valores aceitos: ${FORMATOS_VALORES.join(", ")}.`,
         received: config.formato ?? null,
       },
       { status: 400 }
