@@ -1,3 +1,5 @@
+export const maxDuration = 60;
+
 import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
@@ -84,12 +86,8 @@ export async function POST(req: NextRequest) {
   let body: {
     project_id: string;
     elemento: Elemento;
-    titulo: string;
-    autor?: string;
-    descricao: string;
+    descricao?: string;
     imagemRef?: string;
-    genero?: string;
-    lombada_mm?: number;
     qtd?: number;
   };
 
@@ -97,15 +95,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const {
-    project_id, elemento, titulo,
-    autor = "", descricao, imagemRef,
-    genero = "literatura", lombada_mm, qtd = 2,
-  } = body;
+  const { project_id, elemento, descricao = "", imagemRef, qtd = 2 } = body;
 
-  if (!project_id || !elemento || !titulo) {
-    return NextResponse.json({ error: "project_id, elemento e titulo são obrigatórios" }, { status: 400 });
+  if (!project_id || !elemento) {
+    return NextResponse.json({ error: "project_id e elemento são obrigatórios" }, { status: 400 });
   }
+
+  // ── Load project (ownership check + metadata) ────────────────────────────
+  const { data: project, error: projErr } = await supabase
+    .from("projects")
+    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .eq("id", project_id)
+    .eq("user_id", userId)
+    .single();
+
+  if (projErr || !project) {
+    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+  }
+
+  const ms = project.manuscripts as {
+    titulo?: string;
+    autor_primeiro_nome?: string;
+    autor_sobrenome?: string;
+    genero_principal?: string;
+  } | null;
+
+  const titulo = ms?.titulo ?? "";
+  const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ");
+  const genero = ms?.genero_principal ?? "literatura";
+
+  const dadosMiolo = project.dados_miolo as { paginas_reais?: number } | null;
+  const paginas = dadosMiolo?.paginas_reais;
+
+  if (elemento === "lombada" && (!paginas || paginas < 1)) {
+    return NextResponse.json(
+      { error: "Gere o miolo antes de criar a lombada — número real de páginas é obrigatório." },
+      { status: 422 }
+    );
+  }
+
+  const lombada_mm = paginas ? Math.round(paginas * 0.07 * 10) / 10 : undefined;
 
   // ── Dev mode: return mock images ─────────────────────────────────────────
   if (isDev) {

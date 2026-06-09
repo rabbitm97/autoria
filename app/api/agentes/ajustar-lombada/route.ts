@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("dados_capa, dados_miolo")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
 
   const dados_capa = project.dados_capa as (CapaGeradaResult & Record<string, unknown>) | null;
   const dados_miolo = project.dados_miolo as { paginas_reais?: number; lombada_mm?: number } | null;
-  const ms = project.manuscripts as { titulo?: string; autor_primeiro_nome?: string; autor_sobrenome?: string; genero_principal?: string } | null;
 
   // ── Validate preconditions ───────────────────────────────────────────────────
 
@@ -101,12 +100,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── Build metadata ───────────────────────────────────────────────────────────
-
-  const titulo = ms?.titulo ?? "";
-  const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ");
-  const genero = ms?.genero_principal ?? "literatura";
-
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const cookieHeader = req.headers.get("cookie") ?? "";
 
@@ -118,11 +111,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       project_id,
       elemento: "lombada",
-      titulo,
-      autor,
       descricao: "Ajuste automático — match visual com a frente atual da capa.",
-      genero,
-      lombada_mm: lombadaMiolo,
       qtd: 1,
     }),
   });

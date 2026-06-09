@@ -115,8 +115,7 @@ export async function POST(req: NextRequest) {
   try {
     const page = await browser.newPage();
 
-    console.log("[gerar-pdf] HTML length:", html.length);
-    console.log("[gerar-pdf] HTML primeiros 2000 chars:", html.slice(0, 2000));
+    console.log("[gerar-pdf] HTML carregado:", { project_id, length: html.length });
     // Load HTML and wait for Google Fonts (@import) to finish resolving.
     await page.setContent(html, {
       waitUntil: "networkidle0",
