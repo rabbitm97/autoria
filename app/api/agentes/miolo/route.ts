@@ -8,6 +8,7 @@ import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
+import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
 import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
     input_hash?: string;
     paginas_usadas?: number;
     config?: CreditosConfig;
+    ficha_catalografica?: FichaCatalografica;
   } | null;
 
   if (!dadosCreditos?.html_storage_path || !dadosCreditos?.input_hash) {
@@ -194,42 +196,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Baixar HTML aprovado — falha alta se não conseguir, sem fallback.
-  const storageClientR = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-  const { data: cFile, error: cDownErr } = await storageClientR.storage
-    .from("manuscripts")
-    .download(dadosCreditos.html_storage_path);
-
-  if (cDownErr || !cFile) {
-    console.error("[miolo] Erro ao baixar HTML de créditos aprovado:", cDownErr);
+  if (!dadosCreditos.config) {
     return NextResponse.json(
       {
-        error: "Não foi possível ler o HTML aprovado da página de créditos. Regere a página de créditos.",
+        error: "Página de créditos em formato antigo ou incompleta. Reaprove a página de créditos.",
         action: "generate_creditos",
-        reason: "download_failed",
+        reason: "config_missing",
       },
-      { status: 500 }
+      { status: 422 }
     );
   }
 
-  const rawCreditos = await cFile.text();
-  const bodyMatch = rawCreditos.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const creditosInnerHtml = bodyMatch ? bodyMatch[1].trim() : null;
-
-  if (!creditosInnerHtml) {
-    console.error("[miolo] HTML de créditos sem <body> extraível");
-    return NextResponse.json(
-      {
-        error: "Página de créditos aprovada está corrompida. Regere a página de créditos.",
-        action: "generate_creditos",
-        reason: "html_invalid",
-      },
-      { status: 500 }
-    );
-  }
+  // Render em runtime a partir dos dados aprovados — fonte única da verdade.
+  // Sem I/O de Storage, sem regex de <body>, sem perda de CSS.
+  const creditosInnerHtml = buildCreditosContentHtml({
+    config: dadosCreditos.config,
+    ficha: dadosCreditos.ficha_catalografica ?? null,
+    titulo,
+    subtitulo,
+    autor,
+  });
 
   // Build HTML — two passes when sumário is on so TOC shows real page numbers.
   // Pass 1 (no TOC): get chapterStartPages from actual page counter.

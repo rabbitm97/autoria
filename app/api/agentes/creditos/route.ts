@@ -7,6 +7,7 @@ import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
 import { type FormatoLivro, getFormatoDef, isFormatoValido } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
+import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,18 +61,6 @@ export interface CreditosResult {
   paginas_origem: "real" | "estimada";
   gerado_em: string;
 }
-
-interface FichaCatalografica {
-  numero_chamada: string;
-  entrada_autor: string;
-  descricao_bibliografica: string;
-  extensao: string;
-  isbn_formatado: string;
-  assuntos: string[];
-  cdd: string;
-  cdu: string;
-}
-
 
 // ─── Claude prompt — ficha catalográfica ─────────────────────────────────────
 
@@ -141,175 +130,32 @@ async function gerarFichaCatalografica(params: {
   }
 }
 
-// ─── HTML builder ─────────────────────────────────────────────────────────────
+// ─── HTML builder — standalone preview/download envelope ─────────────────────
 
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function buildCreditosHtml(params: {
+function buildCreditosStandaloneHtml(params: {
   config: CreditosConfig;
   ficha: FichaCatalografica | null;
   titulo: string;
   subtitulo: string;
   autor: string;
 }): string {
-  const { config, ficha, titulo, subtitulo, autor } = params;
-  const { width_cm, height_cm } = getFormatoDef(config.formato).specs;
-  const fmt = { w: `${width_cm}cm`, h: `${height_cm}cm` };
-
-  // ── Team lines ────────────────────────────────────────────────────────────
-  const teamFields: [string, string | undefined][] = [
-    ["Título original",    config.titulo_original],
-    ["Idioma original",    config.idioma_original],
-    ["Tradução",           config.traducao],
-    ["Revisão técnica",    config.revisao_tecnica],
-    ["Revisão",            config.revisao],
-    ["Preparação de texto",config.preparacao],
-    ["Diagramação",        config.diagramacao],
-    ["Projeto gráfico de capa", config.projeto_capa],
-    ["Ilustração de capa", config.ilustracao_capa],
-    ["Produção editorial", config.producao_editorial],
-  ];
-
-  const teamHtml = teamFields
-    .filter(([, v]) => v?.trim())
-    .map(([label, value]) =>
-      `<p><span class="itl">${esc(label)}:</span> ${esc(value!)}</p>`
-    ).join("\n    ");
-
-  const outrosHtml = config.outros_creditos?.trim()
-    ? config.outros_creditos.split("\n")
-        .filter(l => l.trim())
-        .map(l => `<p>${esc(l)}</p>`)
-        .join("\n    ")
-    : "";
-
-  // ── Ficha catalográfica block ─────────────────────────────────────────────
-  let fichaHtml = "";
-
-  if (config.incluir_ficha) {
-    const f = ficha;
-    const isbn = config.isbn?.trim() || f?.isbn_formatado || "";
-    const assuntos = config.assuntos_livres?.trim()
-      ? config.assuntos_livres.split("\n").filter(l => l.trim())
-      : (f?.assuntos ?? []);
-    const cdd = config.cdd?.trim() || f?.cdd || "";
-    const cdu = config.cdu?.trim() || f?.cdu || "";
-
-    fichaHtml = `
-  <div class="ficha-wrap">
-    <div class="ficha">
-      <div class="ficha-header">
-        CIP-BRASIL. CATALOGAÇÃO-NA-FONTE<br>
-        SINDICATO NACIONAL DOS EDITORES DE LIVROS, RJ
-      </div>
-      <div class="ficha-body">
-        ${f ? `<p>${esc(f.numero_chamada)}</p>
-        <p>${esc(f.entrada_autor)}</p>
-        <p>${esc(f.descricao_bibliografica)}</p>
-        <p>${esc(f.extensao)}</p>
-        <p>&nbsp;</p>
-        ${isbn ? `<p>${esc(isbn)}</p><p>&nbsp;</p>` : ""}
-        ${assuntos.map(a => `<p>${esc(a)}</p>`).join("\n        ")}
-        ${(cdd || cdu) ? `<p>&nbsp;</p>
-        <p class="ficha-cdd">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}` :
-        // Fallback when Claude didn't generate ficha
-        `<p>${esc(autor)}</p>
-        <p>${esc(titulo)}${subtitulo ? ` : ${esc(subtitulo)}` : ""}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(config.nome_editora || "Autoria")}, ${config.ano_edicao || config.ano_copyright}.</p>
-        ${isbn ? `<p>&nbsp;</p><p>${esc(isbn)}</p>` : ""}
-        ${assuntos.length ? `<p>&nbsp;</p>${assuntos.map(a => `<p>${esc(a)}</p>`).join("\n        ")}` : ""}
-        ${(cdd || cdu) ? `<p>&nbsp;</p>
-        <p class="ficha-cdd">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`}
-      </div>
-    </div>
-  </div>`;
-  }
-
-  // ── Publisher block ───────────────────────────────────────────────────────
-  const pubLines: string[] = [];
-  if (config.ano_edicao || config.ano_copyright) {
-    pubLines.push(`<p>${config.ano_edicao || config.ano_copyright}</p>`);
-  }
-  if (config.nome_editora?.trim()) {
-    pubLines.push(`<p>Todos os direitos desta edição reservados à</p>`);
-    pubLines.push(`<p class="editora-nome">${esc(config.nome_editora)}</p>`);
-  }
-  if (config.endereco_editora?.trim()) pubLines.push(`<p>${esc(config.endereco_editora)}</p>`);
-  if (config.cidade_estado?.trim() || config.cep?.trim()) {
-    const linha = [config.cep, config.cidade_estado].filter(Boolean).join(" — ");
-    pubLines.push(`<p>${esc(linha)}</p>`);
-  }
-  if (config.site_editora?.trim()) pubLines.push(`<p>${esc(config.site_editora)}</p>`);
-  if (config.email_editora?.trim()) pubLines.push(`<p>${esc(config.email_editora)}</p>`);
-
-  const pubHtml = pubLines.join("\n    ");
-
+  const content = buildCreditosContentHtml(params);
+  const { width_cm, height_cm } = getFormatoDef(params.config.formato).specs;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: #fff;
-  color: #1a1a1a;
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 9pt;
-  line-height: 1.6;
-}
-.page {
-  width: ${fmt.w};
-  min-height: ${fmt.h};
-  margin: 0 auto;
-  padding: 3cm 2.2cm 2.5cm 2.5cm;
-  display: flex;
-  flex-direction: column;
-}
-.top { font-size: 8.5pt; line-height: 1.7; }
-.top p { margin-bottom: 0.12em; }
-.itl { font-style: italic; }
-.ficha-wrap { flex: 1; display: flex; align-items: center; }
-.ficha {
-  border: 0.75pt solid #555;
-  padding: 0.7cm 0.9cm;
-  font-size: 8pt;
-  line-height: 1.6;
-  width: 100%;
-}
-.ficha-header {
-  text-align: center;
-  font-size: 7.5pt;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  margin-bottom: 0.7em;
-  line-height: 1.4;
-}
-.ficha-body p { margin: 0; }
-.ficha-cdd { text-align: right; }
-.publisher { font-size: 8pt; line-height: 1.7; margin-top: auto; padding-top: 1cm; }
-.publisher p { margin: 0; }
-.editora-nome { text-transform: uppercase; font-weight: bold; }
-@media print {
-  @page { size: ${fmt.w} ${fmt.h}; margin: 0; }
-  body { background: #fff; }
-}
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #fff; }
+.page { width: ${width_cm}cm; min-height: ${height_cm}cm; margin: 0 auto; padding: 3cm 2.2cm 2.5cm 2.5cm; display: flex; flex-direction: column; }
+@media print { @page { size: ${width_cm}cm ${height_cm}cm; margin: 0; } body { background: #fff; } }
 </style>
 </head>
 <body>
 <div class="page">
-
-  <div class="top">
-    <p>Copyright &copy; ${config.ano_copyright} ${esc(config.titular_direitos)}</p>
-    ${teamHtml}
-    ${outrosHtml}
-  </div>
-
-  ${fichaHtml}
-
-  ${pubLines.length > 0 ? `<div class="publisher">\n    ${pubHtml}\n  </div>` : ""}
-
+${content}
 </div>
 </body>
 </html>`;
@@ -435,7 +281,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Build HTML
-  const html = buildCreditosHtml({ config: configResolved, ficha, titulo, subtitulo, autor });
+  const html = buildCreditosStandaloneHtml({ config: configResolved, ficha, titulo, subtitulo, autor });
 
   const inputHash = calcularCreditosInputHash({
     titulo,

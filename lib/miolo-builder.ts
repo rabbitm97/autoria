@@ -149,14 +149,6 @@ body {
 .title-page .subtitle { font-size: 1.15em; font-style: italic; color: #555; margin-bottom: 2em; max-width: 80%; margin-left: auto; margin-right: auto; }
 .title-page .author { font-size: 1.25em; color: #444; margin-top: 5em; }
 
-/* Créditos (verso da folha de rosto) */
-.creditos-wrap {
-  font-size: 0.85em;
-  color: #444;
-  line-height: 1.7;
-  text-align: left;
-}
-
 /* Dedicatória — terço inferior, alinhada à direita, itálica */
 .dedicatoria {
   padding-top: 90mm;
@@ -615,7 +607,7 @@ ${subtitulo ? `  <p class="subtitle">${escHtml(subtitulo)}</p>\n` : ""}  <p clas
     );
   }
   sections.push(`<section class="front-page">
-  <div class="creditos-wrap">${creditosInnerHtml}</div>
+${creditosInnerHtml}
 </section>`);
 
   // ── 5. Dedicatória (opcional) ──────────────────────────────────────────────
