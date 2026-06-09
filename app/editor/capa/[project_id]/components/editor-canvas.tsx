@@ -274,13 +274,12 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Callback ref para o Stage: registra/desregistra no store automaticamente
-  // quando o Konva monta/desmonta. Evita race condition que tornava o stage
-  // inacessível após navegação interna (ex: Créditos e voltar ao editor).
-  const setStageRef = useCallback((stage: Konva.Stage | null) => {
-    stageRef.current = stage;
-    useEditorStore.getState().setStageInstance(stage);
-  }, []);
+  // Register Stage in Zustand so ExportDropdown can access it
+  useEffect(() => {
+    if (!mounted || !stageRef.current) return;
+    useEditorStore.getState().setStageInstance(stageRef.current);
+    return () => { useEditorStore.getState().setStageInstance(null); };
+  }, [mounted]);
 
   // ResizeObserver
   useEffect(() => {
@@ -654,7 +653,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
       style={{ background: CANVAS_BG_COLOR }}
     >
       <Stage
-        ref={setStageRef}
+        ref={stageRef}
         width={containerSize.w}
         height={containerSize.h}
         x={panX}
