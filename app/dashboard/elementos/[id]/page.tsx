@@ -16,8 +16,6 @@ export default function ElementosPage() {
 
   const [elementos, setElementos] = useState<ElementosEditoriais | null>(null);
   const [manuscritoNome, setManuscritoNome] = useState("");
-  const [tituloLivro, setTituloLivro] = useState("");
-  const [subtituloLivro, setSubtituloLivro] = useState("");
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,7 +39,7 @@ export default function ElementosPage() {
     const [projRes, fmtRes] = await Promise.all([
       supabase
         .from("projects")
-        .select("dados_elementos, titulo, subtitulo, manuscripts(nome)")
+        .select("dados_elementos, manuscripts(nome)")
         .eq("id", projectId)
         .single(),
       fetch(`/api/projects/${projectId}/formato`).then(r => r.json()).catch(() => null),
@@ -53,8 +51,6 @@ export default function ElementosPage() {
       setManuscritoNome(
         (projRes.data.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito"
       );
-      setTituloLivro((projRes.data as unknown as { titulo: string }).titulo ?? "");
-      setSubtituloLivro((projRes.data as unknown as { subtitulo: string | null }).subtitulo ?? "");
     }
 
     if (fmtRes) {
@@ -196,20 +192,6 @@ export default function ElementosPage() {
                   locked={formatoLocked}
                   onSaved={setFormato}
                 />
-              </div>
-
-              {/* Título do livro — read-only */}
-              <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-                <h2 className="font-heading text-lg text-brand-primary mb-1">Título do livro</h2>
-                <div className="mt-3">
-                  <p className="text-base font-semibold text-brand-primary">{tituloLivro}</p>
-                  {subtituloLivro && (
-                    <p className="text-sm text-zinc-500 mt-0.5">{subtituloLivro}</p>
-                  )}
-                </div>
-                <p className="text-zinc-400 text-xs mt-3">
-                  Esse é o título definido por você no upload. Para alterar, edite nas configurações do projeto.
-                </p>
               </div>
 
               {/* Sinopse curta */}
