@@ -279,7 +279,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     if (!mounted || !stageRef.current) return;
     useEditorStore.getState().setStageInstance(stageRef.current);
     return () => { useEditorStore.getState().setStageInstance(null); };
-  }, [mounted]);
+  }, [mounted, fontsReady]);
 
   // ResizeObserver
   useEffect(() => {
