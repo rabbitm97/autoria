@@ -5,7 +5,7 @@ import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/ant
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
-import { type FormatoLivro, getFormatoDef, isFormatoValido, FORMATOS_VALORES } from "@/lib/formatos";
+import { type FormatoLivro, getFormatoDef, isFormatoValido } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,11 +75,13 @@ const FALLBACK_PROMPT = `\
 Você é um catalogador de bibliotecas brasileiro especializado em gerar fichas catalográficas \
 seguindo o padrão AACR2/RDA e a norma ABNT NBR 6029. Gere a ficha catalográfica para o livro descrito.
 
+Se houver subtítulo, incluí-lo na descrição bibliográfica no padrão "Título principal : Subtítulo / Autor."
+
 Retorne EXCLUSIVAMENTE um objeto JSON válido com exatamente estes campos:
 {
   "numero_chamada": "código de chamada: 1 letra do primeiro assunto + 3 letras iniciais do sobrenome do autor + letra minúscula inicial do título (ex: M854i)",
   "entrada_autor": "SOBRENOME, Nome, XXXX-  (usar ano de nascimento estimado ou deixar apenas traço após o ano)",
-  "descricao_bibliografica": "Título completo / Nome Autor. – X. ed. – Local : Editora, Ano.",
+  "descricao_bibliografica": "Título principal : Subtítulo / Nome Autor. – X. ed. – Local : Editora, Ano. (Se não houver subtítulo, omitir ' : Subtítulo')",
   "extensao": "XXXp. : XX × XX cm",
   "isbn_formatado": "ISBN XXX-XX-XXXXX-XX-X  (ou string vazia se não informado)",
   "assuntos": ["1. Gênero/assunto principal. I. Título.", "mais itens se relevante"],
@@ -89,6 +91,7 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido com exatamente estes campos:
 
 async function gerarFichaCatalografica(params: {
   titulo: string;
+  subtitulo: string;
   autor: string;
   genero: string;
   paginas: number;
@@ -99,7 +102,7 @@ async function gerarFichaCatalografica(params: {
   formato: FormatoLivro;
   context?: { userId?: string; projectId?: string };
 }): Promise<FichaCatalografica | null> {
-  const { titulo, autor, genero, paginas, ano, editora, local, isbn, formato, context } = params;
+  const { titulo, subtitulo, autor, genero, paginas, ano, editora, local, isbn, formato, context } = params;
   const { width_cm, height_cm } = getFormatoDef(formato).specs;
   const dim = { w: `${width_cm}cm`, h: `${height_cm}cm` };
   const FICHA_PROMPT = await getAgentPrompt("creditos", FALLBACK_PROMPT);
@@ -116,8 +119,10 @@ async function gerarFichaCatalografica(params: {
         system: FICHA_PROMPT,
         messages: [{
           role: "user",
-          content: `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\nAutor: ${autor}\nGênero: ${genero}\n` +
-            `Páginas estimadas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
+          content: `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\n` +
+            (subtitulo ? `Subtítulo: ${subtitulo}\n` : "") +
+            `Autor: ${autor}\nGênero: ${genero}\n` +
+            `Páginas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
             `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`,
         }],
       }),
@@ -142,9 +147,10 @@ function buildCreditosHtml(params: {
   config: CreditosConfig;
   ficha: FichaCatalografica | null;
   titulo: string;
+  subtitulo: string;
   autor: string;
 }): string {
-  const { config, ficha, titulo, autor } = params;
+  const { config, ficha, titulo, subtitulo, autor } = params;
   const { width_cm, height_cm } = getFormatoDef(config.formato).specs;
   const fmt = { w: `${width_cm}cm`, h: `${height_cm}cm` };
 
@@ -206,7 +212,7 @@ function buildCreditosHtml(params: {
         <p class="ficha-cdd">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}` :
         // Fallback when Claude didn't generate ficha
         `<p>${esc(autor)}</p>
-        <p>${esc(titulo)}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(config.nome_editora || "Autoria")}, ${config.ano_edicao || config.ano_copyright}.</p>
+        <p>${esc(titulo)}${subtitulo ? ` : ${esc(subtitulo)}` : ""}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(config.nome_editora || "Autoria")}, ${config.ano_edicao || config.ano_copyright}.</p>
         ${isbn ? `<p>&nbsp;</p><p>${esc(isbn)}</p>` : ""}
         ${assuntos.length ? `<p>&nbsp;</p>${assuntos.map(a => `<p>${esc(a)}</p>`).join("\n        ")}` : ""}
         ${(cdd || cdu) ? `<p>&nbsp;</p>
@@ -333,16 +339,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!isFormatoValido(config.formato)) {
-    return NextResponse.json(
-      {
-        error: `Formato inválido. Valores aceitos: ${FORMATOS_VALORES.join(", ")}.`,
-        received: config.formato ?? null,
-      },
-      { status: 400 }
-    );
-  }
-
   if (typeof config.ano_copyright !== "number" || !Number.isFinite(config.ano_copyright)) {
     return NextResponse.json(
       { error: "Campo obrigatório: ano_copyright (número)." },
@@ -367,7 +363,7 @@ export async function POST(request: NextRequest) {
   // Load project data
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("id, formato, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -376,40 +372,65 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
 
+  // Resolve canonical format from project — ignore body's config.formato silently
+  const formatoDb = (project as unknown as { formato?: string }).formato;
+  if (!formatoDb || !isFormatoValido(formatoDb)) {
+    return NextResponse.json(
+      {
+        error: "Formato do projeto não definido. Configure o formato antes de gerar a página de créditos.",
+        action: "set_format",
+      },
+      { status: 422 }
+    );
+  }
+  const configResolved: CreditosConfig = { ...config, formato: formatoDb as FormatoLivro };
+
+  // Block when miolo hasn't been generated yet — pages must be real, not estimated
+  const mioloData = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
+  const paginasReais = mioloData?.paginas_reais;
+  if (!paginasReais || paginasReais < 1) {
+    return NextResponse.json(
+      {
+        error: "Gere o miolo do livro antes da página de créditos. A ficha catalográfica precisa do número real de páginas.",
+        action: "generate_miolo",
+      },
+      { status: 422 }
+    );
+  }
+
   const ms = project.manuscripts as unknown as {
     titulo?: string;
+    subtitulo?: string;
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
     genero_principal?: string;
   } | null;
 
   const titulo = ms?.titulo ?? "Sem título";
+  const subtitulo = ms?.subtitulo?.trim() ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
   const genero = ms?.genero_principal ?? "Literatura";
 
-  // Estimate pages from miolo data if available
-  const mioloData = project.dados_miolo as { paginas_estimadas?: number } | null;
-  const paginas = mioloData?.paginas_estimadas ?? 200;
-
   // Generate ficha catalográfica via Claude if requested
   let ficha: FichaCatalografica | null = null;
-  if (config.incluir_ficha) {
+  if (configResolved.incluir_ficha) {
     ficha = await gerarFichaCatalografica({
       titulo,
+      subtitulo,
       autor,
       genero,
-      paginas,
-      ano: config.ano_edicao ?? config.ano_copyright,
-      editora: config.nome_editora ?? "Autoria",
-      local: config.local_edicao ?? "São Paulo",
-      isbn: config.isbn ?? "",
-      formato: config.formato,
+      paginas: paginasReais,
+      ano: configResolved.ano_edicao ?? configResolved.ano_copyright,
+      editora: configResolved.nome_editora ?? "Autoria",
+      local: configResolved.local_edicao ?? "São Paulo",
+      isbn: configResolved.isbn ?? "",
+      formato: configResolved.formato,
       context: { userId: user.id, projectId: project_id },
     });
   }
 
   // Build HTML
-  const html = buildCreditosHtml({ config, ficha, titulo, autor });
+  const html = buildCreditosHtml({ config: configResolved, ficha, titulo, subtitulo, autor });
 
   // Upload to storage
   const storageClient = createClient(
@@ -431,7 +452,7 @@ export async function POST(request: NextRequest) {
   }
 
   const result: CreditosResult = {
-    config,
+    config: configResolved,
     ficha_catalografica: ficha ?? undefined,
     html_storage_path: storagePath,
     gerado_em: new Date().toISOString(),
