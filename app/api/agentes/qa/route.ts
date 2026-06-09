@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
   // ── Load project data ─────────────────────────────────────────────────────
   let texto = "";
   let titulo = "";
+  let subtitulo = "";
+  let autor = "";
   let sinopseCurta = "";
   let sinopseLonga = "";
   let palavrasChave: string[] = [];
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
   let temCreditos = false;
   let lombadaCapaMm: number | null = null;
   let lombadaMioloMm: number | null = null;
+  let paginasReais: number | null = null;
   let capaLarguraPx: number | null = null;
   let capaAlturaPx: number | null = null;
   let capaFormatoDpi = 300;
@@ -76,6 +79,8 @@ export async function POST(req: NextRequest) {
   if (isDev) {
     texto = "Lorem ipsum ".repeat(3000);
     titulo = "O Último Manuscrito";
+    subtitulo = "Uma noite que mudou tudo";
+    autor = "Dev Author";
     sinopseCurta = "Uma história sobre descoberta e superação.";
     sinopseLonga = "Um protagonista enfrenta desafios extraordinários em uma jornada épica.";
     palavrasChave = ["ficção", "aventura", "superação"];
@@ -84,37 +89,62 @@ export async function POST(req: NextRequest) {
     temCreditos = true;
     lombadaCapaMm = 14;
     lombadaMioloMm = 14;
+    paginasReais = 200;
     capaLarguraPx = 3543;
     capaAlturaPx = 2244;
   } else {
-    const { data: project } = await supabase
+    const { data: project, error: projErr } = await supabase
       .from("projects")
-      .select("dados_elementos, dados_capa, dados_miolo, dados_creditos, dados_pdf, manuscript:manuscript_id(texto)")
+      .select("dados_elementos, dados_capa, dados_miolo, dados_creditos, dados_pdf, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
-    if (!project) {
+    if (projErr || !project) {
       return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
     }
 
     const el    = project.dados_elementos as Record<string, unknown> | null;
     const capa  = project.dados_capa  as Record<string, unknown> | null;
     const miolo = project.dados_miolo as Record<string, unknown> | null;
-    const ms    = project.manuscript  as { texto?: string } | null;
+    const pdf   = project.dados_pdf   as Record<string, unknown> | null;
+    const creditos = project.dados_creditos as Record<string, unknown> | null;
 
-    texto         = ms?.texto ?? "";
-    titulo        = (el?.titulo_escolhido as string) ?? (el?.opcoes_titulo as string[])?.[0] ?? "";
+    const ms = project.manuscripts as unknown as {
+      titulo?: string;
+      subtitulo?: string;
+      texto?: string;
+      texto_revisado?: string;
+      autor_primeiro_nome?: string;
+      autor_sobrenome?: string;
+      genero_principal?: string;
+    } | null;
+
+    // Source of truth: manuscripts table
+    titulo    = ms?.titulo?.trim() ?? "";
+    subtitulo = ms?.subtitulo?.trim() ?? "";
+    autor     = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
+    texto     = ms?.texto_revisado ?? ms?.texto ?? "";
+
+    // Editorial data lives in dados_elementos
     sinopseCurta  = (el?.sinopse_curta as string) ?? "";
     sinopseLonga  = (el?.sinopse_longa as string) ?? "";
     palavrasChave = (el?.palavras_chave as string[]) ?? [];
-    temCapa       = !!(capa?.url_escolhida ?? capa?.url);
-    temPdf        = !!(project.dados_pdf as Record<string, unknown> | null)?.storage_path
-                    || !!(miolo?.html_storage_path);
-    temCreditos   = !!(project.dados_creditos as Record<string, unknown> | null)?.html_storage_path;
 
-    // Lombada cross-check data
-    lombadaMioloMm = (miolo?.lombada_mm as number) ?? null;
+    // Production artifacts
+    temCapa     = !!(capa?.url_escolhida ?? capa?.url);
+    temPdf      = !!pdf?.storage_path || !!(miolo?.html_storage_path);
+    temCreditos = !!creditos?.html_storage_path;
+
+    // Pages: prefer the PDF count (authoritative after rendering)
+    paginasReais = (pdf?.paginas as number) ?? (miolo?.paginas_reais as number) ?? null;
+
+    // Lombada cross-check — derive from paginas_reais when available
+    if (paginasReais && paginasReais > 0) {
+      lombadaMioloMm = Math.round(paginasReais * 0.07 * 10) / 10;
+    } else {
+      lombadaMioloMm = (miolo?.lombada_mm as number) ?? null;
+    }
 
     if (capa) {
       if (capa.modo === "ia" && typeof capa.lombada_mm === "number") {
@@ -149,9 +179,23 @@ export async function POST(req: NextRequest) {
   }
 
   if (!titulo) {
-    itens.push({ categoria: "metadados", status: "erro", mensagem: "Título não definido. Complete a etapa de Elementos." });
+    itens.push({ categoria: "metadados", status: "erro", mensagem: "Título não definido. Configure no upload do manuscrito." });
   } else {
     itens.push({ categoria: "metadados", status: "ok", mensagem: `Título: "${titulo}"` });
+  }
+
+  if (subtitulo) {
+    itens.push({ categoria: "metadados", status: "ok", mensagem: `Subtítulo: "${subtitulo}"` });
+  }
+
+  if (!autor) {
+    itens.push({
+      categoria: "metadados",
+      status: "erro",
+      mensagem: "Nome do autor não definido. Configure no upload do manuscrito (campos 'primeiro nome' e 'sobrenome').",
+    });
+  } else {
+    itens.push({ categoria: "metadados", status: "ok", mensagem: `Autor: ${autor}` });
   }
 
   itens.push(sinopseCurta
