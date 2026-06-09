@@ -358,7 +358,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       saveStatus: { kind: "idle" },
       autosaveCount: 0,
       confirmedSnapshot: null,
-      // stageInstance NÃO é resetado: a referência ao Konva.Stage
-      // continua válida enquanto o EditorCanvas está montado.
+      stageInstance: null,
     }),
 }));
