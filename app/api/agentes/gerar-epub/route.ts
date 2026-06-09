@@ -137,6 +137,7 @@ ${navPoints}
 function opfXml(
   chapters: Chapter[],
   bookTitle: string,
+  subtitulo: string,
   autor: string,
   uid: string,
   lang = "pt-BR",
@@ -158,11 +159,16 @@ function opfXml(
     .map(kw => `  <dc:subject>${esc(kw)}</dc:subject>`)
     .join("\n");
 
+  const subtitleMeta = subtitulo
+    ? `\n  <dc:title id="subtitle">${esc(subtitulo)}</dc:title>\n  <meta refines="#subtitle" property="title-type">subtitle</meta>`
+    : "";
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="${lang}">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
   <dc:identifier id="uid">${uid}</dc:identifier>
-  <dc:title>${esc(bookTitle)}</dc:title>
+  <dc:title id="main-title">${esc(bookTitle)}</dc:title>
+  <meta refines="#main-title" property="title-type">main</meta>${subtitleMeta}
   <dc:creator>${esc(autor)}</dc:creator>
   <dc:language>${lang}</dc:language>
   <dc:date>${new Date().toISOString().slice(0, 10)}</dc:date>
@@ -206,41 +212,50 @@ export async function POST(req: NextRequest) {
 
   // ── Load data ─────────────────────────────────────────────────────────────
   let titulo = "Sem título";
+  let subtitulo = "";
   let autor = "";
   let texto = "";
   let capaUrl: string | null = null;
   let palavrasChave: string[] = [];
 
   if (process.env.NODE_ENV === "development") {
-    titulo = "O Último Manuscrito";
-    autor  = "Dev Author";
-    texto  = [
+    titulo    = "O Último Manuscrito";
+    subtitulo = "Uma noite que mudou tudo";
+    autor     = "Dev Author";
+    texto     = [
       "CAPÍTULO 1\n\nEra uma noite escura e tempestuosa quando tudo começou.",
       "O protagonista olhou pela janela e viu algo que mudaria sua vida para sempre.",
       "CAPÍTULO 2\n\nO dia seguinte trouxe novas revelações.",
       "A cidade acordou sob uma neblina densa. Cada passo revelava um novo mistério.",
     ].join("\n\n");
   } else {
-    const { data: project } = await supabase
+    const { data: project, error: projErr } = await supabase
       .from("projects")
-      .select("dados_elementos, dados_capa, manuscript:manuscript_id(texto, nome)")
+      .select("dados_elementos, dados_capa, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
-    if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+    if (projErr || !project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
     const el = project.dados_elementos as Record<string, unknown> | null;
-    const ms = project.manuscript as { texto?: string; nome?: string } | null;
+    const ms = project.manuscripts as {
+      titulo?: string;
+      subtitulo?: string;
+      texto?: string;
+      texto_revisado?: string;
+      nome?: string;
+      autor_primeiro_nome?: string;
+      autor_sobrenome?: string;
+    } | null;
     const capa = project.dados_capa as { url_escolhida?: string } | null;
 
-    titulo = (el?.titulo_escolhido as string) ?? (el?.opcoes_titulo as string[])?.[0] ?? ms?.nome ?? "Sem título";
-    texto  = ms?.texto ?? "";
-    capaUrl = capa?.url_escolhida ?? null;
+    titulo       = ms?.titulo?.trim() || "Sem título";
+    subtitulo    = ms?.subtitulo?.trim() ?? "";
+    texto        = ms?.texto_revisado ?? ms?.texto ?? "";
+    capaUrl      = capa?.url_escolhida ?? null;
     palavrasChave = (el?.palavras_chave as string[] | undefined) ?? [];
-
-    const { data: profile } = await supabase.from("users").select("nome").eq("id", userId).single();
-    autor = profile?.nome ?? "";
+    autor        = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
   }
 
   if (!texto.trim()) {
@@ -286,7 +301,7 @@ export async function POST(req: NextRequest) {
 
   // OEBPS
   const oebps = zip.folder("OEBPS")!;
-  oebps.file("content.opf", opfXml(chapters, titulo, autor, uid, "pt-BR", coverExt, palavrasChave));
+  oebps.file("content.opf", opfXml(chapters, titulo, subtitulo, autor, uid, "pt-BR", coverExt, palavrasChave));
   oebps.file("toc.ncx",     ncxXml(chapters, titulo, autor, uid));
   oebps.file("nav.xhtml",   navXhtml(chapters, titulo));
   oebps.file("styles.css",  CSS);
