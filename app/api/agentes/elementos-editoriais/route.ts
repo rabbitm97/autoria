@@ -10,7 +10,6 @@ import { getAgentPrompt } from "@/lib/agent-prompts";
 export interface ElementosEditoriais {
   sinopse_curta: string;
   sinopse_longa: string;
-  opcoes_titulo: string[];
   palavras_chave: string[];
   ficha_catalografica: string;
 }
@@ -21,20 +20,21 @@ const FALLBACK_PROMPT = `\
 Você é um editor especialista em marketing editorial brasileiro com experiência em Amazon KDP, \
 livrarias independentes e plataformas de eBook nacionais.
 
+O título e subtítulo do livro são definitivos, escolhidos pelo autor — eles serão informados na \
+mensagem do usuário. Você não deve sugerir títulos alternativos. Use o título e subtítulo informados \
+para alinhar o tom da sinopse, das keywords e da ficha catalográfica. Se o título aparecer na sua \
+saída (ex.: na ficha catalográfica), ele deve ser idêntico ao informado.
+
 Sua tarefa é gerar os elementos editoriais de um livro a partir do trecho de manuscrito fornecido \
 e retornar EXCLUSIVAMENTE um objeto JSON válido. Não inclua markdown ou texto fora do JSON.
+
+Não inclua os campos \`opcoes_titulo\`, \`titulo\` ou \`subtitulo\` na sua resposta. \
+O JSON de saída tem exatamente os campos listados no schema abaixo — nada além disso.
 
 Schema obrigatório:
 {
   "sinopse_curta": "<sinopse em 1-3 frases (máx 60 palavras) — ganchos emocionais, sem spoilers>",
   "sinopse_longa": "<sinopse em 2-3 parágrafos (~150-200 palavras) — para Amazon e livrarias>",
-  "opcoes_titulo": [
-    "<opção 1 — memorável e original>",
-    "<opção 2>",
-    "<opção 3>",
-    "<opção 4>",
-    "<opção 5 — mais comercial/SEO>"
-  ],
   "palavras_chave": [
     "<keyword 1 — alta busca no Kindle PT-BR>",
     "<keyword 2>",
@@ -54,8 +54,7 @@ Diretrizes:
 - Escreva em português brasileiro coloquial mas polido
 - Sinopses devem ser magnéticas — façam o leitor querer comprar
 - Palavras-chave: use termos reais de busca no Amazon Kindle BR
-- Ficha catalográfica: use dados ficticios plausíveis se não houver informação real
-- opcoes_titulo deve ter exatamente 5 itens
+- Ficha catalográfica: use dados fictícios plausíveis se não houver informação real
 - palavras_chave deve ter exatamente 10 itens`;
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -84,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, diagnostico, manuscripts(texto, nome)")
+    .select("id, titulo, subtitulo, manuscript_id, diagnostico, manuscripts(texto, nome)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -92,6 +91,9 @@ export async function POST(request: NextRequest) {
   if (projErr || !project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
+
+  const titulo = (project as unknown as { titulo: string }).titulo ?? "";
+  const subtitulo = (project as unknown as { subtitulo: string | null }).subtitulo ?? "";
 
   const ms = project.manuscripts as unknown as { texto: string | null; nome: string } | null;
   const texto = ms?.texto ?? "";
@@ -113,6 +115,8 @@ export async function POST(request: NextRequest) {
       ? texto.slice(0, 40_000) + "\n\n[...trecho truncado]"
       : texto;
 
+  const tituloCtx = `TÍTULO DO LIVRO: "${titulo}"\nSUBTÍTULO: "${subtitulo || "(sem subtítulo)"}"\n\n`;
+
   const SYSTEM_PROMPT = await getAgentPrompt("elementos-editoriais", FALLBACK_PROMPT);
   let elementos: ElementosEditoriais;
   try {
@@ -128,7 +132,7 @@ export async function POST(request: NextRequest) {
         messages: [
           {
             role: "user",
-            content: `Manuscrito: "${nomeManuscrito}"${diagnosticoCtx}\n\nTexto:\n${textoCortado}\n\nGere os elementos editoriais e retorne apenas o JSON:`,
+            content: `${tituloCtx}Manuscrito: "${nomeManuscrito}"${diagnosticoCtx}\n\nTexto:\n${textoCortado}\n\nGere os elementos editoriais e retorne apenas o JSON:`,
           },
         ],
       }),
@@ -137,7 +141,7 @@ export async function POST(request: NextRequest) {
     elementos = parseLLMJson<ElementosEditoriais>(extractText(message.content));
 
     const campos: (keyof ElementosEditoriais)[] = [
-      "sinopse_curta", "sinopse_longa", "opcoes_titulo", "palavras_chave", "ficha_catalografica",
+      "sinopse_curta", "sinopse_longa", "palavras_chave", "ficha_catalografica",
     ];
     for (const campo of campos) {
       if (elementos[campo] === undefined) throw new Error(`Campo ausente: ${campo}`);

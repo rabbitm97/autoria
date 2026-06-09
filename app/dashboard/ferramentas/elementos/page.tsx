@@ -45,7 +45,7 @@ export default function ElementosPage() {
         <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-1">Ferramentas / IA</p>
         <h1 className="font-heading text-3xl text-brand-primary mb-2">Elementos Editoriais</h1>
         <p className="text-zinc-500 text-sm max-w-xl">
-          Gere sinopse, títulos alternativos, palavras-chave e ficha catalográfica a partir do seu manuscrito — prontos para Amazon KDP e livrarias.
+          Gere sinopse, palavras-chave e ficha catalográfica a partir do seu manuscrito — prontos para Amazon KDP e livrarias.
         </p>
       </div>
 
@@ -85,22 +85,6 @@ export default function ElementosPage() {
           <div className="grid sm:grid-cols-2 gap-4">
             <CopyCard label="Sinopse Curta" value={result.sinopse_curta} onCopy={() => copy(result.sinopse_curta, "sc")} copied={copied === "sc"} />
             <CopyCard label="Sinopse Longa" value={result.sinopse_longa} onCopy={() => copy(result.sinopse_longa, "sl")} copied={copied === "sl"} large />
-          </div>
-
-          {/* Títulos */}
-          <div className="bg-white rounded-2xl border border-zinc-100 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Opções de título</p>
-              <CopyButton onClick={() => copy(result.opcoes_titulo.join("\n"), "tt")} copied={copied === "tt"} />
-            </div>
-            <ul className="space-y-2">
-              {result.opcoes_titulo.map((t, i) => (
-                <li key={i} className="flex items-center gap-3">
-                  <span className="w-5 h-5 rounded-full bg-brand-gold/15 text-brand-gold text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                  <span className="text-sm text-zinc-800 font-medium">{t}</span>
-                </li>
-              ))}
-            </ul>
           </div>
 
           {/* Keywords */}

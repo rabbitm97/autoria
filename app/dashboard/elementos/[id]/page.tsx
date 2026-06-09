@@ -8,8 +8,6 @@ import type { ElementosEditoriais } from "@/app/api/agentes/elementos-editoriais
 import type { FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ElementosPage() {
@@ -18,6 +16,8 @@ export default function ElementosPage() {
 
   const [elementos, setElementos] = useState<ElementosEditoriais | null>(null);
   const [manuscritoNome, setManuscritoNome] = useState("");
+  const [tituloLivro, setTituloLivro] = useState("");
+  const [subtituloLivro, setSubtituloLivro] = useState("");
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -28,14 +28,12 @@ export default function ElementosPage() {
   // Editable state
   const [sinopseCurta, setSinopseCurta] = useState("");
   const [sinopseLonga, setSinopseLonga] = useState("");
-  const [tituloSelecionado, setTituloSelecionado] = useState(0);
   const [ficha, setFicha] = useState("");
 
   const populateFields = useCallback((el: ElementosEditoriais) => {
     setElementos(el);
     setSinopseCurta(el.sinopse_curta);
     setSinopseLonga(el.sinopse_longa);
-    setTituloSelecionado(0);
     setFicha(el.ficha_catalografica);
   }, []);
 
@@ -43,7 +41,7 @@ export default function ElementosPage() {
     const [projRes, fmtRes] = await Promise.all([
       supabase
         .from("projects")
-        .select("dados_elementos, manuscripts(nome)")
+        .select("dados_elementos, titulo, subtitulo, manuscripts(nome)")
         .eq("id", projectId)
         .single(),
       fetch(`/api/projects/${projectId}/formato`).then(r => r.json()).catch(() => null),
@@ -55,6 +53,8 @@ export default function ElementosPage() {
       setManuscritoNome(
         (projRes.data.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito"
       );
+      setTituloLivro((projRes.data as unknown as { titulo: string }).titulo ?? "");
+      setSubtituloLivro((projRes.data as unknown as { subtitulo: string | null }).subtitulo ?? "");
     }
 
     if (fmtRes) {
@@ -105,7 +105,6 @@ export default function ElementosPage() {
             ...elementos,
             sinopse_curta: sinopseCurta,
             sinopse_longa: sinopseLonga,
-            titulo_escolhido: elementos.opcoes_titulo[tituloSelecionado],
             salvo_em: new Date().toISOString(),
           },
           etapa_atual: "capa",
@@ -143,7 +142,7 @@ export default function ElementosPage() {
               Elementos editoriais
             </h1>
             <p className="text-zinc-500 leading-relaxed mb-8">
-              A IA irá gerar sinopses, opções de título, palavras-chave para Amazon KDP
+              A IA irá gerar sinopses, palavras-chave para Amazon KDP
               e ficha catalográfica no padrão CBL — tudo editável.
             </p>
             {error && (
@@ -199,25 +198,18 @@ export default function ElementosPage() {
                 />
               </div>
 
-              {/* Título */}
+              {/* Título do livro — read-only */}
               <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-                <h2 className="font-heading text-lg text-brand-primary mb-4">Escolha o título</h2>
-                <div className="space-y-2">
-                  {elementos.opcoes_titulo.map((titulo, i) => (
-                    <label key={i} className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="titulo"
-                        checked={tituloSelecionado === i}
-                        onChange={() => setTituloSelecionado(i)}
-                        className="w-4 h-4 accent-brand-gold"
-                      />
-                      <span className={`text-sm ${tituloSelecionado === i ? "font-semibold text-brand-primary" : "text-zinc-600"}`}>
-                        {titulo}
-                      </span>
-                    </label>
-                  ))}
+                <h2 className="font-heading text-lg text-brand-primary mb-1">Título do livro</h2>
+                <div className="mt-3">
+                  <p className="text-base font-semibold text-brand-primary">{tituloLivro}</p>
+                  {subtituloLivro && (
+                    <p className="text-sm text-zinc-500 mt-0.5">{subtituloLivro}</p>
+                  )}
                 </div>
+                <p className="text-zinc-400 text-xs mt-3">
+                  Esse é o título definido por você no upload. Para alterar, edite nas configurações do projeto.
+                </p>
               </div>
 
               {/* Sinopse curta */}
