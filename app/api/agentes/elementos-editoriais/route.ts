@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, titulo, subtitulo, manuscript_id, diagnostico, manuscripts(texto, nome)")
+    .select("id, manuscript_id, diagnostico, manuscripts(titulo, subtitulo, texto, nome)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -92,10 +92,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
 
-  const titulo = (project as unknown as { titulo: string }).titulo ?? "";
-  const subtitulo = (project as unknown as { subtitulo: string | null }).subtitulo ?? "";
+  const ms = project.manuscripts as unknown as {
+    titulo: string | null;
+    subtitulo: string | null;
+    texto: string | null;
+    nome: string;
+  } | null;
 
-  const ms = project.manuscripts as unknown as { texto: string | null; nome: string } | null;
+  const titulo = ms?.titulo ?? "";
+  const subtitulo = ms?.subtitulo ?? "";
   const texto = ms?.texto ?? "";
   const nomeManuscrito = ms?.nome ?? "Manuscrito";
 
