@@ -17,27 +17,45 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
   const [state, setState] = useState<ConfirmState>("idle");
 
   async function handleConfirm() {
-    // Read imperatively to guarantee we have the current store value at click time,
-    // not a stale value from a previous render's closure
-    const { stageInstance, format, pages, comOrelhas } = useEditorStore.getState();
-    if (!stageInstance) {
+    // Espera o stage estar disponível — em caso raro de clique muito rápido
+    // logo após mount, o setStageInstance pode ainda não ter rodado
+    let attempts = 0;
+    let stage = useEditorStore.getState().stageInstance;
+    while (!stage && attempts < 10) {
+      await new Promise((r) => setTimeout(r, 50));
+      stage = useEditorStore.getState().stageInstance;
+      attempts++;
+    }
+
+    if (!stage) {
+      console.error(
+        "[EditorConfirmButton] stageInstance permanece null após 500ms. " +
+        "O EditorCanvas pode não ter montado corretamente."
+      );
       setState("error");
       setTimeout(() => setState("idle"), 3000);
       return;
     }
+
+    const { format, pages, comOrelhas } = useEditorStore.getState();
     setState("confirming");
 
     try {
-      // Ensure editor_data (including comOrelhas) is saved before confirming
+      // Garante que editor_data está salvo antes de confirmar
       const currentState = useEditorStore.getState();
       const snapshot = serializeEditorState(currentState);
-      await fetch(`/api/projects/${projectId}/cover-editor`, {
+      const saveRes = await fetch(`/api/projects/${projectId}/cover-editor`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(snapshot),
       });
+      if (!saveRes.ok) {
+        const errData = await saveRes.json().catch(() => ({}));
+        console.error("[EditorConfirmButton] Falha no PUT cover-editor:", saveRes.status, errData);
+        throw new Error("Falha ao salvar antes de confirmar");
+      }
 
-      const blob = await captureStageAsBlob(stageInstance, format, pages, comOrelhas);
+      const blob = await captureStageAsBlob(stage, format, pages, comOrelhas);
       const form = new FormData();
       form.append("png", blob, "cover.png");
 
@@ -48,10 +66,11 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
 
       if (!res.ok && res.status !== 207) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as any).error ?? "Erro ao confirmar");
+        console.error("[EditorConfirmButton] Falha no POST confirm:", res.status, data);
+        throw new Error((data as { error?: string }).error ?? "Erro ao confirmar");
       }
 
-      const data = await res.json() as { confirmed_at: string };
+      const data = (await res.json()) as { confirmed_at: string };
       const { elements, fills, setConfirmedSnapshot } = useEditorStore.getState();
       setConfirmedSnapshot({
         elementsHash: hashElements(elements),
@@ -61,7 +80,12 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
 
       setState("idle");
       onConfirmed?.(data.confirmed_at);
-    } catch {
+    } catch (err) {
+      console.error("[EditorConfirmButton] Erro ao confirmar capa:", err);
+      if (err instanceof Error) {
+        console.error("[EditorConfirmButton] message:", err.message);
+        console.error("[EditorConfirmButton] stack:", err.stack);
+      }
       setState("error");
       setTimeout(() => setState("idle"), 5000);
     }
