@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
 import { type FormatoLivro, getFormatoDef, isFormatoValido } from "@/lib/formatos";
+import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,9 @@ export interface CreditosResult {
   config: CreditosConfig;
   ficha_catalografica?: FichaCatalografica;
   html_storage_path: string;
+  input_hash: string;
+  paginas_usadas: number;
+  paginas_origem: "real" | "estimada";
   gerado_em: string;
 }
 
@@ -363,7 +367,7 @@ export async function POST(request: NextRequest) {
   // Load project data
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, formato, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("id, formato, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal, texto, texto_revisado)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -385,17 +389,18 @@ export async function POST(request: NextRequest) {
   }
   const configResolved: CreditosConfig = { ...config, formato: formatoDb as FormatoLivro };
 
-  // Block when miolo hasn't been generated yet — pages must be real, not estimated
+  // Páginas: preferir reais (do miolo já gerado), cair para estimadas, ou estimar do texto.
   const mioloData = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
-  const paginasReais = mioloData?.paginas_reais;
-  if (!paginasReais || paginasReais < 1) {
-    return NextResponse.json(
-      {
-        error: "Gere o miolo do livro antes da página de créditos. A ficha catalográfica precisa do número real de páginas.",
-        action: "generate_miolo",
-      },
-      { status: 422 }
-    );
+  let paginasParaFicha = mioloData?.paginas_reais ?? mioloData?.paginas_estimadas ?? 0;
+  let paginasOrigem: "real" | "estimada" = mioloData?.paginas_reais ? "real" : "estimada";
+
+  if (paginasParaFicha < 1) {
+    const msText = project.manuscripts as unknown as { texto_revisado?: string; texto?: string } | null;
+    const textoFull = msText?.texto_revisado ?? msText?.texto ?? "";
+    const palavras = textoFull.split(/\s+/).filter(Boolean).length;
+    const wpp = getFormatoDef(configResolved.formato).specs.wpp;
+    paginasParaFicha = Math.max(1, Math.round(palavras / wpp));
+    paginasOrigem = "estimada";
   }
 
   const ms = project.manuscripts as unknown as {
@@ -419,7 +424,7 @@ export async function POST(request: NextRequest) {
       subtitulo,
       autor,
       genero,
-      paginas: paginasReais,
+      paginas: paginasParaFicha,
       ano: configResolved.ano_edicao ?? configResolved.ano_copyright,
       editora: configResolved.nome_editora ?? "Autoria",
       local: configResolved.local_edicao ?? "São Paulo",
@@ -431,6 +436,21 @@ export async function POST(request: NextRequest) {
 
   // Build HTML
   const html = buildCreditosHtml({ config: configResolved, ficha, titulo, subtitulo, autor });
+
+  const inputHash = calcularCreditosInputHash({
+    titulo,
+    subtitulo,
+    autor,
+    genero,
+    paginas: paginasParaFicha,
+    formato: configResolved.formato,
+    ano_copyright: configResolved.ano_copyright,
+    ano_edicao: configResolved.ano_edicao ?? null,
+    isbn: (configResolved.isbn ?? "").trim(),
+    incluir_ficha: configResolved.incluir_ficha,
+    titular_direitos: configResolved.titular_direitos,
+    nome_editora: configResolved.nome_editora ?? "",
+  });
 
   // Upload to storage
   const storageClient = createClient(
@@ -455,6 +475,9 @@ export async function POST(request: NextRequest) {
     config: configResolved,
     ficha_catalografica: ficha ?? undefined,
     html_storage_path: storagePath,
+    input_hash: inputHash,
+    paginas_usadas: paginasParaFicha,
+    paginas_origem: paginasOrigem,
     gerado_em: new Date().toISOString(),
   };
 

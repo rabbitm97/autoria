@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Two-pass build for accurate TOC page numbers
-  const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml: null };
+  const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml: "<p>&nbsp;</p>" };
   const pass1 = buildBookHtml({ ...buildArgs, config: { ...config, sumario: false } });
   const { html } =
     config.sumario && pass1.capitulosInfo.length > 1

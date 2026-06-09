@@ -7,6 +7,8 @@ import { createHash } from "crypto";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
+import { calcularCreditosInputHash } from "@/lib/creditos-hash";
+import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -140,26 +142,93 @@ export async function POST(request: NextRequest) {
     primeiros_5: capitulos.slice(0, 5).map(c => c.titulo),
   });
 
-  // Fetch credits HTML from Storage if available
-  let creditosInnerHtml: string | null = null;
-  const dadosCreditos = project.dados_creditos as { html_storage_path?: string } | null;
-  if (dadosCreditos?.html_storage_path) {
-    try {
-      const storageClientR = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-      const { data: cFile } = await storageClientR.storage
-        .from("manuscripts")
-        .download(dadosCreditos.html_storage_path);
-      if (cFile) {
-        const raw = await cFile.text();
-        const bodyMatch = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        creditosInnerHtml = bodyMatch ? bodyMatch[1].trim() : null;
-      }
-    } catch {
-      // Non-fatal: miolo generates without credits page
-    }
+  // Créditos aprovados são obrigatórios — sem fallback.
+  const dadosCreditos = project.dados_creditos as {
+    html_storage_path?: string;
+    input_hash?: string;
+    paginas_usadas?: number;
+    config?: CreditosConfig;
+  } | null;
+
+  if (!dadosCreditos?.html_storage_path || !dadosCreditos?.input_hash) {
+    return NextResponse.json(
+      {
+        error: "Gere e aprove a página de créditos antes de gerar o miolo final.",
+        action: "generate_creditos",
+        reason: "no_creditos",
+      },
+      { status: 422 }
+    );
+  }
+
+  // Verificar drift de dados — hash usa as mesmas páginas que o créditos usou,
+  // evitando deadlock na primeira passagem quando dados_miolo ainda não existe.
+  const hashAtualCreditos = calcularCreditosInputHash({
+    titulo,
+    subtitulo,
+    autor,
+    genero: ms?.genero_principal ?? "Literatura",
+    paginas: dadosCreditos.paginas_usadas ?? 0,
+    formato: config.formato,
+    ano_copyright: dadosCreditos.config?.ano_copyright ?? 0,
+    ano_edicao: dadosCreditos.config?.ano_edicao ?? null,
+    isbn: dadosCreditos.config?.isbn ?? "",
+    incluir_ficha: dadosCreditos.config?.incluir_ficha ?? false,
+    titular_direitos: dadosCreditos.config?.titular_direitos ?? "",
+    nome_editora: dadosCreditos.config?.nome_editora ?? "",
+  });
+
+  if (hashAtualCreditos !== dadosCreditos.input_hash) {
+    console.log("[miolo] Créditos desatualizados — forçando reaprovação", {
+      project_id,
+      hashSalvo: dadosCreditos.input_hash.slice(0, 8),
+      hashAtual: hashAtualCreditos.slice(0, 8),
+    });
+    return NextResponse.json(
+      {
+        error: "Os dados do livro mudaram desde a aprovação da página de créditos. Reaprove a página de créditos.",
+        action: "generate_creditos",
+        reason: "data_changed",
+      },
+      { status: 422 }
+    );
+  }
+
+  // Baixar HTML aprovado — falha alta se não conseguir, sem fallback.
+  const storageClientR = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { data: cFile, error: cDownErr } = await storageClientR.storage
+    .from("manuscripts")
+    .download(dadosCreditos.html_storage_path);
+
+  if (cDownErr || !cFile) {
+    console.error("[miolo] Erro ao baixar HTML de créditos aprovado:", cDownErr);
+    return NextResponse.json(
+      {
+        error: "Não foi possível ler o HTML aprovado da página de créditos. Regere a página de créditos.",
+        action: "generate_creditos",
+        reason: "download_failed",
+      },
+      { status: 500 }
+    );
+  }
+
+  const rawCreditos = await cFile.text();
+  const bodyMatch = rawCreditos.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const creditosInnerHtml = bodyMatch ? bodyMatch[1].trim() : null;
+
+  if (!creditosInnerHtml) {
+    console.error("[miolo] HTML de créditos sem <body> extraível");
+    return NextResponse.json(
+      {
+        error: "Página de créditos aprovada está corrompida. Regere a página de créditos.",
+        action: "generate_creditos",
+        reason: "html_invalid",
+      },
+      { status: 500 }
+    );
   }
 
   // Build HTML — two passes when sumário is on so TOC shows real page numbers.
@@ -229,6 +298,7 @@ export async function POST(request: NextRequest) {
     miolo: mioloResult,
     preview_url: signed?.signedUrl ?? null,
     html,
+    creditos_input_hash: dadosCreditos.input_hash,
   });
   } catch (err) {
     console.error("[miolo] Erro não tratado no handler POST:", err);

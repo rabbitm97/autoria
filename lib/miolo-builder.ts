@@ -546,7 +546,7 @@ export function buildBookHtml(params: {
   texto: string;
   capitulos: { titulo: string; pos: number }[];
   config: MioloConfig;
-  creditosInnerHtml?: string | null;
+  creditosInnerHtml: string;
   chapterStartPagesOverride?: number[];
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml, chapterStartPagesOverride } = params;
@@ -608,19 +608,15 @@ ${subtitulo ? `  <p class="subtitle">${escHtml(subtitulo)}</p>\n` : ""}  <p clas
 </section>`);
 
   // ── 4. Créditos + ficha catalográfica ──────────────────────────────────────
-  if (creditosInnerHtml) {
-    sections.push(`<section class="front-page">
+  if (!creditosInnerHtml || !creditosInnerHtml.trim()) {
+    throw new Error(
+      "[miolo-builder] creditosInnerHtml ausente. " +
+      "A página de créditos aprovada é obrigatória — não existe fallback."
+    );
+  }
+  sections.push(`<section class="front-page">
   <div class="creditos-wrap">${creditosInnerHtml}</div>
 </section>`);
-  } else {
-    sections.push(`<section class="front-page">
-  <div class="creditos-wrap" style="padding-top:40mm">
-    <p>© ${new Date().getFullYear()} ${escHtml(autor)}</p>
-    <p>Todos os direitos reservados.</p>
-    <p>Publicado pela plataforma Autoria.</p>
-  </div>
-</section>`);
-  }
 
   // ── 5. Dedicatória (opcional) ──────────────────────────────────────────────
   if (config.dedicatoria?.trim()) {
@@ -711,7 +707,7 @@ ${sections.join("\n\n")}
   // paginasReais é uma estimativa (não vem do PDF aqui — vem da rota gerar-pdf
   // que conta páginas reais do PDF gerado e atualiza o registro do projeto).
   // Mantemos o cálculo para preview e sumário.
-  const paginasReais = numberedPagesEstimate + (creditosInnerHtml ? 4 : 4)
+  const paginasReais = numberedPagesEstimate + 4
     + (config.dedicatoria?.trim() ? 2 : 0)
     + (config.epigrafe_texto?.trim() ? 2 : 0)
     + (deveExibirSumario(config) && segments.length > 1 ? 1 : 0);
