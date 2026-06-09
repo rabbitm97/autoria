@@ -107,39 +107,65 @@ export async function POST(req: NextRequest) {
       resolucao_capa: 2560,
     };
   } else {
-    const { data: project } = await supabase
+    const { data: project, error: projErr } = await supabase
       .from("projects")
       .select(`
         dados_elementos,
         dados_capa,
         dados_pdf,
-        dados_epub,
+        dados_audio,
+        dados_creditos,
         usar_revisao,
-        manuscript:manuscript_id(titulo, subtitulo, genero_principal, autor_primeiro_nome, autor_sobrenome, idioma)
+        manuscripts(titulo, subtitulo, genero_principal, autor_primeiro_nome, autor_sobrenome)
       `)
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
-    if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+    if (projErr || !project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
-    const el = project.dados_elementos as Record<string, unknown> | null;
-    const ms = (Array.isArray(project.manuscript) ? project.manuscript[0] : project.manuscript) as Record<string, unknown> | null;
+    const el       = project.dados_elementos as Record<string, unknown> | null;
+    const capa     = project.dados_capa     as Record<string, unknown> | null;
+    const pdf      = project.dados_pdf      as Record<string, unknown> | null;
+    const audio    = project.dados_audio    as Record<string, unknown> | null;
+    const creditos = project.dados_creditos as { config?: { isbn?: string } } | null;
+
+    const ms = project.manuscripts as unknown as {
+      titulo?: string;
+      subtitulo?: string;
+      genero_principal?: string;
+      autor_primeiro_nome?: string;
+      autor_sobrenome?: string;
+    } | null;
+
+    // EPUB lives inside dados_pdf.epub (not in a separate column)
+    const epubData = (pdf as { epub?: { storage_path?: string } } | null)?.epub;
+
+    // ISBN lives in dados_creditos.config.isbn
+    const isbnReal = creditos?.config?.isbn?.trim() ?? "";
+
+    // Cover resolution from real data, not body
+    const resolucaoCapaReal = (capa?.largura_px as number) ?? undefined;
+
+    // Audio from real data
+    const temAudio = !!(audio as { storage_path?: string } | null)?.storage_path;
 
     dados = {
       ...((body.dados ?? {}) as Partial<RequisitosArquivo>),
-      titulo:          ((el?.titulo_escolhido ?? ms?.titulo) as string) ?? "",
-      subtitulo:       (ms?.subtitulo as string) ?? undefined,
-      autor:           [`${ms?.autor_primeiro_nome ?? ""}`, `${ms?.autor_sobrenome ?? ""}`].filter(Boolean).join(" "),
+      titulo:          ms?.titulo?.trim() ?? "",
+      subtitulo:       ms?.subtitulo?.trim() || undefined,
+      autor:           [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" "),
       sinopse_curta:   (el?.sinopse_curta as string) ?? "",
       sinopse_longa:   (el?.sinopse_longa as string) ?? "",
       palavras_chave:  (el?.palavras_chave as string[]) ?? [],
       genero:          (ms?.genero_principal as string) ?? "",
-      idioma:          (ms?.idioma as string) ?? "pt-BR",
-      tem_isbn:        !!(el?.isbn as string),
-      tem_miolo_pdf:   !!(project.dados_pdf as Record<string, unknown> | null)?.storage_path,
-      tem_capa_pdf:    !!(project.dados_capa as Record<string, unknown> | null)?.url_escolhida,
-      tem_epub:        !!(project.dados_epub as Record<string, unknown> | null)?.storage_path,
+      idioma:          "pt-BR",
+      tem_isbn:        !!isbnReal,
+      tem_miolo_pdf:   !!(pdf as { storage_path?: string } | null)?.storage_path,
+      tem_capa_pdf:    !!(capa?.url_escolhida ?? capa?.url),
+      tem_epub:        !!epubData?.storage_path,
+      resolucao_capa:  resolucaoCapaReal,
+      tem_audiolivro:  temAudio,
     };
   }
 
@@ -155,6 +181,16 @@ export async function POST(req: NextRequest) {
     checagens.push({ plataforma: "geral", status: "aviso", campo: "título", mensagem: "Título muito longo (>200 caracteres). Considere encurtar." });
   } else {
     checagens.push({ plataforma: "geral", status: "ok", campo: "título", mensagem: `Título presente: "${dados.titulo}"` });
+  }
+
+  // Subtitle is optional, but report if present
+  if (dados.subtitulo?.trim()) {
+    checagens.push({
+      plataforma: "geral",
+      status: "ok",
+      campo: "subtítulo",
+      mensagem: `Subtítulo: "${dados.subtitulo}"`,
+    });
   }
 
   // Autor
