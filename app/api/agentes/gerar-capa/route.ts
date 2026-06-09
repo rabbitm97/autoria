@@ -100,17 +100,12 @@ export async function POST(req: NextRequest) {
 
   let body: {
     project_id: string;
-    titulo: string;
-    autor: string;
-    sinopse: string;
-    genero?: string;
     estilo?: EstiloCapa;
     cor_predominante?: string;
     usar_orelhas?: boolean;
     quarta_capa_texto?: string;
     imagemRef?: string;
     is_regeneracao?: boolean;
-    paginas?: number;
   };
   try {
     body = await req.json();
@@ -120,35 +115,66 @@ export async function POST(req: NextRequest) {
 
   const {
     project_id,
-    titulo,
-    autor = "",
-    sinopse,
-    genero = "literatura",
     estilo = "minimalista",
     cor_predominante = "azul escuro",
     usar_orelhas = false,
-    quarta_capa_texto = sinopse?.slice(0, 500) ?? "",
     imagemRef,
     is_regeneracao = false,
-    paginas = 200,
   } = body;
 
-  if (!project_id || !titulo || !sinopse) {
+  if (!project_id) {
+    return NextResponse.json({ error: "project_id é obrigatório" }, { status: 400 });
+  }
+
+  // ── Fetch project + manuscripts from DB ───────────────────────────────────
+  const { data: project, error: projErr } = await supabase
+    .from("projects")
+    .select("id, creditos, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .eq("id", project_id)
+    .eq("user_id", userId)
+    .single();
+
+  if (projErr || !project) {
+    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+  }
+
+  const ms = project.manuscripts as unknown as {
+    titulo?: string;
+    subtitulo?: string;
+    autor_primeiro_nome?: string;
+    autor_sobrenome?: string;
+    genero_principal?: string;
+  } | null;
+
+  const titulo = ms?.titulo ?? "";
+  const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
+  const genero = ms?.genero_principal || "literatura";
+
+  const dadosElementos = project.dados_elementos as { sinopse_curta?: string; sinopse_longa?: string } | null;
+  const sinopse = dadosElementos?.sinopse_longa || dadosElementos?.sinopse_curta || "";
+
+  const dadosMiolo = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
+  const paginas = dadosMiolo?.paginas_reais ?? dadosMiolo?.paginas_estimadas ?? 200;
+
+  const quarta_capa_texto = body.quarta_capa_texto ?? sinopse.slice(0, 500);
+
+  if (!titulo) {
     return NextResponse.json(
-      { error: "project_id, titulo e sinopse são obrigatórios" },
-      { status: 400 }
+      { error: "Título do livro ausente. Configure no upload do manuscrito." },
+      { status: 422 }
+    );
+  }
+
+  if (!sinopse) {
+    return NextResponse.json(
+      { error: "Sinopse ausente. Gere os elementos editoriais antes de criar a capa." },
+      { status: 422 }
     );
   }
 
   // ── Credit check for regeneration ────────────────────────────────────────
   if (is_regeneracao && !isDev) {
-    const { data: proj } = await supabase
-      .from("projects")
-      .select("creditos")
-      .eq("id", project_id)
-      .single();
-
-    const creditos = (proj as { creditos?: number } | null)?.creditos ?? 0;
+    const creditos = (project as unknown as { creditos?: number }).creditos ?? 0;
     if (creditos < 20) {
       return NextResponse.json(
         { error: "Créditos insuficientes. Regenerar capa custa 20 créditos." },

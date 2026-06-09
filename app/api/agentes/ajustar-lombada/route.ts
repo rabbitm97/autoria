@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo, dados_elementos, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("dados_capa, dados_miolo, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -55,8 +55,7 @@ export async function POST(req: NextRequest) {
 
   const dados_capa = project.dados_capa as (CapaGeradaResult & Record<string, unknown>) | null;
   const dados_miolo = project.dados_miolo as { paginas_reais?: number; lombada_mm?: number } | null;
-  const dados_el = project.dados_elementos as { titulo_escolhido?: string } | null;
-  const ms = project.manuscripts as { autor_primeiro_nome?: string; autor_sobrenome?: string; genero_principal?: string } | null;
+  const ms = project.manuscripts as { titulo?: string; autor_primeiro_nome?: string; autor_sobrenome?: string; genero_principal?: string } | null;
 
   // ── Validate preconditions ───────────────────────────────────────────────────
 
@@ -104,7 +103,7 @@ export async function POST(req: NextRequest) {
 
   // ── Build metadata ───────────────────────────────────────────────────────────
 
-  const titulo = dados_el?.titulo_escolhido ?? "";
+  const titulo = ms?.titulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ");
   const genero = ms?.genero_principal ?? "literatura";
 
@@ -162,10 +161,7 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json", Cookie: cookieHeader },
       body: JSON.stringify({
         project_id,
-        paginas: dados_miolo.paginas_reais,
         usar_orelhas: (dados_capa as Record<string, unknown>).usar_orelhas ?? false,
-        titulo,
-        autor,
         elementos: {
           frente_url: frenteUrl,
           contra_url: contraUrl,

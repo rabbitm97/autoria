@@ -404,17 +404,12 @@ function ModoIA({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: projectId,
-          titulo,
-          autor,
-          sinopse,
-          genero,
           estilo,
           cor_predominante: cor,
           usar_orelhas: usarOrelhas,
           quarta_capa_texto: quartaTexto,
           imagemRef: imgRef ?? undefined,
           is_regeneracao: regen,
-          paginas,
         }),
       });
       const data = await r.json();

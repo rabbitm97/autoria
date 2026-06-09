@@ -64,10 +64,7 @@ export async function POST(req: NextRequest) {
 
   let body: {
     project_id: string;
-    paginas: number;
     usar_orelhas: boolean;
-    titulo?: string;
-    autor?: string;
     qualidade?: "preview" | "impressao";
     elementos: {
       frente_url: string;
@@ -82,10 +79,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const {
-    project_id, paginas, usar_orelhas, elementos,
-    titulo = "", autor = "", qualidade = "preview",
-  } = body;
+  const { project_id, usar_orelhas, elementos, qualidade = "preview" } = body;
 
   if (!project_id || !elementos.frente_url || !elementos.contra_url) {
     return NextResponse.json({ error: "project_id, frente_url e contra_url são obrigatórios" }, { status: 400 });
@@ -108,6 +102,30 @@ export async function POST(req: NextRequest) {
       { status: 422 }
     );
   }
+
+  // ── Fetch titulo, autor, paginas from DB ──────────────────────────────────
+  const { data: project, error: projErr } = await supabase
+    .from("projects")
+    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+    .eq("id", project_id)
+    .eq("user_id", userId)
+    .single();
+
+  if (projErr || !project) {
+    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+  }
+
+  const ms = project.manuscripts as unknown as {
+    titulo?: string;
+    autor_primeiro_nome?: string;
+    autor_sobrenome?: string;
+  } | null;
+
+  const titulo = ms?.titulo ?? "";
+  const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
+
+  const dadosMiolo = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
+  const paginas = dadosMiolo?.paginas_reais ?? dadosMiolo?.paginas_estimadas ?? 200;
 
   // ── Calculate dimensions ──────────────────────────────────────────────────
   const t0 = Date.now();
