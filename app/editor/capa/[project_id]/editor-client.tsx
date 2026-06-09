@@ -40,7 +40,14 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
 
   const saveNow = useCallback(async () => {
     const state = useEditorStore.getState();
-    const snapshot = serializeEditorState(state);
+    let snapshot: ReturnType<typeof serializeEditorState>;
+    try {
+      snapshot = serializeEditorState(state);
+    } catch (serErr) {
+      console.error("[editor-client] Erro ao serializar estado:", serErr);
+      useEditorStore.getState().setSaveStatus({ kind: "error", error: "Falha ao serializar" });
+      return;
+    }
     useEditorStore.getState().setSaveStatus({ kind: "saving" });
     try {
       const res = await fetch(`/api/projects/${projectData.projectId}/cover-editor`, {
@@ -52,7 +59,12 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
       const data = await res.json();
       useEditorStore.getState().setSaveStatus({ kind: "saved", at: data.saved_at });
       useEditorStore.setState((s) => ({ autosaveCount: s.autosaveCount + 1 }));
-    } catch {
+    } catch (err) {
+      console.error("[editor-client] saveNow falhou:", err);
+      if (err instanceof Error) {
+        console.error("[editor-client] message:", err.message);
+        console.error("[editor-client] stack:", err.stack);
+      }
       useEditorStore.getState().setSaveStatus({ kind: "error", error: "Falha ao salvar" });
     }
   }, [projectData.projectId]);
@@ -105,7 +117,9 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
           useEditorStore.getState().hydrateClipboard([p.element]);
         }
       }
-    } catch {}
+    } catch (clipErr) {
+      console.warn("[editor-client] Erro ao hidratar clipboard:", clipErr);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
