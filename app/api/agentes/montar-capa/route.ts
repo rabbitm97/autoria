@@ -257,10 +257,30 @@ export async function POST(req: NextRequest) {
   );
 
   // ── Persist in project ────────────────────────────────────────────────────
+  // Lê o dados_capa atual e faz MERGE — não substituição. Os campos do pipeline
+  // original (modo, url_escolhida, opcoes, source, imagem_url, editor_data...)
+  // precisam ser preservados; só adicionamos os campos da montagem em cima.
+  const { data: currentProject } = await supabase
+    .from("projects")
+    .select("dados_capa")
+    .eq("id", project_id)
+    .eq("user_id", userId)
+    .single();
+
+  const dadosCapaAtual = (currentProject?.dados_capa as Record<string, unknown> | null) ?? {};
+
+  const dadosCapaAtualizado = {
+    ...dadosCapaAtual,
+    url_completa: publicUrl,
+    composta_storage_path: storagePath,
+    montada_em: new Date().toISOString(),
+    dimensoes_montada: { largura_px: totalW, altura_px: frontH, dpi: DPI },
+  };
+
   await Promise.all([
     supabase
       .from("projects")
-      .update({ etapa_atual: "diagramacao" })
+      .update({ dados_capa: dadosCapaAtualizado, etapa_atual: "diagramacao" })
       .eq("id", project_id)
       .eq("user_id", userId),
     lockFormato(project_id),

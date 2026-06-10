@@ -43,6 +43,19 @@ function ScoreRing({ score }: { score: number }) {
 
 interface BookData {
   coverUrl: string | null;
+  /**
+   * True quando coverUrl é uma imagem panorâmica (contracapa + lombada + frente).
+   * Quando true, o Book3D recorta a imagem em 3 regiões via background-position
+   * para preencher cada face do livro 3D. Quando false, coverUrl é exibida
+   * apenas na face frontal e as outras faces usam cores sintéticas.
+   */
+  isPanoramic: boolean;
+  /**
+   * Cores escolhidas pelo autor no Editor de Capa. Usadas para colorir
+   * lombada e contracapa sintéticas quando isPanoramic = false E o autor
+   * tem fills definidas (caso raro: capa do Editor ainda não montada).
+   */
+  fills: { capa?: string; lombada?: string; contracapa?: string } | null;
   titulo: string;
   autor: string;
   lombadaMm: number;
@@ -58,11 +71,60 @@ function Book3D({ book, approved, onApprove }: {
   const [dragging, setDragging] = useState(false);
   const [startX, setStartX] = useState(0);
 
+  // Image natural dimensions — used only for panoramic covers, where we need
+  // to compute the visual width of the full artwork so that each face shows
+  // exactly its slice via background-position.
+  const [imgDims, setImgDims] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    if (!book.coverUrl || !book.isPanoramic) {
+      setImgDims(null);
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => setImgDims({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = book.coverUrl;
+  }, [book.coverUrl, book.isPanoramic]);
+
   // Dimensions in px (scaled down for display)
   const SCALE = 2.2; // px per mm
-  const bookW = Math.round(160 * SCALE);
   const bookH = Math.round(230 * SCALE);
-  const spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
+
+  // Compute bookW and spineW. When the artwork is panoramic and the image
+  // has loaded, derive widths from the actual artwork proportions so that
+  // background-position aligns correctly with the visual seams.
+  let bookW: number;
+  let spineW: number;
+  let imgVisualW = 0;
+
+  if (book.isPanoramic && imgDims) {
+    imgVisualW = (imgDims.w / imgDims.h) * bookH;
+    spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
+    // Assume symmetry: contracapa = frente width
+    bookW = Math.max(100, Math.round((imgVisualW - spineW) / 2));
+  } else {
+    bookW = Math.round(160 * SCALE);
+    spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
+  }
+
+  // Background styles for the three faces when isPanoramic
+  const panoramicBgCommon: React.CSSProperties = book.isPanoramic && book.coverUrl && imgDims
+    ? {
+        backgroundImage: `url("${book.coverUrl}")`,
+        backgroundSize: `${imgVisualW}px ${bookH}px`,
+        backgroundRepeat: "no-repeat",
+      }
+    : {};
+
+  const bgBack: React.CSSProperties = book.isPanoramic && imgDims
+    ? { ...panoramicBgCommon, backgroundPosition: "0px 0px" }
+    : {};
+  const bgSpine: React.CSSProperties = book.isPanoramic && imgDims
+    ? { ...panoramicBgCommon, backgroundPosition: `-${bookW}px 0px` }
+    : {};
+  const bgFront: React.CSSProperties = book.isPanoramic && imgDims
+    ? { ...panoramicBgCommon, backgroundPosition: `-${bookW + spineW}px 0px` }
+    : {};
 
   function onMouseDown(e: React.MouseEvent) {
     setDragging(true);
@@ -119,10 +181,11 @@ function Book3D({ book, approved, onApprove }: {
               width: bookW, height: bookH,
               backfaceVisibility: "hidden",
               transformOrigin: "left center",
+              ...bgFront,
             }}
             className="rounded-r-sm shadow-2xl overflow-hidden"
           >
-            {book.coverUrl ? (
+            {book.isPanoramic ? null : book.coverUrl ? (
               <img src={book.coverUrl} alt="Capa" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-brand-primary flex flex-col items-center justify-center gap-4 p-6">
@@ -144,17 +207,23 @@ function Book3D({ book, approved, onApprove }: {
               transform: "rotateY(-90deg)",
               transformOrigin: "right center",
               backfaceVisibility: "hidden",
-              background: "linear-gradient(to right, #0f172a, #1e2a4a, #0f172a)",
+              ...(book.isPanoramic && imgDims
+                ? bgSpine
+                : book.fills?.lombada
+                ? { background: book.fills.lombada }
+                : { background: "linear-gradient(to right, #0f172a, #1e2a4a, #0f172a)" }),
             }}
             className="flex items-center justify-center shadow-inner"
           >
-            <div className="transform -rotate-90 whitespace-nowrap overflow-hidden"
-              style={{ maxWidth: bookH - 16 }}>
-              <span className="text-brand-gold font-bold text-xs tracking-widest">
-                {book.titulo}
-              </span>
-              <span className="text-white/50 text-[9px] ml-3">{book.autor}</span>
-            </div>
+            {!book.isPanoramic && (
+              <div className="transform -rotate-90 whitespace-nowrap overflow-hidden"
+                style={{ maxWidth: bookH - 16 }}>
+                <span className="text-brand-gold font-bold text-xs tracking-widest">
+                  {book.titulo}
+                </span>
+                <span className="text-white/50 text-[9px] ml-3">{book.autor}</span>
+              </div>
+            )}
           </div>
 
           {/* Back cover */}
@@ -164,13 +233,21 @@ function Book3D({ book, approved, onApprove }: {
               width: bookW, height: bookH,
               transform: "rotateY(180deg)",
               backfaceVisibility: "hidden",
-              background: "linear-gradient(135deg, #1e2a4a 0%, #0f172a 100%)",
+              ...(book.isPanoramic && imgDims
+                ? bgBack
+                : book.fills?.contracapa
+                ? { background: book.fills.contracapa }
+                : { background: "linear-gradient(135deg, #1e2a4a 0%, #0f172a 100%)" }),
             }}
             className="rounded-l-sm shadow-inner flex flex-col items-center justify-center p-6"
           >
-            <div className="w-16 h-1 bg-brand-gold/40 mb-4 rounded-full" />
-            <p className="text-white/40 text-xs text-center">Verso da capa</p>
-            <p className="text-white/20 text-[10px] text-center mt-2">{book.paginas} páginas</p>
+            {!book.isPanoramic && (
+              <>
+                <div className="w-16 h-1 bg-brand-gold/40 mb-4 rounded-full" />
+                <p className="text-white/40 text-xs text-center">Verso da capa</p>
+                <p className="text-white/20 text-[10px] text-center mt-2">{book.paginas} páginas</p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -252,14 +329,17 @@ export default function QAPage() {
           paginas_estimadas?: number;
         } | null;
 
-        // Resolver canônico — entende Editor, IA e Upload.
+        // Resolver canônico — entende Editor, IA e Upload, e detecta se a capa
+        // é panorâmica (frente+lombada+contracapa em uma só imagem) ou só frente.
         const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
 
         setBookData({
-          coverUrl: capaResolvida.url_frente,
+          coverUrl: capaResolvida.url_principal,
+          isPanoramic: capaResolvida.is_panoramica,
+          fills: capaResolvida.fills,
           titulo: ms?.titulo ?? "Livro sem título",
           autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
-          lombadaMm: miolo?.lombada_mm ?? 10,
+          lombadaMm: capaResolvida.lombada_mm ?? miolo?.lombada_mm ?? 10,
           paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? 0,
         });
 

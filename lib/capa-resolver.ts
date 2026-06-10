@@ -2,7 +2,8 @@
 // lib/capa-resolver.ts
 //
 // Helper canônico que normaliza `projects.dados_capa` em um objeto único,
-// independente de qual pipeline (Editor, IA, Upload) o produziu.
+// independente de qual pipeline (Editor, IA, Upload) o produziu — e de se a
+// capa foi montada via `montar-capa` (que adiciona `url_completa`).
 //
 // Por que existe:
 // `dados_capa` tem TRÊS schemas diferentes na base, conforme o pipeline:
@@ -10,13 +11,16 @@
 //   - gerar-capa IA: { modo: "ia", url_escolhida, opcoes: [...], lombada_mm, ... }
 //   - upload-capa:   { modo: "upload", url, largura_px, altura_px, dpi, lombada_mm_na_validacao, ... }
 //
-// Sem esse helper, cada consumidor (QA, Book3D, etc) faria seu próprio lookup
-// e esqueceria pelo menos um schema (foi o que causou o bug "Capa fantasma").
+// Além disso, qualquer um dos três pode (opcionalmente) ter passado por
+// `montar-capa`, que adiciona `url_completa` + `composta_storage_path` +
+// `montada_em` + `dimensoes_montada` ao objeto via merge.
 //
 // USO:
 //   const capa = resolveCapaCompleta(project.dados_capa);
-//   if (capa.pronta) {
-//     <img src={capa.url_frente} />
+//   if (capa.is_panoramica) {
+//     // url_principal contém frente+lombada+contracapa → recortar em 3 faces
+//   } else {
+//     // url_principal contém só a frente → renderizar isolada
 //   }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -30,24 +34,28 @@ export interface CapaResolvida {
   origem: OrigemCapa;
 
   /**
-   * URL principal da capa (frente do livro). Para Editor, é a única arte
-   * exportada (`imagem_url`). Para IA, é `url_escolhida` ou a primeira opção.
-   * Para Upload, é a URL do arquivo enviado pelo autor.
+   * URL principal para exibição da capa.
+   * - Quando `is_panoramica = true`: a URL aponta para uma imagem panorâmica
+   *   contendo frente + lombada + contracapa lado a lado.
+   * - Quando `is_panoramica = false`: a URL aponta apenas para a frente do livro.
    */
-  url_frente: string | null;
+  url_principal: string | null;
 
   /**
-   * URL da capa completa montada (frente + lombada + contracapa + orelhas).
-   * Produzida pela rota `montar-capa`. NUNCA está preenchida no schema atual —
-   * será adicionada no Prompt 2. Mantida no tipo para evitar nova refatoração.
+   * True quando `url_principal` é uma imagem panorâmica.
+   *
+   * Regras:
+   * - Editor SEMPRE exporta panorâmica → true para origem "editor".
+   * - IA/Upload simples são apenas a frente → false.
+   * - IA/Upload + montar-capa → true (a URL principal vira `url_completa`).
    */
-  url_completa: string | null;
+  is_panoramica: boolean;
 
   /**
    * Cores de preenchimento definidas pelo autor no Editor. `null` para os
    * outros pipelines (IA e Upload não expõem fills separadas).
    * Útil para o Book3D renderizar lombada/contracapa sintéticas com as
-   * cores reais escolhidas pelo autor.
+   * cores reais escolhidas pelo autor, em casos não panorâmicos.
    */
   fills: {
     capa?: string;
@@ -55,7 +63,7 @@ export interface CapaResolvida {
     contracapa?: string;
   } | null;
 
-  /** Espessura da lombada em milímetros. Calculada a partir do número de páginas. */
+  /** Espessura da lombada em milímetros. */
   lombada_mm: number | null;
 
   /** Largura da capa em pixels (apenas para upload). */
@@ -101,24 +109,36 @@ function isUploadCapa(c: DadosCapa): c is Record<string, unknown> & {
   return !!c && (c as Record<string, unknown>).modo === "upload";
 }
 
+/** Lê o campo `url_completa` setado pelo `montar-capa` quando existe. */
+function urlCompletaFrom(c: DadosCapa): string | null {
+  if (!c) return null;
+  const v = (c as Record<string, unknown>).url_completa;
+  return typeof v === "string" ? v : null;
+}
+
 // ─── Resolver principal ──────────────────────────────────────────────────────
 
 /**
  * Normaliza `projects.dados_capa` em `CapaResolvida`.
  *
  * Sempre retorna um objeto válido — nunca lança nem retorna null. Quando não
- * há capa, todos os campos ficam `null` e `pronta = false`.
+ * há capa, todos os campos ficam `null` / `false` e `pronta = false`.
  */
 export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
+  const urlCompleta = urlCompletaFrom(dados_capa);
+
   // Schema 1: Editor visual
   if (isEditorCapa(dados_capa)) {
     const imagemUrl = typeof dados_capa.imagem_url === "string" ? dados_capa.imagem_url : null;
     const fills = dados_capa.editor_data?.fills ?? null;
+    // Editor SEMPRE exporta panorâmica. Se url_completa existir (montar-capa
+    // foi rodado em cima), usa essa; senão usa imagem_url do Editor.
+    const urlPrincipal = urlCompleta ?? imagemUrl;
     return {
-      pronta: !!imagemUrl && !!dados_capa.confirmed_at,
+      pronta: !!urlPrincipal && !!dados_capa.confirmed_at,
       origem: "editor",
-      url_frente: imagemUrl,
-      url_completa: null,
+      url_principal: urlPrincipal,
+      is_panoramica: true,
       fills,
       lombada_mm: null,
       largura_px: null,
@@ -132,11 +152,13 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
     const escolhida = typeof dados_capa.url_escolhida === "string" ? dados_capa.url_escolhida : null;
     const primeiraOpcao = dados_capa.opcoes?.[0]?.url ?? null;
     const urlFrente = escolhida ?? primeiraOpcao;
+    // Se montar-capa foi rodado, url_completa tem prioridade e é panorâmica.
+    const usaCompleta = !!urlCompleta;
     return {
-      pronta: !!urlFrente,
+      pronta: !!(urlCompleta ?? urlFrente),
       origem: "ia",
-      url_frente: urlFrente,
-      url_completa: null,
+      url_principal: urlCompleta ?? urlFrente,
+      is_panoramica: usaCompleta,
       fills: null,
       lombada_mm: typeof dados_capa.lombada_mm === "number" ? dados_capa.lombada_mm : null,
       largura_px: null,
@@ -148,11 +170,12 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
   // Schema 3: Upload
   if (isUploadCapa(dados_capa)) {
     const url = typeof dados_capa.url === "string" ? dados_capa.url : null;
+    const usaCompleta = !!urlCompleta;
     return {
-      pronta: !!url,
+      pronta: !!(urlCompleta ?? url),
       origem: "upload",
-      url_frente: url,
-      url_completa: null,
+      url_principal: urlCompleta ?? url,
+      is_panoramica: usaCompleta,
       fills: null,
       lombada_mm: typeof dados_capa.lombada_mm_na_validacao === "number" ? dados_capa.lombada_mm_na_validacao : null,
       largura_px: typeof dados_capa.largura_px === "number" ? dados_capa.largura_px : null,
@@ -165,8 +188,8 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
   return {
     pronta: false,
     origem: null,
-    url_frente: null,
-    url_completa: null,
+    url_principal: null,
+    is_panoramica: false,
     fills: null,
     lombada_mm: null,
     largura_px: null,
