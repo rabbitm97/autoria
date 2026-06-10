@@ -149,6 +149,9 @@ export default function MioloPage() {
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "processing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // ── Capítulos aprovados (lista para exibição) ────────────────────────────────
+  const [capitulosList, setCapitulosList] = useState<{ titulo: string; pos: number }[] | null>(null);
+
   // ── Lombada divergence state ─────────────────────────────────────────────────
   const [dadosCapa, setDadosCapa] = useState<{ lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null>(null);
   const [lombadaAjusteDisponivel, setLombadaAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
@@ -160,17 +163,24 @@ export default function MioloPage() {
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_miolo, dados_capa, manuscripts(nome, texto, genero_principal)")
+      .select("dados_miolo, dados_capa, manuscripts(nome, texto, genero_principal, capitulos_aprovados)")
       .eq("id", projectId)
       .single();
 
     if (project) {
-      const ms = project.manuscripts as unknown as { nome?: string; texto?: string; genero_principal?: string } | null;
+      const ms = project.manuscripts as unknown as {
+        nome?: string; texto?: string; genero_principal?: string;
+        capitulos_aprovados?: { titulo: string; pos: number }[] | null;
+      } | null;
       const g = ms?.genero_principal ?? null;
       setGenero(g);
       setManuscritoNome(ms?.nome ?? "Manuscrito");
       const wc = ms?.texto?.split(/\s+/).filter(Boolean).length ?? 0;
       setPalavrasTotal(wc);
+
+      if (ms?.capitulos_aprovados && ms.capitulos_aprovados.length > 0) {
+        setCapitulosList([...ms.capitulos_aprovados].sort((a, b) => a.pos - b.pos));
+      }
 
       // Pre-select template from genre
       const suggestedTemplate = suggestTemplate(g);
@@ -644,24 +654,22 @@ export default function MioloPage() {
           {/* Formato + tamanho de fonte — 2 colunas */}
           <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-5">
             <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-2">
+              {/* Formato — display puro, imutável após etapa de Elementos */}
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
                   Formato do livro
-                </label>
-                <select
-                  value={formato}
-                  onChange={e => setFormato(e.target.value as FormatoLivro)}
-                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-brand-gold"
-                >
-                  {FORMATOS_LIVRO.map(f => (
-                    <option key={f.value} value={f.value}>{f.label} — {f.dimensoes}</option>
-                  ))}
-                </select>
+                </div>
+                <div className="font-heading text-base text-zinc-900 mb-1 leading-tight">
+                  {selectedFormato?.label} · {selectedFormato?.dimensoes}
+                </div>
                 {paginasEst && (
-                  <p className="text-xs text-zinc-400 mt-1.5">
-                    ~<strong className="text-zinc-600">{paginasEst}</strong> páginas · {palavrasTotal.toLocaleString("pt-BR")} palavras
-                  </p>
+                  <div className="text-[12px] text-zinc-500 mb-2">
+                    ~{paginasEst} páginas · {palavrasTotal.toLocaleString("pt-BR")} palavras
+                  </div>
                 )}
+                <div className="text-[11px] text-zinc-400 italic">
+                  Definido na etapa de Elementos editoriais. Para alterar, é necessário refazer essa etapa.
+                </div>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -697,6 +705,48 @@ export default function MioloPage() {
                   <p className="text-xs text-zinc-400">Montado com os capítulos aprovados e numeração de páginas real.</p>
                 </div>
               </label>
+            </section>
+          )}
+
+          {/* Capítulos aprovados — card próprio com acesso à edição */}
+          {statusAprovacao?.aprovado && capitulosList && capitulosList.length > 0 && (
+            <section className="bg-white rounded-2xl border border-zinc-100 p-5 mb-5">
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                    Capítulos do livro
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <svg className="w-4 h-4 flex-shrink-0 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-emerald-700">
+                      <strong>{capitulosList.length} capítulos</strong>
+                      {statusAprovacao.hash_valido ? " aprovados" : " — texto mudou, reconfirmação necessária"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={abrirTelaAprovacao}
+                  className="text-[12px] font-medium text-zinc-600 hover:text-zinc-900 hover:underline underline-offset-4 whitespace-nowrap transition-colors"
+                >
+                  Editar capítulos →
+                </button>
+              </div>
+              <ul className="space-y-1 text-[12px] text-zinc-600">
+                {capitulosList.slice(0, 6).map((cap, idx) => (
+                  <li key={idx} className="flex items-baseline gap-2">
+                    <span className="font-mono text-zinc-400 text-[10px] w-4 text-right shrink-0">{idx + 1}.</span>
+                    <span className="truncate">{cap.titulo}</span>
+                  </li>
+                ))}
+                {capitulosList.length > 6 && (
+                  <li className="text-[11px] text-zinc-400 italic pl-6">
+                    + {capitulosList.length - 6} capítulo{capitulosList.length - 6 > 1 ? "s" : ""} restante{capitulosList.length - 6 > 1 ? "s" : ""}
+                  </li>
+                )}
+              </ul>
             </section>
           )}
 
@@ -747,23 +797,9 @@ export default function MioloPage() {
             <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm mb-5">{error}</div>
           )}
 
-          {/* Sticky action bar */}
+          {/* Sticky action bar — apenas o botão */}
           <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-zinc-100 px-4 py-4 z-20">
             <div className="max-w-3xl mx-auto">
-              {statusAprovacao?.aprovado && statusAprovacao?.hash_valido && (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 text-sm">
-                  <span className="text-green-600">✓</span>
-                  <p className="text-green-800">
-                    <strong>{statusAprovacao.total} capítulos aprovados</strong> — estrutura confirmada, sem nova confirmação.
-                  </p>
-                </div>
-              )}
-              {statusAprovacao?.aprovado && !statusAprovacao?.hash_valido && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 text-sm">
-                  <span className="text-amber-600">⚠</span>
-                  <p className="text-amber-800">Texto mudou — confirmação de capítulos necessária antes de gerar.</p>
-                </div>
-              )}
               <button
                 onClick={handleGenerate}
                 className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
