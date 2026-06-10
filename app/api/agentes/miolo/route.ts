@@ -107,53 +107,66 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Read approved chapters from the manuscript. The author approves these via
-  // /api/agentes/miolo/propor-capitulos and /aprovar-capitulos before generating
-  // the miolo. No fallback heuristic — explicit approval is required.
-  const capitulosAprovados = ms?.capitulos_aprovados as
-    | { titulo: string; pos: number }[]
-    | null
-    | undefined;
+  const livroSemCapitulos = config.tem_capitulos === false;
 
-  const hashSalvo = ms?.capitulos_aprovados_texto_hash as string | null | undefined;
-
-  if (!Array.isArray(capitulosAprovados) || capitulosAprovados.length === 0) {
-    return NextResponse.json(
-      {
-        error: "Aprove os capítulos do livro antes de gerar o miolo.",
-        action: "approve_chapters",
-        reason: "no_approval",
-      },
-      { status: 422 }
-    );
+  // Enforce: sumário is incompatible with continuous-text books
+  if (livroSemCapitulos && config.sumario) {
+    (config as unknown as Record<string, unknown>).sumario = false;
   }
 
-  // Validar que o texto não mudou desde a aprovação
-  const hashAtual = createHash("md5").update(texto).digest("hex");
-  if (hashSalvo !== hashAtual) {
-    console.log("[miolo] Hash do texto mudou desde a aprovação — forçando re-aprovação", {
+  let capitulos: { titulo: string; pos: number }[] = [];
+
+  if (!livroSemCapitulos) {
+    // Read approved chapters from the manuscript. The author approves these via
+    // /api/agentes/miolo/propor-capitulos and /aprovar-capitulos before generating
+    // the miolo. No fallback heuristic — explicit approval is required.
+    const capitulosAprovados = ms?.capitulos_aprovados as
+      | { titulo: string; pos: number }[]
+      | null
+      | undefined;
+
+    const hashSalvo = ms?.capitulos_aprovados_texto_hash as string | null | undefined;
+
+    if (!Array.isArray(capitulosAprovados) || capitulosAprovados.length === 0) {
+      return NextResponse.json(
+        {
+          error: "Aprove os capítulos do livro antes de gerar o miolo.",
+          action: "approve_chapters",
+          reason: "no_approval",
+        },
+        { status: 422 }
+      );
+    }
+
+    // Validar que o texto não mudou desde a aprovação
+    const hashAtual = createHash("md5").update(texto).digest("hex");
+    if (hashSalvo !== hashAtual) {
+      console.log("[miolo] Hash do texto mudou desde a aprovação — forçando re-aprovação", {
+        project_id,
+        hashSalvo: hashSalvo?.slice(0, 8),
+        hashAtual: hashAtual.slice(0, 8),
+      });
+      return NextResponse.json(
+        {
+          error: "O texto do manuscrito mudou desde a última aprovação de capítulos. Reaprove os capítulos.",
+          action: "approve_chapters",
+          reason: "text_changed",
+        },
+        { status: 422 }
+      );
+    }
+
+    // Sort by position (defensive — UI should already send sorted, but enforce here)
+    capitulos = [...capitulosAprovados].sort((a, b) => a.pos - b.pos);
+
+    console.log("[miolo] Capítulos aprovados:", {
       project_id,
-      hashSalvo: hashSalvo?.slice(0, 8),
-      hashAtual: hashAtual.slice(0, 8),
+      total: capitulos.length,
+      primeiros_5: capitulos.slice(0, 5).map(c => c.titulo),
     });
-    return NextResponse.json(
-      {
-        error: "O texto do manuscrito mudou desde a última aprovação de capítulos. Reaprove os capítulos.",
-        action: "approve_chapters",
-        reason: "text_changed",
-      },
-      { status: 422 }
-    );
+  } else {
+    console.log("[miolo] Livro sem capítulos — gerando como texto contínuo", { project_id });
   }
-
-  // Sort by position (defensive — UI should already send sorted, but enforce here)
-  const capitulos = [...capitulosAprovados].sort((a, b) => a.pos - b.pos);
-
-  console.log("[miolo] Capítulos aprovados:", {
-    project_id,
-    total: capitulos.length,
-    primeiros_5: capitulos.slice(0, 5).map(c => c.titulo),
-  });
 
   // Créditos aprovados são obrigatórios — sem fallback.
   const dadosCreditos = project.dados_creditos as {

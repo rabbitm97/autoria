@@ -25,6 +25,12 @@ export interface MioloConfig {
    * Faixa válida: 9.0 a 14.0, step de 0.5.
    */
   corpo_pt?: number;
+  /**
+   * Indica se o livro tem separação em capítulos. Quando `false`, o pipeline
+   * pula a aprovação de capítulos e o miolo é gerado como texto único.
+   * Default implícito: `true` (compatibilidade retroativa com configs antigas).
+   */
+  tem_capitulos?: boolean;
   sumario: boolean;
   dedicatoria: string;
   epigrafe_texto: string;
@@ -61,6 +67,24 @@ export function getDefaultCorpoPt(template: TemplateId): number {
   return TEMPLATE_DEFAULT_CORPO_PT[template] ?? 11;
 }
 
+const TEMPLATE_DEFAULT_SUMARIO: Record<TemplateId, boolean> = {
+  literario:         false,
+  literario_moderno: false,
+  memorial:          true,
+  nao_ficcao:        true,
+  academico:         true,
+  abnt:              true,
+  poesia:            true,
+  teatro:            true,
+  infantil:          false,
+  juvenil:           true,
+  religioso:         true,
+};
+
+export function getDefaultSumario(template: TemplateId): boolean {
+  return TEMPLATE_DEFAULT_SUMARIO[template] ?? false;
+}
+
 export function clampCorpoPt(value: unknown): number | undefined {
   if (typeof value !== "number" || Number.isNaN(value)) return undefined;
   if (value < 9 || value > 14) return undefined;
@@ -94,19 +118,11 @@ export const TEMPLATE_OPTIONS: readonly TemplateOption[] = [
 
 // ─── Regra de negócio: quando renderizar sumário ─────────────────────────────
 
-// Templates onde o sumário NUNCA é renderizado (prosa narrativa em fluxo único).
-// Os demais respeitam config.sumario para incluir/omitir.
-const TEMPLATES_SEM_SUMARIO: TemplateId[] = [
-  "literario",
-  "literario_moderno",
-  "infantil",
-  "poesia",
-];
-
-export const TEMPLATES_SEM_SUMARIO_PUBLIC: readonly TemplateId[] = TEMPLATES_SEM_SUMARIO;
+/** @deprecated Sempre vazio — use getDefaultSumario(template) para defaults. */
+export const TEMPLATES_SEM_SUMARIO_PUBLIC: readonly TemplateId[] = [];
 
 export function deveExibirSumario(config: MioloConfig): boolean {
-  if (TEMPLATES_SEM_SUMARIO.includes(config.template)) return false;
+  if (config.tem_capitulos === false) return false;
   return config.sumario === true;
 }
 

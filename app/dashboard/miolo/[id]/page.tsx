@@ -7,8 +7,8 @@ import type { MioloConfig, MioloResult, TemplateId, FormatoLivro } from "@/app/a
 import { FORMATOS_LIVRO } from "@/lib/formatos";
 import {
   TEMPLATE_OPTIONS,
-  TEMPLATES_SEM_SUMARIO_PUBLIC,
   getDefaultCorpoPt,
+  getDefaultSumario,
   clampCorpoPt,
   type TemplateOption,
 } from "@/lib/miolo-builder";
@@ -121,7 +121,8 @@ export default function MioloPage() {
   const [template, setTemplate] = useState<TemplateId>("literario");
   const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
   const [corpoPt, setCorpoPt] = useState<number>(getDefaultCorpoPt("literario"));
-  const [sumario, setSumario] = useState(true);
+  const [sumario, setSumario] = useState(getDefaultSumario("literario"));
+  const [temCapitulos, setTemCapitulos] = useState(true);
   const [dedicatoria, setDedicatoria] = useState("");
   const [epigrafeTexto, setEpigrafeTexto] = useState("");
   const [epigrafeAutor, setEpigrafeAutor] = useState("");
@@ -204,12 +205,14 @@ export default function MioloPage() {
 
       // If already generated, show preview directly
       const existingMiolo = project.dados_miolo as MioloResult | null;
-      // Restaurar corpo_pt salvo
-      const existingConfig = (project.dados_miolo as { config?: { corpo_pt?: unknown } } | null)?.config;
+      // Restaurar configuração salva
+      const existingConfig = (project.dados_miolo as { config?: { corpo_pt?: unknown; sumario?: unknown; tem_capitulos?: unknown } } | null)?.config;
       if (existingConfig) {
         const savedCorpoPt = clampCorpoPt(existingConfig.corpo_pt);
         if (savedCorpoPt !== undefined) setCorpoPt(savedCorpoPt);
         else setCorpoPt(getDefaultCorpoPt(suggestedTemplate));
+        if (typeof existingConfig.sumario === "boolean") setSumario(existingConfig.sumario);
+        if (existingConfig.tem_capitulos === false) setTemCapitulos(false);
       } else {
         setCorpoPt(getDefaultCorpoPt(suggestedTemplate));
       }
@@ -336,12 +339,18 @@ export default function MioloPage() {
   async function handleGenerate() {
     const config: MioloConfig = {
       template, formato, corpo_pt: corpoPt,
-      sumario,
+      tem_capitulos: temCapitulos,
+      sumario: temCapitulos ? sumario : false,
       dedicatoria, epigrafe_texto: epigrafeTexto,
       epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
     };
     setError(null);
     setPendingConfig(config);
+
+    // Livro sem capítulos pula aprovação inteiramente
+    if (!temCapitulos) {
+      return executarGeracaoMiolo(config);
+    }
 
     // Atalho: aprovação válida (hash bate) → pula tela de aprovação
     if (statusAprovacao?.aprovado && statusAprovacao?.hash_valido) {
@@ -603,6 +612,7 @@ export default function MioloPage() {
   function handleTemplateChange(novo: TemplateId) {
     setTemplate(novo);
     setCorpoPt(getDefaultCorpoPt(novo));
+    setSumario(getDefaultSumario(novo));
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -690,26 +700,48 @@ export default function MioloPage() {
             </div>
           </section>
 
-          {/* Sumário — só exibir para templates que aceitam */}
-          {!TEMPLATES_SEM_SUMARIO_PUBLIC.includes(template) && (
-            <section className="bg-white rounded-2xl border border-zinc-100 px-6 py-4 mb-5">
-              <label className="flex items-center gap-3 cursor-pointer">
+          {/* Estrutura do livro */}
+          <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-5">
+            <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">Estrutura do livro</h2>
+            <div className="space-y-5">
+              {/* tem_capitulos */}
+              <div>
+                <p className="text-sm font-medium text-zinc-700 mb-1">O livro tem capítulos?</p>
+                <p className="text-xs text-zinc-400 mb-3">Desative para poesia, contos únicos ou textos corridos sem divisão em capítulos.</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTemCapitulos(true)}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-all ${temCapitulos ? "border-brand-primary bg-brand-primary/5 text-brand-primary font-medium" : "border-zinc-200 text-zinc-500 hover:border-zinc-300"}`}
+                  >Sim</button>
+                  <button
+                    type="button"
+                    onClick={() => setTemCapitulos(false)}
+                    className={`flex-1 py-2 text-sm rounded-lg border transition-all ${!temCapitulos ? "border-brand-primary bg-brand-primary/5 text-brand-primary font-medium" : "border-zinc-200 text-zinc-500 hover:border-zinc-300"}`}
+                  >Não</button>
+                </div>
+              </div>
+
+              {/* sumário */}
+              <label className={`flex items-center gap-3 ${temCapitulos ? "cursor-pointer" : "opacity-40 cursor-not-allowed"}`}>
                 <div
-                  onClick={() => setSumario(v => !v)}
-                  className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 ${sumario ? "bg-brand-primary" : "bg-zinc-200"}`}
+                  onClick={() => { if (temCapitulos) setSumario(v => !v); }}
+                  className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 ${sumario && temCapitulos ? "bg-brand-primary" : "bg-zinc-200"}`}
                 >
-                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario ? "translate-x-4" : "translate-x-0"}`} />
+                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario && temCapitulos ? "translate-x-4" : "translate-x-0"}`} />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-zinc-700">Gerar sumário automático</p>
-                  <p className="text-xs text-zinc-400">Montado com os capítulos aprovados e numeração de páginas real.</p>
+                  <p className="text-xs text-zinc-400">
+                    {temCapitulos ? "Montado com os capítulos aprovados e numeração de páginas real." : "Indisponível para livros sem capítulos."}
+                  </p>
                 </div>
               </label>
-            </section>
-          )}
+            </div>
+          </section>
 
           {/* Capítulos aprovados — card próprio com acesso à edição */}
-          {statusAprovacao?.aprovado && capitulosList && capitulosList.length > 0 && (
+          {temCapitulos && statusAprovacao?.aprovado && capitulosList && capitulosList.length > 0 && (
             <section className="bg-white rounded-2xl border border-zinc-100 p-5 mb-5">
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div>
