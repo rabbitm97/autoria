@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { resolveCapaCompleta } from "@/lib/capa-resolver";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,8 +132,10 @@ export async function POST(req: NextRequest) {
     sinopseLonga  = (el?.sinopse_longa as string) ?? "";
     palavrasChave = (el?.palavras_chave as string[]) ?? [];
 
-    // Production artifacts
-    temCapa     = !!(capa?.url_escolhida ?? capa?.url);
+    // Production artifacts — capa usa o resolver canônico (lib/capa-resolver.ts)
+    // que entende os três schemas (Editor, IA, Upload).
+    const capaResolvida = resolveCapaCompleta(capa);
+    temCapa     = capaResolvida.pronta;
     temPdf      = !!pdf?.storage_path || !!(miolo?.html_storage_path);
     temCreditos = !!creditos?.html_storage_path;
 
@@ -146,21 +149,12 @@ export async function POST(req: NextRequest) {
       lombadaMioloMm = (miolo?.lombada_mm as number) ?? null;
     }
 
-    if (capa) {
-      if (capa.modo === "ia" && typeof capa.lombada_mm === "number") {
-        lombadaCapaMm = capa.lombada_mm;
-      } else if (capa.modo === "upload" && typeof capa.lombada_mm_na_validacao === "number") {
-        lombadaCapaMm = capa.lombada_mm_na_validacao;
-      } else if (capa.modo === "manual") {
-        const pags = (capa.paginas as number) ?? 0;
-        if (pags) lombadaCapaMm = Math.round(pags * 0.07 * 10) / 10;
-      }
-    }
-
-    capaLarguraPx  = (capa?.largura_px as number) ?? null;
-    capaAlturaPx   = (capa?.altura_px  as number) ?? null;
-    capaFormatoDpi = (capa?.dpi        as number) ?? 300;
-    capaMode       = (capa?.modo       as string) ?? null;
+    // Metadados de capa via resolver canônico
+    lombadaCapaMm  = capaResolvida.lombada_mm;
+    capaLarguraPx  = capaResolvida.largura_px;
+    capaAlturaPx   = capaResolvida.altura_px;
+    capaFormatoDpi = capaResolvida.dpi ?? 300;
+    capaMode       = capaResolvida.origem; // "editor" | "ia" | "upload" | null
     capaAjustadaEm = (capa?.ajustado_em as string) ?? null;
   }
 

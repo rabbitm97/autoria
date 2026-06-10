@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { QAResult, QAItem, QACategoria } from "@/app/api/agentes/qa/route";
+import { resolveCapaCompleta } from "@/lib/capa-resolver";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -245,18 +246,17 @@ export default function QAPage() {
           autor_primeiro_nome?: string;
           autor_sobrenome?: string;
         } | null;
-        const capa = project.dados_capa as {
-          url_escolhida?: string;
-          url?: string;
-        } | null;
         const miolo = project.dados_miolo as {
           lombada_mm?: number;
           paginas_reais?: number;
           paginas_estimadas?: number;
         } | null;
 
+        // Resolver canônico — entende Editor, IA e Upload.
+        const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
+
         setBookData({
-          coverUrl: capa?.url_escolhida ?? capa?.url ?? null,
+          coverUrl: capaResolvida.url_frente,
           titulo: ms?.titulo ?? "Livro sem título",
           autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
           lombadaMm: miolo?.lombada_mm ?? 10,
