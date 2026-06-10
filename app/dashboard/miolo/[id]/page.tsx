@@ -5,6 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoLivro } from "@/app/api/agentes/miolo/route";
 import { FORMATOS_LIVRO } from "@/lib/formatos";
+import {
+  TEMPLATE_OPTIONS,
+  TEMPLATES_SEM_SUMARIO_PUBLIC,
+  getDefaultCorpoPt,
+  clampCorpoPt,
+} from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
 import { DocxDisclaimer } from "./docx-disclaimer";
 import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-react";
@@ -14,25 +20,16 @@ import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
 
 type Step = "config" | "capitulos" | "processing" | "preview";
 
-interface Template { id: TemplateId; nome: string; desc: string; generos: string[]; icon: string }
-const TEMPLATES: Template[] = [
-  { id: "literario",  nome: "Literário Clássico",    desc: "Garamond, margens generosas, capitular", generos: ["Romance","Ficção","Contos","Suspense"], icon: "📖" },
-  { id: "nao_ficcao", nome: "Não-ficção Moderna",    desc: "Source Serif, subtítulos hierárquicos, caixas de destaque", generos: ["Autoajuda","Negócios","Biografia","Memórias"], icon: "💡" },
-  { id: "abnt",       nome: "Técnico / ABNT",         desc: "Times New Roman, normas ABNT, notas de rodapé", generos: ["Acadêmico","TCC","Manual Técnico"], icon: "🎓" },
-  { id: "infantil",   nome: "Infantil / Juvenil",     desc: "Lora, entrelinha espaçosa, diálogos destacados", generos: ["Infantil","YA","Conto Infantil"], icon: "🌟" },
-  { id: "poesia",     nome: "Poesia / Teatro",        desc: "Crimson Text, estrofes, numeração de versos", generos: ["Poesia","Teatro","Crônicas"], icon: "✍️" },
-  { id: "religioso",  nome: "Religioso / Espiritual", desc: "Gentium, compacto, referências cruzadas", generos: ["Religioso","Espiritual","Devocional"], icon: "🕊️" },
-];
-
-
-// Map genre → template
+// Map genre → template (sugestão inicial; o autor pode alterar na UI)
 function suggestTemplate(genero: string | null): TemplateId {
   const g = (genero ?? "").toLowerCase();
   if (g.includes("romance") || g.includes("ficção") || g.includes("conto") || g.includes("suspense") || g.includes("fantasia")) return "literario";
   if (g.includes("autoajuda") || g.includes("negócio") || g.includes("empreend") || g.includes("biografi") || g.includes("memória")) return "nao_ficcao";
   if (g.includes("acadêm") || g.includes("técnico") || g.includes("abnt") || g.includes("científ")) return "abnt";
-  if (g.includes("infantil") || g.includes("jovem") || g.includes("ya")) return "infantil";
-  if (g.includes("poesia") || g.includes("teatro")) return "poesia";
+  if (g.includes("infantil")) return "infantil";
+  if (g.includes("jovem") || g.includes("ya") || g.includes("juvenil")) return "juvenil";
+  if (g.includes("poesia")) return "poesia";
+  if (g.includes("teatro") || g.includes("dramaturgi")) return "teatro";
   if (g.includes("religi") || g.includes("espirit") || g.includes("devoci")) return "religioso";
   return "literario";
 }
@@ -97,15 +94,12 @@ export default function MioloPage() {
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
   const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
-  const [corpoPt, setCorpoPt] = useState<10 | 11 | 12>(11);
-  const [capitular, setCapitular] = useState(true);
-  const [ornamentos, setOrnamentos] = useState(true);
+  const [corpoPt, setCorpoPt] = useState<number>(getDefaultCorpoPt("literario"));
   const [sumario, setSumario] = useState(true);
   const [dedicatoria, setDedicatoria] = useState("");
   const [epigrafeTexto, setEpigrafeTexto] = useState("");
   const [epigrafeAutor, setEpigrafeAutor] = useState("");
   const [bioAutor, setBioAutor] = useState("");
-  const [marcasCorte, setMarcasCorte] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPretextual, setShowPretextual] = useState(false);
 
@@ -156,7 +150,8 @@ export default function MioloPage() {
       setPalavrasTotal(wc);
 
       // Pre-select template from genre
-      setTemplate(suggestTemplate(g));
+      const suggestedTemplate = suggestTemplate(g);
+      setTemplate(suggestedTemplate);
 
       const capaData = project.dados_capa as { lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
       setDadosCapa(capaData);
@@ -176,6 +171,16 @@ export default function MioloPage() {
 
       // If already generated, show preview directly
       const existingMiolo = project.dados_miolo as MioloResult | null;
+      // Restaurar corpo_pt salvo
+      const existingConfig = (project.dados_miolo as { config?: { corpo_pt?: unknown } } | null)?.config;
+      if (existingConfig) {
+        const savedCorpoPt = clampCorpoPt(existingConfig.corpo_pt);
+        if (savedCorpoPt !== undefined) setCorpoPt(savedCorpoPt);
+        else setCorpoPt(getDefaultCorpoPt(suggestedTemplate));
+      } else {
+        setCorpoPt(getDefaultCorpoPt(suggestedTemplate));
+      }
+
       if (existingMiolo) {
         setMiolo(existingMiolo);
         // Fetch fresh signed URL
@@ -298,10 +303,9 @@ export default function MioloPage() {
   async function handleGenerate() {
     const config: MioloConfig = {
       template, formato, corpo_pt: corpoPt,
-      capitular, ornamentos, sumario,
+      sumario,
       dedicatoria, epigrafe_texto: epigrafeTexto,
       epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
-      marcas_corte: marcasCorte,
     };
     setError(null);
     setPendingConfig(config);
@@ -560,8 +564,13 @@ export default function MioloPage() {
   const wpps: Record<FormatoLivro, number> = { bolso: 200, compacto: 230, padrao_br: 260, quadrado: 300, a4: 380 };
   const paginasEst = palavrasTotal > 0 ? Math.max(1, Math.round(palavrasTotal / wpps[formato])) : null;
 
-  const selectedTemplate = TEMPLATES.find(t => t.id === template);
+  const selectedTemplate = TEMPLATE_OPTIONS.find(t => t.value === template);
   const selectedFormato = FORMATOS_LIVRO.find(f => f.value === formato);
+
+  function handleTemplateChange(novo: TemplateId) {
+    setTemplate(novo);
+    setCorpoPt(getDefaultCorpoPt(novo));
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -590,25 +599,16 @@ export default function MioloPage() {
             <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">
               Template de diagramação
               {selectedTemplate && (
-                <span className="normal-case text-brand-gold font-normal ml-2">— {selectedTemplate.nome} selecionado</span>
+                <span className="normal-case text-brand-gold font-normal ml-2">— {selectedTemplate.label} selecionado</span>
               )}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {TEMPLATES.map(t => (
-                <RadioCard key={t.id} selected={template === t.id} onClick={() => setTemplate(t.id)}>
-                  <div className="text-xl mb-2">{t.icon}</div>
-                  <p className={`text-sm font-semibold ${template === t.id ? "text-brand-primary" : "text-zinc-800"}`}>
-                    {t.nome}
+              {TEMPLATE_OPTIONS.map(t => (
+                <RadioCard key={t.value} selected={template === t.value} onClick={() => handleTemplateChange(t.value)}>
+                  <p className={`text-sm font-semibold ${template === t.value ? "text-brand-primary" : "text-zinc-800"}`}>
+                    {t.label}
                   </p>
-                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t.desc}</p>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {t.generos.map(g => (
-                      <span key={g} className="text-[10px] bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded">{g}</span>
-                    ))}
-                  </div>
-                  {template === t.id && genero && t.generos.some(g => genero.toLowerCase().includes(g.toLowerCase())) && (
-                    <p className="text-[10px] text-brand-gold mt-1.5">✦ Recomendado para seu gênero</p>
-                  )}
+                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t.descricao}</p>
                 </RadioCard>
               ))}
             </div>
@@ -644,58 +644,38 @@ export default function MioloPage() {
             </button>
             {showAdvanced && (
               <div className="px-6 pb-6 space-y-4 border-t border-zinc-100 pt-4">
-                {/* Font size */}
-                <div>
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-2">Tamanho do corpo</label>
-                  <div className="flex gap-2">
-                    {([10, 11, 12] as const).map(sz => (
-                      <button
-                        key={sz}
-                        onClick={() => setCorpoPt(sz)}
-                        className={`px-4 py-2 rounded-lg border text-sm transition-colors ${
-                          corpoPt === sz ? "border-brand-gold bg-brand-gold/5 text-brand-primary font-medium" : "border-zinc-200 text-zinc-600"
-                        }`}
-                      >
-                        {sz}pt
-                      </button>
-                    ))}
+                {/* Tamanho da letra */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-zinc-700">Tamanho da letra</label>
+                    <span className="text-sm font-mono text-zinc-600">{corpoPt} pt</span>
                   </div>
-                  <p className="text-xs text-zinc-400 mt-1">11pt é o padrão editorial para leitura confortável.</p>
+                  <input
+                    type="range"
+                    min={9}
+                    max={14}
+                    step={0.5}
+                    value={corpoPt}
+                    onChange={e => setCorpoPt(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    Recomendado para este template: {getDefaultCorpoPt(template)} pt
+                  </p>
                 </div>
-                {/* Toggles */}
-                {[
-                  { label: "Capitular (letra inicial grande) no início de cada capítulo", val: capitular, set: setCapitular },
-                  { label: "Ornamentos tipográficos entre seções (* * *)", val: ornamentos, set: setOrnamentos },
-                  { label: "Gerar sumário automático", val: sumario, set: setSumario },
-                ].map(({ label, val, set }) => (
-                  <label key={label} className="flex items-center gap-3 cursor-pointer">
-                    <div
-                      onClick={() => set(!val)}
-                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${val ? "bg-brand-primary" : "bg-zinc-200"}`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? "translate-x-4" : "translate-x-0"}`} />
-                    </div>
-                    <span className="text-sm text-zinc-600">{label}</span>
-                  </label>
-                ))}
 
-                {/* Crop marks / bleed */}
-                <div className="border-t border-zinc-100 pt-4 mt-1">
-                  <label className="flex items-start gap-3 cursor-pointer">
+                {/* Sumário — só exibir para templates que aceitam */}
+                {!TEMPLATES_SEM_SUMARIO_PUBLIC.includes(template) && (
+                  <label className="flex items-center gap-3 cursor-pointer">
                     <div
-                      onClick={() => setMarcasCorte(v => !v)}
-                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 mt-0.5 ${marcasCorte ? "bg-brand-primary" : "bg-zinc-200"}`}
+                      onClick={() => setSumario(v => !v)}
+                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${sumario ? "bg-brand-primary" : "bg-zinc-200"}`}
                     >
-                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${marcasCorte ? "translate-x-4" : "translate-x-0"}`} />
+                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario ? "translate-x-4" : "translate-x-0"}`} />
                     </div>
-                    <div>
-                      <span className="text-sm text-zinc-600">Marcas de corte e sangria (impressão profissional)</span>
-                      <p className="text-xs text-zinc-400 mt-0.5">
-                        Adiciona sangria de 3 mm e marcas de corte em cada página — necessário para gráficas e impressão sob demanda.
-                      </p>
-                    </div>
+                    <span className="text-sm text-zinc-600">Gerar sumário automático</span>
                   </label>
-                </div>
+                )}
               </div>
             )}
           </section>
@@ -822,7 +802,7 @@ export default function MioloPage() {
           <div className="mt-8 bg-white rounded-xl border border-zinc-100 p-4 text-left">
             <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Configurações aplicadas</p>
             <p className="text-sm text-zinc-700">
-              Template: <strong>{TEMPLATES.find(t => t.id === template)?.nome}</strong> ·
+              Template: <strong>{TEMPLATE_OPTIONS.find(t => t.value === template)?.label}</strong> ·
               Formato: <strong>{FORMATOS_LIVRO.find(f => f.value === formato)?.label}</strong> ·
               Fonte: <strong>{corpoPt}pt</strong>
             </p>
@@ -859,7 +839,7 @@ export default function MioloPage() {
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs">
                 <p className="font-semibold text-blue-700 mb-1.5">📄 Configurações do arquivo</p>
                 <p className="text-blue-600">Formato: <strong>{selectedFormato?.dimensoes}</strong></p>
-                <p className="text-blue-600">Template: <strong>{selectedTemplate?.nome}</strong></p>
+                <p className="text-blue-600">Template: <strong>{selectedTemplate?.label}</strong></p>
                 <p className="text-blue-600">Páginas: <strong>{miolo?.paginas_reais ?? miolo?.paginas_estimadas}</strong></p>
                 {miolo?.lombada_mm && (
                   <p className="text-blue-600">Lombada: <strong>{miolo.lombada_mm}mm</strong></p>
@@ -919,10 +899,9 @@ export default function MioloPage() {
                   onClick={() => {
                     setPendingConfig({
                       template, formato, corpo_pt: corpoPt,
-                      capitular, ornamentos, sumario,
+                      sumario,
                       dedicatoria, epigrafe_texto: epigrafeTexto,
                       epigrafe_autor: epigrafeAutor, bio_autor: bioAutor,
-                      marcas_corte: marcasCorte,
                     });
                     abrirTelaAprovacao();
                   }}

@@ -5,7 +5,7 @@ import { requireAuth } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
-import { buildBookHtml } from "@/lib/miolo-builder";
+import { buildBookHtml, clampCorpoPt } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
@@ -50,6 +50,18 @@ export async function POST(request: NextRequest) {
   const { project_id, config } = body;
   if (!project_id || !config) {
     return NextResponse.json({ error: "Campos obrigatórios: project_id, config." }, { status: 400 });
+  }
+
+  // Sanitiza corpo_pt: se vier fora da faixa válida (9.0–14.0) ou em tipo
+  // errado, descarta — o builder aplica o default do template.
+  const configMut = config as unknown as Record<string, unknown>;
+  if ("corpo_pt" in configMut) {
+    const cleaned = clampCorpoPt(configMut.corpo_pt);
+    if (cleaned === undefined) {
+      delete configMut.corpo_pt;
+    } else {
+      configMut.corpo_pt = cleaned;
+    }
   }
 
   if (!isFormatoValido(config.formato)) {

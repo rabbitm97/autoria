@@ -107,17 +107,9 @@ export function buildBookHtmlDigital(params: {
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
   console.log("[buildBookHtmlDigital] gerando versão digital (sem sangria/marcas)");
 
-  // Forçar marcas_corte: false na config — versão digital nunca tem marcas
-  const configDigital: MioloConfig = {
-    ...params.config,
-    marcas_corte: false,
-  };
-
-  // Gerar HTML usando o builder de gráfica com marcas desligadas
-  const result = buildBookHtmlGrafica({
-    ...params,
-    config: configDigital,
-  });
+  // Gerar HTML usando o builder de gráfica — o @page será substituído abaixo
+  // para remover sangria e marcas de corte.
+  const result = buildBookHtmlGrafica(params);
 
   // Substituir apenas o @page principal por uma versão sem sangria e sem marcas.
   // Os blocos @page no-num e @page :first herdam size/margin do @page principal,

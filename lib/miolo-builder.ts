@@ -2,21 +2,34 @@ import { type FormatoLivro, type FormatoSpecs, getFormatoDef } from "./formatos"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type TemplateId = "literario" | "nao_ficcao" | "abnt" | "infantil" | "poesia" | "religioso";
+export type TemplateId =
+  | "literario"
+  | "literario_moderno"
+  | "memorial"
+  | "nao_ficcao"
+  | "academico"
+  | "abnt"
+  | "poesia"
+  | "teatro"
+  | "infantil"
+  | "juvenil"
+  | "religioso";
 export type { FormatoLivro };
 
 export interface MioloConfig {
   template: TemplateId;
   formato: FormatoLivro;
-  corpo_pt: 10 | 11 | 12;
-  capitular: boolean;
-  ornamentos: boolean;
+  /**
+   * Tamanho do corpo de texto em pontos. Opcional: se ausente, o builder
+   * aplica o default do template via getDefaultCorpoPt(template).
+   * Faixa válida: 9.0 a 14.0, step de 0.5.
+   */
+  corpo_pt?: number;
   sumario: boolean;
   dedicatoria: string;
   epigrafe_texto: string;
   epigrafe_autor: string;
   bio_autor: string;
-  marcas_corte: boolean;
 }
 
 export interface CapituloInfo {
@@ -25,9 +38,72 @@ export interface CapituloInfo {
   palavras: number;
 }
 
+// ─── Tamanho de corpo default por template ───────────────────────────────────
+// Cada template publica um default editorialmente ajustado à sua categoria.
+// O autor pode sobrescrever via UI (faixa 9.0–14.0pt, step 0.5).
+// Se o autor trocar de template, a UI deve resetar para o default do novo.
+
+const TEMPLATE_DEFAULT_CORPO_PT: Record<TemplateId, number> = {
+  literario:         11,
+  literario_moderno: 11,
+  memorial:          11,
+  nao_ficcao:        11,
+  academico:         11,
+  abnt:              12,   // NBR 14724 exige 12pt no corpo
+  poesia:            11,
+  teatro:            11,
+  infantil:          13,   // leitor iniciante (4–9 anos)
+  juvenil:           11,
+  religioso:         11,
+};
+
+export function getDefaultCorpoPt(template: TemplateId): number {
+  return TEMPLATE_DEFAULT_CORPO_PT[template] ?? 11;
+}
+
+export function clampCorpoPt(value: unknown): number | undefined {
+  if (typeof value !== "number" || Number.isNaN(value)) return undefined;
+  if (value < 9 || value > 14) return undefined;
+  // Snap para o múltiplo de 0.5 mais próximo
+  return Math.round(value * 2) / 2;
+}
+
+// ─── Lista pública de templates para a UI ────────────────────────────────────
+// Fonte única para popular o seletor de template no dashboard.
+
+export interface TemplateOption {
+  value: TemplateId;
+  label: string;
+  descricao: string;
+  familia: "literaria" | "nao_ficcao" | "poesia_teatro" | "infantil_juvenil" | "espiritual";
+}
+
+export const TEMPLATE_OPTIONS: readonly TemplateOption[] = [
+  { value: "literario",         label: "Literário Clássico",        descricao: "Romance e conto adulto. Capitular grande, título de capítulo em versalete.", familia: "literaria" },
+  { value: "literario_moderno", label: "Literário Contemporâneo",   descricao: "Literatura contemporânea, autoficção, novela. Sem capitular, título à esquerda.", familia: "literaria" },
+  { value: "memorial",          label: "Memórias e Biografia",      descricao: "Memórias, autobiografia, biografia. Capitular sutil, espaço para data/local.", familia: "literaria" },
+  { value: "nao_ficcao",        label: "Não-Ficção Moderna",        descricao: "Ensaio, negócios, autoajuda, divulgação. Subdivisões, citações destacadas.", familia: "nao_ficcao" },
+  { value: "academico",         label: "Acadêmico Humanidades",     descricao: "Livro acadêmico não-ABNT (Filosofia, História, Letras). Sumário numerado.", familia: "nao_ficcao" },
+  { value: "abnt",              label: "Técnico ABNT",              descricao: "TCC, dissertação, tese. Segue NBR 14724 (Times 12pt, margens 3-2-3-2cm).", familia: "nao_ficcao" },
+  { value: "poesia",            label: "Poesia",                    descricao: "Poesia, prosa poética, haiku. Coluna estreita, sem hifenização, estrofes preservadas.", familia: "poesia_teatro" },
+  { value: "teatro",            label: "Teatro e Dramaturgia",      descricao: "Peças teatrais e roteiros. Personagem em versalete, didascália em itálico recuado.", familia: "poesia_teatro" },
+  { value: "infantil",          label: "Infantil Ilustrado",        descricao: "Idades 4 a 9 anos. Fonte humanista grande, sem hifenização, espaço para ilustração.", familia: "infantil_juvenil" },
+  { value: "juvenil",           label: "Juvenil / Young Adult",     descricao: "Idades 10 a 17 anos. Tipografia entre o infantil e o literário, com sumário.", familia: "infantil_juvenil" },
+  { value: "religioso",         label: "Religioso Devocional",      descricao: "Bíblia, devocional, liturgia. Suporta versículos numerados automaticamente.", familia: "espiritual" },
+] as const;
+
 // ─── Regra de negócio: quando renderizar sumário ─────────────────────────────
 
-const TEMPLATES_SEM_SUMARIO: TemplateId[] = ["literario", "poesia", "infantil"];
+// Templates onde o sumário NUNCA é renderizado (prosa narrativa em fluxo único).
+// Os demais respeitam config.sumario para incluir/omitir.
+const TEMPLATES_SEM_SUMARIO: TemplateId[] = [
+  "literario",
+  "literario_moderno",
+  "infantil",
+  "poesia",
+];
+
+export const TEMPLATES_SEM_SUMARIO_PUBLIC: readonly TemplateId[] = TEMPLATES_SEM_SUMARIO;
 
 export function deveExibirSumario(config: MioloConfig): boolean {
   if (TEMPLATES_SEM_SUMARIO.includes(config.template)) return false;
@@ -199,6 +275,18 @@ body {
 .toc ol li .toc-dots { flex: 1; border-bottom: 1px dotted #999; margin: 0 0.5em 0.2em; min-width: 1em; }
 .toc ol li .toc-pg { color: #555; font-size: 0.9em; white-space: nowrap; }
 
+/* Links sem formatação visual — preserva navegação em PDF digital,
+   mas no impresso e em qualquer leitor o texto sai como prosa normal,
+   sem azul, sem sublinhado. */
+.toc a, .toc a:visited, .toc a:hover, .toc a:active {
+  color: inherit;
+  text-decoration: none;
+}
+.chapter a, .chapter a:visited, .chapter a:hover, .chapter a:active {
+  color: inherit;
+  text-decoration: none;
+}
+
 /* Capítulos — filhos diretos do body, sem wrapper */
 .chapter {
   break-before: right;
@@ -219,18 +307,6 @@ body {
   widows: 2;
 }
 
-/* Ornamento — separa seções dentro do capítulo, sem quebrar página */
-.ornamento {
-  text-align: center;
-  color: #888;
-  margin: 1.8em 0;
-  letter-spacing: 0.8em;
-  font-size: 1.1em;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.ornamento + p { text-indent: 0; }
-
 /* Bio do autor */
 .author-bio {
   margin-top: 3em;
@@ -245,6 +321,8 @@ body {
 // ─── CSS específico de cada template ─────────────────────────────────────────
 
 const TEMPLATE_SPECIFIC_CSS: Record<TemplateId, string> = {
+
+  // ─── 1. Literário Clássico ─────────────────────────────────────────────────
   literario: `
 @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
 body {
@@ -275,7 +353,84 @@ body {
   font-weight: 400;
 }
 .chapter p.dialogo { text-indent: 0; }
+.chapter p.first-para.dialogo::first-letter {
+  font-size: 3.2em;
+  line-height: 0.85;
+  float: left;
+  padding: 0.05em 0.1em 0 0;
+  font-weight: 400;
+}
 `,
+
+  // ─── 2. Literário Contemporâneo ────────────────────────────────────────────
+  literario_moderno: `
+@import url('https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+body {
+  font-family: 'Spectral', Georgia, serif;
+  line-height: 1.55;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.half-title h1 { font-size: 1.9em; font-weight: 500; line-height: 1.2; }
+.title-page h1 { font-size: 2.2em; font-weight: 500; line-height: 1.15; margin-bottom: 0.5em; }
+.chapter-title {
+  font-size: 1.6em;
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.2;
+  margin-bottom: 2em;
+  margin-top: 1em;
+}
+.chapter p { margin: 0; text-indent: 1.5em; }
+.chapter p.first-para { text-indent: 0; }
+/* Sem capitular */
+.chapter p.dialogo { text-indent: 0; }
+`,
+
+  // ─── 3. Memórias e Biografia ───────────────────────────────────────────────
+  memorial: `
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,500;1,400&display=swap');
+body {
+  font-family: 'Source Serif 4', Georgia, serif;
+  line-height: 1.6;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.half-title h1 { font-size: 1.9em; font-weight: 500; line-height: 1.2; }
+.title-page h1 { font-size: 2.1em; font-weight: 500; line-height: 1.15; margin-bottom: 0.5em; }
+.chapter-title {
+  font-size: 1.4em;
+  font-weight: 500;
+  text-align: center;
+  margin: 2em 0 1.5em;
+  line-height: 1.3;
+}
+/* Subtítulo de capítulo (data/local) — autor coloca em h3 logo após o título */
+.chapter h3 {
+  font-size: 0.85em;
+  font-style: italic;
+  font-weight: 400;
+  text-align: center;
+  color: #666;
+  margin: -1em 0 2.5em;
+  letter-spacing: 0.02em;
+}
+.chapter p { margin: 0; text-indent: 1.5em; }
+.chapter p.first-para { text-indent: 0; }
+.chapter p.first-para::first-letter {
+  font-size: 2.8em;
+  line-height: 0.85;
+  float: left;
+  padding: 0.05em 0.08em 0 0;
+  font-weight: 400;
+}
+.chapter p.dialogo { text-indent: 0; }
+.chapter blockquote { margin: 1.5em 2em; font-style: italic; color: #555; border-left: 2px solid #ddd; padding-left: 1em; }
+`,
+
+  // ─── 4. Não-Ficção Moderna ─────────────────────────────────────────────────
   nao_ficcao: `
 @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');
 body {
@@ -304,15 +459,47 @@ body {
   padding: 0.05em 0.08em 0 0;
   font-weight: 600;
 }
-.chapter h3 { font-size: 1.1em; font-weight: 600; margin: 1.8em 0 0.5em; break-after: avoid; }
-.chapter h4 { font-size: 1em; font-weight: 600; margin: 1.4em 0 0.3em; break-after: avoid; }
+.chapter h3 { font-size: 1.1em; font-weight: 600; margin: 1.8em 0 0.5em; break-after: avoid; page-break-after: avoid; }
+.chapter h4 { font-size: 1em; font-weight: 600; margin: 1.4em 0 0.3em; break-after: avoid; page-break-after: avoid; }
 .chapter blockquote { margin: 1.5em 2em; padding: 0.8em 1.5em; border-left: 3px solid #ddd; font-style: italic; color: #555; }
 `,
+
+  // ─── 5. Acadêmico Humanidades ──────────────────────────────────────────────
+  academico: `
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+body {
+  font-family: 'Crimson Pro', Georgia, serif;
+  line-height: 1.55;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.half-title h1 { font-size: 1.8em; font-weight: 500; line-height: 1.2; }
+.title-page h1 { font-size: 2em; font-weight: 600; line-height: 1.15; margin-bottom: 0.5em; }
+.chapter-title {
+  font-size: 1.4em;
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 1.8em;
+  margin-top: 1em;
+  text-align: left;
+}
+.chapter p { margin: 0; text-indent: 1.5em; }
+.chapter p.first-para { text-indent: 0; }
+.chapter h3 { font-size: 1.05em; font-weight: 600; margin: 1.6em 0 0.4em; break-after: avoid; page-break-after: avoid; }
+.chapter h4 { font-size: 1em; font-weight: 600; font-style: italic; margin: 1.3em 0 0.3em; break-after: avoid; page-break-after: avoid; }
+.chapter blockquote { margin: 1.2em 3em; font-size: 0.95em; text-indent: 0; }
+.chapter .nota-rodape { font-size: 0.85em; color: #555; }
+`,
+
+  // ─── 6. Técnico ABNT ───────────────────────────────────────────────────────
   abnt: `
 body {
   font-family: 'Times New Roman', Times, serif;
   line-height: 1.5;
   text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 .half-title h1 { font-size: 1.5em; font-weight: bold; text-align: center; }
 .title-page h1 { font-size: 1.6em; font-weight: bold; text-align: center; }
@@ -322,58 +509,29 @@ body {
   text-transform: uppercase;
   margin-bottom: 1.5em;
   text-align: left;
+  /* Set named string para uso no cabeçalho */
+  string-set: chapter-title content();
 }
 .chapter p { margin: 0; text-indent: 1.25cm; }
 .chapter p.first-para { text-indent: 0; }
 .chapter h3 { font-size: 1em; font-weight: bold; margin: 1.5em 0 0.5em; }
 .chapter h4 { font-size: 1em; font-weight: bold; font-style: italic; margin: 1em 0 0.3em; }
-.chapter blockquote { margin-left: 4cm; font-size: 0.9em; text-indent: 0; }
+.chapter blockquote { margin-left: 4cm; font-size: 0.9em; text-indent: 0; line-height: 1.2; }
 `,
-  infantil: `
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
-body {
-  font-family: 'Lora', Georgia, serif;
-  line-height: 1.85;
-  color: #1a1a1a;
-  text-align: left;
-  hyphens: none;
-  -webkit-hyphens: none;
-}
-.half-title h1 { font-size: 2em; font-weight: 600; color: #1a1a1a; line-height: 1.2; }
-.title-page h1 { font-size: 2.2em; font-weight: 600; color: #1a1a1a; margin-bottom: 0.4em; line-height: 1.15; }
-.chapter {
-  /* Infantil: histórias não precisam começar em página direita */
-  break-before: page;
-  page-break-before: page;
-}
-.chapter-title {
-  font-size: 1.5em;
-  font-weight: 600;
-  color: #1a1a1a;
-  text-align: center;
-  margin: 2em 0 2em;
-  line-height: 1.25;
-}
-.chapter p { margin: 0 0 1em; text-indent: 0; }
-/* Sem capitular em infantil mesmo se config.capitular === true */
-.chapter p.first-para::first-letter {
-  font-size: inherit;
-  line-height: inherit;
-  float: none;
-  padding: 0;
-  font-weight: inherit;
-}
-`,
+
+  // ─── 7. Poesia ─────────────────────────────────────────────────────────────
   poesia: `
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 body {
   font-family: 'Crimson Text', Georgia, serif;
   line-height: 1.7;
+  text-align: left;
+  hyphens: none;
+  -webkit-hyphens: none;
 }
-.half-title h1 { font-size: 1.85em; font-weight: 400; font-style: italic; line-height: 1.2; }
-.title-page h1 { font-size: 2em; font-weight: 400; font-style: italic; line-height: 1.2; margin-bottom: 0.6em; }
+.half-title h1 { font-size: 1.85em; font-weight: 400; font-style: italic; line-height: 1.2; text-align: center; }
+.title-page h1 { font-size: 2em; font-weight: 400; font-style: italic; line-height: 1.2; margin-bottom: 0.6em; text-align: center; }
 .chapter {
-  /* Poesia: cada poema em página própria, não obrigatoriamente recto */
   break-before: page;
   page-break-before: page;
   padding-top: 12mm;
@@ -386,12 +544,91 @@ body {
   margin-bottom: 3em;
   letter-spacing: 0.03em;
 }
-/* Corpo do poema em coluna estreita centralizada */
 .chapter .corpo-poema { max-width: 22em; margin: 0 auto; }
 .chapter .estrofe { margin-bottom: 1.6em; break-inside: avoid; page-break-inside: avoid; }
-.chapter .verso { display: block; text-align: left; padding-left: 2em; text-indent: -2em; line-height: 1.55; }
-/* Fallback para poesia sem estrofe estruturada — parágrafos viram versos */
-.chapter p { margin: 0 0 0.8em; text-align: left; }
+.chapter .verso {
+  display: block;
+  text-align: left;
+  padding-left: 2em;
+  text-indent: -2em;
+  line-height: 1.55;
+}
+/* Fallback: parágrafos isolados ainda renderizam, mas alinhados à esquerda */
+.chapter p { margin: 0 0 0.8em; text-align: left; text-indent: 0; }
+`,
+
+  // ─── 8. Teatro / Dramaturgia ───────────────────────────────────────────────
+  teatro: `
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+body {
+  font-family: 'Crimson Text', Georgia, serif;
+  line-height: 1.55;
+  text-align: left;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+.half-title h1 { font-size: 1.85em; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1.2; text-align: center; }
+.title-page h1 { font-size: 2em; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; line-height: 1.2; margin-bottom: 0.6em; text-align: center; }
+.chapter-title {
+  font-size: 1.4em;
+  font-weight: 500;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 2em 0 2.5em;
+}
+/* Subtítulo do ato (Cena) — autor coloca em h3 dentro do capítulo */
+.chapter h3 {
+  font-size: 1.05em;
+  font-style: italic;
+  text-align: center;
+  font-weight: 400;
+  margin: 2em 0 1.5em;
+}
+.chapter p { margin: 0 0 0.4em; text-indent: 0; }
+.chapter p.fala { text-indent: 0; margin-bottom: 0.4em; }
+.chapter p.fala .personagem {
+  font-variant: small-caps;
+  font-feature-settings: "smcp" 1;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  margin-right: 0.4em;
+}
+.chapter p.didascalia {
+  font-style: italic;
+  margin: 0.3em 0 0.3em 2em;
+  color: #555;
+  text-indent: 0;
+}
+`,
+
+  // ─── 9. Infantil Ilustrado ─────────────────────────────────────────────────
+  infantil: `
+@import url('https://fonts.googleapis.com/css2?family=Andika:ital,wght@0,400;0,700;1,400&display=swap');
+body {
+  font-family: 'Andika', 'Lora', Georgia, sans-serif;
+  line-height: 1.85;
+  color: #1a1a1a;
+  text-align: left;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+.half-title h1 { font-size: 2em; font-weight: 700; color: #1a1a1a; line-height: 1.2; }
+.title-page h1 { font-size: 2.4em; font-weight: 700; color: #1a1a1a; margin-bottom: 0.4em; line-height: 1.15; }
+.chapter {
+  break-before: page;
+  page-break-before: page;
+}
+.chapter-title {
+  font-size: 1.6em;
+  font-weight: 700;
+  color: #1a1a1a;
+  text-align: center;
+  margin: 60mm 0 2em;
+  line-height: 1.25;
+}
+.chapter p { margin: 0 0 1em; text-indent: 0; }
+/* Sem capitular em infantil */
 .chapter p.first-para::first-letter {
   font-size: inherit;
   line-height: inherit;
@@ -400,6 +637,33 @@ body {
   font-weight: inherit;
 }
 `,
+
+  // ─── 10. Juvenil / Young Adult ─────────────────────────────────────────────
+  juvenil: `
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+body {
+  font-family: 'Lora', Georgia, serif;
+  line-height: 1.7;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.half-title h1 { font-size: 2em; font-weight: 500; line-height: 1.2; }
+.title-page h1 { font-size: 2.3em; font-weight: 500; line-height: 1.15; margin-bottom: 0.5em; }
+.chapter-title {
+  font-size: 1.7em;
+  font-weight: 500;
+  text-align: center;
+  margin: 2em 0 2em;
+  line-height: 1.25;
+}
+.chapter p { margin: 0; text-indent: 1.5em; }
+.chapter p.first-para { text-indent: 0; }
+/* Sem capitular em juvenil — fica jovem demais com drop cap clássico */
+.chapter p.dialogo { text-indent: 0; }
+`,
+
+  // ─── 11. Religioso Devocional ──────────────────────────────────────────────
   religioso: `
 @import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');
 body {
@@ -427,12 +691,12 @@ body {
   padding: 0.05em 0.08em 0 0;
   font-weight: 700;
 }
-/* Versículos numerados (livro devocional) */
+/* Versículos numerados (Bíblia, devocional) — gerados pelo parser */
 .chapter p.versiculo {
   text-indent: 0;
-  margin: 0 0 0.8em;
-  padding-left: 1.2em;
-  text-indent: -1.2em;
+  margin: 0 0 0.5em;
+  padding-left: 1.5em;
+  text-indent: -1.5em;
 }
 .chapter p.versiculo .num {
   font-size: 0.7em;
@@ -442,6 +706,7 @@ body {
   color: #5a4a2a;
 }
 `,
+
 };
 
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
@@ -454,8 +719,8 @@ export function fixTypography(text: string): string {
   return text
     .replace(/--/g, "—")
     .replace(/\.\.\./g, "…")
-    .replace(/" /g, "“ ")
-    .replace(/ "/g, " ”")
+    .replace(/" /g, "” ")
+    .replace(/ "/g, " “")
     .replace(/^"/gm, "“")
     .replace(/"$/gm, "”");
 }
@@ -515,18 +780,124 @@ function buildParagraphsForChapter(text: string, config: MioloConfig): string {
     const isFirst = idx === 0;
     const isDialogue = /^[—–-]\s/.test(p);
 
-    if (isDialogue) return `<p class="dialogo">${escHtml(p)}</p>`;
-
     const classes: string[] = [];
     if (isFirst) classes.push("first-para");
+    if (isDialogue) classes.push("dialogo");
     const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
     return `<p${classAttr}>${escHtml(p)}</p>`;
   }).join("\n");
 }
 
-function buildOrnamento(config: MioloConfig): string {
-  if (!config.ornamentos) return "";
-  return `<div class="ornamento">* * *</div>`;
+// ─── Parser de poesia: estrofes (blocos separados por linha em branco)
+//     e versos (cada linha de uma estrofe) ────────────────────────────────────
+
+function buildParagraphsForPoesia(text: string): string {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const estrofes = normalized.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+
+  if (estrofes.length === 0) return "";
+
+  const estrofesHtml = estrofes.map(estrofe => {
+    const versos = estrofe.split("\n").map(v => v.trim()).filter(Boolean);
+    const versosHtml = versos.map(v =>
+      `<span class="verso">${escHtml(fixTypography(v))}</span>`
+    ).join("\n");
+    return `<div class="estrofe">\n${versosHtml}\n</div>`;
+  }).join("\n");
+
+  return `<div class="corpo-poema">\n${estrofesHtml}\n</div>`;
+}
+
+// ─── Parser de teatro: nome do personagem + fala + didascália ────────────────
+// Convenção aceita:
+//   PERSONAGEM: fala aqui...      → versalete + travessão + fala
+//   PERSONAGEM. fala aqui...      → variante com ponto
+//   (didascália em parênteses)    → linha inteira entre parênteses
+//   linha simples sem padrão      → continuação da fala anterior
+
+function buildParagraphsForTeatro(text: string): string {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const linhas = normalized.split("\n").map(l => l.trim());
+
+  const out: string[] = [];
+  let buffer: string[] = [];
+  let personagem: string | null = null;
+
+  const flushFala = () => {
+    if (personagem !== null) {
+      const falaTexto = buffer.length > 0
+        ? escHtml(fixTypography(buffer.join(" ")))
+        : "";
+      out.push(`<p class="fala"><span class="personagem">${escHtml(personagem)}</span>${falaTexto ? ` — ${falaTexto}` : ""}</p>`);
+    } else if (buffer.length > 0) {
+      // Texto solto sem personagem — provável bloco de cena/prólogo
+      out.push(`<p>${escHtml(fixTypography(buffer.join(" ")))}</p>`);
+    }
+    buffer = [];
+    personagem = null;
+  };
+
+  for (const linha of linhas) {
+    if (!linha) {
+      flushFala();
+      continue;
+    }
+
+    // Didascália: linha inteiramente entre parênteses
+    const didMatch = linha.match(/^\((.+)\)$/);
+    if (didMatch) {
+      flushFala();
+      out.push(`<p class="didascalia">${escHtml(fixTypography(didMatch[1]))}</p>`);
+      continue;
+    }
+
+    // Nome de personagem: caixa alta (com acentos) seguida de . ou :
+    const persMatch = linha.match(/^([A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜ][A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜ \-]{1,40})[\.\:]\s*(.*)$/);
+    if (persMatch) {
+      flushFala();
+      personagem = persMatch[1].trim();
+      const restante = persMatch[2]?.trim();
+      if (restante) buffer.push(restante);
+      continue;
+    }
+
+    // Continuação de fala ou texto livre
+    buffer.push(linha);
+  }
+  flushFala();
+
+  return out.join("\n");
+}
+
+// ─── Parser de versículo (religioso) ─────────────────────────────────────────
+// Detecta texto bíblico/devocional onde cada parágrafo começa com numeração
+// "1 texto..." ou "1. texto..." ou "1) texto...".
+// Retorna string vazia se não detectar o padrão — caller usa parser default.
+
+function buildParagraphsForReligiosoVersiculo(text: string): string {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!normalized) return "";
+
+  // Heurística: precisa haver pelo menos 3 padrões "<número> " no texto para
+  // ativar o modo versículo. Evita falsos positivos em prosa que apenas
+  // começa com data ou número.
+  const versiculoPattern = /(^|\n)\s*\d{1,3}[\s.\)]/g;
+  const matches = normalized.match(versiculoPattern) ?? [];
+  if (matches.length < 3) return "";
+
+  // Quebra por número no início de linha (mantém o número no segmento)
+  const versiculos = normalized
+    .split(/(?=(?:^|\n)\s*\d{1,3}[\s.\)])/)
+    .map(v => v.replace(/^\n+/, "").trim())
+    .filter(Boolean);
+
+  return versiculos.map(v => {
+    const m = v.match(/^(\d{1,3})[\s.\)]\s*([\s\S]+)$/);
+    if (!m) return `<p>${escHtml(fixTypography(v))}</p>`;
+    const num = m[1];
+    const texto = m[2].replace(/\s+/g, " ").trim();
+    return `<p class="versiculo"><span class="num">${num}</span> ${escHtml(fixTypography(texto))}</p>`;
+  }).join("\n");
 }
 
 // ─── Book HTML builder ────────────────────────────────────────────────────────
@@ -545,10 +916,15 @@ export function buildBookHtml(params: {
 
   const spec = getFormatoDef(config.formato).specs;
 
-  // CSS final: @page + base + template específico
+  // Tamanho de corpo: usa override do autor se vier, senão default do template.
+  const corpoPt = clampCorpoPt(config.corpo_pt) ?? getDefaultCorpoPt(config.template);
+
+  // Marcas de corte são sempre aplicadas no builder de gráfica.
+  // O builder digital (lib/miolo-builder-digital.ts) reescreve o @page
+  // posteriormente para remover sangria e marcas.
   const css =
-    buildPageCss(spec, config.marcas_corte) +
-    buildBaseCss(config.corpo_pt) +
+    buildPageCss(spec, true) +
+    buildBaseCss(corpoPt) +
     TEMPLATE_SPECIFIC_CSS[config.template];
 
   console.log("[buildBookHtml] template:", config.template, "formato:", config.formato);
@@ -664,10 +1040,23 @@ ${tocItems}
     realChapterStartPages.push(numberedPagesEstimate + 1);
     numberedPagesEstimate += Math.max(1, Math.ceil(info.palavras / spec.wpp));
 
+    // Roteador de parser por template. Cada parser sabe gerar o HTML interno
+    // do capítulo respeitando convenções do gênero.
+    let paragrafosHtml: string;
+    if (config.template === "poesia") {
+      paragrafosHtml = buildParagraphsForPoesia(seg.texto);
+    } else if (config.template === "teatro") {
+      paragrafosHtml = buildParagraphsForTeatro(seg.texto);
+    } else if (config.template === "religioso") {
+      const versHtml = buildParagraphsForReligiosoVersiculo(seg.texto);
+      paragrafosHtml = versHtml || buildParagraphsForChapter(seg.texto, config);
+    } else {
+      paragrafosHtml = buildParagraphsForChapter(seg.texto, config);
+    }
+
     sections.push(`<section class="chapter" id="${info.id}">
   <h2 class="chapter-title">${escHtml(info.titulo)}</h2>
-${buildParagraphsForChapter(seg.texto, config)}
-${buildOrnamento(config)}
+${paragrafosHtml}
 </section>`);
   });
 

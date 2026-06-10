@@ -14,7 +14,7 @@ import type { ISectionOptions, IRunOptions } from "docx";
 import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
 import {
   type MioloConfig, type TemplateId, type FormatoLivro,
-  deveExibirSumario, fixTypography,
+  deveExibirSumario, fixTypography, getDefaultCorpoPt, clampCorpoPt,
 } from "./miolo-builder";
 import { buildCustomXmlAnchors } from "./docx-anchors";
 
@@ -33,13 +33,21 @@ const hp = (pt: number) => pt * 2; // half-points (docx size unit)
 
 // ─── Font map ─────────────────────────────────────────────────────────────────
 
+// Fontes universais do Word (presentes em qualquer instalação Windows/Mac
+// com Office). A correspondência com as fontes editoriais do PDF é mantida
+// pelo disclaimer mostrado no momento do download do DOCX.
 const FONT_MAP: Record<TemplateId, string> = {
-  literario:  "Cambria",
-  nao_ficcao: "Georgia",
-  abnt:       "Times New Roman",
-  infantil:   "Verdana",
-  poesia:     "Cambria",
-  religioso:  "Cambria",
+  literario:         "Cambria",
+  literario_moderno: "Georgia",
+  memorial:          "Georgia",
+  nao_ficcao:        "Georgia",
+  academico:         "Cambria",
+  abnt:              "Times New Roman",
+  poesia:            "Cambria",
+  teatro:            "Cambria",
+  infantil:          "Verdana",
+  juvenil:           "Georgia",
+  religioso:         "Cambria",
 };
 
 // ─── Template style config ────────────────────────────────────────────────────
@@ -68,12 +76,33 @@ const TEMPLATE_STYLES: Record<TemplateId, TemplateStyles> = {
     ch_align: "center", ch_letter_spacing_twip: 18, ch_space_before_em: 2, ch_space_after_em: 3,
     drop_cap: { size_em: 3.2, weight_bold: false },
   },
+  literario_moderno: {
+    align: "both", indent_twip: mm(8.5), space_after_twip: 0,
+    line_value: Math.round(1.55 * 240),
+    ch_size_em: 1.6, ch_bold: true, ch_allcaps: false, ch_italic: false,
+    ch_align: "left", ch_letter_spacing_twip: 0, ch_space_before_em: 1, ch_space_after_em: 2,
+    drop_cap: null,
+  },
+  memorial: {
+    align: "both", indent_twip: mm(8.5), space_after_twip: 0,
+    line_value: Math.round(1.6 * 240),
+    ch_size_em: 1.4, ch_bold: false, ch_allcaps: false, ch_italic: false,
+    ch_align: "center", ch_letter_spacing_twip: 0, ch_space_before_em: 2, ch_space_after_em: 1.5,
+    drop_cap: { size_em: 2.8, weight_bold: false },
+  },
   nao_ficcao: {
     align: "both", indent_twip: 0, space_after_twip: mm(4.5),
     line_value: Math.round(1.6 * 240),
     ch_size_em: 1.55, ch_bold: true, ch_allcaps: false, ch_italic: false,
     ch_align: "left", ch_letter_spacing_twip: 0, ch_space_before_em: 1, ch_space_after_em: 2,
     drop_cap: { size_em: 3.2, weight_bold: true },
+  },
+  academico: {
+    align: "both", indent_twip: mm(8.5), space_after_twip: 0,
+    line_value: Math.round(1.55 * 240),
+    ch_size_em: 1.4, ch_bold: true, ch_allcaps: false, ch_italic: false,
+    ch_align: "left", ch_letter_spacing_twip: 0, ch_space_before_em: 1, ch_space_after_em: 1.5,
+    drop_cap: null,
   },
   abnt: {
     align: "both", indent_twip: mm(12.5), space_after_twip: 0,
@@ -82,18 +111,32 @@ const TEMPLATE_STYLES: Record<TemplateId, TemplateStyles> = {
     ch_align: "left", ch_letter_spacing_twip: 0, ch_space_before_em: 1, ch_space_after_em: 1.5,
     drop_cap: null,
   },
+  poesia: {
+    align: "left", indent_twip: 0, space_after_twip: 0,
+    line_value: Math.round(1.7 * 240),
+    ch_size_em: 1.15, ch_bold: false, ch_allcaps: false, ch_italic: true,
+    ch_align: "center", ch_letter_spacing_twip: 5, ch_space_before_em: 0, ch_space_after_em: 3,
+    drop_cap: null,
+  },
+  teatro: {
+    align: "left", indent_twip: 0, space_after_twip: mm(2),
+    line_value: Math.round(1.55 * 240),
+    ch_size_em: 1.4, ch_bold: false, ch_allcaps: true, ch_italic: false,
+    ch_align: "center", ch_letter_spacing_twip: 18, ch_space_before_em: 2, ch_space_after_em: 2.5,
+    drop_cap: null,
+  },
   infantil: {
     align: "left", indent_twip: 0, space_after_twip: mm(5.5),
     line_value: Math.round(1.85 * 240),
-    ch_size_em: 1.5, ch_bold: true, ch_allcaps: false, ch_italic: false,
-    ch_align: "center", ch_letter_spacing_twip: 0, ch_space_before_em: 2, ch_space_after_em: 2,
+    ch_size_em: 1.6, ch_bold: true, ch_allcaps: false, ch_italic: false,
+    ch_align: "center", ch_letter_spacing_twip: 0, ch_space_before_em: 2.5, ch_space_after_em: 2,
     drop_cap: null,
   },
-  poesia: {
-    align: "left", indent_twip: 0, space_after_twip: 0,
-    line_value: Math.round(1.55 * 240),
-    ch_size_em: 1.15, ch_bold: false, ch_allcaps: false, ch_italic: true,
-    ch_align: "center", ch_letter_spacing_twip: 5, ch_space_before_em: 0, ch_space_after_em: 3,
+  juvenil: {
+    align: "both", indent_twip: mm(8.5), space_after_twip: 0,
+    line_value: Math.round(1.7 * 240),
+    ch_size_em: 1.7, ch_bold: false, ch_allcaps: false, ch_italic: false,
+    ch_align: "center", ch_letter_spacing_twip: 0, ch_space_before_em: 2, ch_space_after_em: 2.5,
     drop_cap: null,
   },
   religioso: {
@@ -320,7 +363,7 @@ export async function buildBookDocx(params: {
 
   const font = FONT_MAP[config.template];
   const st = TEMPLATE_STYLES[config.template];
-  const corpo_pt = config.corpo_pt;
+  const corpo_pt = clampCorpoPt(config.corpo_pt) ?? getDefaultCorpoPt(config.template);
   const size_hp = hp(corpo_pt);
 
   // ── Segment text into chapters ────────────────────────────────────────────
@@ -563,19 +606,11 @@ export async function buildBookDocx(params: {
 
     const segs = segmentParagraphs(seg.texto);
     const bodyParas = segs.map(({ text, isFirst, isDialogue }) =>
-      bodyPara(text, isFirst, isDialogue, st, font, corpo_pt, config.capitular && isFirst && st.drop_cap !== null)
+      bodyPara(text, isFirst, isDialogue, st, font, corpo_pt, isFirst && st.drop_cap !== null)
     );
 
-    const ornamentPara = config.ornamentos
-      ? new Paragraph({
-          alignment: "center",
-          spacing: { before: mm(10), after: mm(10) },
-          children: [trun("* * *", { font, size: size_hp, color: "888888" })],
-        })
-      : null;
-
     const chChildren: (Paragraph | Table)[] = [
-      chTitlePara, ...bodyParas, ...(ornamentPara ? [ornamentPara] : []),
+      chTitlePara, ...bodyParas,
     ];
 
     docSections.push({

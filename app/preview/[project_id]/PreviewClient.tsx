@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MioloConfig, TemplateId } from "@/lib/miolo-builder";
+import { TEMPLATE_OPTIONS } from "@/lib/miolo-builder";
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -19,24 +20,12 @@ const DEFAULT_CONFIG: MioloConfig = {
   template: "literario",
   formato: "padrao_br",
   corpo_pt: 11,
-  capitular: true,
-  ornamentos: true,
   sumario: true,
   dedicatoria: "",
   epigrafe_texto: "",
   epigrafe_autor: "",
   bio_autor: "",
-  marcas_corte: false,
 };
-
-const TEMPLATES: { value: TemplateId; label: string }[] = [
-  { value: "literario",   label: "Literário (Garamond)" },
-  { value: "nao_ficcao",  label: "Não-ficção (Source Serif)" },
-  { value: "abnt",        label: "ABNT (Times)" },
-  { value: "infantil",    label: "Infantil (Lora)" },
-  { value: "poesia",      label: "Poesia (Crimson)" },
-  { value: "religioso",   label: "Religioso (Gentium)" },
-];
 
 const FORMATOS = FORMATOS_LIVRO.map(f => ({
   value: f.value as FormatoLivro,
@@ -143,7 +132,7 @@ export default function PreviewClient({ data }: { data: ProjectData }) {
         <Section label="Template">
           <Select
             value={config.template}
-            options={TEMPLATES}
+            options={TEMPLATE_OPTIONS.map(t => ({ value: t.value, label: t.label }))}
             onChange={v => set("template", v as TemplateId)}
           />
         </Section>
@@ -175,10 +164,7 @@ export default function PreviewClient({ data }: { data: ProjectData }) {
         {/* Switches */}
         <Section label="Elementos">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <Toggle label="Capitular (drop cap)" checked={config.capitular} onChange={v => set("capitular", v)} />
-            <Toggle label="Ornamentos (***)" checked={config.ornamentos} onChange={v => set("ornamentos", v)} />
             <Toggle label="Sumário" checked={config.sumario} onChange={v => set("sumario", v)} />
-            <Toggle label="Marcas de corte (sangria 3mm)" checked={config.marcas_corte} onChange={v => set("marcas_corte", v)} />
           </div>
         </Section>
 
