@@ -10,6 +10,7 @@ import {
   TEMPLATES_SEM_SUMARIO_PUBLIC,
   getDefaultCorpoPt,
   clampCorpoPt,
+  type TemplateOption,
 } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
 import { DocxDisclaimer } from "./docx-disclaimer";
@@ -33,6 +34,31 @@ function suggestTemplate(genero: string | null): TemplateId {
   if (g.includes("religi") || g.includes("espirit") || g.includes("devoci")) return "religioso";
   return "literario";
 }
+
+const FAMILIA_STYLES: Record<
+  TemplateOption["familia"],
+  { bg: string; text: string; label: string }
+> = {
+  literaria:        { bg: "bg-blue-50",   text: "text-blue-700",   label: "Literária" },
+  nao_ficcao:       { bg: "bg-amber-50",  text: "text-amber-700",  label: "Não-Ficção" },
+  poesia_teatro:    { bg: "bg-purple-50", text: "text-purple-700", label: "Poesia/Teatro" },
+  infantil_juvenil: { bg: "bg-green-50",  text: "text-green-700",  label: "Inf./Juvenil" },
+  espiritual:       { bg: "bg-rose-50",   text: "text-rose-700",   label: "Espiritual" },
+};
+
+const fontePrimariaPorTemplate: Record<TemplateId, string> = {
+  literario:         "EB Garamond",
+  literario_moderno: "Spectral",
+  memorial:          "Source Serif 4",
+  nao_ficcao:        "Source Serif 4",
+  academico:         "Crimson Pro",
+  abnt:              "Times New Roman",
+  poesia:            "Crimson Text",
+  teatro:            "Crimson Text",
+  infantil:          "Andika",
+  juvenil:           "Lora",
+  religioso:         "Gentium Book Plus",
+};
 
 // ─── Processing steps ─────────────────────────────────────────────────────────
 
@@ -100,9 +126,6 @@ export default function MioloPage() {
   const [epigrafeTexto, setEpigrafeTexto] = useState("");
   const [epigrafeAutor, setEpigrafeAutor] = useState("");
   const [bioAutor, setBioAutor] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showPretextual, setShowPretextual] = useState(false);
-
   // ── Processing state ────────────────────────────────────────────────────────
   const [processingMsg, setProcessingMsg] = useState(PROCESSING_MSGS[0]);
   const [processingPct, setProcessingPct] = useState(0);
@@ -584,7 +607,7 @@ export default function MioloPage() {
         </div>
       ) : step === "config" ? (
         /* ── CONFIG ── */
-        <main className="max-w-3xl mx-auto px-4 py-10">
+        <main className="max-w-3xl mx-auto px-4 pt-10 pb-36">
           <div className="mb-8">
             <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Diagramação do Miolo</p>
             <h1 className="font-heading text-3xl text-brand-primary">Configure o interior do livro</h1>
@@ -598,169 +621,160 @@ export default function MioloPage() {
           <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-5">
             <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">
               Template de diagramação
-              {selectedTemplate && (
-                <span className="normal-case text-brand-gold font-normal ml-2">— {selectedTemplate.label} selecionado</span>
-              )}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {TEMPLATE_OPTIONS.map(t => (
-                <RadioCard key={t.value} selected={template === t.value} onClick={() => handleTemplateChange(t.value)}>
-                  <p className={`text-sm font-semibold ${template === t.value ? "text-brand-primary" : "text-zinc-800"}`}>
-                    {t.label}
-                  </p>
-                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t.descricao}</p>
-                </RadioCard>
-              ))}
+              {TEMPLATE_OPTIONS.map(t => {
+                const fam = FAMILIA_STYLES[t.familia];
+                return (
+                  <RadioCard key={t.value} selected={template === t.value} onClick={() => handleTemplateChange(t.value)}>
+                    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${fam.bg} ${fam.text} mb-1.5`}>
+                      {fam.label}
+                    </span>
+                    <p className={`text-sm font-semibold leading-tight ${template === t.value ? "text-brand-primary" : "text-zinc-800"}`}>
+                      {t.label}
+                    </p>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">{fontePrimariaPorTemplate[t.value]}</p>
+                    <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t.descricao}</p>
+                  </RadioCard>
+                );
+              })}
             </div>
           </section>
 
-          {/* Format — inherited from Capa step, display only */}
-          <section className="bg-white rounded-2xl border border-zinc-100 p-5 mb-5">
-            <div className="flex items-center justify-between">
+          {/* Formato + tamanho de fonte — 2 colunas */}
+          <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-5">
+            <div className="grid grid-cols-2 gap-6">
               <div>
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Formato do livro</p>
-                <p className="text-sm font-medium text-brand-primary mt-0.5">
-                  {selectedFormato?.label ?? "Padrão BR"} — {selectedFormato?.dimensoes}
-                </p>
-                <p className="text-xs text-zinc-400 mt-0.5">Definido na etapa de Elementos</p>
-              </div>
-              {paginasEst && (
-                <p className="text-xs text-zinc-400 text-right">
-                  ~<strong className="text-zinc-600">{paginasEst} páginas</strong><br />
-                  com {palavrasTotal.toLocaleString("pt-BR")} palavras
-                </p>
-              )}
-            </div>
-          </section>
-
-          {/* Advanced options */}
-          <section className="bg-white rounded-2xl border border-zinc-100 overflow-hidden mb-5">
-            <button
-              onClick={() => setShowAdvanced(v => !v)}
-              className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-zinc-50 transition-colors"
-            >
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Opções tipográficas</span>
-              <span className="text-zinc-400 text-sm">{showAdvanced ? "▲" : "▼"}</span>
-            </button>
-            {showAdvanced && (
-              <div className="px-6 pb-6 space-y-4 border-t border-zinc-100 pt-4">
-                {/* Tamanho da letra */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-zinc-700">Tamanho da letra</label>
-                    <span className="text-sm font-mono text-zinc-600">{corpoPt} pt</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={9}
-                    max={14}
-                    step={0.5}
-                    value={corpoPt}
-                    onChange={e => setCorpoPt(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-zinc-500">
-                    Recomendado para este template: {getDefaultCorpoPt(template)} pt
+                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-2">
+                  Formato do livro
+                </label>
+                <select
+                  value={formato}
+                  onChange={e => setFormato(e.target.value as FormatoLivro)}
+                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:border-brand-gold"
+                >
+                  {FORMATOS_LIVRO.map(f => (
+                    <option key={f.value} value={f.value}>{f.label} — {f.dimensoes}</option>
+                  ))}
+                </select>
+                {paginasEst && (
+                  <p className="text-xs text-zinc-400 mt-1.5">
+                    ~<strong className="text-zinc-600">{paginasEst}</strong> páginas · {palavrasTotal.toLocaleString("pt-BR")} palavras
                   </p>
-                </div>
-
-                {/* Sumário — só exibir para templates que aceitam */}
-                {!TEMPLATES_SEM_SUMARIO_PUBLIC.includes(template) && (
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <div
-                      onClick={() => setSumario(v => !v)}
-                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${sumario ? "bg-brand-primary" : "bg-zinc-200"}`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario ? "translate-x-4" : "translate-x-0"}`} />
-                    </div>
-                    <span className="text-sm text-zinc-600">Gerar sumário automático</span>
-                  </label>
                 )}
               </div>
-            )}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Tamanho da fonte</label>
+                  <span className="text-sm font-mono text-zinc-600">{corpoPt} pt</span>
+                </div>
+                <input
+                  type="range"
+                  min={9}
+                  max={14}
+                  step={0.5}
+                  value={corpoPt}
+                  onChange={e => setCorpoPt(Number(e.target.value))}
+                  className="w-full"
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">Recomendado: {getDefaultCorpoPt(template)} pt</p>
+              </div>
+            </div>
           </section>
 
-          {/* Pre-textual elements */}
-          <section className="bg-white rounded-2xl border border-zinc-100 overflow-hidden mb-5">
-            <button
-              onClick={() => setShowPretextual(v => !v)}
-              className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-zinc-50 transition-colors"
-            >
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Elementos pré e pós-textuais</span>
-              <span className="text-zinc-400 text-sm">{showPretextual ? "▲" : "▼"}</span>
-            </button>
-            {showPretextual && (
-              <div className="px-6 pb-6 space-y-4 border-t border-zinc-100 pt-4">
-                <div>
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-1.5">Dedicatória</label>
-                  <textarea
-                    value={dedicatoria}
-                    onChange={e => setDedicatoria(e.target.value)}
-                    placeholder="Ex.: Para minha mãe, que sempre acreditou em mim."
-                    rows={2}
-                    className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
-                  />
+          {/* Sumário — só exibir para templates que aceitam */}
+          {!TEMPLATES_SEM_SUMARIO_PUBLIC.includes(template) && (
+            <section className="bg-white rounded-2xl border border-zinc-100 px-6 py-4 mb-5">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => setSumario(v => !v)}
+                  className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 ${sumario ? "bg-brand-primary" : "bg-zinc-200"}`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario ? "translate-x-4" : "translate-x-0"}`} />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-1.5">Epígrafe</label>
-                  <textarea
-                    value={epigrafeTexto}
-                    onChange={e => setEpigrafeTexto(e.target.value)}
-                    placeholder="Texto da citação"
-                    rows={2}
-                    className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
-                  />
-                  <input
-                    value={epigrafeAutor}
-                    onChange={e => setEpigrafeAutor(e.target.value)}
-                    placeholder="Autor da epígrafe"
-                    className="mt-2 w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold"
-                  />
+                  <p className="text-sm font-medium text-zinc-700">Gerar sumário automático</p>
+                  <p className="text-xs text-zinc-400">Montado com os capítulos aprovados e numeração de páginas real.</p>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-1.5">Sobre o autor (página final)</label>
-                  <textarea
-                    value={bioAutor}
-                    onChange={e => setBioAutor(e.target.value)}
-                    placeholder="Breve bio do autor para o final do livro (opcional)"
-                    rows={3}
-                    className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
-                  />
-                </div>
+              </label>
+            </section>
+          )}
+
+          {/* Elementos pré e pós-textuais — sempre visíveis */}
+          <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-5">
+            <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">Elementos pré e pós-textuais</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-1.5">Dedicatória</label>
+                <textarea
+                  value={dedicatoria}
+                  onChange={e => setDedicatoria(e.target.value)}
+                  placeholder="Ex.: Para minha mãe, que sempre acreditou em mim."
+                  rows={2}
+                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
+                />
               </div>
-            )}
+              <div>
+                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-1.5">Epígrafe</label>
+                <textarea
+                  value={epigrafeTexto}
+                  onChange={e => setEpigrafeTexto(e.target.value)}
+                  placeholder="Texto da citação"
+                  rows={2}
+                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
+                />
+                <input
+                  value={epigrafeAutor}
+                  onChange={e => setEpigrafeAutor(e.target.value)}
+                  placeholder="Autor da epígrafe"
+                  className="mt-2 w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block mb-1.5">Sobre o autor (página final)</label>
+                <textarea
+                  value={bioAutor}
+                  onChange={e => setBioAutor(e.target.value)}
+                  placeholder="Breve bio do autor para o final do livro (opcional)"
+                  rows={3}
+                  className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
+                />
+              </div>
+            </div>
           </section>
 
           {error && (
             <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm mb-5">{error}</div>
           )}
 
-          {statusAprovacao?.aprovado && statusAprovacao?.hash_valido && (
-            <div className="flex items-start gap-2.5 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3 text-sm">
-              <span className="text-green-600 mt-0.5">✓</span>
-              <p className="text-green-800">
-                <strong>{statusAprovacao.total} capítulos aprovados.</strong> A diagramação usará essa estrutura sem pedir confirmação novamente.
+          {/* Sticky action bar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-zinc-100 px-4 py-4 z-20">
+            <div className="max-w-3xl mx-auto">
+              {statusAprovacao?.aprovado && statusAprovacao?.hash_valido && (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-3 text-sm">
+                  <span className="text-green-600">✓</span>
+                  <p className="text-green-800">
+                    <strong>{statusAprovacao.total} capítulos aprovados</strong> — estrutura confirmada, sem nova confirmação.
+                  </p>
+                </div>
+              )}
+              {statusAprovacao?.aprovado && !statusAprovacao?.hash_valido && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 text-sm">
+                  <span className="text-amber-600">⚠</span>
+                  <p className="text-amber-800">Texto mudou — confirmação de capítulos necessária antes de gerar.</p>
+                </div>
+              )}
+              <button
+                onClick={handleGenerate}
+                className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
+              >
+                Iniciar diagramação →
+              </button>
+              <p className="text-center text-xs text-zinc-400 mt-2">
+                Leva {(paginasEst ?? 0) > 200 ? "60–90" : "30–60"} segundos.
               </p>
             </div>
-          )}
-          {statusAprovacao?.aprovado && !statusAprovacao?.hash_valido && (
-            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3 text-sm">
-              <span className="text-amber-600 mt-0.5">⚠</span>
-              <p className="text-amber-800">
-                O texto mudou desde a última aprovação. Você precisará confirmar os capítulos novamente antes de gerar.
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={handleGenerate}
-            className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
-          >
-            Iniciar diagramação →
-          </button>
-          <p className="text-center text-xs text-zinc-400 mt-3">
-            Leva {(paginasEst ?? 0) > 200 ? "60–90" : "30–60"} segundos dependendo do tamanho do manuscrito.
-          </p>
+          </div>
         </main>
 
       ) : step === "capitulos" ? (

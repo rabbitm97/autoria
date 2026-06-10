@@ -222,8 +222,52 @@ body {
 /* Half-title e folha de rosto */
 .half-title { padding-top: 60mm; text-align: center; }
 .title-page { padding-top: 45mm; text-align: center; }
-.title-page .subtitle { font-size: 1.15em; font-style: italic; color: #555; margin-bottom: 2em; max-width: 80%; margin-left: auto; margin-right: auto; }
-.title-page .author { font-size: 1.25em; color: #444; margin-top: 5em; }
+
+/* Half-title: reset agressivo do <p> para impedir que regras de capítulo
+   (drop cap, recuo, hanging indent) vazem para o subtítulo via cascade. */
+.half-title p, .half-title p.subtitle {
+  display: block;
+  margin: 0.8em auto 0;
+  padding: 0;
+  text-indent: 0;
+  max-width: 80%;
+  font-size: 1em;
+  color: #444;
+  font-style: italic;
+}
+.half-title p::first-letter,
+.half-title p.subtitle::first-letter {
+  font-size: inherit;
+  line-height: inherit;
+  float: none;
+  padding: 0;
+  margin: 0;
+  font-weight: inherit;
+  color: inherit;
+}
+
+/* Folha de rosto: subtítulo com estilo mais destacado que o half-title. */
+.title-page .subtitle {
+  display: block;
+  font-size: 1.15em;
+  font-style: italic;
+  color: #555;
+  margin: 0.8em auto 2em;
+  padding: 0;
+  text-indent: 0;
+  max-width: 80%;
+}
+.title-page .subtitle::first-letter,
+.title-page .author::first-letter {
+  font-size: inherit;
+  line-height: inherit;
+  float: none;
+  padding: 0;
+  margin: 0;
+  font-weight: inherit;
+  color: inherit;
+}
+.title-page .author { font-size: 1.25em; color: #444; margin-top: 5em; text-indent: 0; }
 
 /* Dedicatória — terço inferior, alinhada à direita, itálica */
 .dedicatoria {
@@ -719,10 +763,25 @@ export function fixTypography(text: string): string {
   return text
     .replace(/--/g, "—")
     .replace(/\.\.\./g, "…")
-    .replace(/" /g, "” ")
-    .replace(/ "/g, " “")
+    .replace(/" /g, "“ ")
+    .replace(/ "/g, " ”")
     .replace(/^"/gm, "“")
     .replace(/"$/gm, "”");
+}
+
+/**
+ * Sanitização defensiva para textos curtos de front matter (título, subtítulo,
+ * autor, dedicatória, epígrafe). Remove caracteres invisíveis Unicode que
+ * podem estar persistidos no manuscrito e que distorcem a renderização:
+ *   U+FEFF BOM, U+200B ZWSP, U+200C ZWNJ, U+200D ZWJ,
+ *   U+00AD soft hyphen, U+202A-U+202E bidi overrides.
+ */
+export function cleanFrontMatterText(input: string | null | undefined): string {
+  if (!input) return "";
+  return input
+    .replace(/[\uFEFF\u200B\u200C\u200D\u00AD\u202A-\u202E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildParagraphsForChapter(text: string, config: MioloConfig): string {
@@ -761,7 +820,11 @@ function buildParagraphsForChapter(text: string, config: MioloConfig): string {
     };
 
     for (const linha of linhas) {
-      const isDialogue = /^[—–-]\s/.test(linha);
+      // Diálogo com travessão inicial: "— Fala..."
+      const isDialogueTravessao = /^[—–-]\s/.test(linha);
+      // Diálogo formal com locutor antes do travessão: "A. K. — Fala...", "V. — ..."
+      const isDialogueFormal = /^[A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜ][A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜa-záéíóúâêôãõçñü.\s]{0,24}[.\s]+[—–]\s/.test(linha);
+      const isDialogue = isDialogueTravessao || isDialogueFormal;
       if (isDialogue) {
         flush();
         paragraphs.push(linha);   // diálogo é parágrafo próprio
@@ -778,7 +841,8 @@ function buildParagraphsForChapter(text: string, config: MioloConfig): string {
   return paragraphs.map((para, idx) => {
     const p = fixTypography(para.trim());
     const isFirst = idx === 0;
-    const isDialogue = /^[—–-]\s/.test(p);
+    const isDialogue = /^[—–-]\s/.test(p) ||
+      /^[A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜ][A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜa-záéíóúâêôãõçñü.\s]{0,24}[.\s]+[—–]\s/.test(p);
 
     const classes: string[] = [];
     if (isFirst) classes.push("first-para");
@@ -786,6 +850,35 @@ function buildParagraphsForChapter(text: string, config: MioloConfig): string {
     const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
     return `<p${classAttr}>${escHtml(p)}</p>`;
   }).join("\n");
+}
+
+/**
+ * Heurística para decidir se um trecho de texto tem estrutura de poesia.
+ *
+ * Critérios (todos precisam ser verdade):
+ *   - Pelo menos 60% dos versos (linhas não vazias) têm 70 caracteres ou menos
+ *   - Existe pelo menos 1 quebra de estrofe (linha em branco entre versos)
+ *     OU todas as linhas têm 50 caracteres ou menos (poesia em estrofe única)
+ *
+ * Prosa típica com hard wrap de 80 colunas falha no primeiro critério: a
+ * maioria das linhas tem entre 70 e 80 caracteres. Poesia tem linhas muito
+ * mais curtas.
+ */
+function looksLikePoetry(text: string): boolean {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!normalized) return false;
+
+  const linhas = normalized.split("\n").map(l => l.trim()).filter(Boolean);
+  if (linhas.length < 2) return false;
+
+  const versosCurtos = linhas.filter(l => l.length <= 70).length;
+  const ratioCurtos = versosCurtos / linhas.length;
+  if (ratioCurtos < 0.6) return false;
+
+  const temEstrofes = /\n\s*\n/.test(normalized);
+  const todasMuitoCurtas = linhas.every(l => l.length <= 50);
+
+  return temEstrofes || todasMuitoCurtas;
 }
 
 // ─── Parser de poesia: estrofes (blocos separados por linha em branco)
@@ -961,18 +1054,22 @@ export function buildBookHtml(params: {
 
   const sections: string[] = [];
 
+  const tituloClean    = cleanFrontMatterText(titulo);
+  const subtituloClean = cleanFrontMatterText(subtitulo);
+  const autorClean     = cleanFrontMatterText(autor);
+
   // ── 1. Half-title (recto) ──────────────────────────────────────────────────
   sections.push(`<section class="front-page half-title">
-  <h1>${escHtml(titulo)}</h1>
-${subtitulo ? `  <p class="subtitle" style="font-size:1em;margin-top:0.8em">${escHtml(subtitulo)}</p>\n` : ""}</section>`);
+  <h1>${escHtml(tituloClean)}</h1>
+${subtituloClean ? `  <p class="subtitle" style="font-size:1em;margin-top:0.8em">${escHtml(subtituloClean)}</p>\n` : ""}</section>`);
 
   // ── 2. Verso branco ────────────────────────────────────────────────────────
   sections.push(`<section class="blank-page"></section>`);
 
   // ── 3. Folha de rosto (recto) ──────────────────────────────────────────────
   sections.push(`<section class="front-page title-page">
-  <h1>${escHtml(titulo)}</h1>
-${subtitulo ? `  <p class="subtitle">${escHtml(subtitulo)}</p>\n` : ""}  <p class="author">${escHtml(autor)}</p>
+  <h1>${escHtml(tituloClean)}</h1>
+${subtituloClean ? `  <p class="subtitle">${escHtml(subtituloClean)}</p>\n` : ""}  <p class="author">${escHtml(autorClean)}</p>
 </section>`);
 
   // ── 4. Créditos + ficha catalográfica ──────────────────────────────────────
@@ -989,7 +1086,7 @@ ${creditosInnerHtml}
   // ── 5. Dedicatória (opcional) ──────────────────────────────────────────────
   if (config.dedicatoria?.trim()) {
     sections.push(`<section class="front-page dedicatoria">
-  <p>${escHtml(config.dedicatoria)}</p>
+  <p>${escHtml(cleanFrontMatterText(config.dedicatoria))}</p>
 </section>`);
     // Verso branco depois da dedicatória
     sections.push(`<section class="blank-page"></section>`);
@@ -998,8 +1095,8 @@ ${creditosInnerHtml}
   // ── 6. Epígrafe (opcional) ─────────────────────────────────────────────────
   if (config.epigrafe_texto?.trim()) {
     sections.push(`<section class="front-page epigrafe">
-  <p class="epigrafe-text">${escHtml(config.epigrafe_texto)}</p>
-${config.epigrafe_autor ? `  <p class="epigrafe-autor">— ${escHtml(config.epigrafe_autor)}</p>\n` : ""}</section>`);
+  <p class="epigrafe-text">${escHtml(cleanFrontMatterText(config.epigrafe_texto))}</p>
+${config.epigrafe_autor ? `  <p class="epigrafe-autor">— ${escHtml(cleanFrontMatterText(config.epigrafe_autor))}</p>\n` : ""}</section>`);
     sections.push(`<section class="blank-page"></section>`);
   }
 
@@ -1043,8 +1140,12 @@ ${tocItems}
     // Roteador de parser por template. Cada parser sabe gerar o HTML interno
     // do capítulo respeitando convenções do gênero.
     let paragrafosHtml: string;
-    if (config.template === "poesia") {
+    if (config.template === "poesia" && looksLikePoetry(seg.texto)) {
       paragrafosHtml = buildParagraphsForPoesia(seg.texto);
+    } else if (config.template === "poesia") {
+      // Texto não tem estrutura de poesia (ex.: prosa com hard-wrap de 80 colunas).
+      // Usa parser de prosa para evitar que cada linha vire um verso independente.
+      paragrafosHtml = buildParagraphsForChapter(seg.texto, config);
     } else if (config.template === "teatro") {
       paragrafosHtml = buildParagraphsForTeatro(seg.texto);
     } else if (config.template === "religioso") {
@@ -1065,7 +1166,7 @@ ${paragrafosHtml}
     sections.push(`<section class="chapter" style="break-before: page; page-break-before: page">
   <div class="author-bio">
     <h3 style="font-size:1em;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:1em">Sobre o autor</h3>
-    <p style="text-indent:0">${escHtml(config.bio_autor)}</p>
+    <p style="text-indent:0">${escHtml(cleanFrontMatterText(config.bio_autor))}</p>
   </div>
 </section>`);
   }
@@ -1075,7 +1176,7 @@ ${paragrafosHtml}
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escHtml(titulo)}</title>
+<title>${escHtml(tituloClean)}</title>
 <style>
 ${css}
 </style>
