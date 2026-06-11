@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
-import type { ProvaResult, ProvaItem } from "@/app/api/agentes/prova/route";
+import type { ProvaResult, ProvaItem } from "@/app/api/agentes/prova/types";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -25,6 +25,7 @@ interface BookData {
   autor: string;
   lombadaMm: number;
   paginas: number;
+  capaTemEditorData: boolean;
 }
 
 // ─── 3D Book viewer (paralelepípedo com 6 faces) ─────────────────────────────
@@ -245,11 +246,8 @@ function PdfFolheador({ projectId }: { projectId: string }) {
   const [containerWidth, setContainerWidth] = useState(600);
   const [maxPageHeight, setMaxPageHeight] = useState(700);
 
-  // Mede a altura disponível para a página, reservando espaço para header da
-  // página, abas, controles e infos. Atualiza em resize.
   useEffect(() => {
     function update() {
-      // ~360px reservados para tudo que não é a página em si
       setMaxPageHeight(Math.max(420, window.innerHeight - 360));
     }
     update();
@@ -282,8 +280,6 @@ function PdfFolheador({ projectId }: { projectId: string }) {
   function onDocumentLoadSuccess({ numPages: n }: { numPages: number }) {
     setNumPages(n);
     setLoadError(null);
-    // NÃO resetar pageNumber aqui — causaria re-download ao trocar de página
-    // (key={pageNumber} no Document remontava e disparava onLoadSuccess de novo).
   }
 
   function onDocumentLoadError(err: Error) {
@@ -293,7 +289,6 @@ function PdfFolheador({ projectId }: { projectId: string }) {
 
   const canPrev = pageNumber > 1;
   const canNext = numPages > 0 && pageNumber < numPages;
-  // Aspect ratio aproximado de livros (altura/largura). 1.5 = formato 14×21cm.
   const ASPECT_GUESS = 1.5;
   const widthByContainer = Math.min(containerWidth - 48, 600);
   const widthByHeight = maxPageHeight / ASPECT_GUESS;
@@ -305,8 +300,6 @@ function PdfFolheador({ projectId }: { projectId: string }) {
         <div className="py-24 text-center text-sm text-zinc-500">{loadError}</div>
       ) : (
         <>
-          {/* Document permanece montado entre trocas — PDF baixado UMA vez só.
-              A animação fica no wrapper interno (key={pageNumber}) ao redor do <Page>. */}
           <div className="bg-white shadow-xl rounded-sm" style={{ minHeight: 400 }}>
             <Document
               file={pdfUrl}
@@ -422,6 +415,8 @@ export default function ProvaPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
+  const projectIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<ProvaResult | null>(null);
@@ -433,6 +428,9 @@ export default function ProvaPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [lombadaAvisoDismissed, setLombadaAvisoDismissed] = useState(false);
+  const [preparandoCapaGrafica, setPreparandoCapaGrafica] = useState(false);
+  const [capaGraficaError, setCapaGraficaError] = useState<string | null>(null);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
@@ -461,7 +459,9 @@ export default function ProvaPage() {
           paginas_estimadas?: number;
         } | null;
 
-        const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
+        const dadosCapa = project.dados_capa as Record<string, unknown> | null;
+        const capaResolvida = resolveCapaCompleta(dadosCapa);
+        const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
 
         setBookData({
           coverUrl: capaResolvida.url_principal,
@@ -471,6 +471,7 @@ export default function ProvaPage() {
           autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
           lombadaMm: capaResolvida.lombada_mm ?? miolo?.lombada_mm ?? 10,
           paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? 0,
+          capaTemEditorData: editorDataRaw?.version === 1,
         });
       }
     } finally {
@@ -500,9 +501,6 @@ export default function ProvaPage() {
   }
 
   async function handleGerarPdfDigital() {
-    const projectIdStr =
-      typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
-
     if (!projectIdStr) {
       setPdfError("ID do projeto inválido. Recarregue a página.");
       return;
@@ -511,7 +509,6 @@ export default function ProvaPage() {
     setGerandoPdf(true);
     setPdfError(null);
 
-    // Timeout client-side de 75s (rota tem maxDuration 60s).
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 75_000);
 
@@ -529,7 +526,6 @@ export default function ProvaPage() {
         throw new Error(data?.error ?? `Erro do servidor (HTTP ${res.status})`);
       }
 
-      // Re-roda a análise para refletir que o PDF agora está pronto
       await handleAnalisar();
     } catch (e) {
       clearTimeout(timeout);
@@ -546,8 +542,34 @@ export default function ProvaPage() {
     }
   }
 
+  async function handlePrepararCapaGrafica() {
+    if (!projectIdStr) return;
+    setPreparandoCapaGrafica(true);
+    setCapaGraficaError(null);
+    try {
+      const res = await fetch("/api/agentes/prova/preparar-capa-grafica", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectIdStr }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string; action?: string; ok?: boolean };
+      if (!res.ok) {
+        if (data.action === "ir_para_editor_capa") {
+          router.push(`/editor/capa/${projectIdStr}`);
+          return;
+        }
+        throw new Error(data.error ?? "Falha ao preparar PDF da capa.");
+      }
+      await handleAnalisar();
+    } catch (e) {
+      setCapaGraficaError(e instanceof Error ? e.message : "Erro ao preparar PDF da capa.");
+    } finally {
+      setPreparandoCapaGrafica(false);
+    }
+  }
+
   async function handlePublicar() {
-    if (!modelApproved) return;
+    if (!digitalAprovado || !modelApproved) return;
     setApprovingPub(true);
     await supabase
       .from("projects")
@@ -557,15 +579,27 @@ export default function ProvaPage() {
   }
 
   function handleNavigateToEtapa(etapa: string) {
-    if (etapa === "__gerar_pdf_digital__") {
-      handleGerarPdfDigital();
-      return;
-    }
+    if (etapa === "__gerar_pdf_digital__") { handleGerarPdfDigital(); return; }
+    if (etapa === "__preparar_capa_grafica__") { handlePrepararCapaGrafica(); return; }
     router.push(`/dashboard/${etapa}/${id}`);
   }
 
-  const semPendencias = result && result.itens.length === 0;
-  const canPublish = semPendencias && modelApproved;
+  // ── Derived state ──────────────────────────────────────────────────────────
+  const digitalAprovado = result?.digital.aprovado ?? false;
+  const digitalPendencias = result?.digital.pendencias ?? [];
+  const digitalAvisos = (result?.digital.avisos ?? []).filter(
+    a => a.id !== "capa_grafica_lombada_divergente",
+  );
+  const graficaPendencias = (result?.grafica.pendencias ?? []).filter(
+    i => i.categoria === "capa_grafica",
+  );
+  const graficaPreparada = result?.grafica.preparado ?? false;
+  const avisosLombada = result?.grafica.avisos.filter(
+    i => i.id === "capa_grafica_lombada_divergente",
+  ) ?? [];
+  const canPublish = digitalAprovado && modelApproved;
+  const capaOrigem = bookData?.capaTemEditorData ? "editor" : "ia_ou_upload";
+
   const pdfPendente = result?.itens.find(i => i.categoria === "pdf") ?? null;
   const pdfPronto = result !== null && pdfPendente === null;
 
@@ -629,11 +663,7 @@ export default function ProvaPage() {
                     <Book3D book={bookData} />
                   </div>
                 ) : pdfPronto ? (
-                  <PdfFolheador
-                    projectId={
-                      typeof id === "string" ? id : Array.isArray(id) ? id[0] : ""
-                    }
-                  />
+                  <PdfFolheador projectId={projectIdStr} />
                 ) : (
                   <div className="p-12 text-center bg-stone-50">
                     {pdfPendente && (
@@ -696,38 +726,174 @@ export default function ProvaPage() {
 
             {/* Status */}
             {result ? (
-              <>
-                {semPendencias ? (
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
+              <div className="space-y-4">
+
+                {/* Banner: lombada divergente */}
+                {avisosLombada.length > 0 && !lombadaAvisoDismissed && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-amber-800">Lombada desatualizada</p>
+                      <p className="text-xs text-amber-700 mt-1 leading-relaxed">{avisosLombada[0].mensagem}</p>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={handlePrepararCapaGrafica}
+                          disabled={preparandoCapaGrafica}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 transition-colors disabled:opacity-50"
+                        >
+                          {preparandoCapaGrafica ? "Preparando…" : "Atualizar PDF da capa →"}
+                        </button>
+                        <button
+                          onClick={() => setLombadaAvisoDismissed(true)}
+                          className="text-xs text-amber-600 hover:text-amber-800 transition-colors"
+                        >
+                          Ignorar
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-heading text-xl text-emerald-700">Pronto para publicar</p>
-                      <p className="text-sm text-emerald-600 mt-1">
-                        Capa, miolo, créditos e PDF estão preparados. Confira o modelo 3D acima e aprove para seguir à distribuição.
-                      </p>
-                      <p className="text-xs text-emerald-500/70 mt-2">
-                        Conferido em {new Date(result.analisado_em).toLocaleString("pt-BR")}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-zinc-600">
-                      Pendências antes de publicar:
-                    </p>
-                    {result.itens.map((item, i) => (
-                      <PendenciaCard
-                        key={i}
-                        item={item}
-                        onNavigate={handleNavigateToEtapa}
-                      />
-                    ))}
                   </div>
                 )}
+
+                {/* Card: publicação digital */}
+                <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-zinc-50 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-brand-primary text-sm">Publicação digital</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">Capa · Miolo · Créditos · PDF digital</p>
+                    </div>
+                    {digitalAprovado ? (
+                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        Aprovado
+                      </span>
+                    ) : (
+                      <span className="text-xs text-red-500 font-medium">
+                        {digitalPendencias.length} pendência{digitalPendencias.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {digitalAprovado ? (
+                      <div className="py-3 text-center">
+                        <p className="text-sm text-emerald-600 font-medium">Tudo certo para publicação digital!</p>
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Conferido em {new Date(result.analisado_em).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {digitalPendencias.map((item, i) => (
+                          <PendenciaCard key={i} item={item} onNavigate={handleNavigateToEtapa} />
+                        ))}
+                        {digitalAvisos.map((item, i) => (
+                          <PendenciaCard key={`av-${i}`} item={item} onNavigate={handleNavigateToEtapa} />
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card: envio para gráfica */}
+                <div className={`bg-white rounded-2xl border overflow-hidden transition-opacity ${
+                  !digitalAprovado ? "opacity-50 border-zinc-100" : "border-zinc-100"
+                }`}>
+                  <div className="px-6 py-4 border-b border-zinc-50 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-brand-primary text-sm">Envio para gráfica</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">PDF da capa com marcas de corte e sangria</p>
+                    </div>
+                    {!digitalAprovado ? (
+                      <span className="text-xs text-zinc-400">Disponível após digital</span>
+                    ) : graficaPreparada && graficaPendencias.length === 0 ? (
+                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        Preparado
+                      </span>
+                    ) : graficaPreparada ? (
+                      <span className="text-xs text-red-500 font-medium">Requer atenção</span>
+                    ) : (
+                      <span className="text-xs text-zinc-400 font-medium">Não preparado</span>
+                    )}
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {!digitalAprovado ? (
+                      <p className="text-sm text-zinc-400 text-center py-3">
+                        Conclua a trilha digital antes de preparar o envio para gráfica.
+                      </p>
+                    ) : !graficaPreparada ? (
+                      <div className="text-center py-3">
+                        <p className="text-sm text-zinc-600 mb-4">
+                          {capaOrigem === "editor"
+                            ? "Gere o PDF da capa com marcas de corte para envio à gráfica."
+                            : "A capa precisa passar pelo Editor de Capa para gerar o PDF para gráfica."}
+                        </p>
+                        <button
+                          onClick={capaOrigem === "editor"
+                            ? handlePrepararCapaGrafica
+                            : () => router.push(`/editor/capa/${projectIdStr}`)}
+                          disabled={preparandoCapaGrafica}
+                          className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          {preparandoCapaGrafica ? (
+                            <>
+                              <span className="w-4 h-4 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                              Preparando…
+                            </>
+                          ) : capaOrigem === "editor"
+                            ? "Preparar PDF para gráfica"
+                            : "Abrir Editor de Capa →"}
+                        </button>
+                        {capaGraficaError && (
+                          <p className="mt-3 text-xs text-red-600">{capaGraficaError}</p>
+                        )}
+                      </div>
+                    ) : graficaPendencias.length > 0 ? (
+                      <>
+                        {graficaPendencias.map((item, i) => (
+                          <PendenciaCard key={i} item={item} onNavigate={handleNavigateToEtapa} />
+                        ))}
+                        <div className="pt-1">
+                          <button
+                            onClick={handlePrepararCapaGrafica}
+                            disabled={preparandoCapaGrafica}
+                            className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-5 py-2 rounded-xl text-xs font-medium hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+                          >
+                            {preparandoCapaGrafica ? (
+                              <>
+                                <span className="w-3 h-3 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                                Preparando…
+                              </>
+                            ) : "Preparar novamente"}
+                          </button>
+                          {capaGraficaError && (
+                            <p className="mt-2 text-xs text-red-600">{capaGraficaError}</p>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="py-3 text-center">
+                        <p className="text-sm text-emerald-600 font-medium">PDF da capa pronto para gráfica!</p>
+                        <button
+                          onClick={handlePrepararCapaGrafica}
+                          disabled={preparandoCapaGrafica}
+                          className="mt-3 text-xs text-zinc-400 underline hover:text-zinc-600 disabled:opacity-50 transition-colors"
+                        >
+                          {preparandoCapaGrafica ? "Atualizando…" : "Atualizar PDF da capa"}
+                        </button>
+                        {capaGraficaError && (
+                          <p className="mt-2 text-xs text-red-600">{capaGraficaError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 {/* Detalhes da obra (colapsável) */}
                 <details
@@ -769,17 +935,17 @@ export default function ProvaPage() {
                     >
                       {approvingPub ? "Aguarde…" : "Publicar →"}
                     </button>
-                  ) : semPendencias && !modelApproved ? (
+                  ) : digitalAprovado && !modelApproved ? (
                     <div className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-500 text-sm text-center">
                       Aprove o modelo 3D acima para publicar
                     </div>
                   ) : (
                     <div className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-500 text-sm text-center">
-                      Resolva as pendências acima para publicar
+                      Resolva as pendências da trilha digital para publicar
                     </div>
                   )}
                 </div>
-              </>
+              </div>
             ) : (
               <div className="bg-white rounded-2xl border border-zinc-100 p-8 text-center">
                 <h3 className="font-heading text-xl text-brand-primary mb-2">

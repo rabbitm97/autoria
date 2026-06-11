@@ -11,55 +11,13 @@ import {
   ORELHA_MM,
   calcularLombada,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
+export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MARKS_MM = 10;
 const PDF_DIMENSAO_TOLERANCIA_MM = 0.5;
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type ProvaCategoria = "capa" | "miolo" | "creditos" | "pdf" | "consistencia" | "capa_grafica";
-export type ProvaStatus    = "ok" | "aviso" | "erro";
-
-export interface ProvaItem {
-  id?: string;
-  categoria: ProvaCategoria;
-  status: ProvaStatus;
-  mensagem: string;
-  /** Sentinel de navegação — usado pelos novos itens de capa_grafica. */
-  etapa?: string | null;
-  /** Legado — usado pelos itens pré-Prompt 4A para mostrar botão "Resolver". */
-  acao?: { label: string; etapa: string };
-}
-
-export interface ProvaResult {
-  project_id: string;
-  /** Legado: score 0–100 baseado em erros/avisos. */
-  score: number;
-  /** Legado: erros === 0 && avisos === 0. Mantido para a UI atual não quebrar. */
-  aprovado: boolean;
-  /** Legado: todos os itens agregados. Mantido para a UI atual não quebrar. */
-  itens: ProvaItem[];
-  /** Trilha digital — capa, miolo, créditos, PDF digital. */
-  digital: {
-    aprovado: boolean;
-    pendencias: ProvaItem[];
-    avisos: ProvaItem[];
-  };
-  /** Trilha gráfica — tudo do digital + PDF da capa para gráfica. */
-  grafica: {
-    aprovado: boolean;
-    preparado: boolean;
-    pendencias: ProvaItem[];
-    avisos: ProvaItem[];
-  };
-  detalhes: {
-    formato?: string;
-    paginas?: number;
-  };
-  analisado_em: string;
-}
 
 // ─── Análise de capa gráfica ─────────────────────────────────────────────────
 
