@@ -29,10 +29,8 @@ interface BookData {
 
 // ─── 3D Book viewer (paralelepípedo com 6 faces) ─────────────────────────────
 
-function Book3D({ book, approved, onApprove }: {
+function Book3D({ book }: {
   book: BookData;
-  approved: boolean;
-  onApprove: () => void;
 }) {
   const [angle, setAngle] = useState(25);
   const [dragging, setDragging] = useState(false);
@@ -233,22 +231,6 @@ function Book3D({ book, approved, onApprove }: {
         <p className="text-xs text-zinc-400">{book.paginas} páginas · Lombada {book.lombadaMm}mm</p>
       </div>
 
-      {!approved ? (
-        <button
-          onClick={onApprove}
-          className="px-8 py-3 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm"
-        >
-          Aprovar modelo final
-        </button>
-      ) : (
-        <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          Modelo aprovado
-        </div>
-      )}
     </div>
   );
 }
@@ -261,6 +243,19 @@ function PdfFolheador({ projectId }: { projectId: string }) {
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(600);
+  const [maxPageHeight, setMaxPageHeight] = useState(700);
+
+  // Mede a altura disponível para a página, reservando espaço para header da
+  // página, abas, controles e infos. Atualiza em resize.
+  useEffect(() => {
+    function update() {
+      // ~360px reservados para tudo que não é a página em si
+      setMaxPageHeight(Math.max(420, window.innerHeight - 360));
+    }
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const pdfUrl = `/api/agentes/prova/preview-pdf?project_id=${projectId}`;
 
@@ -298,7 +293,11 @@ function PdfFolheador({ projectId }: { projectId: string }) {
 
   const canPrev = pageNumber > 1;
   const canNext = numPages > 0 && pageNumber < numPages;
-  const pageWidth = Math.min(containerWidth - 48, 740);
+  // Aspect ratio aproximado de livros (altura/largura). 1.5 = formato 14×21cm.
+  const ASPECT_GUESS = 1.5;
+  const widthByContainer = Math.min(containerWidth - 48, 600);
+  const widthByHeight = maxPageHeight / ASPECT_GUESS;
+  const pageWidth = Math.max(280, Math.min(widthByContainer, widthByHeight));
 
   return (
     <div ref={containerRef} className="w-full bg-stone-100 flex flex-col items-center py-8 px-4">
@@ -428,7 +427,7 @@ export default function ProvaPage() {
   const [result, setResult] = useState<ProvaResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bookData, setBookData] = useState<BookData | null>(null);
-  const [activeTab, setActiveTab] = useState<"capa" | "folhear">("capa");
+  const [activeTab, setActiveTab] = useState<"capa" | "miolo">("capa");
   const [modelApproved, setModelApproved] = useState(false);
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -599,7 +598,7 @@ export default function ProvaPage() {
               </div>
             )}
 
-            {/* Book preview with Capa 3D / Folhear tabs */}
+            {/* Book preview com abas Capa 3D / Miolo */}
             {bookData && (
               <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
                 <div className="flex border-b border-zinc-100">
@@ -614,24 +613,20 @@ export default function ProvaPage() {
                     Capa 3D
                   </button>
                   <button
-                    onClick={() => setActiveTab("folhear")}
+                    onClick={() => setActiveTab("miolo")}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                      activeTab === "folhear"
+                      activeTab === "miolo"
                         ? "text-brand-primary border-b-2 border-brand-gold"
                         : "text-zinc-400 hover:text-zinc-600"
                     }`}
                   >
-                    Folhear
+                    Miolo
                   </button>
                 </div>
 
                 {activeTab === "capa" ? (
                   <div className="p-8">
-                    <Book3D
-                      book={bookData}
-                      approved={modelApproved}
-                      onApprove={() => setModelApproved(true)}
-                    />
+                    <Book3D book={bookData} />
                   </div>
                 ) : pdfPronto ? (
                   <PdfFolheador
@@ -672,6 +667,28 @@ export default function ProvaPage() {
                         A geração pode demorar até um minuto. Não feche esta página.
                       </p>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bloco de aprovação do modelo — visível em qualquer aba */}
+            {bookData && (
+              <div className="flex items-center justify-center py-2">
+                {!modelApproved ? (
+                  <button
+                    onClick={() => setModelApproved(true)}
+                    className="px-8 py-3 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm"
+                  >
+                    Aprovar modelo final
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                    Modelo aprovado
                   </div>
                 )}
               </div>
