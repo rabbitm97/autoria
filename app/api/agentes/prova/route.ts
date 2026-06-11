@@ -2,37 +2,210 @@ export const maxDuration = 30;
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
+import { PDFDocument } from "pdf-lib";
+import {
+  FORMATS,
+  SANGRIA_MM,
+  ORELHA_MM,
+  calcularLombada,
+} from "@/app/editor/capa/[project_id]/lib/dimensions";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const MARKS_MM = 10;
+const PDF_DIMENSAO_TOLERANCIA_MM = 0.5;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ProvaCategoria = "capa" | "miolo" | "creditos" | "pdf" | "consistencia";
+export type ProvaCategoria = "capa" | "miolo" | "creditos" | "pdf" | "consistencia" | "capa_grafica";
 export type ProvaStatus    = "ok" | "aviso" | "erro";
 
-export interface ProvaAcao {
-  /** Label do botão que a UI deve mostrar. Ex: "Voltar para Capa". */
-  label: string;
-  /** Slug da etapa para onde redirecionar. Ex: "capa", "diagramacao", "creditos". */
-  etapa: string;
-}
-
 export interface ProvaItem {
+  id?: string;
   categoria: ProvaCategoria;
   status: ProvaStatus;
   mensagem: string;
-  /** Quando presente, a UI deve mostrar um botão "Resolver" que leva à etapa. */
-  acao?: ProvaAcao;
+  /** Sentinel de navegação — usado pelos novos itens de capa_grafica. */
+  etapa?: string | null;
+  /** Legado — usado pelos itens pré-Prompt 4A para mostrar botão "Resolver". */
+  acao?: { label: string; etapa: string };
 }
 
 export interface ProvaResult {
   project_id: string;
-  score: number;        // 0–100
-  aprovado: boolean;    // erros === 0 && avisos === 0 (score 100)
-  itens: ProvaItem[];   // SÓ contém pendências — vazio quando tudo OK
+  /** Legado: score 0–100 baseado em erros/avisos. */
+  score: number;
+  /** Legado: erros === 0 && avisos === 0. Mantido para a UI atual não quebrar. */
+  aprovado: boolean;
+  /** Legado: todos os itens agregados. Mantido para a UI atual não quebrar. */
+  itens: ProvaItem[];
+  /** Trilha digital — capa, miolo, créditos, PDF digital. */
+  digital: {
+    aprovado: boolean;
+    pendencias: ProvaItem[];
+    avisos: ProvaItem[];
+  };
+  /** Trilha gráfica — tudo do digital + PDF da capa para gráfica. */
+  grafica: {
+    aprovado: boolean;
+    preparado: boolean;
+    pendencias: ProvaItem[];
+    avisos: ProvaItem[];
+  };
+  detalhes: {
+    formato?: string;
+    paginas?: number;
+  };
   analisado_em: string;
 }
 
-// ─── Handler ─────────────────────────────────────────────────────────────────
+// ─── Análise de capa gráfica ─────────────────────────────────────────────────
+
+async function analisarCapaGrafica(params: {
+  pdf_grafica: {
+    storage_path: string;
+    gerado_em: string;
+    formato: string;
+    paginas_no_momento: number;
+    com_orelhas: boolean;
+  };
+  paginas_atuais: number;
+  formato_atual: string;
+  com_orelhas_atual: boolean;
+}): Promise<ProvaItem[]> {
+  const itens: ProvaItem[] = [];
+  const { pdf_grafica, paginas_atuais, formato_atual, com_orelhas_atual } = params;
+
+  const storageClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  // 1. Assinar URL para download
+  const { data: signed, error: signErr } = await storageClient.storage
+    .from("editor-assets")
+    .createSignedUrl(pdf_grafica.storage_path, 300);
+
+  if (signErr || !signed?.signedUrl) {
+    itens.push({
+      id: "capa_grafica_inacessivel",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: "PDF da capa para gráfica não está acessível. Prepare novamente.",
+      etapa: "__preparar_capa_grafica__",
+    });
+    return itens;
+  }
+
+  // 2. Baixar o PDF
+  let buffer: Buffer;
+  try {
+    const res = await fetch(signed.signedUrl);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    buffer = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    console.error("[prova:capa_grafica] falha ao baixar PDF:", err);
+    itens.push({
+      id: "capa_grafica_download_falhou",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: "Falha ao baixar o PDF da capa. Prepare novamente.",
+      etapa: "__preparar_capa_grafica__",
+    });
+    return itens;
+  }
+
+  // 3. Medir MediaBox via pdf-lib
+  let widthMm: number;
+  let heightMm: number;
+  try {
+    const pdfDoc = await PDFDocument.load(buffer);
+    if (pdfDoc.getPageCount() < 1) throw new Error("PDF sem páginas");
+    const page = pdfDoc.getPage(0);
+    const { width, height } = page.getSize(); // pontos (72 pt/in)
+    widthMm  = (width  / 72) * 25.4;
+    heightMm = (height / 72) * 25.4;
+  } catch (err) {
+    console.error("[prova:capa_grafica] PDF inválido:", err);
+    itens.push({
+      id: "capa_grafica_pdf_invalido",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: "PDF da capa está corrompido ou inválido. Prepare novamente.",
+      etapa: "__preparar_capa_grafica__",
+    });
+    return itens;
+  }
+
+  // 4. Calcular dimensões esperadas (mesma fórmula do exportar-pdf)
+  const f = FORMATS[formato_atual as keyof typeof FORMATS];
+  if (!f) {
+    itens.push({
+      id: "capa_grafica_formato_invalido",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: `Formato '${formato_atual}' não reconhecido.`,
+      etapa: null,
+    });
+    return itens;
+  }
+
+  const lombadaMmEsperada = calcularLombada(paginas_atuais);
+  const orelhaMm = com_orelhas_atual ? ORELHA_MM : 0;
+  const totalWMm = f.width_mm * 2 + lombadaMmEsperada + orelhaMm * 2 + SANGRIA_MM * 2;
+  const totalHMm = f.height_mm + SANGRIA_MM * 2;
+  const expectedW = totalWMm + MARKS_MM * 2;
+  const expectedH = totalHMm + MARKS_MM * 2;
+
+  const diffW = Math.abs(widthMm - expectedW);
+  const diffH = Math.abs(heightMm - expectedH);
+  const dimensoesBatem = diffW <= PDF_DIMENSAO_TOLERANCIA_MM && diffH <= PDF_DIMENSAO_TOLERANCIA_MM;
+
+  // 5. Check: zona de marcas (a MediaBox deve ser >= área útil + 2×MARKS_MM)
+  const totalWNoPdf = widthMm - MARKS_MM * 2;
+  const totalHNoPdf = heightMm - MARKS_MM * 2;
+  const temZonaDeMarcas =
+    (widthMm  - totalWNoPdf) >= MARKS_MM * 2 - PDF_DIMENSAO_TOLERANCIA_MM &&
+    (heightMm - totalHNoPdf) >= MARKS_MM * 2 - PDF_DIMENSAO_TOLERANCIA_MM;
+
+  if (!temZonaDeMarcas) {
+    itens.push({
+      id: "capa_grafica_sem_marcas",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: "PDF da capa não tem marcas de corte — não pode ir para gráfica. Prepare novamente.",
+      etapa: "__preparar_capa_grafica__",
+    });
+  }
+
+  if (!dimensoesBatem) {
+    itens.push({
+      id: "capa_grafica_dimensoes_divergentes",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: `Dimensões do PDF (${widthMm.toFixed(1)}×${heightMm.toFixed(1)}mm) não correspondem ao esperado (${expectedW.toFixed(1)}×${expectedH.toFixed(1)}mm). Prepare novamente.`,
+      etapa: "__preparar_capa_grafica__",
+    });
+  }
+
+  // 6. Aviso de lombada divergente — páginas quando gerou vs páginas atuais
+  if (pdf_grafica.paginas_no_momento !== paginas_atuais) {
+    const lombadaQuandoGerou = calcularLombada(pdf_grafica.paginas_no_momento);
+    itens.push({
+      id: "capa_grafica_lombada_divergente",
+      categoria: "consistencia",
+      status: "aviso",
+      mensagem: `Lombada do PDF foi calculada para ${pdf_grafica.paginas_no_momento} páginas (${lombadaQuandoGerou.toFixed(1)}mm), mas o miolo atual tem ${paginas_atuais} páginas (${lombadaMmEsperada.toFixed(1)}mm). Prepare o PDF da capa novamente para corrigir.`,
+      etapa: "__preparar_capa_grafica__",
+    });
+  }
+
+  return itens;
+}
+
+// ─── POST /api/agentes/prova ─────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const isDev = process.env.NODE_ENV === "development";
@@ -59,19 +232,14 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Load project ──────────────────────────────────────────────────────────
-  // Usa maybeSingle() para que "não encontrado" não seja tratado como erro do
-  // Supabase — vira simplesmente `data: null`. Assim conseguimos diferenciar
-  // erros reais (schema, RLS, conexão) de "esse projeto não existe".
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf_digital")
+    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf_digital, formato")
     .eq("id", project_id)
     .eq("user_id", userId)
     .maybeSingle();
 
   if (projErr) {
-    // Loga o erro real do PostgREST. Útil para diagnosticar problemas de
-    // schema (coluna inexistente após migration), RLS, etc.
     console.error("[prova] erro na query do projeto:", {
       project_id,
       userId,
@@ -81,12 +249,8 @@ export async function POST(req: NextRequest) {
       hint: projErr.hint,
     });
     return NextResponse.json(
-      {
-        error: "Erro ao consultar o projeto.",
-        detail: projErr.message,
-        code: projErr.code,
-      },
-      { status: 500 }
+      { error: "Erro ao consultar o projeto.", detail: projErr.message, code: projErr.code },
+      { status: 500 },
     );
   }
 
@@ -95,15 +259,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
   }
 
-  // ── Build pendency list ──────────────────────────────────────────────────
-  // Princípio: só lista o que ESTÁ PENDENTE. Itens OK não entram na lista —
-  // a UI sabe que "lista vazia" = tudo pronto. Cada etapa anterior já gateia
-  // suas validações próprias (título, sinopse, palavras-chave, etc), então
-  // a Prova só revisita 4 coisas: capa, miolo, créditos e consistência cross.
+  // ── Pendency list ─────────────────────────────────────────────────────────
   const itens: ProvaItem[] = [];
 
-  // 1. Capa
-  const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
+  const capa = project.dados_capa as Record<string, unknown> | null;
+
+  // 1. Capa digital (imagem confirmada)
+  const capaResolvida = resolveCapaCompleta(capa);
   if (!capaResolvida.pronta) {
     itens.push({
       categoria: "capa",
@@ -130,9 +292,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 3. Créditos
-  const creditos = project.dados_creditos as {
-    html_storage_path?: string;
-  } | null;
+  const creditos = project.dados_creditos as { html_storage_path?: string } | null;
   if (!creditos?.html_storage_path) {
     itens.push({
       categoria: "creditos",
@@ -165,8 +325,6 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Consistência: lombada da capa vs miolo
-  // Só checa quando temos os dois lados. Caso da capa do Editor (que não
-  // registra lombada_mm) recebe tratamento melhor no Prompt 4.
   if (capaResolvida.pronta && capaResolvida.lombada_mm !== null && miolo?.lombada_mm) {
     const diff = Math.abs(capaResolvida.lombada_mm - miolo.lombada_mm);
     if (diff > 2) {
@@ -179,20 +337,81 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Score ─────────────────────────────────────────────────────────────────
+  // ── Análise de capa gráfica (Prompt 4A) ──────────────────────────────────
+  const paginasReais = miolo?.paginas_reais ?? 0;
+
+  const pdfGrafica = capa?.pdf_grafica as
+    | {
+        storage_path: string;
+        gerado_em: string;
+        formato: string;
+        paginas_no_momento: number;
+        com_orelhas: boolean;
+      }
+    | undefined;
+
+  const editorData = capa?.editor_data as
+    | { version?: number; comOrelhas?: boolean }
+    | undefined;
+  const comOrelhasAtual = Boolean(editorData?.comOrelhas);
+
+  const itensCapaGrafica: ProvaItem[] = [];
+
+  if (!pdfGrafica) {
+    itensCapaGrafica.push({
+      id: "capa_grafica_nao_preparada",
+      categoria: "capa_grafica",
+      status: "erro",
+      mensagem: "PDF da capa para gráfica ainda não foi preparado.",
+      etapa: "__preparar_capa_grafica__",
+    });
+  } else if (paginasReais > 0 && project.formato) {
+    const analiseItens = await analisarCapaGrafica({
+      pdf_grafica: pdfGrafica,
+      paginas_atuais: paginasReais,
+      formato_atual: project.formato as string,
+      com_orelhas_atual: comOrelhasAtual,
+    });
+    itensCapaGrafica.push(...analiseItens);
+  }
+
+  // Agrega itens da gráfica (mantém compatibilidade com itens[])
+  itens.push(...itensCapaGrafica);
+
+  // ── Trilhas ───────────────────────────────────────────────────────────────
+  const itensDigital = itens.filter(i => i.categoria !== "capa_grafica");
+  const itensGrafica = itens;
+
+  const digital = {
+    aprovado: itensDigital.every(i => i.status !== "erro"),
+    pendencias: itensDigital.filter(i => i.status === "erro"),
+    avisos: itensDigital.filter(i => i.status === "aviso"),
+  };
+
+  const grafica = {
+    aprovado: itensGrafica.every(i => i.status !== "erro"),
+    preparado: Boolean(pdfGrafica),
+    pendencias: itensGrafica.filter(i => i.status === "erro"),
+    avisos: itensGrafica.filter(i => i.status === "aviso"),
+  };
+
+  // ── Score / legado ────────────────────────────────────────────────────────
   const erros  = itens.filter(i => i.status === "erro").length;
   const avisos = itens.filter(i => i.status === "aviso").length;
   const score  = Math.max(0, 100 - erros * 30 - avisos * 10);
   const aprovado = erros === 0 && avisos === 0;
 
-  // ── Persist ───────────────────────────────────────────────────────────────
-  // Mantém o campo `dados_qa` no DB e `etapa_atual: "qa"` (legado, sem
-  // migration neste prompt). Apenas o nome conceitual e os endpoints mudam.
   const result: ProvaResult = {
     project_id,
     score,
     aprovado,
     itens,
+    digital,
+    grafica,
+    detalhes: {
+      formato: project.formato as string | undefined,
+      paginas: paginasReais || undefined,
+    },
     analisado_em: new Date().toISOString(),
   };
 
