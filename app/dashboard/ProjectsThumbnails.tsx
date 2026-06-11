@@ -19,7 +19,7 @@ const ETAPA_HREF: Record<string, (id: string) => string> = {
   capa:          (id) => `/dashboard/capa/${id}`,
   creditos:      (id) => `/dashboard/creditos/${id}`,
   diagramacao:   (id) => `/dashboard/miolo/${id}`,
-  qa:            (id) => `/dashboard/qa/${id}`,
+  qa:            (id) => `/dashboard/prova/${id}`,
   publicacao:    (id) => `/dashboard/publicacao/${id}`,
 };
 

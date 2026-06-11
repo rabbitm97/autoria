@@ -20,7 +20,7 @@ const STEPS = [
   { key: "capa",          label: "Capa",          href: (id: string) => `/dashboard/capa/${id}` },
   { key: "creditos",      label: "Créditos",      href: (id: string) => `/dashboard/creditos/${id}` },
   { key: "diagramacao",   label: "Diagramação",   href: (id: string) => `/dashboard/miolo/${id}` },
-  { key: "qa",            label: "QA",            href: (id: string) => `/dashboard/qa/${id}` },
+  { key: "qa",            label: "Prova",         href: (id: string) => `/dashboard/prova/${id}` },
   { key: "publicacao",    label: "Publicação",    href: (id: string) => `/dashboard/publicacao/${id}` },
 ];
 
@@ -33,8 +33,8 @@ const ETAPA_HREF: Record<string, (id: string) => string> = {
   capa:          (id) => `/dashboard/capa/${id}`,
   creditos:      (id) => `/dashboard/creditos/${id}`,
   diagramacao:   (id) => `/dashboard/miolo/${id}`,
-  preview:       (id) => `/dashboard/qa/${id}`,
-  qa:            (id) => `/dashboard/qa/${id}`,
+  preview:       (id) => `/dashboard/prova/${id}`,
+  qa:            (id) => `/dashboard/prova/${id}`,
   publicacao:    (id) => `/dashboard/publicacao/${id}`,
   concluido:     (id) => `/dashboard/publicacao/${id}`,
 };

@@ -1200,15 +1200,15 @@ export default function MioloPage() {
 
           {/* Bottom CTA bar — apenas avançar para próxima etapa */}
           <div className="bg-white border-t border-zinc-100 px-6 py-4 flex items-center justify-end">
-            <p className="text-zinc-400 text-xs hidden sm:block mr-4">Próxima etapa: QA dos arquivos.</p>
+            <p className="text-zinc-400 text-xs hidden sm:block mr-4">Próxima etapa: Prova final.</p>
             <button
               onClick={async () => {
                 await supabase.from("projects").update({ etapa_atual: "preview" }).eq("id", projectId);
-                router.push(`/dashboard/qa/${projectId}`);
+                router.push(`/dashboard/prova/${projectId}`);
               }}
               className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
             >
-              Continuar para QA →
+              Continuar para Prova →
             </button>
           </div>
         </main>

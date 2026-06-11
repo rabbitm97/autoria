@@ -4,7 +4,7 @@ import Link from "next/link";
 
 // ─── EtapasProgress ───────────────────────────────────────────────────────────
 // Shared horizontal progress indicator used across all editorial-flow pages.
-// currentStep: 0=Diagnóstico, 1=Revisão, 2=Elementos, 3=Capa, 4=Créditos, 5=Diagramação, 6=QA, 7=Publicação
+// currentStep: 0=Diagnóstico, 1=Revisão, 2=Elementos, 3=Capa, 4=Créditos, 5=Diagramação, 6=Prova, 7=Publicação
 //
 // Pass projectId to make completed steps clickable links back to each step page.
 
@@ -15,7 +15,7 @@ const ETAPAS: { label: string; path: string }[] = [
   { label: "Capa",         path: "capa"         },
   { label: "Créditos",     path: "creditos"     },
   { label: "Diagramação",  path: "miolo"        },
-  { label: "QA",           path: "qa"           },
+  { label: "Prova",        path: "prova"        },
   { label: "Publicação",   path: "publicacao"   },
 ];
 
