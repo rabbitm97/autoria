@@ -286,8 +286,9 @@ function PdfFolheador({ projectId }: { projectId: string }) {
 
   function onDocumentLoadSuccess({ numPages: n }: { numPages: number }) {
     setNumPages(n);
-    setPageNumber(1);
     setLoadError(null);
+    // NÃO resetar pageNumber aqui — causaria re-download ao trocar de página
+    // (key={pageNumber} no Document remontava e disparava onLoadSuccess de novo).
   }
 
   function onDocumentLoadError(err: Error) {
@@ -305,12 +306,9 @@ function PdfFolheador({ projectId }: { projectId: string }) {
         <div className="py-24 text-center text-sm text-zinc-500">{loadError}</div>
       ) : (
         <>
-          {/* key={pageNumber} força remount a cada troca, disparando animate-prova-page-in */}
-          <div
-            key={pageNumber}
-            className="bg-white shadow-xl rounded-sm animate-prova-page-in"
-            style={{ minHeight: 400 }}
-          >
+          {/* Document permanece montado entre trocas — PDF baixado UMA vez só.
+              A animação fica no wrapper interno (key={pageNumber}) ao redor do <Page>. */}
+          <div className="bg-white shadow-xl rounded-sm" style={{ minHeight: 400 }}>
             <Document
               file={pdfUrl}
               onLoadSuccess={onDocumentLoadSuccess}
@@ -325,20 +323,22 @@ function PdfFolheador({ projectId }: { projectId: string }) {
               }
               error={null}
             >
-              <Page
-                pageNumber={pageNumber}
-                width={pageWidth}
-                renderAnnotationLayer={false}
-                renderTextLayer={false}
-                loading={
-                  <div
-                    className="flex items-center justify-center"
-                    style={{ width: pageWidth, height: pageWidth * 1.4 }}
-                  >
-                    <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                  </div>
-                }
-              />
+              <div key={pageNumber} className="animate-prova-page-in">
+                <Page
+                  pageNumber={pageNumber}
+                  width={pageWidth}
+                  renderAnnotationLayer={false}
+                  renderTextLayer={false}
+                  loading={
+                    <div
+                      className="flex items-center justify-center"
+                      style={{ width: pageWidth, height: pageWidth * 1.4 }}
+                    >
+                      <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                    </div>
+                  }
+                />
+              </div>
             </Document>
           </div>
 
