@@ -59,14 +59,39 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Load project ──────────────────────────────────────────────────────────
+  // Usa maybeSingle() para que "não encontrado" não seja tratado como erro do
+  // Supabase — vira simplesmente `data: null`. Assim conseguimos diferenciar
+  // erros reais (schema, RLS, conexão) de "esse projeto não existe".
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select("dados_capa, dados_miolo, dados_creditos, dados_pdf_digital")
     .eq("id", project_id)
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
-  if (projErr || !project) {
+  if (projErr) {
+    // Loga o erro real do PostgREST. Útil para diagnosticar problemas de
+    // schema (coluna inexistente após migration), RLS, etc.
+    console.error("[prova] erro na query do projeto:", {
+      project_id,
+      userId,
+      code: projErr.code,
+      message: projErr.message,
+      details: projErr.details,
+      hint: projErr.hint,
+    });
+    return NextResponse.json(
+      {
+        error: "Erro ao consultar o projeto.",
+        detail: projErr.message,
+        code: projErr.code,
+      },
+      { status: 500 }
+    );
+  }
+
+  if (!project) {
+    console.warn("[prova] projeto não encontrado (resultado vazio)", { project_id, userId });
     return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
   }
 
