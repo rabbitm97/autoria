@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# PDF.js worker (copiado por postinstall de node_modules/pdfjs-dist)
+/public/pdf.worker.min.mjs
+
 # dependencies
 /node_modules
 /.pnp

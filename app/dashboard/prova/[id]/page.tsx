@@ -10,7 +10,10 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Worker do PDF.js servido localmente a partir de /public.
+// Veja o script `postinstall` em package.json que mantém esse arquivo
+// sincronizado com a versão instalada de pdfjs-dist.
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 // ─── Book preview data ────────────────────────────────────────────────────────
 
@@ -355,6 +358,7 @@ export default function ProvaPage() {
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
@@ -422,22 +426,47 @@ export default function ProvaPage() {
   }
 
   async function handleGerarPdfDigital() {
+    const projectIdStr =
+      typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+
+    if (!projectIdStr) {
+      setPdfError("ID do projeto inválido. Recarregue a página.");
+      return;
+    }
+
     setGerandoPdf(true);
-    setError(null);
+    setPdfError(null);
+
+    // Timeout client-side de 75s (rota tem maxDuration 60s).
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 75_000);
+
     try {
       const res = await fetch("/api/agentes/gerar-pdf-digital", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: id }),
+        body: JSON.stringify({ project_id: projectIdStr }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
+
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Erro ao gerar PDF");
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `Erro do servidor (HTTP ${res.status})`);
       }
-      // Re-analyze so the PDF item disappears from the pendency list
+
+      // Re-roda a análise para refletir que o PDF agora está pronto
       await handleAnalisar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro desconhecido");
+      clearTimeout(timeout);
+      const isAbort = e instanceof Error && e.name === "AbortError";
+      const msg = isAbort
+        ? "A geração demorou demais (>75s). Tente novamente, ou volte à etapa Diagramação e gere o PDF por lá."
+        : e instanceof Error
+        ? e.message
+        : "Erro ao gerar PDF.";
+      setPdfError(msg);
+      console.error("[Prova] handleGerarPdfDigital error:", e);
     } finally {
       setGerandoPdf(false);
     }
@@ -463,7 +492,8 @@ export default function ProvaPage() {
 
   const semPendencias = result && result.itens.length === 0;
   const canPublish = semPendencias && modelApproved;
-  const pdfPronto = result && !result.itens.some(i => i.categoria === "pdf");
+  const pdfPendente = result?.itens.find(i => i.categoria === "pdf") ?? null;
+  const pdfPronto = result !== null && pdfPendente === null;
 
   return (
     <div>
@@ -529,30 +559,43 @@ export default function ProvaPage() {
                     />
                   </div>
                 ) : pdfPronto ? (
-                  <PdfFolheador projectId={id} />
+                  <PdfFolheador
+                    projectId={
+                      typeof id === "string" ? id : Array.isArray(id) ? id[0] : ""
+                    }
+                  />
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4 bg-stone-50">
-                    {gerandoPdf ? (
-                      <>
-                        <span className="w-8 h-8 rounded-full border-4 border-brand-gold border-t-transparent animate-spin" />
-                        <p className="text-sm text-zinc-500">Gerando PDF digital…</p>
-                      </>
-                    ) : (
-                      <>
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <polyline points="14 2 14 8 20 8"/>
-                        </svg>
-                        <p className="text-sm text-zinc-500 text-center max-w-xs">
-                          O PDF digital ainda não foi gerado. Gere-o para poder folhear o livro aqui.
-                        </p>
-                        <button
-                          onClick={handleGerarPdfDigital}
-                          className="px-6 py-2.5 rounded-xl bg-brand-primary text-brand-gold text-sm font-medium hover:bg-brand-primary/90 transition-colors"
-                        >
-                          Gerar PDF digital
-                        </button>
-                      </>
+                  <div className="p-12 text-center bg-stone-50">
+                    {pdfPendente && (
+                      <div className="text-zinc-400 text-sm mb-4">
+                        {pdfPendente.mensagem}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleGerarPdfDigital}
+                      disabled={gerandoPdf}
+                      className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-6 py-2.5 rounded-xl font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      {gerandoPdf ? (
+                        <>
+                          <span className="w-4 h-4 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                          Gerando versão final… (até 60s)
+                        </>
+                      ) : (
+                        pdfPendente?.acao?.label ?? "Gerar PDF digital"
+                      )}
+                    </button>
+
+                    {pdfError && (
+                      <div className="mt-4 text-xs text-red-600 max-w-md mx-auto">
+                        {pdfError}
+                      </div>
+                    )}
+
+                    {gerandoPdf && (
+                      <p className="mt-3 text-xs text-zinc-400">
+                        A geração pode demorar até um minuto. Não feche esta página.
+                      </p>
                     )}
                   </div>
                 )}
