@@ -139,7 +139,7 @@ function Book3D({ book }: {
               backfaceVisibility: "hidden",
               ...bgFront,
             }}
-            className="rounded-sm shadow-2xl overflow-hidden"
+            className="shadow-2xl overflow-hidden"
           >
             {book.isPanoramic ? null : book.coverUrl ? (
               <img src={book.coverUrl} alt="Capa" className="w-full h-full object-cover" />
@@ -163,7 +163,7 @@ function Book3D({ book }: {
                 ? { background: book.fills.contracapa }
                 : { background: "linear-gradient(135deg, #1e2a4a 0%, #0f172a 100%)" }),
             }}
-            className="rounded-sm shadow-inner flex flex-col items-center justify-center p-6"
+            className="shadow-inner flex flex-col items-center justify-center p-6"
           >
             {!book.isPanoramic && (
               <>
