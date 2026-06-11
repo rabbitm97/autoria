@@ -71,9 +71,9 @@ function Book3D({ book, approved, onApprove }: {
   const [dragging, setDragging] = useState(false);
   const [startX, setStartX] = useState(0);
 
-  // Image natural dimensions — used only for panoramic covers, where we need
-  // to compute the visual width of the full artwork so that each face shows
-  // exactly its slice via background-position.
+  // Image natural dimensions — only needed for panoramic covers, to compute
+  // the artwork's visual width so that each face shows exactly its slice
+  // via background-position.
   const [imgDims, setImgDims] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
@@ -90,24 +90,22 @@ function Book3D({ book, approved, onApprove }: {
   const SCALE = 2.2; // px per mm
   const bookH = Math.round(230 * SCALE);
 
-  // Compute bookW and spineW. When the artwork is panoramic and the image
-  // has loaded, derive widths from the actual artwork proportions so that
-  // background-position aligns correctly with the visual seams.
   let bookW: number;
   let spineW: number;
   let imgVisualW = 0;
 
   if (book.isPanoramic && imgDims) {
+    // Scale image so its height matches bookH; widths follow the real artwork.
     imgVisualW = (imgDims.w / imgDims.h) * bookH;
     spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
-    // Assume symmetry: contracapa = frente width
+    // Assume symmetry: contracapa width = frente width (true for no-flap covers).
     bookW = Math.max(100, Math.round((imgVisualW - spineW) / 2));
   } else {
     bookW = Math.round(160 * SCALE);
     spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
   }
 
-  // Background styles for the three faces when isPanoramic
+  // Background slices for panoramic mode
   const panoramicBgCommon: React.CSSProperties = book.isPanoramic && book.coverUrl && imgDims
     ? {
         backgroundImage: `url("${book.coverUrl}")`,
@@ -126,6 +124,7 @@ function Book3D({ book, approved, onApprove }: {
     ? { ...panoramicBgCommon, backgroundPosition: `-${bookW + spineW}px 0px` }
     : {};
 
+  // Drag handlers — rotation range is now -180..180 (full revolution).
   function onMouseDown(e: React.MouseEvent) {
     setDragging(true);
     setStartX(e.clientX);
@@ -133,7 +132,7 @@ function Book3D({ book, approved, onApprove }: {
   function onMouseMove(e: React.MouseEvent) {
     if (!dragging) return;
     const delta = e.clientX - startX;
-    setAngle(a => Math.max(-60, Math.min(80, a + delta * 0.4)));
+    setAngle(a => Math.max(-180, Math.min(180, a + delta * 0.4)));
     setStartX(e.clientX);
   }
   function onMouseUp() { setDragging(false); }
@@ -145,45 +144,59 @@ function Book3D({ book, approved, onApprove }: {
   function onTouchMove(e: React.TouchEvent) {
     if (!dragging) return;
     const delta = e.touches[0].clientX - startX;
-    setAngle(a => Math.max(-60, Math.min(80, a + delta * 0.4)));
+    setAngle(a => Math.max(-180, Math.min(180, a + delta * 0.4)));
     setStartX(e.touches[0].clientX);
   }
 
-  const perspDist = 900;
+  const perspDist = 1200;
+
+  // Paper edge color (fore-edge, top, bottom) — simulates the stacked pages
+  // of a real book. Subtle gradient with cream→darker-cream→cream gives
+  // depth without being too noisy.
+  const paperEdgeBg = "linear-gradient(to bottom, #faf7ee 0%, #e8e0c8 50%, #faf7ee 100%)";
+  const paperEdgeBgHoriz = "linear-gradient(to right, #faf7ee 0%, #e8e0c8 50%, #faf7ee 100%)";
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <p className="text-xs text-zinc-400">Arraste para girar o livro</p>
+      <p className="text-xs text-zinc-400">
+        Arraste para girar o livro <span className="text-zinc-300">— gire até o final para ver a contracapa</span>
+      </p>
 
-      {/* 3D scene */}
+      {/* 3D scene with perspective. Width is generous to give room for full rotation. */}
       <div
         className="relative select-none"
-        style={{ perspective: perspDist, width: bookW + spineW + 60, height: bookH + 40 }}
+        style={{
+          perspective: perspDist,
+          width: Math.max(bookW * 1.5, bookW + spineW * 8),
+          height: bookH + 40,
+        }}
         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onMouseUp}
       >
+        {/* Pivot — gets the rotateY animation. Centered within the scene. */}
         <div
-          className="relative cursor-grab active:cursor-grabbing"
+          className="cursor-grab active:cursor-grabbing"
           style={{
-            transformStyle: "preserve-3d",
-            transform: `translateX(${spineW / 2}px) rotateY(${angle}deg)`,
-            transition: dragging ? "none" : "transform 0.3s ease",
+            position: "relative",
             width: bookW,
             height: bookH,
             margin: "20px auto",
+            transformStyle: "preserve-3d",
+            transform: `rotateY(${angle}deg)`,
+            transition: dragging ? "none" : "transform 0.3s ease",
           }}
         >
-          {/* Front cover */}
+          {/* ── Front cover ───────────────────────────────────────────── */}
           <div
             style={{
               position: "absolute",
-              width: bookW, height: bookH,
+              inset: 0,
+              transform: `translateZ(${spineW / 2}px)`,
               backfaceVisibility: "hidden",
-              transformOrigin: "left center",
               ...bgFront,
             }}
-            className="rounded-r-sm shadow-2xl overflow-hidden"
+            className="rounded-sm shadow-2xl overflow-hidden"
           >
             {book.isPanoramic ? null : book.coverUrl ? (
               <img src={book.coverUrl} alt="Capa" className="w-full h-full object-cover" />
@@ -197,15 +210,39 @@ function Book3D({ book, approved, onApprove }: {
             )}
           </div>
 
-          {/* Spine */}
+          {/* ── Back cover (contracapa) ───────────────────────────────── */}
           <div
             style={{
               position: "absolute",
+              inset: 0,
+              transform: `rotateY(180deg) translateZ(${spineW / 2}px)`,
+              backfaceVisibility: "hidden",
+              ...(book.isPanoramic && imgDims
+                ? bgBack
+                : book.fills?.contracapa
+                ? { background: book.fills.contracapa }
+                : { background: "linear-gradient(135deg, #1e2a4a 0%, #0f172a 100%)" }),
+            }}
+            className="rounded-sm shadow-inner flex flex-col items-center justify-center p-6"
+          >
+            {!book.isPanoramic && (
+              <>
+                <div className="w-16 h-1 bg-brand-gold/40 mb-4 rounded-full" />
+                <p className="text-white/40 text-xs text-center">Verso da capa</p>
+                <p className="text-white/20 text-[10px] text-center mt-2">{book.paginas} páginas</p>
+              </>
+            )}
+          </div>
+
+          {/* ── Spine (lombada, esquerda) ─────────────────────────────── */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
               width: spineW,
               height: bookH,
-              left: -spineW,
-              transform: "rotateY(-90deg)",
-              transformOrigin: "right center",
+              transform: `rotateY(-90deg) translateZ(${spineW / 2}px)`,
               backfaceVisibility: "hidden",
               ...(book.isPanoramic && imgDims
                 ? bgSpine
@@ -213,7 +250,7 @@ function Book3D({ book, approved, onApprove }: {
                 ? { background: book.fills.lombada }
                 : { background: "linear-gradient(to right, #0f172a, #1e2a4a, #0f172a)" }),
             }}
-            className="flex items-center justify-center shadow-inner"
+            className="flex items-center justify-center shadow-inner overflow-hidden"
           >
             {!book.isPanoramic && (
               <div className="transform -rotate-90 whitespace-nowrap overflow-hidden"
@@ -226,29 +263,47 @@ function Book3D({ book, approved, onApprove }: {
             )}
           </div>
 
-          {/* Back cover */}
+          {/* ── Fore-edge (papel, lado direito) ──────────────────────── */}
           <div
             style={{
               position: "absolute",
-              width: bookW, height: bookH,
-              transform: "rotateY(180deg)",
+              top: 0,
+              left: `${bookW - spineW}px`,
+              width: spineW,
+              height: bookH,
+              transform: `rotateY(90deg) translateZ(${spineW / 2}px)`,
               backfaceVisibility: "hidden",
-              ...(book.isPanoramic && imgDims
-                ? bgBack
-                : book.fills?.contracapa
-                ? { background: book.fills.contracapa }
-                : { background: "linear-gradient(135deg, #1e2a4a 0%, #0f172a 100%)" }),
+              background: paperEdgeBg,
             }}
-            className="rounded-l-sm shadow-inner flex flex-col items-center justify-center p-6"
-          >
-            {!book.isPanoramic && (
-              <>
-                <div className="w-16 h-1 bg-brand-gold/40 mb-4 rounded-full" />
-                <p className="text-white/40 text-xs text-center">Verso da capa</p>
-                <p className="text-white/20 text-[10px] text-center mt-2">{book.paginas} páginas</p>
-              </>
-            )}
-          </div>
+          />
+
+          {/* ── Top edge (papel, em cima) ────────────────────────────── */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: bookW,
+              height: spineW,
+              transform: `rotateX(-90deg) translateZ(${spineW / 2}px)`,
+              backfaceVisibility: "hidden",
+              background: paperEdgeBgHoriz,
+            }}
+          />
+
+          {/* ── Bottom edge (papel, embaixo) ─────────────────────────── */}
+          <div
+            style={{
+              position: "absolute",
+              top: `${bookH - spineW}px`,
+              left: 0,
+              width: bookW,
+              height: spineW,
+              transform: `rotateX(90deg) translateZ(${spineW / 2}px)`,
+              backfaceVisibility: "hidden",
+              background: paperEdgeBgHoriz,
+            }}
+          />
         </div>
       </div>
 
