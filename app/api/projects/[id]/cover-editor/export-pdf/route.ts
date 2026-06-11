@@ -33,6 +33,16 @@ async function deleteOldPdfs(storageClient: any, userId: string, projectId: stri
   await storageClient.storage.from("editor-assets").remove(paths);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function deleteOldRgbPdfs(storageClient: any, userId: string, projectId: string) {
+  const { data: files } = await storageClient.storage
+    .from("editor-assets")
+    .list(`${userId}/${projectId}/exports`, { search: `capa-grafica-rgb-` });
+  if (!files?.length) return;
+  const paths = files.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
+  await storageClient.storage.from("editor-assets").remove(paths);
+}
+
 function extractTitle(elements: AnyElement[]): string {
   const el = elements.find(
     (e): e is TextElement => e.type === "text" && (e as TextElement).smartField === "titulo",
@@ -71,7 +81,10 @@ export async function POST(
     pages?: number;
   };
 
-  const versao: "digital" | "grafica" = body.versao === "grafica" ? "grafica" : "digital";
+  const versao: "digital" | "grafica" | "grafica_rgb" =
+    body.versao === "grafica" ? "grafica" :
+    body.versao === "grafica_rgb" ? "grafica_rgb" :
+    "digital";
 
   const editorData = body.editorData ?? null;
   if (!editorData || editorData.version !== 1) {
@@ -136,13 +149,21 @@ export async function POST(
   let pdfBuffer: Buffer;
 
   if (versao === "grafica") {
-    // Convert RGB JPEG → CMYK JPEG using FOGRA39 ICC profile, then build PDF with pdf-lib
+    // CMYK: converte usando ICC profile FOGRA39 (comportamento atual, intocado)
     const cmykJpegBuffer = await sharp(fullCoverBuffer)
       .withIccProfile(ICC_PROFILE_PATH)
       .jpeg({ quality: 95 })
       .toBuffer();
 
     const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, { format, pages, comOrelhas, projectName });
+    pdfBuffer = Buffer.from(pdfBytes);
+  } else if (versao === "grafica_rgb") {
+    // RGB: usa o JPEG da capa sem conversão de cor — gráficas digitais (POD)
+    const rgbJpegBuffer = await sharp(fullCoverBuffer)
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, { format, pages, comOrelhas, projectName });
     pdfBuffer = Buffer.from(pdfBytes);
   } else {
     // Digital: trim sangria from all 4 edges, then render with Puppeteer
@@ -192,10 +213,17 @@ export async function POST(
     }
   }
 
-  await deleteOldPdfs(storageClient, userId, id, versao);
-
   const timestamp = Date.now();
-  const storagePath = `${userId}/${id}/exports/capa-${versao}-${timestamp}.pdf`;
+
+  if (versao === "grafica_rgb") {
+    await deleteOldRgbPdfs(storageClient, userId, id);
+  } else {
+    await deleteOldPdfs(storageClient, userId, id, versao);
+  }
+
+  const storagePath = versao === "grafica_rgb"
+    ? `${userId}/${id}/exports/capa-grafica-rgb-${timestamp}.pdf`
+    : `${userId}/${id}/exports/capa-${versao}-${timestamp}.pdf`;
 
   const { error: uploadErr } = await storageClient.storage
     .from("editor-assets")
@@ -215,8 +243,13 @@ export async function POST(
     .from("editor-assets")
     .createSignedUrl(storagePath, 365 * 24 * 3600);
 
+  const filename = versao === "grafica_rgb"
+    ? `capa-grafica-rgb-${timestamp}.pdf`
+    : `capa-${versao}-${timestamp}.pdf`;
+
   return NextResponse.json({
     url: pdfSigned?.signedUrl ?? null,
-    filename: `capa-${versao}-${timestamp}.pdf`,
+    filename,
+    storage_path: storagePath,
   });
 }

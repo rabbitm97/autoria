@@ -5,7 +5,7 @@ import { useEditorStore } from "./editor-store";
 import { captureStageAsDataUrl, captureStageAsJpegDataUrl, dataUrlToBlob } from "./png-export";
 import { serializeEditorState } from "./editor-serializer";
 
-export type ExportItemKey = "png" | "pdf-digital" | "pdf-grafica";
+export type ExportItemKey = "png" | "pdf-digital" | "pdf-grafica" | "pdf-grafica-rgb";
 type ItemState =
   | { status: "idle" }
   | { status: "busy" }
@@ -40,6 +40,7 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     "png": IDLE,
     "pdf-digital": IDLE,
     "pdf-grafica": IDLE,
+    "pdf-grafica-rgb": IDLE,
   });
 
   const [cmykDisclaimer, setCmykDisclaimer] = useState<CmykDisclaimerState>({
@@ -80,8 +81,11 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     }
   }
 
-  async function runExportPdf(versao: "digital" | "grafica") {
-    const key: ExportItemKey = versao === "digital" ? "pdf-digital" : "pdf-grafica";
+  async function runExportPdf(versao: "digital" | "grafica" | "grafica_rgb") {
+    const key: ExportItemKey =
+      versao === "grafica" ? "pdf-grafica" :
+      versao === "grafica_rgb" ? "pdf-grafica-rgb" :
+      "pdf-digital";
     setItem(key, { status: "busy" });
 
     const controller = new AbortController();
@@ -136,11 +140,12 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     }
   }
 
-  async function exportPdf(versao: "digital" | "grafica") {
+  async function exportPdf(versao: "digital" | "grafica" | "grafica_rgb") {
     const warning = validate();
     if (warning) { alert(warning); return; }
 
     if (versao === "grafica") {
+      // Disclaimer CMYK apenas para versão CMYK — RGB não converte cor, sem aviso
       const seen = localStorage.getItem(CMYK_DISCLAIMER_KEY) === "true";
       if (seen) {
         runExportPdf("grafica");
@@ -150,7 +155,8 @@ export function useCoverExport(projectId: string, projectTitle: string) {
       return;
     }
 
-    runExportPdf("digital");
+    // "digital" e "grafica_rgb" vão direto, sem disclaimer
+    runExportPdf(versao);
   }
 
   function confirmDisclaimer(remember: boolean) {

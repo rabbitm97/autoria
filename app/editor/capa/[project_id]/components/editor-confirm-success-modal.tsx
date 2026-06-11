@@ -62,6 +62,18 @@ export function EditorConfirmSuccessModal({
         </svg>
       ),
     },
+    {
+      key: "pdf-grafica-rgb" as const,
+      label: "Baixar PDF gráfica RGB",
+      desc: "Sem conversão CMYK · ideal para gráfica digital",
+      onClick: () => exportPdf("grafica_rgb"),
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#c9a84c]">
+          <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+          <circle cx="7" cy="9" r="1.5" fill="currentColor" /><circle cx="12" cy="9" r="1.5" fill="currentColor" /><circle cx="17" cy="9" r="1.5" fill="currentColor" />
+        </svg>
+      ),
+    },
   ] as const;
 
   // Collect any per-item errors for inline display

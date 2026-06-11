@@ -30,6 +30,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
     states["png"].status === "busy" ? "Exportando PNG…" :
     states["pdf-digital"].status === "busy" ? "Gerando PDF digital…" :
     states["pdf-grafica"].status === "busy" ? "Gerando PDF gráfica…" :
+    states["pdf-grafica-rgb"].status === "busy" ? "Gerando PDF gráfica RGB…" :
     "Exportando…";
 
   // First error across all items (shown in toast)
@@ -102,6 +103,22 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
             <div>
               <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF gráfica</p>
               <p className="text-[10px] text-zinc-400">Com sangria e marcas de corte</p>
+            </div>
+          </button>
+
+          <div className="mx-4 border-t border-[#e0ddd2]" />
+
+          <button
+            onClick={() => { exportPdf("grafica_rgb"); setOpen(false); }}
+            className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+              <circle cx="9" cy="13" r="1.5" fill="#1a1a2e" /><circle cx="13" cy="13" r="1.5" fill="#1a1a2e" /><circle cx="17" cy="13" r="1.5" fill="#1a1a2e" />
+            </svg>
+            <div>
+              <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF gráfica RGB</p>
+              <p className="text-[10px] text-zinc-400">Sem conversão CMYK · gráfica digital</p>
             </div>
           </button>
         </div>
