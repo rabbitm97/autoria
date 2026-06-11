@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import type { ProvaResult, ProvaItem } from "@/app/api/agentes/prova/route";
+import { Document, Page, pdfjs } from "react-pdf";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 // ─── Book preview data ────────────────────────────────────────────────────────
 
@@ -245,6 +250,60 @@ function Book3D({ book, approved, onApprove }: {
   );
 }
 
+// ─── PDF Folheador ────────────────────────────────────────────────────────────
+
+function PdfFolheador({ projectId }: { projectId: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [containerWidth, setContainerWidth] = useState(600);
+  const pdfUrl = `/api/agentes/prova/preview-pdf?project_id=${projectId}`;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setContainerWidth(Math.floor(w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="w-full bg-stone-100 min-h-[600px] flex flex-col items-center py-6 gap-4 overflow-y-auto">
+      <Document
+        file={pdfUrl}
+        onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+        loading={
+          <div className="flex items-center gap-2 text-zinc-400 py-24">
+            <span className="w-5 h-5 rounded-full border-2 border-zinc-300 border-t-zinc-500 animate-spin" />
+            Carregando PDF…
+          </div>
+        }
+        error={
+          <div className="text-sm text-red-500 py-24 text-center">
+            Não foi possível carregar o PDF.
+          </div>
+        }
+      >
+        {Array.from({ length: numPages }, (_, i) => (
+          <div key={i} className="animate-prova-page-in mb-4 shadow-lg">
+            <Page
+              pageNumber={i + 1}
+              width={Math.min(containerWidth - 48, 740)}
+              renderTextLayer
+              renderAnnotationLayer
+            />
+          </div>
+        ))}
+      </Document>
+      {numPages > 0 && (
+        <p className="text-xs text-zinc-400 pb-2">{numPages} páginas</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Pendencia card ──────────────────────────────────────────────────────────
 
 function PendenciaCard({ item, onNavigate }: {
@@ -295,18 +354,17 @@ export default function ProvaPage() {
   const [modelApproved, setModelApproved] = useState(false);
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
     try {
-      // Load existing Prova result (if any)
       const res = await fetch(`/api/agentes/prova?project_id=${id}`);
       if (res.ok) {
         const data = await res.json();
         if (data) setResult(data as ProvaResult);
       }
 
-      // Load book data for 3D preview
       const { data: project } = await supabase
         .from("projects")
         .select("dados_capa, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
@@ -363,6 +421,28 @@ export default function ProvaPage() {
     }
   }
 
+  async function handleGerarPdfDigital() {
+    setGerandoPdf(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/agentes/gerar-pdf-digital", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Erro ao gerar PDF");
+      }
+      // Re-analyze so the PDF item disappears from the pendency list
+      await handleAnalisar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
+
   async function handlePublicar() {
     if (!modelApproved) return;
     setApprovingPub(true);
@@ -374,11 +454,16 @@ export default function ProvaPage() {
   }
 
   function handleNavigateToEtapa(etapa: string) {
+    if (etapa === "__gerar_pdf_digital__") {
+      handleGerarPdfDigital();
+      return;
+    }
     router.push(`/dashboard/${etapa}/${id}`);
   }
 
   const semPendencias = result && result.itens.length === 0;
   const canPublish = semPendencias && modelApproved;
+  const pdfPronto = result && !result.itens.some(i => i.categoria === "pdf");
 
   return (
     <div>
@@ -443,13 +528,33 @@ export default function ProvaPage() {
                       onApprove={() => setModelApproved(true)}
                     />
                   </div>
+                ) : pdfPronto ? (
+                  <PdfFolheador projectId={id} />
                 ) : (
-                  <iframe
-                    src={`/api/agentes/prova/preview-miolo?project_id=${id}`}
-                    className="w-full border-0 bg-stone-50"
-                    style={{ height: 720 }}
-                    title="Folhear o livro"
-                  />
+                  <div className="flex flex-col items-center justify-center py-16 gap-4 bg-stone-50">
+                    {gerandoPdf ? (
+                      <>
+                        <span className="w-8 h-8 rounded-full border-4 border-brand-gold border-t-transparent animate-spin" />
+                        <p className="text-sm text-zinc-500">Gerando PDF digital…</p>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-300">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <p className="text-sm text-zinc-500 text-center max-w-xs">
+                          O PDF digital ainda não foi gerado. Gere-o para poder folhear o livro aqui.
+                        </p>
+                        <button
+                          onClick={handleGerarPdfDigital}
+                          className="px-6 py-2.5 rounded-xl bg-brand-primary text-brand-gold text-sm font-medium hover:bg-brand-primary/90 transition-colors"
+                        >
+                          Gerar PDF digital
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -467,7 +572,7 @@ export default function ProvaPage() {
                     <div className="flex-1">
                       <p className="font-heading text-xl text-emerald-700">Pronto para publicar</p>
                       <p className="text-sm text-emerald-600 mt-1">
-                        Capa, miolo e créditos estão preparados. Confira o modelo 3D acima e aprove para seguir à distribuição.
+                        Capa, miolo, créditos e PDF estão preparados. Confira o modelo 3D acima e aprove para seguir à distribuição.
                       </p>
                       <p className="text-xs text-emerald-500/70 mt-2">
                         Conferido em {new Date(result.analisado_em).toLocaleString("pt-BR")}
@@ -546,7 +651,7 @@ export default function ProvaPage() {
                   Conferir o livro
                 </h3>
                 <p className="text-zinc-400 text-sm mb-6 max-w-sm mx-auto">
-                  Vamos verificar capa, miolo e créditos, e mostrar o livro pronto para sua aprovação.
+                  Vamos verificar capa, miolo, créditos e PDF, e mostrar o livro pronto para sua aprovação.
                 </p>
                 <button
                   onClick={handleAnalisar}

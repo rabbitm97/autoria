@@ -6,7 +6,7 @@ import { resolveCapaCompleta } from "@/lib/capa-resolver";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ProvaCategoria = "capa" | "miolo" | "creditos" | "consistencia";
+export type ProvaCategoria = "capa" | "miolo" | "creditos" | "pdf" | "consistencia";
 export type ProvaStatus    = "ok" | "aviso" | "erro";
 
 export interface ProvaAcao {
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   // ── Load project ──────────────────────────────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo, dados_creditos")
+    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf_digital")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
     html_storage_path?: string;
     lombada_mm?: number;
     paginas_reais?: number;
+    gerado_em?: string;
   } | null;
   if (!miolo?.html_storage_path) {
     itens.push({
@@ -116,7 +117,29 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 4. Consistência: lombada da capa vs miolo
+  // 4. PDF digital
+  const pdfDigital = project.dados_pdf_digital as {
+    storage_path?: string;
+    gerado_em?: string;
+  } | null;
+
+  if (!pdfDigital?.storage_path) {
+    itens.push({
+      categoria: "pdf",
+      status: "erro",
+      mensagem: "O PDF digital ainda não foi gerado.",
+      acao: { label: "Gerar PDF digital", etapa: "__gerar_pdf_digital__" },
+    });
+  } else if (miolo?.gerado_em && pdfDigital.gerado_em && pdfDigital.gerado_em < miolo.gerado_em) {
+    itens.push({
+      categoria: "pdf",
+      status: "aviso",
+      mensagem: "O miolo foi alterado após o PDF. Regere o PDF para garantir a versão atualizada.",
+      acao: { label: "Regenerar PDF", etapa: "__gerar_pdf_digital__" },
+    });
+  }
+
+  // 5. Consistência: lombada da capa vs miolo
   // Só checa quando temos os dois lados. Caso da capa do Editor (que não
   // registra lombada_mm) recebe tratamento melhor no Prompt 4.
   if (capaResolvida.pronta && capaResolvida.lombada_mm !== null && miolo?.lombada_mm) {
