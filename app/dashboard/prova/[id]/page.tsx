@@ -258,7 +258,10 @@ function Book3D({ book, approved, onApprove }: {
 function PdfFolheador({ projectId }: { projectId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
+  const [pageNumber, setPageNumber] = useState<number>(1);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(600);
+
   const pdfUrl = `/api/agentes/prova/preview-pdf?project_id=${projectId}`;
 
   useEffect(() => {
@@ -272,36 +275,108 @@ function PdfFolheador({ projectId }: { projectId: string }) {
     return () => ro.disconnect();
   }, []);
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") setPageNumber(p => Math.max(1, p - 1));
+      else if (e.key === "ArrowRight") setPageNumber(p => Math.min(numPages || p, p + 1));
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [numPages]);
+
+  function onDocumentLoadSuccess({ numPages: n }: { numPages: number }) {
+    setNumPages(n);
+    setPageNumber(1);
+    setLoadError(null);
+  }
+
+  function onDocumentLoadError(err: Error) {
+    console.error("[PdfFolheador] load error:", err);
+    setLoadError("Não foi possível carregar o PDF. Tente regenerar a versão final.");
+  }
+
+  const canPrev = pageNumber > 1;
+  const canNext = numPages > 0 && pageNumber < numPages;
+  const pageWidth = Math.min(containerWidth - 48, 740);
+
   return (
-    <div ref={containerRef} className="w-full bg-stone-100 min-h-[600px] flex flex-col items-center py-6 gap-4 overflow-y-auto">
-      <Document
-        file={pdfUrl}
-        onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-        loading={
-          <div className="flex items-center gap-2 text-zinc-400 py-24">
-            <span className="w-5 h-5 rounded-full border-2 border-zinc-300 border-t-zinc-500 animate-spin" />
-            Carregando PDF…
+    <div ref={containerRef} className="w-full bg-stone-100 flex flex-col items-center py-8 px-4">
+      {loadError ? (
+        <div className="py-24 text-center text-sm text-zinc-500">{loadError}</div>
+      ) : (
+        <>
+          {/* key={pageNumber} força remount a cada troca, disparando animate-prova-page-in */}
+          <div
+            key={pageNumber}
+            className="bg-white shadow-xl rounded-sm animate-prova-page-in"
+            style={{ minHeight: 400 }}
+          >
+            <Document
+              file={pdfUrl}
+              onLoadSuccess={onDocumentLoadSuccess}
+              onLoadError={onDocumentLoadError}
+              loading={
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: pageWidth, height: pageWidth * 1.4 }}
+                >
+                  <span className="w-8 h-8 rounded-full border-4 border-brand-gold border-t-transparent animate-spin" />
+                </div>
+              }
+              error={null}
+            >
+              <Page
+                pageNumber={pageNumber}
+                width={pageWidth}
+                renderAnnotationLayer={false}
+                renderTextLayer={false}
+                loading={
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ width: pageWidth, height: pageWidth * 1.4 }}
+                  >
+                    <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                  </div>
+                }
+              />
+            </Document>
           </div>
-        }
-        error={
-          <div className="text-sm text-red-500 py-24 text-center">
-            Não foi possível carregar o PDF.
+
+          <div className="flex items-center gap-4 mt-6">
+            <button
+              onClick={() => setPageNumber(p => Math.max(1, p - 1))}
+              disabled={!canPrev}
+              className="px-4 py-2 rounded-lg bg-white border border-zinc-200 text-sm font-medium text-zinc-700 hover:border-brand-gold/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Página anterior"
+            >
+              ← Anterior
+            </button>
+
+            <p className="text-sm text-zinc-600 font-mono min-w-[100px] text-center">
+              {numPages > 0 ? `${pageNumber} / ${numPages}` : "—"}
+            </p>
+
+            <button
+              onClick={() => setPageNumber(p => Math.min(numPages || p, p + 1))}
+              disabled={!canNext}
+              className="px-4 py-2 rounded-lg bg-white border border-zinc-200 text-sm font-medium text-zinc-700 hover:border-brand-gold/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Próxima página"
+            >
+              Próxima →
+            </button>
           </div>
-        }
-      >
-        {Array.from({ length: numPages }, (_, i) => (
-          <div key={i} className="animate-prova-page-in mb-4 shadow-lg">
-            <Page
-              pageNumber={i + 1}
-              width={Math.min(containerWidth - 48, 740)}
-              renderTextLayer
-              renderAnnotationLayer
-            />
-          </div>
-        ))}
-      </Document>
-      {numPages > 0 && (
-        <p className="text-xs text-zinc-400 pb-2">{numPages} páginas</p>
+
+          <p className="text-xs text-zinc-400 mt-3">
+            Use as setas{" "}
+            <kbd className="px-1.5 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono">
+              ←
+            </kbd>{" "}
+            <kbd className="px-1.5 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono">
+              →
+            </kbd>{" "}
+            do teclado para navegar
+          </p>
+        </>
       )}
     </div>
   );
