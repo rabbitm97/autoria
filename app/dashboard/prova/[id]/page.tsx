@@ -26,6 +26,7 @@ interface BookData {
   lombadaMm: number;
   paginas: number;
   capaTemEditorData: boolean;
+  comOrelhas: boolean;
 }
 
 // ─── 3D Book viewer (paralelepípedo com 6 faces) ─────────────────────────────
@@ -232,6 +233,53 @@ function Book3D({ book }: {
         <p className="text-xs text-zinc-400">{book.paginas} páginas · Lombada {book.lombadaMm}mm</p>
       </div>
 
+      {book.comOrelhas && (
+        <div className="mt-6 mx-auto max-w-md bg-amber-50/60 border border-amber-100 rounded-xl px-4 py-3 flex items-start gap-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          <p className="text-xs text-amber-800 leading-relaxed">
+            Este livro tem orelhas — elas dobram para dentro no livro impresso. Na versão digital (eBook), as orelhas não são consideradas.
+          </p>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ─── Capa aberta ──────────────────────────────────────────────────────────────
+
+function CapaAberta({ bookData }: { bookData: BookData }) {
+  if (!bookData.coverUrl) {
+    return (
+      <div className="py-16 text-center text-sm text-zinc-400">
+        Capa ainda não foi gerada.
+      </div>
+    );
+  }
+
+  if (!bookData.isPanoramic) {
+    return (
+      <div className="py-16 px-8 text-center">
+        <p className="text-sm text-zinc-500 mb-2">Esta capa tem apenas a frente.</p>
+        <p className="text-xs text-zinc-400">Volte ao Editor de Capa para gerar a versão panorâmica (frente + lombada + contracapa).</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-stone-100 py-8 px-4 flex flex-col items-center">
+      <img
+        src={bookData.coverUrl}
+        alt="Capa estendida"
+        className="max-w-full max-h-[70vh] object-contain shadow-xl"
+      />
+      <p className="mt-4 text-xs text-zinc-500 italic">
+        Capa estendida — antes de dobrar
+      </p>
     </div>
   );
 }
@@ -422,7 +470,7 @@ export default function ProvaPage() {
   const [result, setResult] = useState<ProvaResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bookData, setBookData] = useState<BookData | null>(null);
-  const [activeTab, setActiveTab] = useState<"capa" | "miolo">("capa");
+  const [activeTab, setActiveTab] = useState<"capa" | "capa_aberta" | "miolo">("capa");
   const [modelApproved, setModelApproved] = useState(false);
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -461,7 +509,9 @@ export default function ProvaPage() {
 
         const dadosCapa = project.dados_capa as Record<string, unknown> | null;
         const capaResolvida = resolveCapaCompleta(dadosCapa);
-        const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
+        const editorDataRaw = dadosCapa?.editor_data as { version?: number; comOrelhas?: boolean } | undefined;
+        const capaTemEditorData = editorDataRaw?.version === 1;
+        const comOrelhas = Boolean(editorDataRaw?.comOrelhas);
 
         setBookData({
           coverUrl: capaResolvida.url_principal,
@@ -471,7 +521,8 @@ export default function ProvaPage() {
           autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
           lombadaMm: capaResolvida.lombada_mm ?? miolo?.lombada_mm ?? 10,
           paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? 0,
-          capaTemEditorData: editorDataRaw?.version === 1,
+          capaTemEditorData,
+          comOrelhas,
         });
       }
     } finally {
@@ -647,6 +698,16 @@ export default function ProvaPage() {
                     Capa 3D
                   </button>
                   <button
+                    onClick={() => setActiveTab("capa_aberta")}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                      activeTab === "capa_aberta"
+                        ? "text-brand-primary border-b-2 border-brand-gold"
+                        : "text-zinc-400 hover:text-zinc-600"
+                    }`}
+                  >
+                    Capa aberta
+                  </button>
+                  <button
                     onClick={() => setActiveTab("miolo")}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${
                       activeTab === "miolo"
@@ -662,6 +723,8 @@ export default function ProvaPage() {
                   <div className="p-8">
                     <Book3D book={bookData} />
                   </div>
+                ) : activeTab === "capa_aberta" ? (
+                  <CapaAberta bookData={bookData} />
                 ) : pdfPronto ? (
                   <PdfFolheador projectId={projectIdStr} />
                 ) : (

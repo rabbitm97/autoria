@@ -166,30 +166,34 @@ export async function POST(
     const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, { format, pages, comOrelhas, projectName });
     pdfBuffer = Buffer.from(pdfBytes);
   } else {
-    // Digital: trim sangria from all 4 edges, then render with Puppeteer
+    // Digital: eBook não tem orelhas. Cortar sangria de todos os 4 lados E orelhas (esquerda e direita).
     const imgMeta = await sharp(fullCoverBuffer).metadata();
     const imgW = imgMeta.width ?? 0;
     const imgH = imgMeta.height ?? 0;
+
+    const ORELHA_PX = Math.round(ORELHA_MM * 300 / 25.4);
+    const orelhaPxParaCortar = comOrelhas ? ORELHA_PX : 0;
+    const leftOffset = SANGRIA_PX + orelhaPxParaCortar;
+
     const trimmedBuffer = await sharp(fullCoverBuffer)
       .extract({
-        left: SANGRIA_PX,
+        left: leftOffset,
         top: SANGRIA_PX,
-        width: Math.max(1, imgW - SANGRIA_PX * 2),
+        width: Math.max(1, imgW - leftOffset * 2),
         height: Math.max(1, imgH - SANGRIA_PX * 2),
       })
       .jpeg({ quality: 92 })
       .toBuffer();
 
     const coverImageSrc = `data:image/jpeg;base64,${trimmedBuffer.toString("base64")}`;
-    const html = renderCoverFromImage(coverImageSrc, { format, pages, comOrelhas, projectName }, "digital");
+    // comOrelhas: false — digital nunca renderiza orelhas no HTML
+    const html = renderCoverFromImage(coverImageSrc, { format, pages, comOrelhas: false, projectName }, "digital");
 
     const f = FORMATS[format];
     const lombadaMm = calcularLombada(pages);
-    const orelhaMm = comOrelhas ? ORELHA_MM : 0;
-    const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
-    const totalHMm = f.height_mm + SANGRIA_MM * 2;
-    const docWMm = totalWMm - SANGRIA_MM * 2;
-    const docHMm = totalHMm - SANGRIA_MM * 2;
+    // PDF digital: largura = contracapa + lombada + frente (sem orelhas, sem sangria)
+    const docWMm = f.width_mm * 2 + lombadaMm;
+    const docHMm = f.height_mm;
 
     const browser = await puppeteer.launch({
       args: chromium.args,
