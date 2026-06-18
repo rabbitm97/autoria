@@ -533,7 +533,7 @@ export default function ProvaPage() {
         const lombadaMmCalc = calcularLombada(paginasReais);
         const orelhaMm = comOrelhas ? ORELHA_MM : 0;
         const totalWMm = f.width_mm * 2 + lombadaMmCalc + orelhaMm * 2 + SANGRIA_MM * 2;
-        const orelhaRatioW = comOrelhas ? ORELHA_MM / totalWMm : 0;
+        const orelhaRatioW = comOrelhas ? (ORELHA_MM + SANGRIA_MM) / totalWMm : 0;
 
         setBookData({
           coverUrl: capaResolvida.url_principal,
