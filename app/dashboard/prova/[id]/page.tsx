@@ -6,6 +6,12 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import type { ProvaResult, ProvaItem } from "@/app/api/agentes/prova/types";
+import {
+  FORMATS,
+  SANGRIA_MM,
+  ORELHA_MM,
+  calcularLombada,
+} from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -27,6 +33,7 @@ interface BookData {
   paginas: number;
   capaTemEditorData: boolean;
   comOrelhas: boolean;
+  orelhaRatioW: number;
 }
 
 // ─── 3D Book viewer (paralelepípedo com 6 faces) ─────────────────────────────
@@ -73,14 +80,18 @@ function Book3D({ book }: {
       }
     : {};
 
+  // Offset em px para pular a orelha esquerda da imagem panorâmica no livro fechado.
+  // Orelhas dobram para dentro — não devem aparecer no Book3D.
+  const orelhaOffsetPx = (book.orelhaRatioW ?? 0) * imgVisualW;
+
   const bgBack: React.CSSProperties = book.isPanoramic && imgDims
-    ? { ...panoramicBgCommon, backgroundPosition: "0px 0px" }
+    ? { ...panoramicBgCommon, backgroundPosition: `-${orelhaOffsetPx}px 0px` }
     : {};
   const bgSpine: React.CSSProperties = book.isPanoramic && imgDims
-    ? { ...panoramicBgCommon, backgroundPosition: `-${bookW}px 0px` }
+    ? { ...panoramicBgCommon, backgroundPosition: `-${orelhaOffsetPx + bookW}px 0px` }
     : {};
   const bgFront: React.CSSProperties = book.isPanoramic && imgDims
-    ? { ...panoramicBgCommon, backgroundPosition: `-${bookW + spineW}px 0px` }
+    ? { ...panoramicBgCommon, backgroundPosition: `-${orelhaOffsetPx + bookW + spineW}px 0px` }
     : {};
 
   function onMouseDown(e: React.MouseEvent) { setDragging(true); setStartX(e.clientX); }
@@ -491,7 +502,7 @@ export default function ProvaPage() {
 
       const { data: project } = await supabase
         .from("projects")
-        .select("dados_capa, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("formato, dados_capa, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
 
@@ -513,6 +524,16 @@ export default function ProvaPage() {
         const capaTemEditorData = editorDataRaw?.version === 1;
         const comOrelhas = Boolean(editorDataRaw?.comOrelhas);
 
+        const paginasReais = miolo?.paginas_reais ?? 0;
+        const formatoKey = ((project.formato as string) in FORMATS
+          ? (project.formato as keyof typeof FORMATS)
+          : "padrao_br") as keyof typeof FORMATS;
+        const f = FORMATS[formatoKey] ?? FORMATS.padrao_br;
+        const lombadaMmCalc = calcularLombada(paginasReais);
+        const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+        const totalWMm = f.width_mm * 2 + lombadaMmCalc + orelhaMm * 2 + SANGRIA_MM * 2;
+        const orelhaRatioW = comOrelhas ? ORELHA_MM / totalWMm : 0;
+
         setBookData({
           coverUrl: capaResolvida.url_principal,
           isPanoramic: capaResolvida.is_panoramica,
@@ -520,9 +541,10 @@ export default function ProvaPage() {
           titulo: ms?.titulo ?? "Livro sem título",
           autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
           lombadaMm: capaResolvida.lombada_mm ?? miolo?.lombada_mm ?? 10,
-          paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? 0,
+          paginas: paginasReais || (miolo?.paginas_estimadas ?? 0),
           capaTemEditorData,
           comOrelhas,
+          orelhaRatioW,
         });
       }
     } finally {
@@ -695,7 +717,7 @@ export default function ProvaPage() {
                         : "text-zinc-400 hover:text-zinc-600"
                     }`}
                   >
-                    Capa 3D
+                    Livro 3D
                   </button>
                   <button
                     onClick={() => setActiveTab("capa_aberta")}
