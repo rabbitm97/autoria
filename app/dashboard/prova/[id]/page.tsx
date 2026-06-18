@@ -62,11 +62,16 @@ function Book3D({ book }: {
   let bookW: number;
   let spineW: number;
   let imgVisualW = 0;
+  let orelhaOffsetPx = 0;
 
   if (book.isPanoramic && imgDims) {
     imgVisualW = (imgDims.w / imgDims.h) * bookH;
     spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
-    bookW = Math.max(100, Math.round((imgVisualW - spineW) / 2));
+
+    // Desconta orelhas (esq + dir) antes de dividir a área útil entre contracapa e frente.
+    orelhaOffsetPx = (book.orelhaRatioW ?? 0) * imgVisualW;
+    const utilImgW = imgVisualW - 2 * orelhaOffsetPx;
+    bookW = Math.max(100, Math.round((utilImgW - spineW) / 2));
   } else {
     bookW = Math.round(160 * SCALE);
     spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
@@ -79,10 +84,6 @@ function Book3D({ book }: {
         backgroundRepeat: "no-repeat",
       }
     : {};
-
-  // Offset em px para pular a orelha esquerda da imagem panorâmica no livro fechado.
-  // Orelhas dobram para dentro — não devem aparecer no Book3D.
-  const orelhaOffsetPx = (book.orelhaRatioW ?? 0) * imgVisualW;
 
   const bgBack: React.CSSProperties = book.isPanoramic && imgDims
     ? { ...panoramicBgCommon, backgroundPosition: `-${orelhaOffsetPx}px 0px` }
