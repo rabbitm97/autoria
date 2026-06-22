@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { resolveCapaCompleta } from "@/lib/capa-resolver";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -248,12 +249,12 @@ export async function POST(req: NextRequest) {
       autor_primeiro_nome?: string;
       autor_sobrenome?: string;
     } | null;
-    const capa = project.dados_capa as { url_escolhida?: string } | null;
+    const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
 
     titulo       = ms?.titulo?.trim() || "Sem título";
     subtitulo    = ms?.subtitulo?.trim() ?? "";
     texto        = ms?.texto_revisado ?? ms?.texto ?? "";
-    capaUrl      = capa?.url_escolhida ?? null;
+    capaUrl      = capaResolvida.url_principal;
     palavrasChave = (el?.palavras_chave as string[] | undefined) ?? [];
     autor        = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
   }

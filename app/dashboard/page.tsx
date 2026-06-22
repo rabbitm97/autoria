@@ -16,7 +16,7 @@ interface Projeto {
 const STEPS = [
   { key: "diagnostico",   label: "Diagnóstico",  href: (id: string) => `/dashboard/diagnostico/${id}` },
   { key: "revisao",       label: "Revisão",       href: (id: string) => `/dashboard/revisao/${id}` },
-  { key: "sinopse_ficha", label: "Elementos",     href: (id: string) => `/dashboard/elementos/${id}` },
+  { key: "elementos",     label: "Elementos",     href: (id: string) => `/dashboard/elementos/${id}` },
   { key: "capa",          label: "Capa",          href: (id: string) => `/dashboard/capa/${id}` },
   { key: "creditos",      label: "Créditos",      href: (id: string) => `/dashboard/creditos/${id}` },
   { key: "diagramacao",   label: "Diagramação",   href: (id: string) => `/dashboard/miolo/${id}` },
@@ -28,7 +28,6 @@ const ETAPA_HREF: Record<string, (id: string) => string> = {
   upload:        (id) => `/dashboard/diagnostico/${id}`,
   diagnostico:   (id) => `/dashboard/diagnostico/${id}`,
   revisao:       (id) => `/dashboard/revisao/${id}`,
-  sinopse_ficha: (id) => `/dashboard/elementos/${id}`,
   elementos:     (id) => `/dashboard/elementos/${id}`,
   capa:          (id) => `/dashboard/capa/${id}`,
   creditos:      (id) => `/dashboard/creditos/${id}`,
@@ -42,14 +41,11 @@ const ETAPA_HREF: Record<string, (id: string) => string> = {
 const MOCK_PROJETOS: Projeto[] = [
   { id: "mock-1", etapa_atual: "revisao",       criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito" } },
   { id: "mock-2", etapa_atual: "capa",          criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento" } },
-  { id: "mock-3", etapa_atual: "sinopse_ficha", criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte" } },
+  { id: "mock-3", etapa_atual: "elementos",     criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte" } },
 ];
 
 const ETAPA_STEP_ALIAS: Record<string, string> = {
-  elementos: "sinopse_ficha",
-  preview:   "qa",
-  // "diagramacao" is the etapa key set after capa — maps to miolo step
-  // (already in STEPS as key "diagramacao", no alias needed)
+  preview: "qa",
 };
 
 function getStepIndex(etapa: string): number {
