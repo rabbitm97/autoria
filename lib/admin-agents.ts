@@ -1,4 +1,4 @@
-export const ADMIN_EMAILS = ["mateusccoelho@gmail.com"];
+export const ADMIN_EMAILS = ["mateusccoelho@gmail.com", "mateusccoelho@hotmail.com"];
 
 export interface AgentMeta {
   name: string;
