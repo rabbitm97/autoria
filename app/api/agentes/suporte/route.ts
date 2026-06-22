@@ -123,7 +123,8 @@ export async function POST(req: NextRequest) {
     agentName: "suporte",
     projectId: project_id ?? undefined,
     userId: isDev ? undefined : userId,
-    metadata: { model: "claude-sonnet-4-6" },
+    model: "claude-sonnet-4-6",
+    input: { system: KNOWLEDGE_BASE + contextoProj, messages: [{ role: "user", content: pergunta }] },
     fn: () => anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 500,

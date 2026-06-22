@@ -19,26 +19,51 @@ export async function traceClaudeCall<T>(params: {
   agentName: string;
   projectId?: string;
   userId?: string;
+  model?: string;
+  input?: unknown;
   fn: () => Promise<T>;
   metadata?: Record<string, unknown>;
 }): Promise<T> {
   if (!langfuse) return params.fn();
 
-  const startTime = Date.now();
+  const startTime = new Date();
   const trace = langfuse.trace({
     name: params.agentName,
     userId: params.userId,
+    input: params.input,
     metadata: { project_id: params.projectId, ...params.metadata },
+    tags: [params.agentName],
+  });
+
+  const generation = trace.generation({
+    name: params.agentName,
+    model: params.model,
+    input: params.input,
+    startTime,
   });
 
   try {
     const result = await params.fn();
-    trace.update({ output: { duration_ms: Date.now() - startTime } });
+
+    // Auto-extract usage and output from Anthropic message responses
+    const maybeMsg = result as Record<string, unknown>;
+    const usage = maybeMsg.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+    const output = maybeMsg.content ?? maybeMsg.output;
+
+    generation.end({
+      output,
+      usage: usage ? { input: usage.input_tokens, output: usage.output_tokens } : undefined,
+    });
+    trace.update({ output: { duration_ms: Date.now() - startTime.getTime() } });
     await langfuse.flushAsync();
     return result;
   } catch (e) {
+    generation.end({
+      level: "ERROR",
+      statusMessage: e instanceof Error ? e.message : String(e),
+    });
     trace.update({
-      output: { error: e instanceof Error ? e.message : String(e), duration_ms: Date.now() - startTime },
+      output: { error: e instanceof Error ? e.message : String(e), duration_ms: Date.now() - startTime.getTime() },
     });
     await langfuse.flushAsync();
     throw e;

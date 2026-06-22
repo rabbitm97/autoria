@@ -347,10 +347,17 @@ export async function POST(request: NextRequest) {
 
   void (async () => {
     try {
-      langfuse?.trace({
-        name: "revisao-batch-submitted",
+      const t = langfuse?.trace({
+        name: "revisao",
         userId: user.id,
-        metadata: { project_id, batch_id: batch.id, total_chunks: chunks.length },
+        input: { batch_id: batch.id, total_chunks: chunks.length },
+        metadata: { project_id },
+        tags: ["revisao"],
+      });
+      t?.generation({
+        name: "revisao-batch-submitted",
+        model: "claude-sonnet-4-6",
+        input: { batch_id: batch.id, total_chunks: chunks.length },
       });
       await langfuse?.flushAsync();
     } catch {}
@@ -454,48 +461,11 @@ export async function GET(request: NextRequest) {
       totalCacheCreation += cacheCreationTokens;
       totalCacheRead += cacheReadTokens;
 
-      void (async () => {
-        try {
-          langfuse?.trace({
-            name: "revisao-chunk-processed",
-            userId: user.id,
-            metadata: {
-              project_id,
-              custom_id: customId,
-              sugestoes_count: sugestoesDoChunk.length,
-              content_blocks: message.content.map((b) => b.type),
-              input_tokens: inputTokens,
-              output_tokens: outputTokens,
-              cache_creation_input_tokens: cacheCreationTokens,
-              cache_read_input_tokens: cacheReadTokens,
-            },
-          });
-          await langfuse?.flushAsync();
-        } catch {}
-      })();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error(`[revisao] Falha ao processar chunk ${customId}:`, reason);
       chunksFailed.push({ custom_id: customId, reason });
 
-      void (async () => {
-        try {
-          langfuse?.trace({
-            name: "revisao-chunk-failed",
-            userId: user.id,
-            metadata: {
-              project_id,
-              custom_id: customId,
-              error: reason,
-              raw_message:
-                result.result.type === "succeeded"
-                  ? JSON.stringify(result.result.message).slice(0, 2000)
-                  : null,
-            },
-          });
-          await langfuse?.flushAsync();
-        } catch {}
-      })();
     }
   }
 
@@ -539,18 +509,33 @@ export async function GET(request: NextRequest) {
 
   void (async () => {
     try {
-      langfuse?.trace({
-        name: "revisao-batch-completed",
+      const t = langfuse?.trace({
+        name: "revisao",
         userId: user.id,
-        metadata: {
-          project_id,
+        input: { batch_id, total_chunks },
+        output: {
           total_sugestoes: revisao.sugestoes.length,
           chunks_succeeded: chunksSucceeded,
           chunks_failed_count: chunksFailed.length,
-          total_input_tokens: totalInputTokens,
-          total_output_tokens: totalOutputTokens,
-          total_cache_creation: totalCacheCreation,
-          total_cache_read: totalCacheRead,
+        },
+        metadata: { project_id },
+        tags: ["revisao"],
+      });
+      t?.generation({
+        name: "revisao-batch-completed",
+        model: "claude-sonnet-4-6",
+        output: {
+          sugestoes_count: revisao.sugestoes.length,
+          chunks_succeeded: chunksSucceeded,
+          chunks_failed: chunksFailed.length,
+        },
+        usage: {
+          input: totalInputTokens,
+          output: totalOutputTokens,
+        },
+        metadata: {
+          cache_creation_input_tokens: totalCacheCreation,
+          cache_read_input_tokens: totalCacheRead,
         },
       });
       await langfuse?.flushAsync();

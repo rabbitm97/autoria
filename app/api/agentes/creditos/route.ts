@@ -101,23 +101,22 @@ async function gerarFichaCatalografica(params: {
   const FICHA_PROMPT = await getAgentPrompt("creditos", FALLBACK_PROMPT);
 
   try {
+    const fichaUserContent = `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\n` +
+      (subtitulo ? `Subtítulo: ${subtitulo}\n` : "") +
+      `Autor: ${autor}\nGênero: ${genero}\n` +
+      `Páginas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
+      `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`;
     const msg = await traceClaudeCall({
       agentName: "creditos",
       projectId: context?.projectId,
       userId: context?.userId,
-      metadata: { model: "claude-sonnet-4-6" },
+      model: "claude-sonnet-4-6",
+      input: { system: FICHA_PROMPT, messages: [{ role: "user", content: fichaUserContent }] },
       fn: () => anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 512,
         system: FICHA_PROMPT,
-        messages: [{
-          role: "user",
-          content: `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\n` +
-            (subtitulo ? `Subtítulo: ${subtitulo}\n` : "") +
-            `Autor: ${autor}\nGênero: ${genero}\n` +
-            `Páginas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
-            `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`,
-        }],
+        messages: [{ role: "user", content: fichaUserContent }],
       }),
     });
     const raw = extractText(msg.content);

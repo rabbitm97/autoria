@@ -195,7 +195,11 @@ export async function POST(request: NextRequest) {
       agentName: "diagnostico",
       projectId: project_id,
       userId: user.id,
-      metadata: { model: "claude-haiku-4-5-20251001" },
+      model: "claude-haiku-4-5-20251001",
+      input: {
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: `Analise o seguinte manuscrito e retorne apenas o JSON:\n\n${textoCortado}` }],
+      },
       fn: () => anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 2048,

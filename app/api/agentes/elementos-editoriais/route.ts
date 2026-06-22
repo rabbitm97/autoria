@@ -125,21 +125,18 @@ export async function POST(request: NextRequest) {
   const SYSTEM_PROMPT = await getAgentPrompt("elementos-editoriais", FALLBACK_PROMPT);
   let elementos: ElementosEditoriais;
   try {
+    const userContent = `${tituloCtx}Manuscrito: "${nomeManuscrito}"${diagnosticoCtx}\n\nTexto:\n${textoCortado}\n\nGere os elementos editoriais e retorne apenas o JSON:`;
     const message = await traceClaudeCall({
       agentName: "elementos-editoriais",
       projectId: project_id,
       userId: user.id,
-      metadata: { model: "claude-sonnet-4-6" },
+      model: "claude-sonnet-4-6",
+      input: { system: SYSTEM_PROMPT, messages: [{ role: "user", content: userContent }] },
       fn: () => anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 2048,
         system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `${tituloCtx}Manuscrito: "${nomeManuscrito}"${diagnosticoCtx}\n\nTexto:\n${textoCortado}\n\nGere os elementos editoriais e retorne apenas o JSON:`,
-          },
-        ],
+        messages: [{ role: "user", content: userContent }],
       }),
     });
 
