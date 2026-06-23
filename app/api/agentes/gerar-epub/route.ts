@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
+import { extractFrontCover, type FormatoCapa } from "@/lib/capa-frente-extractor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -232,7 +233,7 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project, error: projErr } = await supabase
       .from("projects")
-      .select("dados_elementos, dados_capa, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome)")
+      .select("dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
@@ -250,6 +251,10 @@ export async function POST(req: NextRequest) {
       autor_sobrenome?: string;
     } | null;
     const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
+    const dadosMiolo = project.dados_miolo as { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null;
+    const projectFormato = project.formato as FormatoCapa | null;
+    const dadosCapaRaw = project.dados_capa as Record<string, unknown> | null;
+    const editorData = dadosCapaRaw?.editor_data as { comOrelhas?: boolean } | undefined;
 
     titulo       = ms?.titulo?.trim() || "Sem título";
     subtitulo    = ms?.subtitulo?.trim() ?? "";
@@ -264,20 +269,55 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Fetch cover image (optional) ─────────────────────────────────────────
+  // Para capas panorâmicas do Editor (frente + lombada + contracapa + sangria
+  // lado a lado), recorta apenas a frente — capa de EPUB precisa ser portrait
+  // limpa, não panorâmica esticada.
   let coverBuffer: Buffer | null = null;
   let coverExt: "jpg" | "png" | null = null;
 
   if (capaUrl) {
-    try {
-      const res = await fetch(capaUrl);
-      if (res.ok) {
-        const contentType = res.headers.get("content-type") ?? "";
-        coverExt = contentType.includes("png") ? "png" : "jpg";
-        coverBuffer = Buffer.from(await res.arrayBuffer());
+    const paginas =
+      dadosMiolo?.paginas_reais ??
+      dadosMiolo?.config?.paginas_estimadas ??
+      null;
+
+    const podeRecortar =
+      capaResolvida.is_panoramica &&
+      capaResolvida.origem === "editor" &&
+      projectFormato &&
+      paginas != null &&
+      paginas >= 1;
+
+    if (podeRecortar) {
+      const front = await extractFrontCover({
+        url: capaUrl,
+        formato: projectFormato!,
+        paginas: paginas!,
+        comOrelhas: editorData?.comOrelhas ?? false,
+      });
+      if (front) {
+        coverBuffer = front.buffer;
+        coverExt = front.ext;
+        console.log(
+          `[gerar-epub] frente recortada: ${front.widthPx}x${front.heightPx}`,
+        );
+      } else {
+        console.warn("[gerar-epub] recorte falhou — usando capa panorâmica completa como fallback");
       }
-    } catch {
-      // Cover fetch failure is non-fatal — EPUB still valid without it.
-      console.warn("[gerar-epub] falha ao baixar capa, continuando sem ela.");
+    }
+
+    // Fallback: baixa a imagem inteira (panorâmica ou não)
+    if (!coverBuffer) {
+      try {
+        const res = await fetch(capaUrl);
+        if (res.ok) {
+          const contentType = res.headers.get("content-type") ?? "";
+          coverExt = contentType.includes("png") ? "png" : "jpg";
+          coverBuffer = Buffer.from(await res.arrayBuffer());
+        }
+      } catch {
+        console.warn("[gerar-epub] falha ao baixar capa, continuando sem ela.");
+      }
     }
   }
 
