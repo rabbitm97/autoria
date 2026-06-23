@@ -219,6 +219,10 @@ export async function POST(req: NextRequest) {
   let texto = "";
   let capaUrl: string | null = null;
   let palavrasChave: string[] = [];
+  let dadosMiolo: { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null = null;
+  let projectFormato: FormatoCapa | null = null;
+  let editorData: { comOrelhas?: boolean } | undefined;
+  let capaResolvida: ReturnType<typeof resolveCapaCompleta> | null = null;
 
   if (process.env.NODE_ENV === "development") {
     titulo    = "O Último Manuscrito";
@@ -250,11 +254,11 @@ export async function POST(req: NextRequest) {
       autor_primeiro_nome?: string;
       autor_sobrenome?: string;
     } | null;
-    const capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
-    const dadosMiolo = project.dados_miolo as { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null;
-    const projectFormato = project.formato as FormatoCapa | null;
+    capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
+    dadosMiolo = project.dados_miolo as { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null;
+    projectFormato = project.formato as FormatoCapa | null;
     const dadosCapaRaw = project.dados_capa as Record<string, unknown> | null;
-    const editorData = dadosCapaRaw?.editor_data as { comOrelhas?: boolean } | undefined;
+    editorData = dadosCapaRaw?.editor_data as { comOrelhas?: boolean } | undefined;
 
     titulo       = ms?.titulo?.trim() || "Sem título";
     subtitulo    = ms?.subtitulo?.trim() ?? "";
@@ -282,7 +286,7 @@ export async function POST(req: NextRequest) {
       null;
 
     const podeRecortar =
-      capaResolvida.is_panoramica &&
+      capaResolvida?.is_panoramica === true &&
       capaResolvida.origem === "editor" &&
       projectFormato &&
       paginas != null &&
