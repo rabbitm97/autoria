@@ -1,6 +1,6 @@
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
@@ -67,6 +67,19 @@ function buildPrompt(opts: {
     "High contrast, professional publishing industry quality, suitable for CMYK print.",
     "Full bleed composition, no borders or frames.",
   ].join(" ");
+}
+
+function buildContents(prompt: string, ref: string | undefined): Part[] {
+  if (ref) {
+    const match = ref.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      return [
+        { text: prompt + " Use the provided reference image as a style and mood guide only — do not copy it literally." } as Part,
+        { inlineData: { mimeType: match[1], data: match[2] } } as Part,
+      ];
+    }
+  }
+  return [{ text: prompt } as Part];
 }
 
 // ─── POST /api/agentes/gerar-capa ─────────────────────────────────────────────
@@ -199,37 +212,41 @@ export async function POST(req: NextRequest) {
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
   const opcoes: OpcaoCapa[] = [];
 
-  // Build final prompt — include reference style hint if provided
-  const fullPrompt = imagemRef
-    ? prompt + " Maintain a visual style consistent with the provided reference image aesthetic."
-    : prompt;
+  // Nano Banana Pro gera 1 imagem por chamada — fazemos 4 chamadas sequenciais
+  // para obter as 4 opções de capa. A `imagemRef` (data URL) é injetada via
+  // `buildContents` como `inlineData`, permitindo controle de estilo nativo.
+  const NUM_OPCOES = 4;
 
-  try {
-    const response = await ai.models.generateImages({
-      model: "imagen-3.0-generate-002",
-      prompt: fullPrompt,
-      config: {
-        numberOfImages: 4,
-        aspectRatio: "3:4",
-      },
-    });
+  for (let i = 0; i < NUM_OPCOES; i++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-pro-image-preview",
+        contents: [{ role: "user", parts: buildContents(prompt, imagemRef) }],
+        config: {
+          responseModalities: ["IMAGE"],
+          imageConfig: { aspectRatio: "2:3", imageSize: "2K" },
+        },
+      });
 
-    for (let i = 0; i < (response.generatedImages?.length ?? 0); i++) {
-      const imgBytes = response.generatedImages?.[i]?.image?.imageBytes;
-      if (!imgBytes) {
-        console.warn(`[gerar-capa] option ${i}: imageBytes ausente`);
+      const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
+      const imgPart = parts.find((p) => p.inlineData);
+      if (!imgPart?.inlineData?.data) {
+        console.warn(`[gerar-capa] option ${i}: inlineData ausente`);
         continue;
       }
 
-      const storagePath = `${userId}/${project_id}/capa_ia_${i}.png`;
-      const buffer = Buffer.from(imgBytes, "base64");
+      const base64 = imgPart.inlineData.data;
+      const mimeType = imgPart.inlineData.mimeType ?? "image/png";
+      const ext = mimeType.includes("png") ? "png" : "jpg";
+      const storagePath = `${userId}/${project_id}/capa_ia_${i}.${ext}`;
+      const buffer = Buffer.from(base64, "base64");
 
       const { error: uploadError } = await storageClient.storage
         .from("capas")
-        .upload(storagePath, buffer, { contentType: "image/png", upsert: true });
+        .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
 
       if (uploadError) {
-        console.error("[gerar-capa] upload error:", uploadError.message);
+        console.error(`[gerar-capa] upload error (opção ${i}):`, uploadError.message);
         continue;
       }
 
@@ -238,9 +255,10 @@ export async function POST(req: NextRequest) {
         .getPublicUrl(storagePath);
 
       opcoes.push({ url: publicUrl, storage_path: storagePath });
+    } catch (err) {
+      console.error(`[gerar-capa] generateContent failed (opção ${i}):`, err);
+      // Continua tentando as próximas opções — não aborta tudo se uma falhar
     }
-  } catch (err) {
-    console.error("[gerar-capa] generateImages failed:", err);
   }
 
   if (opcoes.length === 0) {

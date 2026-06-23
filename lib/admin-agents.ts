@@ -23,7 +23,7 @@ export const AGENTS_REGISTRY: AgentMeta[] = [
   { name: "propor-capitulos",     label: "Propor Capítulos",     model: "— (heurística)",            hasPrompt: false, promptKey: "propor-capitulos"      },
   { name: "aprovar-capitulos",    label: "Aprovar Capítulos",    model: "— (validação)",             hasPrompt: false, promptKey: "aprovar-capitulos"     },
   // ── Pipeline de capa ──────────────────────────────────────────────────────
-  { name: "gerar-capa",           label: "Gerar Capa",           model: "Gemini Imagen 3",           hasPrompt: false, promptKey: "gerar-capa"            },
+  { name: "gerar-capa",           label: "Gerar Capa",           model: "Nano Banana Pro",           hasPrompt: false, promptKey: "gerar-capa"            },
   { name: "gerar-elemento-capa",  label: "Elemento Capa",        model: "Nano Banana Pro",           hasPrompt: false, promptKey: "gerar-elemento-capa"   },
   { name: "montar-capa",          label: "Montar Capa",          model: "Sharp",                     hasPrompt: false, promptKey: "montar-capa"           },
   { name: "upload-capa",          label: "Upload Capa",          model: "— (upload)",                hasPrompt: false, promptKey: "upload-capa"           },
