@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
 
 // ─── GET /api/projects/[id]/cover-editor ─────────────────────────────────────
@@ -10,12 +11,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {
@@ -32,7 +33,7 @@ export async function GET(
     .from("projects")
     .select("dados_capa")
     .eq("id", id)
-    .eq("user_id", isDev ? userId : userId)
+    .eq("user_id", dev ? userId : userId)
     .single();
 
   if (error || !project) {
@@ -53,12 +54,11 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {

@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── POST /api/agentes/prova-revisao ──────────────────────────────────────────
@@ -9,12 +10,10 @@ import { createClient } from "@supabase/supabase-js";
 // and returns a signed URL so the author can review before diagramação.
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
-
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {

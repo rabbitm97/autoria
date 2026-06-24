@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
 import { requireAuth } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 
 // ─── XML helpers ──────────────────────────────────────────────────────────────
 
@@ -170,7 +171,7 @@ async function buildDocx(rawText: string): Promise<Buffer> {
 // Body: multipart/form-data — field "file" (PDF, máx 50 MB)
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV !== "development") {
+  if (!isDev()) {
     try {
       await requireAuth();
     } catch (res) {

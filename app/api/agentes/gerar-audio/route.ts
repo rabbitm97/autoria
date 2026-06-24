@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { VOZES } from "@/lib/voices";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
   let texto = "";
   let dadosAudioAtual: AudioResult | null = null;
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     titulo = "O Último Manuscrito";
     texto  = "CAPÍTULO 1\n\nEra uma noite escura e tempestuosa. O protagonista caminhou lentamente pela rua deserta, ouvindo apenas o eco dos seus próprios passos. Algo estava prestes a mudar para sempre.\n\nCAPÍTULO 2\n\nA manhã chegou com uma névoa densa cobrindo toda a cidade. Cada passo revelava um novo mistério, cada porta abria para um novo caminho inesperado.";
   } else {
@@ -210,7 +211,7 @@ export async function GET(req: NextRequest) {
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json({
       capitulos_texto: [
         { index: 0, titulo: "O Último Manuscrito", caracteres: 800 },

@@ -5,6 +5,7 @@ import puppeteer from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
 import { applyDigitalCss } from "@/lib/miolo-builder-digital";
@@ -29,12 +30,12 @@ export interface PdfResult {
 // (Amazon KDP, Apple Books, Google Play Books, Kobo).
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
   const supabase = await createSupabaseServerClient();
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   let userId: string;
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Dev mode ──────────────────────────────────────────────────────────────
-  if (isDev) {
+  if (dev) {
     const mock: PdfResult = {
       project_id,
       formato: "padrao_br",
@@ -207,7 +208,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
   }
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json(null);
   }
 

@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import sharp from "sharp";
 import { getFormatoDef } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
@@ -48,11 +49,11 @@ async function blankPanel(w: number, h: number, r = 245, g = 245, b = 245): Prom
 
 export async function POST(req: NextRequest) {
   try {
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Dev mode ──────────────────────────────────────────────────────────────
-  if (isDev) {
+  if (dev) {
     return NextResponse.json({
       url: "https://placehold.co/2000x1000/1a1a2e/e8c97b?text=Capa+Completa+Mock",
       storage_path: `dev-user/${project_id}/capa_completa.png`,

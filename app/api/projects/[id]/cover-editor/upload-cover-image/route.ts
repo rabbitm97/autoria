@@ -2,6 +2,7 @@ export const maxDuration = 30;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(
@@ -9,11 +10,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
 
   let userId: string;
 
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
   } else {
     try {
@@ -29,7 +30,7 @@ export async function POST(
     return NextResponse.json({ error: "Imagem vazia." }, { status: 400 });
   }
 
-  if (isDev) {
+  if (dev) {
     // In dev, skip actual storage upload
     return NextResponse.json({ path: `dev-user/${id}/temp-cover.jpg` });
   }

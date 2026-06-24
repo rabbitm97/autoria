@@ -2,17 +2,17 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { buildBookDocx } from "@/lib/docx-builder";
 import type { MioloConfig } from "@/lib/miolo-builder";
 import type { CreditosResult } from "@/app/api/agentes/creditos/route";
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
   const supabase = await createSupabaseServerClient();
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   let userId: string;
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();

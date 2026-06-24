@@ -4,6 +4,7 @@ import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,11 +66,11 @@ function buildContents(prompt: string, ref: string | undefined): Part[] {
 
 export async function POST(req: NextRequest) {
   try {
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -99,6 +100,13 @@ export async function POST(req: NextRequest) {
 
   if (!project_id || !elemento) {
     return NextResponse.json({ error: "project_id e elemento são obrigatórios" }, { status: 400 });
+  }
+
+  if (imagemRef && imagemRef.length > 5_000_000) {
+    return NextResponse.json(
+      { error: "Imagem de referência muito grande (máx 5MB)" },
+      { status: 413 },
+    );
   }
 
   // ── Load project (ownership check + metadata) ────────────────────────────
@@ -137,7 +145,7 @@ export async function POST(req: NextRequest) {
   const lombada_mm = paginas ? Math.round(paginas * 0.07 * 10) / 10 : undefined;
 
   // ── Dev mode: return mock images ─────────────────────────────────────────
-  if (isDev) {
+  if (dev) {
     const colors: Record<Elemento, string> = {
       frente: "1a1a2e/e8c97b",
       contra: "2a2a4e/e8c97b",

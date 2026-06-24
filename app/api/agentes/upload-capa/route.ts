@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { getFormatoDef, type FormatoLivro } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
 
@@ -68,12 +69,10 @@ export function calcExpectedDims(opts: {
 
 export async function POST(req: NextRequest) {
   try {
-  const isDev = process.env.NODE_ENV === "development";
-
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {

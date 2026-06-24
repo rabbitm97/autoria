@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
@@ -55,12 +56,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {
@@ -118,7 +119,7 @@ export async function POST(
   const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
   const projectName = extractTitle(editorData.elements);
 
-  if (isDev) {
+  if (dev) {
     return NextResponse.json({
       url: "https://placehold.co/1/1/png",
       filename: `capa-${versao}-${id}.pdf`,

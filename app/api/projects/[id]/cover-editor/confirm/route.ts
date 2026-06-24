@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(
@@ -9,12 +10,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {

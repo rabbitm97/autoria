@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import type { CapaGeradaResult } from "@/app/api/agentes/gerar-capa/route";
 
 // ─── POST /api/agentes/ajustar-lombada ───────────────────────────────────────
@@ -10,12 +11,10 @@ import type { CapaGeradaResult } from "@/app/api/agentes/gerar-capa/route";
 // full cover. No credit charge — this is a correction, not aesthetic regen.
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
-
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {

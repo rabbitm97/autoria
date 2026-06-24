@@ -4,6 +4,7 @@ import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,12 +87,12 @@ function buildContents(prompt: string, ref: string | undefined): Part[] {
 
 export async function POST(req: NextRequest) {
   try {
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {
@@ -137,6 +138,13 @@ export async function POST(req: NextRequest) {
 
   if (!project_id) {
     return NextResponse.json({ error: "project_id é obrigatório" }, { status: 400 });
+  }
+
+  if (imagemRef && imagemRef.length > 5_000_000) {
+    return NextResponse.json(
+      { error: "Imagem de referência muito grande (máx 5MB)" },
+      { status: 413 },
+    );
   }
 
   // ── Fetch project + manuscripts from DB ───────────────────────────────────
@@ -186,7 +194,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Credit check for regeneration ────────────────────────────────────────
-  if (is_regeneracao && !isDev) {
+  if (is_regeneracao && !dev) {
     const creditos = (project as unknown as { creditos?: number }).creditos ?? 0;
     if (creditos < 20) {
       return NextResponse.json(
@@ -309,7 +317,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
   }
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json(null);
   }
 

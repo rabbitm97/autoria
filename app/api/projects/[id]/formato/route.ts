@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { isFormatoValido } from "@/lib/formatos";
 
 type Params = { params: Promise<{ id: string }> };
@@ -8,7 +9,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json({ formato: null, locked: false });
   }
 
@@ -33,7 +34,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -51,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   // Check lock status before writing
-  if (process.env.NODE_ENV !== "development") {
+  if (!isDev()) {
     const { data: proj, error: projError } = await supabase
       .from("projects")
       .select("formato_locked_at")

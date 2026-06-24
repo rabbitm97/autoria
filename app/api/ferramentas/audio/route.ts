@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isDev } from "@/lib/anthropic";
 import { VOZES } from "@/lib/voices";
 
 
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
   const { texto, voz = VOZES[0].id } = body;
   if (!texto?.trim()) return NextResponse.json({ error: "Texto obrigatório" }, { status: 400 });
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     // In dev, return a short public domain MP3 so the player works
     return NextResponse.json({
       audioUrl: null,

@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, extractText, traceClaudeCall } from "@/lib/anthropic";
+import { anthropic, extractText, traceClaudeCall, isDev } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,11 +59,11 @@ interface RequisitosArquivo {
 // Body: { project_id, plataformas?, dados }
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   // ── Carregar dados do projeto ─────────────────────────────────────────────
   let dados: RequisitosArquivo;
 
-  if (isDev) {
+  if (dev) {
     dados = {
       titulo: "O Último Horizonte",
       autor: "Carlos Silva",
@@ -360,7 +360,7 @@ ${resumo}`;
   const claudeRes = await traceClaudeCall({
     agentName: "qa-publicacao",
     projectId: project_id,
-    userId: isDev ? undefined : userId,
+    userId: dev ? undefined : userId,
     model: "claude-sonnet-4-6",
     input: { messages: [{ role: "user", content: qaUserContent }] },
     fn: () => anthropic.messages.create({
@@ -383,7 +383,7 @@ ${resumo}`;
     analisado_em: new Date().toISOString(),
   };
 
-  if (!isDev) {
+  if (!dev) {
     await supabase
       .from("projects")
       .update({

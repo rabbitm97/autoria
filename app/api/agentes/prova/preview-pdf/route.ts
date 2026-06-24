@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 
 // GET /api/agentes/prova/preview-pdf?project_id=...
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();

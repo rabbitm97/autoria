@@ -1,5 +1,6 @@
 import { GoogleGenAI, type Part } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
+import { isDev } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,14 @@ export async function POST(req: NextRequest) {
   if (!titulo?.trim() || !sinopse?.trim())
     return NextResponse.json({ error: "titulo e sinopse são obrigatórios" }, { status: 400 });
 
-  if (process.env.NODE_ENV === "development") {
+  if (imagemRef && imagemRef.length > 5_000_000) {
+    return NextResponse.json(
+      { error: "Imagem de referência muito grande (máx 5MB)" },
+      { status: 413 },
+    );
+  }
+
+  if (isDev()) {
     await new Promise((r) => setTimeout(r, 1000));
     return NextResponse.json(devMock(qtd));
   }

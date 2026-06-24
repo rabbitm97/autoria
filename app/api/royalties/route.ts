@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ const MOCK: Royalty[] = [
 // ─── GET /api/royalties ───────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     const project_id = req.nextUrl.searchParams.get("project_id");
     return NextResponse.json(project_id ? MOCK.filter(r => r.project_id === project_id) : MOCK);
   }
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
 // ─── POST /api/royalties ──────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json({ error: "Mock mode: use a produção para criar lançamentos" }, { status: 400 });
   }
 
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
 // ─── DELETE /api/royalties?id=... ─────────────────────────────────────────────
 
 export async function DELETE(req: NextRequest) {
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json({ ok: true });
   }
 

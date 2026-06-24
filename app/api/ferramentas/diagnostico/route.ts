@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText } from "@/lib/anthropic";
+import { anthropic, parseLLMJson, extractText, isDev } from "@/lib/anthropic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ const MOCK: DiagnosticoFerramenta = {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     await new Promise((r) => setTimeout(r, 1200));
     return NextResponse.json(MOCK);
   }

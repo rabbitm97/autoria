@@ -2,6 +2,7 @@ export const maxDuration = 30;
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { PDFDocument } from "pdf-lib";
@@ -166,11 +167,10 @@ async function analisarCapaGrafica(params: {
 // ─── POST /api/agentes/prova ─────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -388,7 +388,7 @@ export async function GET(req: NextRequest) {
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
 
-  if (process.env.NODE_ENV === "development") return NextResponse.json(null);
+  if (isDev()) return NextResponse.json(null);
 
   const supabase = await createSupabaseServerClient();
 

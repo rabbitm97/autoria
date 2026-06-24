@@ -3,12 +3,12 @@ export const maxDuration = 30;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
   let userId: string;
 
-  if (isDev) {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     try {

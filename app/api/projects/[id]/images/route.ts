@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -15,7 +16,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
 
   let formData: FormData;
   try {
@@ -30,7 +30,7 @@ export async function POST(
     return NextResponse.json({ error: "Tipo de arquivo não suportado. Use JPG, PNG ou WebP." }, { status: 415 });
   }
 
-  if (isDev) {
+  if (isDev()) {
     return NextResponse.json({ url: `https://placehold.co/600x800?text=${encodeURIComponent(file.name)}`, dev: true });
   }
 

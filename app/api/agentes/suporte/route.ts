@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, extractText, traceClaudeCall } from "@/lib/anthropic";
+import { anthropic, extractText, traceClaudeCall, isDev } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 
@@ -79,11 +79,11 @@ Para questões não resolvidas: oi@autoria.app. SLA: 24h úteis (plano Pro: 4h �
 // ─── POST /api/agentes/suporte ────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
 
   // Load project context if provided
   let contextoProj = "";
-  if (project_id && !isDev) {
+  if (project_id && !dev) {
     const { data } = await supabase
       .from("projects")
       .select("etapa_atual, dados_diagnostico, manuscript:manuscript_id(nome)")
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
   const res = await traceClaudeCall({
     agentName: "suporte",
     projectId: project_id ?? undefined,
-    userId: isDev ? undefined : userId,
+    userId: dev ? undefined : userId,
     model: "claude-sonnet-4-6",
     input: { system: KNOWLEDGE_BASE + contextoProj, messages: [{ role: "user", content: pergunta }] },
     fn: () => anthropic.messages.create({
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
   const resposta = extractText(res.content).trim();
 
   let ticketId: string | null = null;
-  if (!isDev) {
+  if (!dev) {
     const { data } = await supabase
       .from("tickets")
       .insert({ user_id: userId, project_id, pergunta, resposta_ia: resposta })
@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
 // ─── PATCH /api/agentes/suporte?id=... ───────────────────────────────────────
 
 export async function PATCH(req: NextRequest) {
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json({ ok: true });
   }
 
@@ -171,7 +171,7 @@ export async function PATCH(req: NextRequest) {
 // ─── GET /api/agentes/suporte ─────────────────────────────────────────────────
 
 export async function GET() {
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     return NextResponse.json([
       { id: "d1", project_id: null, pergunta: "Como faço para gerar o EPUB?", resposta_ia: "Para gerar o EPUB, acesse a página de Diagramação do seu projeto e clique em 'Gerar EPUB' após gerar o PDF.", resolvido: true,  criado_em: new Date(Date.now() - 86400000).toISOString() },
       { id: "d2", project_id: null, pergunta: "Quanto tempo demora a publicação na Amazon?", resposta_ia: "Após o envio, a Amazon leva entre 24 e 72 horas para revisar e publicar seu livro.", resolvido: false, criado_em: new Date(Date.now() - 3600000).toISOString() },

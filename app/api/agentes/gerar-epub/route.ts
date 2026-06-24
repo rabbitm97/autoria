@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import JSZip from "jszip";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
@@ -197,7 +198,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
 
   let userId: string;
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     userId = "dev-user";
   } else {
     const { data: { user }, error } = await supabase.auth.getUser();
@@ -224,7 +225,7 @@ export async function POST(req: NextRequest) {
   let editorData: { comOrelhas?: boolean } | undefined;
   let capaResolvida: ReturnType<typeof resolveCapaCompleta> | null = null;
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     titulo    = "O Último Manuscrito";
     subtitulo = "Uma noite que mudou tudo";
     autor     = "Dev Author";
@@ -434,7 +435,7 @@ export async function GET(req: NextRequest) {
   const project_id = req.nextUrl.searchParams.get("project_id");
   if (!project_id) return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
 
-  if (process.env.NODE_ENV === "development") return NextResponse.json(null);
+  if (isDev()) return NextResponse.json(null);
 
   const { data } = await supabase
     .from("projects")

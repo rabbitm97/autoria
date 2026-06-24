@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import { isFormatoValido, getFormatoDef, type FormatoLivro } from "@/lib/formatos";
 
 // ─── GET /api/projects/[id]/estimativa-paginas?formato=padrao_br ──────────────
@@ -9,12 +10,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const isDev = process.env.NODE_ENV === "development";
+  const dev = isDev();
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
-  if (isDev) {
+  if (dev) {
     userId = "dev-user";
     supabase = await createSupabaseServerClient();
   } else {
@@ -40,7 +41,7 @@ export async function GET(
     .from("projects")
     .select("dados_miolo, manuscripts:manuscript_id(texto, texto_revisado)")
     .eq("id", id)
-    .eq("user_id", isDev ? (userId as string) : userId)
+    .eq("user_id", dev ? (userId as string) : userId)
     .single();
 
   if (error || !project) {
