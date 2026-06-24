@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import Link from "next/link";
 
 export default async function PublicacaoDiretaIndex() {
-  const isDev = process.env.NODE_ENV === "development";
-
-  if (isDev) {
+  if (isDev()) {
     redirect("/dashboard/publicacao-direta/mock-1");
   }
 

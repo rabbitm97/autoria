@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
 import Link from "next/link";
 import { ProjectsThumbnails } from "./ProjectsThumbnails";
 
@@ -139,7 +140,7 @@ export default async function DashboardPage() {
   let projetos: Projeto[] = [];
   let userName = "Autor";
 
-  if (process.env.NODE_ENV === "development") {
+  if (isDev()) {
     projetos = MOCK_PROJETOS;
     userName = "Mateus";
   } else {

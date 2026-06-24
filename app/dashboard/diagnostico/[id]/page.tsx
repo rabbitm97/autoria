@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
+import { isDev } from "@/lib/anthropic";
 import type { DiagnosticoResult } from "@/app/api/agentes/diagnostico/route";
 import { DiagnosticoActions } from "./actions";
 
@@ -322,11 +323,11 @@ export default async function DiagnosticoPage({ params }: PageProps) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
-  const isDev = process.env.NODE_ENV === "development";
-  if (!user && !isDev) redirect("/login");
+  const dev = isDev();
+  if (!user && !dev) redirect("/login");
 
   // Dev mock
-  if (!user && isDev) {
+  if (!user && dev) {
     const mock: DiagnosticoResult = {
       genero_provavel: "Romance Contemporâneo",
       confianca_genero: 88,
