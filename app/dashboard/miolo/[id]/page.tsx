@@ -164,18 +164,18 @@ export default function MioloPage() {
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_miolo, dados_capa, manuscripts(nome, texto, genero_principal, capitulos_aprovados)")
+      .select("dados_miolo, dados_capa, manuscripts(nome, titulo, texto, genero_principal, capitulos_aprovados)")
       .eq("id", projectId)
       .single();
 
     if (project) {
       const ms = project.manuscripts as unknown as {
-        nome?: string; texto?: string; genero_principal?: string;
+        nome?: string; titulo?: string | null; texto?: string; genero_principal?: string;
         capitulos_aprovados?: { titulo: string; pos: number }[] | null;
       } | null;
       const g = ms?.genero_principal ?? null;
       setGenero(g);
-      setManuscritoNome(ms?.nome ?? "Manuscrito");
+      setManuscritoNome((ms?.titulo?.trim()) || ms?.nome || "Manuscrito");
       const wc = ms?.texto?.split(/\s+/).filter(Boolean).length ?? 0;
       setPalavrasTotal(wc);
 

@@ -377,7 +377,7 @@ export default async function DiagnosticoPage({ params }: PageProps) {
   // Production: fetch project
   const { data: project } = await supabase
     .from("projects")
-    .select("id, etapa_atual, usar_revisao, diagnostico, manuscripts(nome)")
+    .select("id, etapa_atual, usar_revisao, diagnostico, manuscripts(nome, titulo)")
     .eq("id", id)
     .eq("user_id", user!.id)
     .single();
@@ -385,8 +385,8 @@ export default async function DiagnosticoPage({ params }: PageProps) {
   if (!project) notFound();
 
   const diagnostico = project.diagnostico as DiagnosticoResult | null;
-  const manuscritoNome =
-    (project.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito";
+  const ms = project.manuscripts as unknown as { nome?: string; titulo?: string | null } | null;
+  const manuscritoNome = (ms?.titulo?.trim()) || ms?.nome || "Manuscrito";
   const usarRevisao = project.usar_revisao as boolean | null;
 
   return (

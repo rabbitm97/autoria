@@ -193,7 +193,6 @@ export default function RevisaoPage() {
   const newFileRef = useRef<HTMLInputElement>(null);
 
   const [usarRevisao, setUsarRevisao] = useState<boolean | null>(null);
-  const [manuscriptId, setManuscriptId] = useState<string>("");
   const [manuscritoNome, setManuscritoNome] = useState<string>("");
   const [manuscritoTexto, setManuscritoTexto] = useState<string>("");
   const [revisao, setRevisao] = useState<RevisaoResult | null>(null);
@@ -206,6 +205,8 @@ export default function RevisaoPage() {
   const [filtro, setFiltro] = useState<"todas" | "critico" | "recomendado" | "opcional">("todas");
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "analyzing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [confirmUploadOpen, setConfirmUploadOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   // Progresso do batch enquanto Anthropic processa; null quando inativo
   const [pollProgress, setPollProgress] = useState<{
     done: number;
@@ -272,15 +273,14 @@ export default function RevisaoPage() {
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("usar_revisao, manuscript_id, dados_revisao, manuscripts(nome, texto)")
+      .select("usar_revisao, manuscript_id, dados_revisao, manuscripts(nome, titulo, texto)")
       .eq("id", projectId)
       .single();
 
     if (project) {
       setUsarRevisao(project.usar_revisao as boolean | null);
-      setManuscriptId((project.manuscript_id as string | null) ?? "");
-      const ms = project.manuscripts as unknown as { nome: string; texto: string | null } | null;
-      setManuscritoNome(ms?.nome ?? "Manuscrito");
+      const ms = project.manuscripts as unknown as { nome: string; titulo: string | null; texto: string | null } | null;
+      setManuscritoNome((ms?.titulo?.trim()) || ms?.nome || "Manuscrito");
       setManuscritoTexto(ms?.texto ?? "");
 
       const raw = project.dados_revisao as RevisaoProcessingState | RevisaoResult | null;
@@ -481,66 +481,57 @@ export default function RevisaoPage() {
 
   // ── New file upload ──────────────────────────────────────────────────────
 
-  async function handleNewFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Antes de processar, pede confirmação porque vai descartar revisão atual
+    setPendingFile(file);
+    setConfirmUploadOpen(true);
+    // Limpa input para permitir re-seleção do mesmo arquivo se autor cancelar
+    if (newFileRef.current) newFileRef.current.value = "";
+  }
+
+  async function confirmAndUploadNewFile() {
+    if (!pendingFile) return;
+    const file = pendingFile;
+    setConfirmUploadOpen(false);
+    setPendingFile(null);
     setUploadError(null);
 
     try {
-      // Step 1: parse file
+      // Passo 1: parsear texto do arquivo
       setUploadStatus("parsing");
       const fd = new FormData();
       fd.append("file", file);
       const parseRes = await fetch("/api/ferramentas/parse-file", { method: "POST", body: fd });
       const parseData = await parseRes.json() as { texto?: string; error?: string };
-      if (!parseRes.ok) throw new Error(parseData.error ?? "Erro ao processar arquivo.");
-
-      // Step 2: save texto to manuscripts
-      if (manuscriptId) {
-        await supabase
-          .from("manuscripts")
-          .update({ texto: parseData.texto })
-          .eq("id", manuscriptId);
-        setManuscritoTexto(parseData.texto ?? "");
+      if (!parseRes.ok || !parseData.texto) {
+        throw new Error(parseData.error ?? "Erro ao processar arquivo.");
       }
 
-      // Step 3: submete novo batch para o texto actualizado
+      // Passo 2: chamada atômica que descarta revisão, salva texto, avança etapa
       setUploadStatus("analyzing");
-      const trigRes = await fetch("/api/agentes/revisao", {
+      const replaceRes = await fetch(`/api/projects/${projectId}/replace-final-text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
+        body: JSON.stringify({ texto: parseData.texto }),
       });
-      if (!trigRes.ok) {
-        const d = await trigRes.json() as { error?: string };
-        throw new Error(d.error ?? "Erro ao iniciar revisão.");
+      if (!replaceRes.ok) {
+        const d = await replaceRes.json() as { error?: string };
+        throw new Error(d.error ?? "Erro ao salvar arquivo final.");
       }
-      const trigData = await trigRes.json() as {
-        status: string;
-        revisao?: RevisaoResult;
-        total_chunks?: number;
-        message?: string;
-      };
-      if (trigData.status === "done") {
-        setRevisao(trigData.revisao!);
-        setAceitas(new Set()); setRejeitadas(new Set());
-      } else if (trigData.status === "skipped") {
-        setRevisao(trigData.revisao!);
-        if (trigData.revisao?.aceitas) setAceitas(new Set(trigData.revisao.aceitas));
-        if (trigData.revisao?.rejeitadas) setRejeitadas(new Set(trigData.revisao.rejeitadas));
-      } else if (trigData.status === "already_processing") {
-        setPollProgress({ done: 0, processing: 0, total: 1, iniciado_em: new Date().toISOString() });
-        startPolling();
-      } else if (trigData.status === "processing") {
-        setPollProgress({ done: 0, processing: 0, total: trigData.total_chunks ?? 1, iniciado_em: new Date().toISOString() });
-        startPolling();
-      }
+
+      // Passo 3: redireciona para próxima etapa
+      router.push(`/dashboard/elementos/${projectId}`);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
-    } finally {
       setUploadStatus("idle");
-      if (newFileRef.current) newFileRef.current.value = "";
     }
+  }
+
+  function cancelUpload() {
+    setConfirmUploadOpen(false);
+    setPendingFile(null);
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -692,9 +683,9 @@ export default function RevisaoPage() {
           <>
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Revisão completa</p>
-                <h1 className="font-heading text-3xl text-brand-primary">{manuscritoNome}</h1>
+                <h1 className="font-heading text-3xl text-brand-primary truncate" title={manuscritoNome}>{manuscritoNome}</h1>
                 <p className="text-zinc-400 text-sm mt-1">
                   {total} sugestões · {aceitas.size} aceitas · {rejeitadas.size} rejeitadas
                   {pendentes > 0 && <span className="text-amber-500"> · {pendentes} pendentes</span>}
@@ -732,11 +723,20 @@ export default function RevisaoPage() {
                   ↓ DOCX
                 </button>
                 <button
-                  onClick={triggerRevisao}
-                  disabled={triggering}
-                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                  onClick={gerarProva}
+                  disabled={saving}
+                  className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors disabled:opacity-40"
+                  title="Baixar prova com texto revisado"
                 >
-                  {triggering ? "Enviando…" : "↺ Nova análise"}
+                  Ver prova
+                </button>
+                <button
+                  onClick={finalizarRevisao}
+                  disabled={saving || !canFinish}
+                  title={!canFinish ? `Avalie todas as ${pendentes} sugestões pendentes para continuar` : "Finalizar revisão e avançar"}
+                  className="px-3 py-2 text-xs bg-brand-primary text-brand-surface rounded-xl hover:bg-[#2a2a4e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
+                >
+                  {saving ? "Salvando…" : "Finalizar →"}
                 </button>
               </div>
             </div>
@@ -802,7 +802,7 @@ export default function RevisaoPage() {
                   type="file"
                   accept=".docx,.pdf,.txt"
                   className="hidden"
-                  onChange={handleNewFile}
+                  onChange={handleFilePick}
                 />
                 <button
                   onClick={() => newFileRef.current?.click()}
@@ -813,7 +813,7 @@ export default function RevisaoPage() {
                     <span className="w-3.5 h-3.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
                   )}
                   {uploadStatus === "parsing" ? "Extraindo texto…" :
-                   uploadStatus === "analyzing" ? "Re-analisando…" :
+                   uploadStatus === "analyzing" ? "Salvando arquivo final…" :
                    "↑ Enviar arquivo revisado"}
                 </button>
                 <span className="text-xs text-zinc-400">Aceita .docx, .pdf ou .txt</span>
@@ -858,6 +858,35 @@ export default function RevisaoPage() {
           </>
         )}
       </main>
+
+      {/* Modal de confirmação para novo arquivo após revisão */}
+      {confirmUploadOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <h3 className="font-heading text-xl text-brand-primary mb-3">Enviar arquivo final?</h3>
+            <p className="text-zinc-600 text-sm leading-relaxed mb-2">
+              Ao enviar um novo arquivo, ele será considerado o <strong>texto final</strong> da sua obra. A revisão atual será descartada e você avançará para a próxima etapa.
+            </p>
+            <p className="text-zinc-500 text-xs mb-6">
+              Esta ação não dispara reprocessamento da IA e não consome créditos.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={cancelUpload}
+                className="px-4 py-2 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:bg-zinc-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmAndUploadNewFile}
+                className="px-4 py-2 rounded-xl bg-brand-primary text-brand-surface text-sm font-semibold hover:bg-[#2a2a4e]"
+              >
+                Sim, usar este como final
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

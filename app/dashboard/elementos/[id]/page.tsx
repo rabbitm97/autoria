@@ -39,7 +39,7 @@ export default function ElementosPage() {
     const [projRes, fmtRes] = await Promise.all([
       supabase
         .from("projects")
-        .select("dados_elementos, manuscripts(nome)")
+        .select("dados_elementos, manuscripts(nome, titulo)")
         .eq("id", projectId)
         .single(),
       fetch(`/api/projects/${projectId}/formato`).then(r => r.json()).catch(() => null),
@@ -48,9 +48,8 @@ export default function ElementosPage() {
     if (projRes.data) {
       const el = projRes.data.dados_elementos as ElementosEditoriais | null;
       if (el) populateFields(el);
-      setManuscritoNome(
-        (projRes.data.manuscripts as unknown as { nome: string } | null)?.nome ?? "Manuscrito"
-      );
+      const ms = projRes.data.manuscripts as unknown as { nome?: string; titulo?: string | null } | null;
+      setManuscritoNome((ms?.titulo?.trim()) || ms?.nome || "Manuscrito");
     }
 
     if (fmtRes) {

@@ -149,19 +149,20 @@ export default function CreditosPage() {
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_creditos, dados_capa, dados_elementos, manuscripts(nome, autor_primeiro_nome, autor_sobrenome)")
+      .select("dados_creditos, dados_capa, dados_elementos, manuscripts(nome, titulo, autor_primeiro_nome, autor_sobrenome)")
       .eq("id", projectId)
       .single();
 
     if (project) {
       const ms = project.manuscripts as unknown as {
         nome?: string;
+        titulo?: string | null;
         autor_primeiro_nome?: string;
         autor_sobrenome?: string;
       } | null;
 
       const nomeCompleto = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ");
-      setManuscritoNome(ms?.nome ?? "Manuscrito");
+      setManuscritoNome((ms?.titulo?.trim()) || ms?.nome || "Manuscrito");
       if (nomeCompleto && !titularDireitos) setTitularDireitos(nomeCompleto);
 
       const fmtRes = await fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null);
