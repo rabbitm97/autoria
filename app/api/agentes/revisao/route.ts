@@ -305,6 +305,49 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "done", revisao: revisaoMock });
   }
 
+  // ── Short-circuit: revisão já feita ou em andamento ──────────────────────────
+  // Decisão de produto (Bloco 12): não reprocessamos automaticamente quando texto
+  // muda pós-revisão. Mantém a revisão existente e avança etapa.
+  {
+    const { data: existing } = await supabase
+      .from("projects")
+      .select("dados_revisao")
+      .eq("id", project_id)
+      .eq("user_id", user.id)
+      .single();
+
+    const dr = existing?.dados_revisao as unknown as
+      | RevisaoProcessingState
+      | RevisaoResult
+      | null;
+
+    if (dr && typeof dr === "object") {
+      // Caso A: batch em andamento — não duplica
+      if ((dr as RevisaoProcessingState).status === "processing") {
+        return NextResponse.json({
+          status: "already_processing",
+          message: "Revisão já está em andamento. Aguarde.",
+        });
+      }
+
+      // Caso B: revisão finalizada — avança etapa, retorna skipped
+      const drResult = dr as RevisaoResult;
+      if (drResult.finalizado_em || drResult.revisado_em) {
+        await supabase
+          .from("projects")
+          .update({ etapa_atual: "elementos" })
+          .eq("id", project_id)
+          .eq("user_id", user.id);
+
+        return NextResponse.json({
+          status: "skipped",
+          message: "Revisão já foi feita. Mudanças no texto não disparam reprocessamento automático.",
+          revisao: drResult,
+        });
+      }
+    }
+  }
+
   const SYSTEM_PROMPT = await getAgentPrompt("revisao", FALLBACK_PROMPT);
   const chunks = splitIntoChunks(texto, 10_000);
 
@@ -410,8 +453,16 @@ export async function GET(request: NextRequest) {
   const batch = await anthropic.messages.batches.retrieve(batch_id);
 
   if (batch.processing_status !== "ended") {
-    const done = batch.request_counts.succeeded + batch.request_counts.errored;
-    return NextResponse.json({ status: "processing", done, total: total_chunks });
+    const counts = batch.request_counts;
+    const done = counts.succeeded + counts.errored;
+    const processing = counts.processing;
+    return NextResponse.json({
+      status: "processing",
+      done,
+      processing,
+      total: total_chunks,
+      iniciado_em: (state as RevisaoProcessingState).iniciado_em,
+    });
   }
 
   // Batch concluído — coleta, faz merge e salva resultado final

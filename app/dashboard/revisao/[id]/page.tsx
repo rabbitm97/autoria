@@ -206,8 +206,13 @@ export default function RevisaoPage() {
   const [filtro, setFiltro] = useState<"todas" | "critico" | "recomendado" | "opcional">("todas");
   const [uploadStatus, setUploadStatus] = useState<"idle" | "parsing" | "analyzing">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
-  // Progresso do batch: { done, total } enquanto Anthropic processa; null quando inativo
-  const [pollProgress, setPollProgress] = useState<{ done: number; total: number } | null>(null);
+  // Progresso do batch enquanto Anthropic processa; null quando inativo
+  const [pollProgress, setPollProgress] = useState<{
+    done: number;
+    processing: number;
+    total: number;
+    iniciado_em?: string;
+  } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Polling ───────────────────────────────────────────────────────────────────
@@ -223,7 +228,12 @@ export default function RevisaoPage() {
         const res = await fetch(`/api/agentes/revisao?project_id=${projectId}`);
         if (!res.ok) { setError("Erro ao verificar status da revisão."); return; }
         const data = await res.json() as {
-          status: string; done?: number; total?: number; revisao?: RevisaoResult;
+          status: string;
+          done?: number;
+          processing?: number;
+          total?: number;
+          iniciado_em?: string;
+          revisao?: RevisaoResult;
         };
         if (data.status === "done") {
           setPollProgress(null);
@@ -231,8 +241,18 @@ export default function RevisaoPage() {
           setAceitas(new Set());
           setRejeitadas(new Set());
         } else if (data.status === "processing") {
-          setPollProgress({ done: data.done ?? 0, total: data.total ?? 1 });
-          pollingRef.current = setTimeout(poll, 5_000);
+          setPollProgress({
+            done: data.done ?? 0,
+            processing: data.processing ?? 0,
+            total: data.total ?? 1,
+            iniciado_em: data.iniciado_em,
+          });
+          // Polling com backoff: 2s primeiros 30s, depois 5s, depois 10s
+          const elapsed = data.iniciado_em
+            ? (Date.now() - new Date(data.iniciado_em).getTime()) / 1000
+            : 0;
+          const interval = elapsed < 30 ? 2_000 : elapsed < 120 ? 5_000 : 10_000;
+          pollingRef.current = setTimeout(poll, interval);
         } else {
           setError("Estado inesperado da revisão. Tente novamente.");
         }
@@ -267,7 +287,7 @@ export default function RevisaoPage() {
       if (raw && (raw as RevisaoProcessingState).status === "processing") {
         // Batch em andamento — retoma polling (ex: usuário recarregou a página)
         const ps = raw as RevisaoProcessingState;
-        setPollProgress({ done: 0, total: ps.total_chunks });
+        setPollProgress({ done: 0, processing: 0, total: ps.total_chunks, iniciado_em: ps.iniciado_em });
       } else if (raw) {
         const rev = raw as RevisaoResult;
         setRevisao(rev);
@@ -321,15 +341,29 @@ export default function RevisaoPage() {
         return;
       }
 
-      const data = await res.json() as { status: string; revisao?: RevisaoResult; total_chunks?: number };
+      const data = await res.json() as {
+        status: string;
+        revisao?: RevisaoResult;
+        total_chunks?: number;
+        message?: string;
+      };
 
       if (data.status === "done") {
         // Mock ou livro muito curto processado instantaneamente
         setRevisao(data.revisao!);
         setAceitas(new Set());
         setRejeitadas(new Set());
+      } else if (data.status === "skipped") {
+        // Revisão já feita — reutiliza a existente
+        setRevisao(data.revisao!);
+        if (data.revisao?.aceitas) setAceitas(new Set(data.revisao.aceitas));
+        if (data.revisao?.rejeitadas) setRejeitadas(new Set(data.revisao.rejeitadas));
+      } else if (data.status === "already_processing") {
+        // Batch já estava rodando — entra em polling
+        setPollProgress({ done: 0, processing: 0, total: 1, iniciado_em: new Date().toISOString() });
+        startPolling();
       } else if (data.status === "processing") {
-        setPollProgress({ done: 0, total: data.total_chunks ?? 1 });
+        setPollProgress({ done: 0, processing: 0, total: data.total_chunks ?? 1, iniciado_em: new Date().toISOString() });
         startPolling();
       } else {
         setError("Resposta inesperada do servidor.");
@@ -481,12 +515,24 @@ export default function RevisaoPage() {
         const d = await trigRes.json() as { error?: string };
         throw new Error(d.error ?? "Erro ao iniciar revisão.");
       }
-      const trigData = await trigRes.json() as { status: string; revisao?: RevisaoResult; total_chunks?: number };
+      const trigData = await trigRes.json() as {
+        status: string;
+        revisao?: RevisaoResult;
+        total_chunks?: number;
+        message?: string;
+      };
       if (trigData.status === "done") {
         setRevisao(trigData.revisao!);
         setAceitas(new Set()); setRejeitadas(new Set());
+      } else if (trigData.status === "skipped") {
+        setRevisao(trigData.revisao!);
+        if (trigData.revisao?.aceitas) setAceitas(new Set(trigData.revisao.aceitas));
+        if (trigData.revisao?.rejeitadas) setRejeitadas(new Set(trigData.revisao.rejeitadas));
+      } else if (trigData.status === "already_processing") {
+        setPollProgress({ done: 0, processing: 0, total: 1, iniciado_em: new Date().toISOString() });
+        startPolling();
       } else if (trigData.status === "processing") {
-        setPollProgress({ done: 0, total: trigData.total_chunks ?? 1 });
+        setPollProgress({ done: 0, processing: 0, total: trigData.total_chunks ?? 1, iniciado_em: new Date().toISOString() });
         startPolling();
       }
     } catch (err) {
@@ -558,32 +604,55 @@ export default function RevisaoPage() {
 
         ) : pollProgress !== null ? (
           /* Batch em processamento */
-          <div className="max-w-lg mx-auto text-center py-16">
-            <div className="w-16 h-16 rounded-2xl bg-brand-primary/5 flex items-center justify-center mx-auto mb-6">
-              <span className="w-8 h-8 rounded-full border-4 border-brand-primary border-t-transparent animate-spin" />
-            </div>
-            <h1 className="font-heading text-3xl text-brand-primary mb-3">Revisão em andamento</h1>
-            <p className="text-zinc-500 leading-relaxed mb-6">
-              A Autoria está analisando seu manuscrito em paralelo. Você pode fechar esta página — o resultado será salvo automaticamente.
-            </p>
-            {/* Progress bar */}
-            <div className="w-full bg-zinc-100 rounded-full h-2 mb-2">
-              <div
-                className="bg-brand-primary h-2 rounded-full transition-all duration-500"
-                style={{ width: pollProgress.total > 0 ? `${Math.round((pollProgress.done / pollProgress.total) * 100)}%` : "5%" }}
-              />
-            </div>
-            <p className="text-zinc-400 text-sm mb-8">
-              {pollProgress.done > 0
-                ? `${pollProgress.done} de ${pollProgress.total} partes concluídas`
-                : `0 de ${pollProgress.total} partes — aguardando início…`}
-            </p>
-            {error && (
-              <div className="mb-4 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm text-left">
-                {error}
+          (() => {
+            const totalDone = pollProgress.done + pollProgress.processing;
+            const pct = pollProgress.total > 0
+              ? Math.max(5, Math.round((totalDone / pollProgress.total) * 100))
+              : 5;
+            const elapsed = pollProgress.iniciado_em
+              ? Math.floor((Date.now() - new Date(pollProgress.iniciado_em).getTime()) / 1000)
+              : 0;
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            const tempoStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+            let mensagem: string;
+            if (pollProgress.done === pollProgress.total && pollProgress.total > 0) {
+              mensagem = "Finalizando análise…";
+            } else if (pollProgress.done > 0) {
+              mensagem = `${pollProgress.done} de ${pollProgress.total} partes concluídas${pollProgress.processing > 0 ? ` · ${pollProgress.processing} em análise` : ""}`;
+            } else if (pollProgress.processing > 0) {
+              mensagem = `Analisando ${pollProgress.processing} de ${pollProgress.total} partes em paralelo…`;
+            } else if (elapsed < 15) {
+              mensagem = "Enviando texto para a IA…";
+            } else if (elapsed < 60) {
+              mensagem = "Aguardando início da análise…";
+            } else {
+              mensagem = "Análise pode levar alguns minutos para textos longos…";
+            }
+
+            return (
+              <div className="flex flex-col items-center justify-center py-24 px-6">
+                <div className="w-full max-w-md">
+                  <div className="h-2 bg-zinc-100 rounded-full overflow-hidden mb-3">
+                    <div
+                      className="h-full bg-brand-gold transition-all duration-700 ease-out"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className="text-sm text-zinc-700 text-center mb-1">{mensagem}</p>
+                  <p className="text-xs text-zinc-400 text-center font-mono">
+                    {tempoStr} decorridos
+                  </p>
+                  {error && (
+                    <div className="mt-6 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm text-left">
+                      {error}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+            );
+          })()
 
         ) : !revisao ? (
           /* Not yet run */
