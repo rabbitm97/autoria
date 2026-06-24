@@ -272,8 +272,27 @@ export async function POST(request: NextRequest) {
     });
 
   if (uploadErr) {
-    console.error("[miolo] Erro upload:", uploadErr);
-    return NextResponse.json({ error: "Erro ao salvar o miolo gerado." }, { status: 500 });
+    console.error("[miolo] Erro upload — contexto completo:", {
+      storagePath,
+      contentType: "text/html; charset=utf-8",
+      bufferBytes: htmlBuffer.length,
+      bufferKB: Math.round(htmlBuffer.length / 1024),
+      errorName: uploadErr.name,
+      errorMessage: uploadErr.message,
+      errorJSON: JSON.stringify(uploadErr, Object.getOwnPropertyNames(uploadErr)),
+    });
+    return NextResponse.json(
+      {
+        error: "Erro ao salvar o miolo gerado.",
+        detail: uploadErr.message,
+        debug: {
+          storagePath,
+          bufferKB: Math.round(htmlBuffer.length / 1024),
+          contentType: "text/html; charset=utf-8",
+        },
+      },
+      { status: 500 }
+    );
   }
 
   const mioloResult: MioloResult = {

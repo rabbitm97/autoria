@@ -304,16 +304,36 @@ export async function POST(request: NextRequest) {
   );
   const storagePath = `${user.id}/creditos_${project_id}.html`;
 
+  const buffer = Buffer.from(html, "utf-8");
   const { error: uploadErr } = await storageClient.storage
     .from("manuscripts")
-    .upload(storagePath, Buffer.from(html, "utf-8"), {
+    .upload(storagePath, buffer, {
       contentType: "text/html; charset=utf-8",
       upsert: true,
     });
 
   if (uploadErr) {
-    console.error("[creditos] Erro upload:", uploadErr);
-    return NextResponse.json({ error: "Erro ao salvar a página de créditos." }, { status: 500 });
+    console.error("[creditos] Erro upload — contexto completo:", {
+      storagePath,
+      contentType: "text/html; charset=utf-8",
+      bufferBytes: buffer.length,
+      bufferKB: Math.round(buffer.length / 1024),
+      errorName: uploadErr.name,
+      errorMessage: uploadErr.message,
+      errorJSON: JSON.stringify(uploadErr, Object.getOwnPropertyNames(uploadErr)),
+    });
+    return NextResponse.json(
+      {
+        error: "Erro ao salvar a página de créditos.",
+        detail: uploadErr.message,
+        debug: {
+          storagePath,
+          bufferKB: Math.round(buffer.length / 1024),
+          contentType: "text/html; charset=utf-8",
+        },
+      },
+      { status: 500 }
+    );
   }
 
   const result: CreditosResult = {

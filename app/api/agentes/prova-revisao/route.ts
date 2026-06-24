@@ -187,16 +187,36 @@ export async function POST(req: NextRequest) {
     );
 
     const storagePath = `${userId}/prova_${project_id}.html`;
+    const buffer = Buffer.from(html, "utf-8");
     const { error: uploadErr } = await storageClient.storage
       .from("manuscripts")
-      .upload(storagePath, Buffer.from(html, "utf-8"), {
+      .upload(storagePath, buffer, {
         contentType: "text/html; charset=utf-8",
         upsert: true,
       });
 
     if (uploadErr) {
-      console.error("[prova-revisao] upload error:", uploadErr.message);
-      return NextResponse.json({ error: `Erro ao salvar prova: ${uploadErr.message}` }, { status: 500 });
+      console.error("[prova-revisao] Erro upload — contexto completo:", {
+        storagePath,
+        contentType: "text/html; charset=utf-8",
+        bufferBytes: buffer.length,
+        bufferKB: Math.round(buffer.length / 1024),
+        errorName: uploadErr.name,
+        errorMessage: uploadErr.message,
+        errorJSON: JSON.stringify(uploadErr, Object.getOwnPropertyNames(uploadErr)),
+      });
+      return NextResponse.json(
+        {
+          error: `Erro ao salvar prova: ${uploadErr.message}`,
+          detail: uploadErr.message,
+          debug: {
+            storagePath,
+            bufferKB: Math.round(buffer.length / 1024),
+            contentType: "text/html; charset=utf-8",
+          },
+        },
+        { status: 500 }
+      );
     }
 
     const { data: signed } = await storageClient.storage
