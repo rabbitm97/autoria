@@ -368,6 +368,9 @@ export default function CreditosPage() {
       ) : step === "config" ? (
         /* ── CONFIG ─────────────────────────────────────────────────────────── */
         <main className="max-w-3xl mx-auto px-4 py-10">
+          {error && (
+            <div className="mb-4 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+          )}
           <div className="mb-8">
             <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Página de Créditos</p>
             <h1 className="font-heading text-3xl text-brand-primary">Verso da folha de rosto</h1>
@@ -502,10 +505,6 @@ export default function CreditosPage() {
               </div>
             )}
           </SectionToggle>
-
-          {error && (
-            <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm mb-4">{error}</div>
-          )}
 
           <button
             type="button"

@@ -628,6 +628,9 @@ export default function MioloPage() {
       ) : step === "config" ? (
         /* ── CONFIG ── */
         <main className="max-w-3xl mx-auto px-4 pt-10 pb-36">
+          {error && (
+            <div className="mb-5 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm">{error}</div>
+          )}
           <div className="mb-8">
             <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Diagramação do Miolo</p>
             <h1 className="font-heading text-3xl text-brand-primary">Configure o interior do livro</h1>
@@ -824,10 +827,6 @@ export default function MioloPage() {
               </div>
             </div>
           </section>
-
-          {error && (
-            <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm mb-5">{error}</div>
-          )}
 
           {/* Sticky action bar — apenas o botão */}
           <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-zinc-100 px-4 py-4 z-20">

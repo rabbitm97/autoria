@@ -77,9 +77,30 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
+  // Lê formato atual para detectar mudança real
+  const { data: current } = await supabase
+    .from("projects")
+    .select("formato")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const formatoMudou = !!current?.formato && current.formato !== body.formato;
+
+  // Se o formato mudou, invalida dados_creditos: o hash inclui formato e
+  // paginas_usadas (que depende do formato via miolo), então um snapshot antigo
+  // dessincroniza com o novo formato e leva o autor a loop de reaprovação no miolo.
+  const updatePayload: { formato: string; dados_creditos?: null } = {
+    formato: body.formato,
+  };
+  if (formatoMudou) {
+    updatePayload.dados_creditos = null;
+    console.log(`[formato PATCH] formato mudou de ${current?.formato} para ${body.formato}, invalidando dados_creditos`);
+  }
+
   const { error: updateError } = await supabase
     .from("projects")
-    .update({ formato: body.formato })
+    .update(updatePayload)
     .eq("id", id)
     .eq("user_id", userId);
 
@@ -87,5 +108,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ formato: body.formato, locked: false });
+  return NextResponse.json({
+    formato: body.formato,
+    locked: false,
+    creditos_invalidated: formatoMudou,
+  });
 }
