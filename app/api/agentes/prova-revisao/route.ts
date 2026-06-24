@@ -191,14 +191,14 @@ export async function POST(req: NextRequest) {
     const { error: uploadErr } = await storageClient.storage
       .from("manuscripts")
       .upload(storagePath, buffer, {
-        contentType: "text/html; charset=utf-8",
+        contentType: "text/html",
         upsert: true,
       });
 
     if (uploadErr) {
       console.error("[prova-revisao] Erro upload — contexto completo:", {
         storagePath,
-        contentType: "text/html; charset=utf-8",
+        contentType: "text/html",
         bufferBytes: buffer.length,
         bufferKB: Math.round(buffer.length / 1024),
         errorName: uploadErr.name,
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
           debug: {
             storagePath,
             bufferKB: Math.round(buffer.length / 1024),
-            contentType: "text/html; charset=utf-8",
+            contentType: "text/html",
           },
         },
         { status: 500 }

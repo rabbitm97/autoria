@@ -267,14 +267,14 @@ export async function POST(request: NextRequest) {
   const { error: uploadErr } = await storageClient.storage
     .from("manuscripts")
     .upload(storagePath, htmlBuffer, {
-      contentType: "text/html; charset=utf-8",
+      contentType: "text/html",
       upsert: true,
     });
 
   if (uploadErr) {
     console.error("[miolo] Erro upload — contexto completo:", {
       storagePath,
-      contentType: "text/html; charset=utf-8",
+      contentType: "text/html",
       bufferBytes: htmlBuffer.length,
       bufferKB: Math.round(htmlBuffer.length / 1024),
       errorName: uploadErr.name,
@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
         debug: {
           storagePath,
           bufferKB: Math.round(htmlBuffer.length / 1024),
-          contentType: "text/html; charset=utf-8",
+          contentType: "text/html",
         },
       },
       { status: 500 }
