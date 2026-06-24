@@ -8,7 +8,7 @@ interface Projeto {
   id: string;
   etapa_atual: string;
   criado_em: string;
-  manuscript: { nome: string } | null;
+  manuscript: { nome: string; titulo: string | null } | null;
 }
 
 const ETAPA_HREF: Record<string, (id: string) => string> = {
@@ -68,8 +68,11 @@ export function ProjectsThumbnails({
                     : "border-zinc-200 group-hover/card:border-brand-gold/50"}`}
                 style={{ background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}
               >
-                <span className="text-[8px] text-brand-gold/80 font-medium text-center leading-tight px-1 truncate w-full text-center">
-                  {p.manuscript?.nome?.split(" ").slice(0, 2).join(" ") ?? "Livro"}
+                <span
+                  className="text-[8px] text-brand-gold/80 font-medium text-center leading-tight px-1 line-clamp-3 w-full break-words"
+                  title={p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}
+                >
+                  {p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}
                 </span>
               </div>
             </Link>

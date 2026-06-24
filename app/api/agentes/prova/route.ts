@@ -398,5 +398,16 @@ export async function GET(req: NextRequest) {
     .eq("id", project_id)
     .single();
 
-  return NextResponse.json(data?.dados_qa ?? null);
+  const raw = data?.dados_qa as Record<string, unknown> | null;
+
+  // Filtra schemas legados — só retorna se tem o shape novo (digital + grafica).
+  // Schemas antigos quebram o frontend ao acessar result.digital.aprovado.
+  // Retornando null, o front oferece "Analisar agora" e gera no shape correto.
+  if (!raw || typeof raw !== "object") return NextResponse.json(null);
+  if (!("digital" in raw) || !("grafica" in raw)) {
+    console.warn("[prova GET] dados_qa em schema legado para project_id:", project_id);
+    return NextResponse.json(null);
+  }
+
+  return NextResponse.json(raw);
 }

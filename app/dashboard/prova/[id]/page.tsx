@@ -659,16 +659,16 @@ export default function ProvaPage() {
   }
 
   // ── Derived state ──────────────────────────────────────────────────────────
-  const digitalAprovado = result?.digital.aprovado ?? false;
-  const digitalPendencias = result?.digital.pendencias ?? [];
-  const digitalAvisos = (result?.digital.avisos ?? []).filter(
+  const digitalAprovado = result?.digital?.aprovado ?? false;
+  const digitalPendencias = result?.digital?.pendencias ?? [];
+  const digitalAvisos = (result?.digital?.avisos ?? []).filter(
     a => a.id !== "capa_grafica_lombada_divergente",
   );
-  const graficaPendencias = (result?.grafica.pendencias ?? []).filter(
+  const graficaPendencias = (result?.grafica?.pendencias ?? []).filter(
     i => i.categoria === "capa_grafica",
   );
-  const graficaPreparada = result?.grafica.preparado ?? false;
-  const avisosLombada = result?.grafica.avisos.filter(
+  const graficaPreparada = result?.grafica?.preparado ?? false;
+  const avisosLombada = result?.grafica?.avisos?.filter(
     i => i.id === "capa_grafica_lombada_divergente",
   ) ?? [];
   const canPublish = digitalAprovado && modelApproved;

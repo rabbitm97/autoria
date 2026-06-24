@@ -682,8 +682,9 @@ export default function RevisaoPage() {
           /* Review UI */
           <>
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-              <div className="min-w-0 flex-1">
+            <div className="mb-6">
+              {/* Linha 1: título */}
+              <div className="min-w-0 mb-4">
                 <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Revisão completa</p>
                 <h1 className="font-heading text-3xl text-brand-primary truncate" title={manuscritoNome}>{manuscritoNome}</h1>
                 <p className="text-zinc-400 text-sm mt-1">
@@ -692,8 +693,8 @@ export default function RevisaoPage() {
                 </p>
               </div>
 
-              {/* Action buttons */}
-              <div className="flex flex-wrap gap-2 shrink-0">
+              {/* Linha 2: ações */}
+              <div className="flex flex-wrap gap-2 justify-end">
                 <button
                   onClick={aceitarTodas}
                   className="px-3 py-2 text-xs border border-zinc-200 rounded-xl text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 transition-colors"

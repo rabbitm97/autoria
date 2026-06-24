@@ -9,7 +9,7 @@ interface Projeto {
   id: string;
   etapa_atual: string;
   criado_em: string;
-  manuscript: { nome: string } | null;
+  manuscript: { nome: string; titulo: string | null } | null;
 }
 
 // ─── Step config ──────────────────────────────────────────────────────────────
@@ -40,9 +40,9 @@ const ETAPA_HREF: Record<string, (id: string) => string> = {
 };
 
 const MOCK_PROJETOS: Projeto[] = [
-  { id: "mock-1", etapa_atual: "revisao",       criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito" } },
-  { id: "mock-2", etapa_atual: "capa",          criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento" } },
-  { id: "mock-3", etapa_atual: "elementos",     criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte" } },
+  { id: "mock-1", etapa_atual: "revisao",       criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
+  { id: "mock-2", etapa_atual: "capa",          criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
+  { id: "mock-3", etapa_atual: "elementos",     criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
 ];
 
 const ETAPA_STEP_ALIAS: Record<string, string> = {
@@ -157,7 +157,7 @@ export default async function DashboardPage() {
 
       const { data } = await supabase
         .from("projects")
-        .select("id, etapa_atual, criado_em, manuscript:manuscript_id(nome)")
+        .select("id, etapa_atual, criado_em, manuscript:manuscript_id(nome, titulo)")
         .order("criado_em", { ascending: false });
 
       projetos = (data ?? []) as unknown as Projeto[];
@@ -167,7 +167,7 @@ export default async function DashboardPage() {
   const projetoAtivo = projetos[0] ?? null;
   const outrosProjetos = projetos.slice(1);
   const stepAtivo = projetoAtivo ? getStepIndex(projetoAtivo.etapa_atual) : 0;
-  const nomeAtivo = projetoAtivo?.manuscript?.nome ?? "Meu Livro";
+  const nomeAtivo = projetoAtivo?.manuscript?.titulo?.trim() || projetoAtivo?.manuscript?.nome || "Meu Livro";
   const continueHref = projetoAtivo
     ? (ETAPA_HREF[projetoAtivo.etapa_atual]?.(projetoAtivo.id) ?? `/dashboard/diagnostico/${projetoAtivo.id}`)
     : "/dashboard/novo-projeto";
@@ -324,7 +324,7 @@ export default async function DashboardPage() {
                             <div className="w-3 h-px bg-brand-gold/60" />
                           </div>
                           <p className="text-xs text-zinc-600 group-hover:text-brand-primary transition-colors truncate">
-                            {p.manuscript?.nome ?? "Sem nome"}
+                            {p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Sem nome"}
                           </p>
                         </Link>
                       ))}
