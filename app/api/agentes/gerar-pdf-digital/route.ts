@@ -151,18 +151,60 @@ export async function POST(req: NextRequest) {
     // Modo print: interpreta unidades pt corretamente e ativa @media print.
     await page.emulateMediaType("print");
 
-    console.log("[gerar-pdf-digital] HTML carregado:", {
+    console.log("[gerar-pdf-digital] preparando setContent:", {
       project_id,
       length: html.length,
       formato,
       viewport: { width: viewportWidth, height: viewportHeight },
     });
 
-    // Load HTML and wait for Google Fonts (@import) to finish resolving.
+    // Load HTML. networkidle0 espera 500ms de rede ociosa — não garante
+    // que @import de Google Fonts tenha resolvido. Por isso, abaixo,
+    // chamamos document.fonts.ready explícito.
     await page.setContent(html, {
       waitUntil: "networkidle0",
       timeout: 20_000,
     });
+
+    // Esperar que TODAS as fontes declaradas tenham terminado de carregar.
+    // Sem isto, Chromium pode cair em fallback genérico, ignorando o stack
+    // `font-family` declarado no template (EB Garamond, Source Serif 4 etc).
+    try {
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+      });
+    } catch (fontErr) {
+      console.warn("[gerar-pdf-digital] document.fonts.ready falhou:", fontErr);
+    }
+
+    // ── Telemetria de runtime ─────────────────────────────────────────────
+    // Captura estado real do rendering depois das fontes carregadas.
+    // Persistir no log do Vercel ajuda diagnóstico de regressões.
+    try {
+      const runtimeInfo = await page.evaluate(() => {
+        const body = document.body;
+        const cs = getComputedStyle(body);
+        const fontStatuses: Array<{ family: string; status: string }> = [];
+        document.fonts.forEach((f) => {
+          fontStatuses.push({ family: f.family, status: f.status });
+        });
+        return {
+          bodyFontSize: cs.fontSize,
+          bodyFontFamily: cs.fontFamily,
+          bodyLineHeight: cs.lineHeight,
+          viewport: { w: window.innerWidth, h: window.innerHeight },
+          fontStatuses,
+          fontsCount: document.fonts.size,
+        };
+      });
+      console.log("[gerar-pdf-digital] runtime depois de fonts.ready:", {
+        project_id,
+        formato,
+        ...runtimeInfo,
+      });
+    } catch (telErr) {
+      console.warn("[gerar-pdf-digital] telemetria runtime falhou:", telErr);
+    }
 
     // Use @page dimensions from the miolo's own CSS (preferCSSPageSize).
     // printBackground ensures template colors/ornaments are rendered.
