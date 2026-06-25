@@ -43,7 +43,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
     specs: {
       width_cm: 16, height_cm: 23,
       width_mm: 160, height_mm: 230,
-      margens: { top_mm: 20, outer_mm: 14, bottom_mm: 22, inner_mm: 17 },
+      margens: { top_mm: 20, outer_mm: 15, bottom_mm: 24, inner_mm: 18 },
       wpp: 260,
       bleed_mm: 3,
     },
@@ -58,7 +58,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
     specs: {
       width_cm: 14, height_cm: 21,
       width_mm: 140, height_mm: 210,
-      margens: { top_mm: 22, outer_mm: 18, bottom_mm: 27, inner_mm: 22 },
+      margens: { top_mm: 18, outer_mm: 13, bottom_mm: 22, inner_mm: 17 },
       wpp: 230,
       bleed_mm: 3,
     },
@@ -73,7 +73,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
     specs: {
       width_cm: 11, height_cm: 18,
       width_mm: 110, height_mm: 180,
-      margens: { top_mm: 20, outer_mm: 14, bottom_mm: 22, inner_mm: 18 },
+      margens: { top_mm: 15, outer_mm: 11, bottom_mm: 18, inner_mm: 14 },
       wpp: 200,
       bleed_mm: 3,
     },
