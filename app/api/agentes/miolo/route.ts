@@ -11,7 +11,7 @@ import { requireAuth } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
-import { buildBookHtml, clampCorpoPt } from "@/lib/miolo-builder";
+import { buildBookHtml, clampCorpoPt, wppEfetivo } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
@@ -259,7 +259,9 @@ export async function POST(request: NextRequest) {
       : pass1;
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
-  const paginasEstimadas = Math.max(1, Math.round(numPalavras / getFormatoDef(config.formato).specs.wpp));
+  const spec = getFormatoDef(config.formato).specs;
+  const wppAjustado = wppEfetivo(spec.wpp, config.corpo_pt);
+  const paginasEstimadas = Math.max(1, Math.round(numPalavras / wppAjustado));
   // Fórmula gráfica BR para papéis lisos: lombada (cm) = (gsm × pgs) / 14400
   // Multiplica por 10 para mm, arredonda para 1 casa decimal.
   const lombadaMm = Math.round((PAPEL_GRAMATURA_GSM * paginasReais / 14400) * 100) / 10;
