@@ -15,6 +15,20 @@ import type { FormatoLivro } from "@/lib/miolo-builder-digital";
 
 export type { FormatoLivro as Formato } from "@/lib/formatos";
 
+// Dimensões físicas dos formatos em mm.
+// Mantido inline para evitar dependência cruzada com lib/formatos.ts durante o
+// Bloco 13.3. Refatorar para importar de lib/formatos.ts em bloco posterior.
+const FORMATO_MM: Record<FormatoLivro, { width: number; height: number }> = {
+  padrao_br: { width: 160, height: 230 },
+  compacto:  { width: 140, height: 210 },
+  bolso:     { width: 110, height: 180 },
+  quadrado:  { width: 200, height: 200 },
+  a4:        { width: 210, height: 297 },
+};
+
+// 1 inch = 25.4 mm = 96 CSS px → conversão mm → CSS px.
+const PX_PER_MM = 96 / 25.4;
+
 export interface PdfResult {
   project_id: string;
   formato: FormatoLivro;
@@ -107,6 +121,14 @@ export async function POST(req: NextRequest) {
   const formato = (miolo.config?.formato ?? "padrao_br") as FormatoLivro;
   const html = applyDigitalCss(await htmlBlob.text(), formato);
 
+  // ── Calcular viewport físico (Bloco 13.3) ─────────────────────────────────
+  // O viewport DEVE bater com o tamanho físico da página declarado em @page,
+  // senão o Chromium aplica scaling implícito viewport→página e o font-size
+  // efetivo varia por formato.
+  const formatoDim = FORMATO_MM[formato];
+  const viewportWidth = Math.round(formatoDim.width * PX_PER_MM);
+  const viewportHeight = Math.round(formatoDim.height * PX_PER_MM);
+
   // ── Puppeteer: HTML → PDF ─────────────────────────────────────────────────
   let pdfBuffer: Buffer;
   const browser = await puppeteer.launch({
@@ -118,8 +140,24 @@ export async function POST(req: NextRequest) {
   try {
     const page = await browser.newPage();
 
-    console.log("[gerar-pdf-digital] HTML length:", html.length);
-    console.log("[gerar-pdf-digital] HTML primeiros 2000 chars:", html.slice(0, 2000));
+    // Viewport = tamanho físico da página em CSS px (96 px/in, 1 mm = 96/25.4 px).
+    // Sem isso, Chromium usa default 800×600 e fonts encolhem/inflam por formato.
+    await page.setViewport({
+      width: viewportWidth,
+      height: viewportHeight,
+      deviceScaleFactor: 1,
+    });
+
+    // Modo print: interpreta unidades pt corretamente e ativa @media print.
+    await page.emulateMediaType("print");
+
+    console.log("[gerar-pdf-digital] HTML carregado:", {
+      project_id,
+      length: html.length,
+      formato,
+      viewport: { width: viewportWidth, height: viewportHeight },
+    });
+
     // Load HTML and wait for Google Fonts (@import) to finish resolving.
     await page.setContent(html, {
       waitUntil: "networkidle0",
@@ -128,9 +166,11 @@ export async function POST(req: NextRequest) {
 
     // Use @page dimensions from the miolo's own CSS (preferCSSPageSize).
     // printBackground ensures template colors/ornaments are rendered.
+    // scale: 1 explícito para evitar default implícito do Chromium.
     const pdfData = await page.pdf({
       printBackground: true,
       preferCSSPageSize: true,
+      scale: 1,
       timeout: 40_000,
     });
 
