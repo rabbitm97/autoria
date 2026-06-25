@@ -14,15 +14,16 @@ import type { MioloResult } from "@/app/api/agentes/miolo/route";
 import type { FormatoLivro } from "@/lib/formatos";
 export type { FormatoLivro as Formato } from "@/lib/formatos";
 
-// Dimensões físicas dos formatos em mm.
+// Dimensões físicas dos formatos em mm + sangria.
 // Mantido inline para evitar dependência cruzada com lib/formatos.ts durante o
 // Bloco 13.3. Refatorar para importar de lib/formatos.ts em bloco posterior.
-const FORMATO_MM: Record<FormatoLivro, { width: number; height: number }> = {
-  padrao_br: { width: 160, height: 230 },
-  compacto:  { width: 140, height: 210 },
-  bolso:     { width: 110, height: 180 },
-  quadrado:  { width: 200, height: 200 },
-  a4:        { width: 210, height: 297 },
+// `bleed` espelha `spec.bleed_mm` em lib/formatos.ts — manter sincronizado.
+const FORMATO_MM: Record<FormatoLivro, { width: number; height: number; bleed: number }> = {
+  padrao_br: { width: 160, height: 230, bleed: 3 },
+  compacto:  { width: 140, height: 210, bleed: 3 },
+  bolso:     { width: 110, height: 180, bleed: 3 },
+  quadrado:  { width: 200, height: 200, bleed: 3 },
+  a4:        { width: 210, height: 297, bleed: 3 },
 };
 
 // 1 inch = 25.4 mm = 96 CSS px → conversão mm → CSS px.
@@ -121,12 +122,20 @@ export async function POST(req: NextRequest) {
 
   // ── Resolver formato e calcular viewport físico ───────────────────────────
   // O viewport DEVE bater com o tamanho físico da página declarado em @page,
-  // senão o Chromium aplica scaling implícito viewport→página e o font-size
-  // efetivo varia por formato. Esta é a correção central do Bloco 13.3.
+  // INCLUINDO sangria. O CSS do miolo gráfico declara
+  // `@page { size: (width + 2*bleed)mm (height + 2*bleed)mm }` — ver
+  // `buildPageCss` em lib/miolo-builder.ts. Sem incluir sangria aqui o
+  // Chromium aplica scaling implícito de ~23px entre viewport e page e o
+  // font-size efetivo varia por formato. (Fix 13.3.2.)
+  //
+  // NOTA: o gerar-pdf-digital usa `applyDigitalCss` que reescreve o @page
+  // SEM sangria — naquele handler o viewport continua sem somar bleed.
   const formato = (miolo.config?.formato ?? "padrao_br") as FormatoLivro;
   const formatoDim = FORMATO_MM[formato];
-  const viewportWidth = Math.round(formatoDim.width * PX_PER_MM);
-  const viewportHeight = Math.round(formatoDim.height * PX_PER_MM);
+  const totalWidthMm = formatoDim.width + 2 * formatoDim.bleed;
+  const totalHeightMm = formatoDim.height + 2 * formatoDim.bleed;
+  const viewportWidth = Math.round(totalWidthMm * PX_PER_MM);
+  const viewportHeight = Math.round(totalHeightMm * PX_PER_MM);
 
   // ── Puppeteer: HTML → PDF ─────────────────────────────────────────────────
   let pdfBuffer: Buffer;
@@ -154,6 +163,7 @@ export async function POST(req: NextRequest) {
       project_id,
       length: html.length,
       formato,
+      pageMm: { width: totalWidthMm, height: totalHeightMm },
       viewport: { width: viewportWidth, height: viewportHeight },
     });
 
