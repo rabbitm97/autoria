@@ -216,11 +216,23 @@ function buildPageCss(spec: FormatoSpecs, includeMarks: boolean): string {
 function buildBaseCss(corpo_pt: number): string {
   return `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: ${corpo_pt}pt; }
+html {
+  font-size: ${corpo_pt}pt;
+  overflow-x: hidden;
+  max-width: 100%;
+}
 body {
   font-size: ${corpo_pt}pt;
   line-height: 1.6;
   color: #1a1a1a;
+  overflow-x: hidden;
+  max-width: 100%;
+}
+@media print {
+  html, body {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+  }
 }
 
 /* Front matter — cada peça é uma página inteira sem numeração */
