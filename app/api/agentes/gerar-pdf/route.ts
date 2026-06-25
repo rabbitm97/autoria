@@ -215,11 +215,12 @@ export async function POST(req: NextRequest) {
       layoutViewport: LAYOUT_VIEWPORT_PX,
     });
 
-    // Load HTML. networkidle0 espera 500ms de rede ociosa — não garante
-    // que @import de Google Fonts tenha resolvido. Por isso, abaixo,
-    // chamamos document.fonts.ready explícito.
+    // Load HTML. `load` espera load event (inclui subrecursos como o @import
+    // de Google Fonts), mas não garante que as fontes tenham sido aplicadas
+    // ao layout. Por isso, abaixo, chamamos document.fonts.ready explícito.
+    // (puppeteer-core 25 removeu "networkidle0" do enum de setContent.)
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "load",
       timeout: 20_000,
     });
 
