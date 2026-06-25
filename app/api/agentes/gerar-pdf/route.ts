@@ -29,6 +29,17 @@ const FORMATO_MM: Record<FormatoLivro, { width: number; height: number; bleed: n
 // 1 inch = 25.4 mm = 96 CSS px → conversão mm → CSS px.
 const PX_PER_MM = 96 / 25.4;
 
+// Viewport de layout para o Puppeteer — INTENCIONALMENTE não depende do formato.
+//
+// Por que fixo grande: o Chromium serverless 148 aplica scaling
+// formato-dependente em page.pdf() quando o viewport é pequeno relativo a
+// window.screen (800×600). Telemetria do BLOCO-13.3.3 mostrou que o DOM
+// renderiza corretamente (11pt → 14.667px) mas o PDF gravado tem font menor.
+// Setando o viewport em A4 @ 150dpi (maior que screen em ambos eixos), o
+// scaling de proteção do Chromium deixa de se aplicar. O @page no CSS
+// (preferCSSPageSize: true) continua controlando o tamanho real do PDF.
+const LAYOUT_VIEWPORT_PX = { width: 1240, height: 1754 };
+
 export interface PdfResult {
   project_id: string;
   formato: FormatoLivro;
@@ -120,22 +131,18 @@ export async function POST(req: NextRequest) {
 
   const html = await htmlBlob.text();
 
-  // ── Resolver formato e calcular viewport físico ───────────────────────────
-  // O viewport DEVE bater com o tamanho físico da página declarado em @page,
-  // INCLUINDO sangria. O CSS do miolo gráfico declara
-  // `@page { size: (width + 2*bleed)mm (height + 2*bleed)mm }` — ver
-  // `buildPageCss` em lib/miolo-builder.ts. Sem incluir sangria aqui o
-  // Chromium aplica scaling implícito de ~23px entre viewport e page e o
-  // font-size efetivo varia por formato. (Fix 13.3.2.)
+  // ── Resolver formato e tamanho físico declarado em @page ──────────────────
+  // O @page no CSS do miolo gráfico declara
+  // `size: (width + 2*bleed)mm (height + 2*bleed)mm` — ver `buildPageCss`
+  // em lib/miolo-builder.ts. Esse continua sendo o tamanho REAL do PDF
+  // (controlado por preferCSSPageSize: true em page.pdf()).
   //
-  // NOTA: o gerar-pdf-digital usa `applyDigitalCss` que reescreve o @page
-  // SEM sangria — naquele handler o viewport continua sem somar bleed.
+  // O viewport do Puppeteer é separado: usamos LAYOUT_VIEWPORT_PX fixo grande
+  // (ver comentário no topo). Não dependente de formato. (Fix 13.3.4.)
   const formato = (miolo.config?.formato ?? "padrao_br") as FormatoLivro;
   const formatoDim = FORMATO_MM[formato];
   const totalWidthMm = formatoDim.width + 2 * formatoDim.bleed;
   const totalHeightMm = formatoDim.height + 2 * formatoDim.bleed;
-  const viewportWidth = Math.round(totalWidthMm * PX_PER_MM);
-  const viewportHeight = Math.round(totalHeightMm * PX_PER_MM);
 
   // ── Puppeteer: HTML → PDF ─────────────────────────────────────────────────
   let pdfBuffer: Buffer;
@@ -175,11 +182,12 @@ export async function POST(req: NextRequest) {
   try {
     const page = await browser.newPage();
 
-    // Viewport = tamanho físico da página em CSS px (96 px/in, 1 mm = 96/25.4 px).
-    // Sem isso, Chromium usa default 800×600 e fonts encolhem/inflam por formato.
+    // Viewport fixo grande — desativa scaling de proteção do Chromium 148.
+    // O tamanho real do PDF vem do @page no CSS (preferCSSPageSize: true).
+    // Ver comentário em LAYOUT_VIEWPORT_PX no topo do arquivo. (Fix 13.3.4.)
     await page.setViewport({
-      width: viewportWidth,
-      height: viewportHeight,
+      width: LAYOUT_VIEWPORT_PX.width,
+      height: LAYOUT_VIEWPORT_PX.height,
       deviceScaleFactor: 1,
     });
 
@@ -189,7 +197,7 @@ export async function POST(req: NextRequest) {
       console.log("[gerar-pdf][DEBUG-13.3.3] viewport aplicado:", {
         project_id,
         formato,
-        requested: { width: viewportWidth, height: viewportHeight },
+        requested: LAYOUT_VIEWPORT_PX,
         effective: effectiveViewport,
       });
     } catch (dbgErr) {
@@ -204,7 +212,7 @@ export async function POST(req: NextRequest) {
       length: html.length,
       formato,
       pageMm: { width: totalWidthMm, height: totalHeightMm },
-      viewport: { width: viewportWidth, height: viewportHeight },
+      layoutViewport: LAYOUT_VIEWPORT_PX,
     });
 
     // Load HTML. networkidle0 espera 500ms de rede ociosa — não garante

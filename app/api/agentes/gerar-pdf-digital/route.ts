@@ -29,6 +29,16 @@ const FORMATO_MM: Record<FormatoLivro, { width: number; height: number }> = {
 // 1 inch = 25.4 mm = 96 CSS px → conversão mm → CSS px.
 const PX_PER_MM = 96 / 25.4;
 
+// Viewport de layout para o Puppeteer — INTENCIONALMENTE não depende do formato.
+//
+// Por que fixo grande: o Chromium serverless 148 aplica scaling
+// formato-dependente em page.pdf() quando o viewport é pequeno relativo a
+// window.screen (800×600). Setando viewport em A4 @ 150dpi (maior que screen
+// em ambos eixos), o scaling de proteção do Chromium deixa de se aplicar.
+// O @page no CSS (preferCSSPageSize: true) continua controlando o tamanho
+// real do PDF.
+const LAYOUT_VIEWPORT_PX = { width: 1240, height: 1754 };
+
 export interface PdfResult {
   project_id: string;
   formato: FormatoLivro;
@@ -121,13 +131,14 @@ export async function POST(req: NextRequest) {
   const formato = (miolo.config?.formato ?? "padrao_br") as FormatoLivro;
   const html = applyDigitalCss(await htmlBlob.text(), formato);
 
-  // ── Calcular viewport físico (Bloco 13.3) ─────────────────────────────────
-  // O viewport DEVE bater com o tamanho físico da página declarado em @page,
-  // senão o Chromium aplica scaling implícito viewport→página e o font-size
-  // efetivo varia por formato.
+  // ── Resolver formato (apenas para log) ────────────────────────────────────
+  // O @page do digital declara `size: width_mm height_mm` (sem sangria) — ver
+  // `applyDigitalCss` em lib/miolo-builder-digital.ts. Esse continua sendo o
+  // tamanho real do PDF.
+  //
+  // O viewport do Puppeteer usa LAYOUT_VIEWPORT_PX fixo grande (ver
+  // comentário no topo). Não depende de formato. (Fix 13.3.4.)
   const formatoDim = FORMATO_MM[formato];
-  const viewportWidth = Math.round(formatoDim.width * PX_PER_MM);
-  const viewportHeight = Math.round(formatoDim.height * PX_PER_MM);
 
   // ── Puppeteer: HTML → PDF ─────────────────────────────────────────────────
   let pdfBuffer: Buffer;
@@ -140,11 +151,12 @@ export async function POST(req: NextRequest) {
   try {
     const page = await browser.newPage();
 
-    // Viewport = tamanho físico da página em CSS px (96 px/in, 1 mm = 96/25.4 px).
-    // Sem isso, Chromium usa default 800×600 e fonts encolhem/inflam por formato.
+    // Viewport fixo grande — desativa scaling de proteção do Chromium 148.
+    // O tamanho real do PDF vem do @page no CSS (preferCSSPageSize: true).
+    // Ver comentário em LAYOUT_VIEWPORT_PX no topo do arquivo. (Fix 13.3.4.)
     await page.setViewport({
-      width: viewportWidth,
-      height: viewportHeight,
+      width: LAYOUT_VIEWPORT_PX.width,
+      height: LAYOUT_VIEWPORT_PX.height,
       deviceScaleFactor: 1,
     });
 
@@ -155,7 +167,8 @@ export async function POST(req: NextRequest) {
       project_id,
       length: html.length,
       formato,
-      viewport: { width: viewportWidth, height: viewportHeight },
+      pageMm: { width: formatoDim.width, height: formatoDim.height },
+      layoutViewport: LAYOUT_VIEWPORT_PX,
     });
 
     // Load HTML. networkidle0 espera 500ms de rede ociosa — não garante
