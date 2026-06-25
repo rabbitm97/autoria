@@ -145,6 +145,33 @@ export async function POST(req: NextRequest) {
     headless: true,
   });
 
+  // ── DEBUG 13.3.3 — chromium runtime info ──────────────────────────────────
+  // Log único de investigação. Remover este bloco depois do diagnóstico
+  // (TODO: bloco 13.3.4 remove-debug).
+  try {
+    const browserVersion = await browser.version();
+    // chromium.defaultViewport / chromium.headless existem em runtime no
+    // @sparticuz/chromium, mas não estão expostos no .d.ts — cast pra ler.
+    const chromiumAny = chromium as unknown as {
+      defaultViewport?: unknown;
+      headless?: unknown;
+    };
+    console.log("[gerar-pdf][DEBUG-13.3.3] chromium runtime:", {
+      project_id,
+      formato,
+      browserVersion,
+      chromiumArgs: chromium.args,
+      chromiumArgsCount: chromium.args.length,
+      chromiumDefaultViewport: chromiumAny.defaultViewport,
+      chromiumHeadless: chromiumAny.headless,
+      nodeVersion: process.version,
+      vercelRegion: process.env.VERCEL_REGION,
+      vercelEnv: process.env.VERCEL_ENV,
+    });
+  } catch (dbgErr) {
+    console.warn("[gerar-pdf][DEBUG-13.3.3] runtime info falhou:", dbgErr);
+  }
+
   try {
     const page = await browser.newPage();
 
@@ -155,6 +182,19 @@ export async function POST(req: NextRequest) {
       height: viewportHeight,
       deviceScaleFactor: 1,
     });
+
+    // ── DEBUG 13.3.3 — confirmar viewport aplicado ──────────────────────────
+    try {
+      const effectiveViewport = page.viewport();
+      console.log("[gerar-pdf][DEBUG-13.3.3] viewport aplicado:", {
+        project_id,
+        formato,
+        requested: { width: viewportWidth, height: viewportHeight },
+        effective: effectiveViewport,
+      });
+    } catch (dbgErr) {
+      console.warn("[gerar-pdf][DEBUG-13.3.3] viewport check falhou:", dbgErr);
+    }
 
     // Modo print: interpreta unidades pt corretamente e ativa @media print.
     await page.emulateMediaType("print");
@@ -213,6 +253,80 @@ export async function POST(req: NextRequest) {
       });
     } catch (telErr) {
       console.warn("[gerar-pdf] telemetria runtime falhou:", telErr);
+    }
+
+    // ── DEBUG 13.3.3 — measurement test de glyph físico ─────────────────────
+    // Injeta um span temporário com texto conhecido e mede o BoundingClientRect.
+    // Se o Chromium renderiza 11pt corretamente, rect.height ≈ 24.2px (linha cheia,
+    // line-height 1.65) e a width de "M" ≈ 11px (depende da fonte). Se o bug
+    // acontece no page.pdf(), esses valores estarão CORRETOS aqui — o bug só
+    // aparece quando o Chromium serializa para PDF.
+    try {
+      const measureInfo = await page.evaluate(() => {
+        const span = document.createElement("span");
+        span.id = "__debug_measure__";
+        span.style.cssText =
+          "position:absolute;top:0;left:0;visibility:hidden;font-size:11pt;line-height:1.65;font-family:'EB Garamond', Georgia, serif;";
+        span.textContent = "MMMMMMMMMM"; // 10 "M" pra medir largura média
+        document.body.appendChild(span);
+        const rect = span.getBoundingClientRect();
+        const cs = getComputedStyle(span);
+        const result = {
+          rectWidth: rect.width,
+          rectHeight: rect.height,
+          computedFontSize: cs.fontSize,
+          computedFontFamily: cs.fontFamily,
+          computedLineHeight: cs.lineHeight,
+          devicePixelRatio: window.devicePixelRatio,
+          screen: { w: window.screen?.width, h: window.screen?.height },
+        };
+        document.body.removeChild(span);
+        return result;
+      });
+      console.log("[gerar-pdf][DEBUG-13.3.3] glyph measurement:", {
+        project_id,
+        formato,
+        ...measureInfo,
+      });
+    } catch (dbgErr) {
+      console.warn("[gerar-pdf][DEBUG-13.3.3] glyph measure falhou:", dbgErr);
+    }
+
+    // ── DEBUG 13.3.3 — connectivity test para Google Fonts ──────────────────
+    // Tenta fetch() para fonts.googleapis.com de dentro do page context.
+    // Se status 200, rede está OK e o problema é outro (@import não disparou,
+    // CORS, etc). Se erro de rede, está bloqueado e precisamos embutir fonts.
+    try {
+      const fontsConnectivity = await page.evaluate(async () => {
+        const url =
+          "https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400&display=swap";
+        try {
+          const t0 = performance.now();
+          const r = await fetch(url, { method: "GET" });
+          const t1 = performance.now();
+          const text = await r.text().catch(() => "<read failed>");
+          return {
+            reached: true,
+            status: r.status,
+            ok: r.ok,
+            elapsedMs: Math.round(t1 - t0),
+            contentLength: text.length,
+            contentPreview: text.slice(0, 200),
+          };
+        } catch (fetchErr) {
+          return {
+            reached: false,
+            error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+          };
+        }
+      });
+      console.log("[gerar-pdf][DEBUG-13.3.3] fonts.googleapis.com:", {
+        project_id,
+        formato,
+        ...fontsConnectivity,
+      });
+    } catch (dbgErr) {
+      console.warn("[gerar-pdf][DEBUG-13.3.3] connectivity test falhou:", dbgErr);
     }
 
     // Use @page dimensions from the miolo's own CSS (preferCSSPageSize).
