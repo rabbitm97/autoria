@@ -1,5 +1,11 @@
 export const maxDuration = 60;
 
+// Gramatura padrão do papel em g/m². Constante por enquanto — quando a
+// escolha de papel for implementada (backlog), virá do config do projeto.
+// Cobre offset 75gsm e avena 80gsm (média ~75). Papéis porosos (couché,
+// pólen) terão fórmula própria por fabricante quando suportados.
+const PAPEL_GRAMATURA_GSM = 75;
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
@@ -22,7 +28,7 @@ export interface MioloResult {
   capitulos: CapituloInfo[];
   paginas_estimadas: number;
   paginas_reais: number;       // counted from actual HTML page breaks
-  lombada_mm: number;          // paginas_reais × 0.07 mm (80gsm paper)
+  lombada_mm: number;          // (PAPEL_GRAMATURA_GSM × paginas_reais / 14400) × 10 — fórmula gráfica BR para papéis lisos (offset, avena)
   palavras: number;
   gerado_em: string;
 }
@@ -254,7 +260,9 @@ export async function POST(request: NextRequest) {
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
   const paginasEstimadas = Math.max(1, Math.round(numPalavras / getFormatoDef(config.formato).specs.wpp));
-  const lombadaMm = Math.round(paginasReais * 0.07 * 10) / 10;
+  // Fórmula gráfica BR para papéis lisos: lombada (cm) = (gsm × pgs) / 14400
+  // Multiplica por 10 para mm, arredonda para 1 casa decimal.
+  const lombadaMm = Math.round((PAPEL_GRAMATURA_GSM * paginasReais / 14400) * 100) / 10;
 
   // Upload HTML to storage
   const storageClient = createClient(
