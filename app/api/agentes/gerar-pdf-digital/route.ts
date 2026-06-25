@@ -219,12 +219,16 @@ export async function POST(req: NextRequest) {
       console.warn("[gerar-pdf-digital] telemetria runtime falhou:", telErr);
     }
 
-    // Use @page dimensions from the miolo's own CSS (preferCSSPageSize).
-    // printBackground ensures template colors/ornaments are rendered.
-    // scale: 1 explícito para evitar default implícito do Chromium.
+    // Tamanho do PDF passado diretamente via API, em mm — não via `@page size`
+    // do CSS. preferCSSPageSize foi REMOVIDO porque o Chromium 148 aplica
+    // scaling de proteção quando interpreta @page size para formatos pequenos
+    // (<150mm wide). Digital usa formato puro sem sangria — o applyDigitalCss
+    // reescreve @page sem sangria. O @page margin do CSS continua controlando
+    // margens e numeração. (Fix 13.3.5.)
     const pdfData = await page.pdf({
       printBackground: true,
-      preferCSSPageSize: true,
+      width: `${formatoDim.width}mm`,
+      height: `${formatoDim.height}mm`,
       scale: 1,
       timeout: 40_000,
     });

@@ -337,12 +337,16 @@ export async function POST(req: NextRequest) {
       console.warn("[gerar-pdf][DEBUG-13.3.3] connectivity test falhou:", dbgErr);
     }
 
-    // Use @page dimensions from the miolo's own CSS (preferCSSPageSize).
-    // printBackground ensures template colors/ornaments are rendered.
-    // scale: 1 explícito para evitar default implícito do Chromium.
+    // Tamanho do PDF passado diretamente via API, em mm — não via `@page size`
+    // do CSS. preferCSSPageSize foi REMOVIDO porque o Chromium 148 aplica
+    // scaling de proteção quando interpreta @page size para formatos pequenos
+    // (<150mm wide). totalWidthMm/totalHeightMm já incluem a sangria
+    // (declarados antes do puppeteer.launch). O @page margin do CSS continua
+    // controlando margens, marcas de corte e numeração. (Fix 13.3.5.)
     const pdfData = await page.pdf({
       printBackground: true,
-      preferCSSPageSize: true,
+      width: `${totalWidthMm}mm`,
+      height: `${totalHeightMm}mm`,
       scale: 1,
       timeout: 40_000,
     });
