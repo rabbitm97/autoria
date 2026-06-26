@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { extractFrontCover, type FormatoCapa } from "@/lib/capa-frente-extractor";
+import { isChapterHeading } from "@/lib/parse-chapters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,14 +21,16 @@ export interface EpubResult {
 }
 
 // ─── Text → Chapters ─────────────────────────────────────────────────────────
+// Parser local com preservação de parágrafos (linhas em branco no manuscrito
+// viram quebras de parágrafo no EPUB). Reusa isChapterHeading da lib para
+// manter a heurística de detecção de capítulo unificada.
 
 interface Chapter {
   title: string;
   paragraphs: string[];
 }
 
-function parseChapters(texto: string, bookTitle: string): Chapter[] {
-  const CHAPTER_RE = /^(cap[íi]tulo\s+\d+[.:–—\s].*|chapter\s+\d+[.:–—\s].*|\d+\.\s+.{3,60}|[A-ZÁÀÃÂÉÊÍÓÔÕÚ\s]{4,60})$/;
+function parseChaptersWithParagraphs(texto: string, bookTitle: string): Chapter[] {
   const lines = texto.replace(/\r\n/g, "\n").split("\n");
   const chapters: Chapter[] = [];
   let current: Chapter = { title: bookTitle, paragraphs: [] };
@@ -43,11 +46,7 @@ function parseChapters(texto: string, bookTitle: string): Chapter[] {
     const line = raw.trim();
     if (!line) { flushPara(); continue; }
 
-    const isHeading =
-      CHAPTER_RE.test(line) ||
-      (line.length < 60 && line === line.toUpperCase() && line.length > 3);
-
-    if (isHeading) {
+    if (isChapterHeading(line)) {
       flushPara();
       if (current.paragraphs.length > 0) chapters.push(current);
       current = { title: line, paragraphs: [] };
@@ -328,7 +327,7 @@ export async function POST(req: NextRequest) {
 
   // ── Build EPUB ────────────────────────────────────────────────────────────
   const uid = `urn:uuid:${randomUUID()}`;
-  const chapters = parseChapters(texto, titulo);
+  const chapters = parseChaptersWithParagraphs(texto, titulo);
 
   const zip = new JSZip();
 

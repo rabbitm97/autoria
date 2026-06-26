@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { VOZES } from "@/lib/voices";
+import { parseChapters, type Chapter } from "@/lib/parse-chapters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,34 +21,6 @@ export interface CapituloAudio {
 export interface AudioResult {
   project_id: string;
   capitulos: CapituloAudio[];
-}
-
-// ─── Text parsing ─────────────────────────────────────────────────────────────
-
-interface RawChapter { title: string; text: string }
-
-function parseChapters(texto: string, bookTitle: string): RawChapter[] {
-  const CHAPTER_RE = /^(cap[íi]tulo\s+\d+[.:–—\s].*|chapter\s+\d+[.:–—\s].*|\d+\.\s+.{3,60}|[A-ZÁÀÃÂÉÊÍÓÔÕÚ\s]{4,60})$/;
-  const lines = texto.replace(/\r\n/g, "\n").split("\n");
-  const chapters: RawChapter[] = [];
-  let current: RawChapter = { title: bookTitle, text: "" };
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    const isHeading =
-      CHAPTER_RE.test(line) ||
-      (line.length < 60 && line === line.toUpperCase() && line.length > 3);
-
-    if (isHeading && line) {
-      if (current.text.trim()) chapters.push(current);
-      current = { title: line, text: "" };
-    } else {
-      current.text += (current.text ? " " : "") + line;
-    }
-  }
-  if (current.text.trim()) chapters.push(current);
-  if (chapters.length === 0) chapters.push({ title: bookTitle, text: texto });
-  return chapters;
 }
 
 // ─── ElevenLabs TTS ───────────────────────────────────────────────────────────

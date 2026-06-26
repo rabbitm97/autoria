@@ -1,30 +1,6 @@
 import JSZip from "jszip";
 import { NextRequest } from "next/server";
-
-// ─── Text parsing ─────────────────────────────────────────────────────────────
-
-interface Chapter { title: string; text: string }
-
-function parseChapters(texto: string, bookTitle: string): Chapter[] {
-  const CHAPTER_RE = /^(cap[íi]tulo\s+\d+[.:–\s].*|\d+\.\s+.{3,}|[A-ZÁÀÃÂÉÊÍÓÔÕÚ\s]{4,60})$/;
-  const lines = texto.replace(/\r\n/g, "\n").split("\n");
-  const chapters: Chapter[] = [];
-  let current: Chapter = { title: bookTitle, text: "" };
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    const isHeading = CHAPTER_RE.test(line) || (line.length < 60 && line === line.toUpperCase() && line.length > 3);
-    if (isHeading && line) {
-      if (current.text.trim()) chapters.push(current);
-      current = { title: line, text: "" };
-    } else {
-      current.text += (current.text ? " " : "") + line;
-    }
-  }
-  if (current.text.trim()) chapters.push(current);
-  if (chapters.length === 0) chapters.push({ title: bookTitle, text: texto });
-  return chapters;
-}
+import { parseChapters, type Chapter } from "@/lib/parse-chapters";
 
 function textToXhtml(title: string, text: string): string {
   const paras = text.split(/\n+/).filter(Boolean).map(
