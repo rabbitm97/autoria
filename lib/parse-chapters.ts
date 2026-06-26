@@ -1,0 +1,212 @@
+// lib/parse-chapters.ts
+//
+// Fonte única de verdade para detecção heurística de capítulos em manuscritos.
+// Consolida as 3 versões divergentes que existiam em gerar-audio, gerar-epub,
+// ferramentas/epub.
+//
+// Também exporta helpers usados pelo map-reduce do diagnóstico:
+// - chunkLargeChapter: divide capítulos grandes em sub-pedaços de tamanho seguro
+// - fragmentarParaDiagnostico: fragmentação completa pronta pra map-reduce
+// - hashFragmento: MD5 com prefixo de versão para cache invalidation
+
+import { createHash } from "node:crypto";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface Chapter {
+  title: string;
+  text: string;
+}
+
+export interface FragmentoDiagnostico {
+  idx: number;
+  titulo: string;
+  texto: string;
+  hash: string;
+  num_palavras: number;
+}
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const PARSE_CHAPTERS_VERSION = "v1";
+
+// Limite seguro de caracteres por fragmento (input do Haiku 4.5).
+// 60k chars ≈ 15k tokens. Acima disso, latência sobe e qualidade cai.
+const MAX_CHARS_POR_FRAGMENTO = 60_000;
+
+// Tamanho do bloco quando o texto não tem capítulos detectáveis.
+const TAMANHO_BLOCO_FALLBACK = 30_000;
+
+// Regex para detectar headings (cap.X, Chapter X, 1. Título, MAIÚSCULAS).
+// Versão consolidada — combina o melhor das 3 versões originais.
+const CHAPTER_RE = /^(cap[íi]tulo\s+\d+[.:–—\s].*|chapter\s+\d+[.:–—\s].*|\d+\.\s+.{3,60}|[A-ZÁÀÃÂÉÊÍÓÔÕÚ\s]{4,60})$/;
+
+// ─── parseChapters ───────────────────────────────────────────────────────────
+
+/**
+ * Detecta capítulos em texto bruto via heurística.
+ * Não depende de aprovação manual nem de capítulos detectados previamente.
+ *
+ * Padrões reconhecidos:
+ * - "Capítulo X[...]" (PT)
+ * - "Chapter X[...]" (EN)
+ * - "1. Título do capítulo" (até 60 chars)
+ * - Linhas em MAIÚSCULAS com 4-60 chars
+ *
+ * Se nenhum heading for encontrado, retorna um único capítulo com o livro inteiro.
+ */
+export function parseChapters(texto: string, bookTitle: string): Chapter[] {
+  const lines = texto.replace(/\r\n/g, "\n").split("\n");
+  const chapters: Chapter[] = [];
+  let current: Chapter = { title: bookTitle, text: "" };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    const isHeading =
+      CHAPTER_RE.test(line) ||
+      (line.length < 60 && line === line.toUpperCase() && line.length > 3);
+
+    if (isHeading && line) {
+      if (current.text.trim()) chapters.push(current);
+      current = { title: line, text: "" };
+    } else {
+      current.text += (current.text ? " " : "") + line;
+    }
+  }
+  if (current.text.trim()) chapters.push(current);
+  if (chapters.length === 0) chapters.push({ title: bookTitle, text: texto });
+  return chapters;
+}
+
+// ─── chunkLargeChapter ───────────────────────────────────────────────────────
+
+/**
+ * Divide um capítulo grande em sub-pedaços de tamanho seguro.
+ * Preserva limites de parágrafo (não quebra no meio de uma frase).
+ *
+ * Se o capítulo já é menor que maxChars, retorna como está.
+ */
+export function chunkLargeChapter(
+  chapter: Chapter,
+  maxChars: number = MAX_CHARS_POR_FRAGMENTO
+): Chapter[] {
+  if (chapter.text.length <= maxChars) return [chapter];
+
+  const sentences = chapter.text.match(/[^.!?]+[.!?]+\s*/g) ?? [chapter.text];
+  const chunks: Chapter[] = [];
+  let buffer = "";
+  let partIdx = 1;
+
+  for (const sentence of sentences) {
+    if ((buffer + sentence).length > maxChars && buffer.length > 0) {
+      chunks.push({
+        title: `${chapter.title} (parte ${partIdx})`,
+        text: buffer.trim(),
+      });
+      buffer = sentence;
+      partIdx++;
+    } else {
+      buffer += sentence;
+    }
+  }
+
+  if (buffer.trim().length > 0) {
+    chunks.push({
+      title: chunks.length > 0 ? `${chapter.title} (parte ${partIdx})` : chapter.title,
+      text: buffer.trim(),
+    });
+  }
+
+  return chunks;
+}
+
+// ─── fragmentarParaDiagnostico ───────────────────────────────────────────────
+
+/**
+ * Função de alto nível usada pelo agente diagnóstico.
+ *
+ * 1. Tenta `parseChapters` heurístico.
+ * 2. Se detectou < 2 capítulos, fallback para blocos fixos.
+ * 3. Aplica `chunkLargeChapter` para garantir que todos os fragmentos
+ *    estejam abaixo de MAX_CHARS_POR_FRAGMENTO.
+ * 4. Calcula hash MD5 (com prefixo de versão) e contagem de palavras
+ *    de cada fragmento.
+ *
+ * Retorno: array pronto pra ser consumido pelo map-reduce.
+ */
+export function fragmentarParaDiagnostico(texto: string, bookTitle: string): FragmentoDiagnostico[] {
+  const capitulosDetectados = parseChapters(texto, bookTitle);
+
+  let chapters: Chapter[];
+
+  if (capitulosDetectados.length < 2) {
+    // Fallback: dividir em blocos fixos
+    chapters = fragmentarPorTamanho(texto, TAMANHO_BLOCO_FALLBACK, bookTitle);
+  } else {
+    // Aplicar chunkLargeChapter para garantir tamanho seguro
+    chapters = capitulosDetectados.flatMap(c => chunkLargeChapter(c));
+  }
+
+  return chapters.map((c, idx) => ({
+    idx,
+    titulo: c.title,
+    texto: c.text,
+    hash: hashFragmento(c.text),
+    num_palavras: contarPalavras(c.text),
+  }));
+}
+
+// ─── fragmentarPorTamanho (fallback) ─────────────────────────────────────────
+
+function fragmentarPorTamanho(
+  texto: string,
+  tamanhoBloco: number,
+  bookTitle: string
+): Chapter[] {
+  if (texto.length <= tamanhoBloco) {
+    return [{ title: bookTitle, text: texto }];
+  }
+
+  const sentences = texto.match(/[^.!?]+[.!?]+\s*/g) ?? [texto];
+  const chunks: Chapter[] = [];
+  let buffer = "";
+  let blocoIdx = 1;
+
+  for (const sentence of sentences) {
+    if ((buffer + sentence).length > tamanhoBloco && buffer.length > 0) {
+      chunks.push({
+        title: `${bookTitle} — Bloco ${blocoIdx}`,
+        text: buffer.trim(),
+      });
+      buffer = sentence;
+      blocoIdx++;
+    } else {
+      buffer += sentence;
+    }
+  }
+
+  if (buffer.trim().length > 0) {
+    chunks.push({
+      title: `${bookTitle} — Bloco ${blocoIdx}`,
+      text: buffer.trim(),
+    });
+  }
+
+  return chunks;
+}
+
+// ─── hashFragmento ───────────────────────────────────────────────────────────
+
+/**
+ * Hash MD5 do conteúdo do fragmento, com prefixo de versão.
+ * Mudar PARSE_CHAPTERS_VERSION invalida todos os caches existentes.
+ */
+export function hashFragmento(texto: string): string {
+  return createHash("md5").update(`${PARSE_CHAPTERS_VERSION}:${texto}`).digest("hex");
+}
+
+// ─── contarPalavras ──────────────────────────────────────────────────────────
+
+export function contarPalavras(texto: string): number {
+  return texto.trim().split(/\s+/).filter(Boolean).length;
+}
