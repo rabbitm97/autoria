@@ -9,38 +9,27 @@ import {
   estimarLombadaMm,
   type FormatoLivro,
 } from "@/lib/formatos";
+import {
+  fragmentarParaDiagnostico,
+  type FragmentoDiagnostico,
+} from "@/lib/parse-chapters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface FormatoSugerido {
-  formato: FormatoLivro | null;        // null quando livre (poesia/teatro)
-  label: string;                        // ex: "Padrão editorial · 16×23 cm" ou "ABNT (A4)"
+  formato: FormatoLivro | null;
+  label: string;
   paginas_estimadas: number;
   lombada_mm: number;
   motivo: string;
   aviso?: string;
-  cascata: Array<{
-    formato: FormatoLivro;
-    paginas: number;
-    lombada_mm: number;
-  }>;
+  cascata: Array<{ formato: FormatoLivro; paginas: number; lombada_mm: number }>;
 }
 
 export interface CanaisRecomendados {
-  ebook: {
-    recomendado: boolean;
-    plataformas: string[];
-    descricao: string;
-  };
-  fisico: {
-    recomendado: boolean;
-    descricao: string;
-  };
-  audiolivro: {
-    recomendado: boolean;
-    duracao_estimada_horas: number;
-    descricao: string;
-  };
+  ebook: { recomendado: boolean; plataformas: string[]; descricao: string };
+  fisico: { recomendado: boolean; descricao: string };
+  audiolivro: { recomendado: boolean; duracao_estimada_horas: number; descricao: string };
 }
 
 export interface FaixaPrecoDetalhada {
@@ -50,48 +39,162 @@ export interface FaixaPrecoDetalhada {
 }
 
 export interface DiagnosticoResult {
-  // Estrutura
   genero_provavel: string;
-  confianca_genero: number;        // 0–100 %
+  confianca_genero: number;
   num_capitulos: number;
   num_palavras: number;
-  paginas_estimadas: number;       // ~250 palavras/página
-
-  // Análise editorial
+  paginas_estimadas: number;
   complexidade: "simples" | "médio" | "complexo";
-  complexidade_flesch: number;     // índice Flesch adaptado ao PT 0–100
-  tom_narrativo: string;           // ex: "Épico e melancólico"
-  pontos_fortes: string[];         // exatamente 3 itens
-  pontos_melhorar: string[];       // exatamente 3 itens
-
-  // Mercado
+  complexidade_flesch: number;
+  tom_narrativo: string;
+  pontos_fortes: string[];
+  pontos_melhorar: string[];
   mercado_alvo: string;
   tamanho_mercado: "nicho" | "adequado" | "amplo";
   potencial_comercial: "baixo" | "médio" | "alto";
-  faixa_preco_sugerida: string;   // ex: "R$29,90 – R$39,90"
-  comparaveis_mercado: string[];  // 2–3 títulos/autores comparáveis
-
-  // ─── Novos campos calculados em Node ────────────────────────────────────
+  faixa_preco_sugerida: string;
+  comparaveis_mercado: string[];
   formato_sugerido: FormatoSugerido;
   tempo_leitura_horas: number;
-
-  // ─── Novos campos gerados pela IA ───────────────────────────────────────
   canais_recomendados: CanaisRecomendados;
   faixa_preco_detalhada: FaixaPrecoDetalhada;
-
-  // Próximos passos
-  proximos_passos: string[];      // 3–5 ações editoriais prioritárias
+  proximos_passos: string[];
 }
 
-// ─── Cálculo de formato sugerido ─────────────────────────────────────────────
-// Cascata: 16×23 → 14×21 → 11×18, mínimo 192 pg, teto 400 pg em padrao_br.
-// ABNT → A4 fixo (NBR 14724). Infantil → padrao_br + aviso. Poesia/teatro → sem sugestão.
-// Caracteres COM espaços, fonte 11pt fixa.
+interface FragmentoAnalisado {
+  hash: string;
+  idx: number;
+  titulo: string;
+  num_palavras: number;
+  genero_local: string;
+  tom_local: string;
+  flesch_local: number;
+  observacoes: string[];
+  trecho_representativo: string;
+  erro?: string;
+}
 
-const MIN_PAGINAS = 192;
-const MAX_PAGINAS_PADRAO_BR = 400;
+interface DiagnosticoState {
+  status: "processando_capitulos" | "consolidando" | "concluido" | "erro";
+  progresso: { atual: number; total: number };
+  iniciado_em: string;
+  concluido_em?: string;
+  erro_mensagem?: string;
+  fragmentos_cache: FragmentoAnalisado[];
+  // Quando status === "concluido", o resultado final fica em "resultado"
+  resultado?: DiagnosticoResult;
+  // Efêmero: existe apenas durante o processamento, removido na consolidação
+  _fragmentos_pendentes?: FragmentoDiagnostico[];
+}
+
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const TIMEOUT_INTERNO_MS = 50_000;
+const LOTE_PARALELO = 5;
 const WPM_LEITURA = 200;
 const WPM_NARRACAO = 150;
+const MIN_PAGINAS = 192;
+const MAX_PAGINAS_PADRAO_BR = 400;
+
+// ─── Prompts ──────────────────────────────────────────────────────────────────
+
+const MAP_PROMPT_FALLBACK = `\
+Você é um editor literário brasileiro analisando um FRAGMENTO de manuscrito.
+NÃO tente diagnosticar o livro inteiro — analise APENAS este fragmento.
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido, sem markdown nem comentários.
+
+SCHEMA OBRIGATÓRIO:
+{
+  "genero_local": "gênero observado neste fragmento em PT-BR",
+  "tom_local": "tom narrativo em 3-5 palavras",
+  "flesch_local": <inteiro 0–100, índice Flesch adaptado ao PT>,
+  "observacoes": [
+    "observação 1 sobre escrita/ritmo/qualidade deste fragmento",
+    "observação 2",
+    "observação 3"
+  ],
+  "trecho_representativo": "1-2 frases do fragmento que ilustram o tom"
+}
+
+DIRETRIZES:
+- observacoes: 2-4 itens, específicas a este fragmento (cite elementos concretos).
+- trecho_representativo: máximo 200 caracteres.
+- Linguagem profissional em PT-BR.`;
+
+const REDUCE_PROMPT_FALLBACK = `\
+Você é um editor literário brasileiro sênior consolidando análises de N fragmentos
+de um manuscrito em um diagnóstico ÚNICO e COERENTE do livro inteiro.
+
+CONTEXTO DO MERCADO EDITORIAL BRASILEIRO (2024):
+- Mercado total: R$6,6 bilhões com crescimento de +32,6% no segmento digital
+- Gêneros mais vendidos (autopublicação BR): Romance (43%), Fantasia/FC (18%), Autoajuda (15%), Suspense/Thriller (9%)
+- Faixa de preço eBook na Amazon BR: R$9,90–R$19,90 (massa), R$24,90–R$49,90 (nicho premium)
+- Faixa de preço livro físico POD: R$29,90–R$59,90 (até 300 páginas)
+
+ÍNDICE FLESCH ADAPTADO AO PORTUGUÊS:
+- 75–100: Muito fácil — infantil/teen, autoajuda popular
+- 60–74: Fácil — romance de massa, suspense comercial
+- 45–59: Médio — literatura adulta, ficção literária acessível
+- 30–44: Difícil — ensaios, ficção literária densa
+- 0–29: Muito difícil — acadêmico, erudito
+
+Você receberá um array de fragmentos JÁ analisados. Sua tarefa é CONSOLIDAR
+em um diagnóstico único do livro completo.
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido com o schema abaixo:
+
+{
+  "genero_provavel": "gênero predominante (mais frequente entre fragmentos)",
+  "confianca_genero": <inteiro 0–100>,
+  "num_capitulos": <total de fragmentos>,
+  "complexidade": "simples" | "médio" | "complexo",
+  "complexidade_flesch": <média ponderada dos flesch_local por num_palavras>,
+  "tom_narrativo": "síntese do tom (4-8 palavras)",
+  "pontos_fortes": [
+    "ponto forte 1 — extraído das observações, específico",
+    "ponto forte 2",
+    "ponto forte 3"
+  ],
+  "pontos_melhorar": [
+    "sugestão 1 — acionável",
+    "sugestão 2",
+    "sugestão 3"
+  ],
+  "mercado_alvo": "parágrafo descrevendo o leitor-alvo brasileiro",
+  "tamanho_mercado": "nicho" | "adequado" | "amplo",
+  "potencial_comercial": "baixo" | "médio" | "alto",
+  "faixa_preco_sugerida": "faixa de preço geral (ex: R$29,90 – R$39,90)",
+  "faixa_preco_detalhada": {
+    "ebook": "faixa eBook",
+    "fisico": "faixa físico POD",
+    "audiolivro": "faixa audiolivro"
+  },
+  "canais_recomendados": {
+    "ebook": { "recomendado": true, "plataformas": ["Amazon Kindle", "Apple Books", "Kobo"], "descricao": "1 frase curta sobre por que" },
+    "fisico": { "recomendado": true, "descricao": "1 frase curta" },
+    "audiolivro": { "recomendado": true, "duracao_estimada_horas": 0, "descricao": "1 frase curta" }
+  },
+  "comparaveis_mercado": [
+    "Autor/Título 1 — 1 frase",
+    "Autor/Título 2"
+  ],
+  "proximos_passos": [
+    "ação 1",
+    "ação 2",
+    "ação 3"
+  ]
+}
+
+DIRETRIZES:
+- Use as observações dos fragmentos como matéria-prima dos pontos_fortes/pontos_melhorar.
+- pontos_fortes e pontos_melhorar devem ter exatamente 3 itens.
+- comparaveis_mercado: 2-3 itens, autores BR ou traduzidos populares.
+- proximos_passos: 3-5 itens ordenados por prioridade.
+- duracao_estimada_horas: o backend sobrescreve, mas preencha algo.
+- Descricoes em canais_recomendados: máximo 25 palavras cada.`;
+
+// ─── Cálculos determinísticos (Node) ─────────────────────────────────────────
 
 function detectarCategoriaEspecial(generoLower: string): "abnt" | "infantil" | "poesia_teatro" | null {
   if (generoLower.includes("abnt") || generoLower.includes("acadêm") || generoLower.includes("dissert") || generoLower.includes("tese") || generoLower.includes("tcc")) {
@@ -109,16 +212,11 @@ function detectarCategoriaEspecial(generoLower: string): "abnt" | "infantil" | "
 function calcularSugestaoFormato(numPalavras: number, generoLower: string): FormatoSugerido {
   const categoria = detectarCategoriaEspecial(generoLower);
 
-  // Cascata padrão para uso interno e exibição
   const formatosCascata: FormatoLivro[] = ["padrao_br", "compacto", "bolso"];
   const cascataDetalhada = formatosCascata.map(fmt => {
     const def = FORMATOS_LIVRO.find(f => f.value === fmt)!;
     const paginas = Math.max(1, Math.round(numPalavras / def.specs.wpp));
-    return {
-      formato: fmt,
-      paginas,
-      lombada_mm: estimarLombadaMm(paginas),
-    };
+    return { formato: fmt, paginas, lombada_mm: estimarLombadaMm(paginas) };
   });
 
   if (categoria === "abnt") {
@@ -140,13 +238,12 @@ function calcularSugestaoFormato(numPalavras: number, generoLower: string): Form
       label: "Formato livre",
       paginas_estimadas: 0,
       lombada_mm: 0,
-      motivo: "Poesia e teatro pedem decisões editoriais específicas (coluna estreita, preservação de estrofes, didascálias) que dependem do projeto gráfico. Escolha o formato manualmente na etapa de Elementos Editoriais.",
+      motivo: "Poesia e teatro pedem decisões editoriais específicas. Escolha o formato manualmente na etapa de Elementos Editoriais.",
       aviso: "Sugestão automática não se aplica",
       cascata: cascataDetalhada,
     };
   }
 
-  // Caso geral — cascata
   const padraoBr = cascataDetalhada[0];
   const compacto = cascataDetalhada[1];
   const bolso = cascataDetalhada[2];
@@ -158,14 +255,14 @@ function calcularSugestaoFormato(numPalavras: number, generoLower: string): Form
     escolhido = padraoBr;
   } else if (padraoBr.paginas > MAX_PAGINAS_PADRAO_BR) {
     escolhido = padraoBr;
-    aviso = "Livro extenso (>400 páginas). Considere dividir em volumes ou aceitar uma lombada mais robusta.";
+    aviso = "Livro extenso (>400 páginas). Considere dividir em volumes.";
   } else if (compacto.paginas >= MIN_PAGINAS) {
     escolhido = compacto;
   } else if (bolso.paginas >= MIN_PAGINAS) {
     escolhido = bolso;
   } else {
     escolhido = bolso;
-    aviso = "Livro curto. A lombada ficará fina (abaixo de 1 cm). Adequado para poesia ou ficção breve.";
+    aviso = "Livro curto. A lombada ficará fina.";
   }
 
   const def = FORMATOS_LIVRO.find(f => f.value === escolhido.formato)!;
@@ -186,119 +283,152 @@ function calcularSugestaoFormato(numPalavras: number, generoLower: string): Form
 }
 
 function calcularTempoLeitura(numPalavras: number): number {
-  const horas = numPalavras / (WPM_LEITURA * 60);
-  return Math.round(horas * 2) / 2;
+  return Math.round((numPalavras / (WPM_LEITURA * 60)) * 2) / 2;
 }
 
 function calcularDuracaoAudio(numPalavras: number): number {
-  const horas = numPalavras / (WPM_NARRACAO * 60);
-  return Math.round(horas * 2) / 2;
+  return Math.round((numPalavras / (WPM_NARRACAO * 60)) * 2) / 2;
 }
 
-// ─── System prompt ────────────────────────────────────────────────────────────
+// ─── MAP: analisar um fragmento ──────────────────────────────────────────────
 
-const FALLBACK_PROMPT = `\
-Você é um editor literário brasileiro sênior e analista de mercado editorial com 20 anos de experiência. \
-Já avaliou mais de 5.000 manuscritos de todos os gêneros. Conhece profundamente o mercado leitor brasileiro, \
-as convenções editoriais, os catálogos das principais editoras nacionais, as tendências de autopublicação \
-e os dados de vendas das principais plataformas (Amazon KDP BR, Kobo, Apple Books, Google Play, Wattpad).
+async function analisarFragmento(
+  fragmento: FragmentoDiagnostico,
+  projectId: string,
+  userId: string
+): Promise<FragmentoAnalisado> {
+  try {
+    const SYSTEM_PROMPT = await getAgentPrompt("diagnostico_map", MAP_PROMPT_FALLBACK);
 
-CONTEXTO DO MERCADO EDITORIAL BRASILEIRO (2024):
-- Mercado total: R$6,6 bilhões com crescimento de +32,6% no segmento digital
-- Gêneros mais vendidos (autopublicação BR): Romance (43%), Fantasia/FC (18%), Autoajuda (15%), \
-  Suspense/Thriller (9%), Outros (15%)
-- Faixa de preço eBook na Amazon BR: R$9,90–R$19,90 (massa popular), R$24,90–R$49,90 (nicho premium)
-- Faixa de preço livro físico POD: R$29,90–R$59,90 (até 300 páginas), R$49,90–R$89,90 (300+ páginas)
-- Plataformas leitores BR: Amazon Kindle, Skoob, Wattpad BR, TikTok literário (#BookTok BR)
-- Autores de referência: Colleen Hoover (tradução fenômeno), Thalita Rebouças, Raphael Montes, \
-  Santiago Nazarian, Lúcio Cardoso, Luiz Ruffato, Adriana Lins
+    const message = await traceClaudeCall({
+      agentName: "diagnostico_map",
+      projectId,
+      userId,
+      model: "claude-haiku-4-5-20251001",
+      input: {
+        system: SYSTEM_PROMPT,
+        messages: [{
+          role: "user",
+          content: `Analise este fragmento (capítulo "${fragmento.titulo}", ${fragmento.num_palavras} palavras):\n\n${fragmento.texto}`,
+        }],
+      },
+      fn: () => anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: [{
+          role: "user",
+          content: `Analise este fragmento (capítulo "${fragmento.titulo}", ${fragmento.num_palavras} palavras):\n\n${fragmento.texto}`,
+        }],
+      }),
+    });
 
-ÍNDICE FLESCH ADAPTADO AO PORTUGUÊS:
-- 75–100: Muito fácil — público infantil/teen, autoajuda popular
-- 60–74: Fácil — romance de massa, suspense comercial, não-ficção popular
-- 45–59: Médio — literatura adulta, ficção literária acessível
-- 30–44: Difícil — ensaios, ficção literária densa, narrativas experimentais
-- 0–29: Muito difícil — acadêmico, erudito
+    const parsed = parseLLMJson<{
+      genero_local: string;
+      tom_local: string;
+      flesch_local: number;
+      observacoes: string[];
+      trecho_representativo: string;
+    }>(extractText(message.content));
 
-TAMANHO MÉDIO DE MANUSCRITOS POR GÊNERO:
-- Romance massa/comercial: 80.000–100.000 palavras
-- Romance literário: 70.000–90.000 palavras
-- Fantasia/FC adulto: 90.000–120.000 palavras
-- Novela: 20.000–50.000 palavras
-- Autoajuda: 40.000–70.000 palavras
-- Biografia/Memórias: 60.000–80.000 palavras
-
-Sua tarefa é analisar o manuscrito fornecido e retornar EXCLUSIVAMENTE um objeto JSON válido. \
-Não inclua markdown, explicações, comentários ou qualquer texto fora do JSON.
-
-SCHEMA OBRIGATÓRIO:
-{
-  "genero_provavel": "gênero literário principal em PT-BR (ex: Romance Contemporâneo, Fantasia Épica, Autoajuda, Suspense Psicológico)",
-  "confianca_genero": <inteiro 0–100 — % de certeza sobre o gênero identificado>,
-  "num_capitulos": <inteiro — estimativa baseada na estrutura e extensão do texto>,
-  "num_palavras": <inteiro — contagem das palavras fornecidas>,
-  "paginas_estimadas": <inteiro — num_palavras ÷ 250 arredondado>,
-  "complexidade": "simples" | "médio" | "complexo",
-  "complexidade_flesch": <inteiro 0–100 — estimativa do índice Flesch adaptado ao PT>,
-  "tom_narrativo": "descrição curta do tom/voz em 4–8 palavras (ex: Épico e melancólico, Leve e irônico)",
-  "pontos_fortes": [
-    "ponto forte 1 — específico, cite elemento concreto do texto",
-    "ponto forte 2",
-    "ponto forte 3"
-  ],
-  "pontos_melhorar": [
-    "sugestão 1 — acionável e construtiva",
-    "sugestão 2",
-    "sugestão 3"
-  ],
-  "mercado_alvo": "parágrafo descrevendo o leitor-alvo brasileiro: faixa etária, perfil sociocultural, plataformas de consumo, hábitos de leitura",
-  "tamanho_mercado": "nicho" | "adequado" | "amplo",
-  "potencial_comercial": "baixo" | "médio" | "alto",
-  "faixa_preco_sugerida": "faixa de preço recomendada considerando gênero e extensão (ex: R$29,90 – R$39,90)",
-  "faixa_preco_detalhada": {
-    "ebook": "faixa específica para eBook (geralmente 30-50% do físico, ex: R$14,90 – R$19,90)",
-    "fisico": "faixa para livro físico via POD (ex: R$34,90 – R$49,90 para até 300 páginas)",
-    "audiolivro": "faixa para audiolivro (geralmente próximo do eBook + premium pela narração, ex: R$24,90 – R$34,90)"
-  },
-  "canais_recomendados": {
-    "ebook": {
-      "recomendado": true,
-      "plataformas": ["Amazon Kindle", "Apple Books", "Kobo", "Google Play Books"],
-      "descricao": "1-2 frases sobre por que eBook funciona para este livro"
-    },
-    "fisico": {
-      "recomendado": true | false,
-      "descricao": "1-2 frases sobre adequação do POD físico para este livro"
-    },
-    "audiolivro": {
-      "recomendado": true | false,
-      "duracao_estimada_horas": 0,
-      "descricao": "1-2 frases sobre adequação para audiolivro (gêneros como autoajuda, biografia, ficção contemporânea funcionam bem; livros muito técnicos ou ilustrados, não)"
-    }
-  },
-  "comparaveis_mercado": [
-    "Autor/Título comparável 1 — 1 frase explicando a semelhança",
-    "Autor/Título comparável 2"
-  ],
-  "proximos_passos": [
-    "ação editorial prioritária 1 — específica e acionável",
-    "ação 2",
-    "ação 3"
-  ]
+    return {
+      hash: fragmento.hash,
+      idx: fragmento.idx,
+      titulo: fragmento.titulo,
+      num_palavras: fragmento.num_palavras,
+      genero_local: parsed.genero_local ?? "Não identificado",
+      tom_local: parsed.tom_local ?? "Não identificado",
+      flesch_local: parsed.flesch_local ?? 50,
+      observacoes: parsed.observacoes ?? [],
+      trecho_representativo: parsed.trecho_representativo ?? "",
+    };
+  } catch (err) {
+    console.error(`[diagnostico_map] Falha no fragmento ${fragmento.idx}:`, err);
+    return {
+      hash: fragmento.hash,
+      idx: fragmento.idx,
+      titulo: fragmento.titulo,
+      num_palavras: fragmento.num_palavras,
+      genero_local: "",
+      tom_local: "",
+      flesch_local: 0,
+      observacoes: [],
+      trecho_representativo: "",
+      erro: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
-DIRETRIZES:
-- Seja específico: cite elementos concretos do texto analisado, não generalizações.
-- Use linguagem profissional mas acessível, em português brasileiro.
-- pontos_fortes e pontos_melhorar devem ter exatamente 3 itens cada.
-- comparaveis_mercado deve ter 2–3 itens, preferencialmente autores/obras conhecidos no BR.
-- proximos_passos deve ter 3–5 itens ordenados por prioridade.
-- Se o trecho for curto demais para análise precisa, indique confianca_genero baixa (≤50) e ajuste os outros campos.
-- tamanho_mercado: "nicho" (público restrito/especializado), "adequado" (mercado médio com apelo claro), "amplo" (apelo de massa).`;
+// ─── REDUCE: consolidar fragmentos em diagnóstico final ──────────────────────
 
-// ─── Handler ─────────────────────────────────────────────────────────────────
+async function consolidarDiagnostico(
+  fragmentos: FragmentoAnalisado[],
+  numPalavrasTotal: number,
+  projectId: string,
+  userId: string
+): Promise<DiagnosticoResult> {
+  const SYSTEM_PROMPT = await getAgentPrompt("diagnostico_reduce", REDUCE_PROMPT_FALLBACK);
+
+  const fragmentosResumidos = fragmentos
+    .filter(f => !f.erro)
+    .map(f => ({
+      idx: f.idx,
+      titulo: f.titulo,
+      num_palavras: f.num_palavras,
+      genero_local: f.genero_local,
+      tom_local: f.tom_local,
+      flesch_local: f.flesch_local,
+      observacoes: f.observacoes,
+      trecho_representativo: f.trecho_representativo,
+    }));
+
+  const userMessage = `Consolide as análises destes ${fragmentosResumidos.length} fragmentos do manuscrito (total ${numPalavrasTotal} palavras) em um diagnóstico único:\n\n${JSON.stringify(fragmentosResumidos, null, 2)}`;
+
+  const message = await traceClaudeCall({
+    agentName: "diagnostico_reduce",
+    projectId,
+    userId,
+    model: "claude-haiku-4-5-20251001",
+    input: {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userMessage }],
+    },
+    fn: () => anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userMessage }],
+    }),
+  });
+
+  const parsed = parseLLMJson<Omit<DiagnosticoResult, "num_palavras" | "paginas_estimadas" | "formato_sugerido" | "tempo_leitura_horas">>(
+    extractText(message.content)
+  );
+
+  const generoLower = (parsed.genero_provavel ?? "").toLowerCase();
+  const formato_sugerido = calcularSugestaoFormato(numPalavrasTotal, generoLower);
+
+  return {
+    ...parsed,
+    num_palavras: numPalavrasTotal,
+    paginas_estimadas: formato_sugerido.paginas_estimadas || Math.round(numPalavrasTotal / 250),
+    formato_sugerido,
+    tempo_leitura_horas: calcularTempoLeitura(numPalavrasTotal),
+    canais_recomendados: {
+      ...parsed.canais_recomendados,
+      audiolivro: {
+        ...parsed.canais_recomendados.audiolivro,
+        duracao_estimada_horas: calcularDuracaoAudio(numPalavrasTotal),
+      },
+    },
+  };
+}
+
+// ─── Handler POST ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   let user: { id: string };
   let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
 
@@ -308,7 +438,7 @@ export async function POST(request: NextRequest) {
     return res as Response;
   }
 
-  let body: { texto: string; project_id: string };
+  let body: { texto?: string; project_id: string };
   try {
     body = await request.json();
   } catch {
@@ -317,23 +447,13 @@ export async function POST(request: NextRequest) {
 
   const { texto, project_id } = body;
 
-  if (!texto || typeof texto !== "string" || texto.trim().length < 50) {
-    return NextResponse.json(
-      { error: "Campo 'texto' obrigatório (mínimo 50 caracteres)." },
-      { status: 400 }
-    );
-  }
   if (!project_id || typeof project_id !== "string") {
-    return NextResponse.json(
-      { error: "Campo 'project_id' obrigatório." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Campo 'project_id' obrigatório." }, { status: 400 });
   }
 
-  // Verify project ownership
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id")
+    .select("id, manuscript_id, diagnostico, manuscripts(titulo, texto, nome)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -342,124 +462,190 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
 
-  // Real word count + truncate to ~50k chars for cost control
-  const numPalavras = texto.trim().split(/\s+/).filter(Boolean).length;
-  const textoCortado =
-    texto.length > 20_000
-      ? texto.slice(0, 20_000) + "\n\n[...trecho truncado para análise]"
-      : texto;
+  const ms = project.manuscripts as { titulo?: string | null; texto?: string | null; nome?: string | null } | null;
+  const titulo = ms?.titulo?.trim() || ms?.nome || "Manuscrito";
+  let textoCompleto = ms?.texto ?? "";
+  let estado = (project.diagnostico as unknown as DiagnosticoState | null) ?? null;
 
-  const isMock = process.env.MOCK_AI === 'true';
-  let diagnostico: DiagnosticoResult;
+  // ── INÍCIO: texto novo veio no body, resetar estado ─────────────────────
+  if (texto && texto.trim().length >= 50) {
+    textoCompleto = texto;
 
-  if (isMock) {
-    const generoLowerMock = "romance contemporâneo";
-    const formatoMock = calcularSugestaoFormato(numPalavras, generoLowerMock);
-    diagnostico = {
-      genero_provavel: 'Romance Contemporâneo (MOCK)',
-      confianca_genero: 85,
-      num_capitulos: 12,
-      num_palavras: numPalavras,
-      paginas_estimadas: formatoMock.paginas_estimadas,
-      complexidade: 'médio',
-      complexidade_flesch: 62,
-      tom_narrativo: 'Leve e envolvente (mock)',
-      pontos_fortes: ['Narrativa fluida', 'Diálogos naturais', 'Personagens cativantes'],
-      pontos_melhorar: ['Desenvolver conflito central', 'Aprofundar subtramas', 'Revisar ritmo final'],
-      mercado_alvo: 'Leitores adultos brasileiros, 25-45 anos (resultado simulado)',
-      tamanho_mercado: 'adequado',
-      potencial_comercial: 'médio',
-      faixa_preco_sugerida: 'R$29,90 – R$39,90',
-      comparaveis_mercado: ['Thalita Rebouças — estilo acessível', 'Colleen Hoover — apelo emocional'],
-      proximos_passos: ['Revisão editorial completa', 'Definir elementos editoriais', 'Criar capa profissional'],
-      formato_sugerido: formatoMock,
-      tempo_leitura_horas: calcularTempoLeitura(numPalavras),
-      canais_recomendados: {
-        ebook: { recomendado: true, plataformas: ["Amazon Kindle", "Apple Books", "Kobo"], descricao: "Romance contemporâneo funciona muito bem em eBook — leitura sequencial, alto engajamento mobile." },
-        fisico: { recomendado: true, descricao: "Boa adequação para POD físico, especialmente como presente." },
-        audiolivro: { recomendado: true, duracao_estimada_horas: calcularDuracaoAudio(numPalavras), descricao: "Narração natural funciona bem para romance — emoções dialogadas se destacam em áudio." },
-      },
-      faixa_preco_detalhada: {
-        ebook: "R$14,90 – R$19,90",
-        fisico: "R$34,90 – R$44,90",
-        audiolivro: "R$24,90 – R$34,90",
-      },
+    // Persistir texto em manuscripts (commit imediato)
+    if (project.manuscript_id) {
+      await supabase
+        .from("manuscripts")
+        .update({ texto: textoCompleto })
+        .eq("id", project.manuscript_id)
+        .eq("user_id", user.id);
+    }
+
+    const fragmentos = fragmentarParaDiagnostico(textoCompleto, titulo);
+
+    estado = {
+      status: "processando_capitulos",
+      progresso: { atual: 0, total: fragmentos.length },
+      iniciado_em: new Date().toISOString(),
+      fragmentos_cache: [],
+      _fragmentos_pendentes: fragmentos,
     };
-  } else
-  try {
-    const SYSTEM_PROMPT = await getAgentPrompt("diagnostico", FALLBACK_PROMPT);
-    const message = await traceClaudeCall({
-      agentName: "diagnostico",
-      projectId: project_id,
-      userId: user.id,
-      model: "claude-haiku-4-5-20251001",
-      input: {
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: `Analise o seguinte manuscrito e retorne apenas o JSON:\n\n${textoCortado}` }],
-      },
-      fn: () => anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `Analise o seguinte manuscrito e retorne apenas o JSON:\n\n${textoCortado}`,
-          },
-        ],
-      }),
-    });
 
-    diagnostico = parseLLMJson<DiagnosticoResult>(extractText(message.content));
+    await supabase
+      .from("projects")
+      .update({
+        diagnostico: estado,
+        etapa_atual: "diagnostico",
+      })
+      .eq("id", project_id)
+      .eq("user_id", user.id);
+  }
 
-    // Override com contagem real e cálculos determinísticos do backend
-    diagnostico.num_palavras = numPalavras;
+  if (!estado) {
+    return NextResponse.json({ error: "Estado de diagnóstico não encontrado. Reenvie o manuscrito." }, { status: 400 });
+  }
 
-    const generoLower = (diagnostico.genero_provavel ?? "").toLowerCase();
-    diagnostico.formato_sugerido = calcularSugestaoFormato(numPalavras, generoLower);
-    diagnostico.paginas_estimadas = diagnostico.formato_sugerido.paginas_estimadas || Math.round(numPalavras / 250);
-    diagnostico.tempo_leitura_horas = calcularTempoLeitura(numPalavras);
+  if (estado.status === "concluido") {
+    return NextResponse.json({ status: "concluido", progresso: estado.progresso, diagnostico: estado.resultado });
+  }
 
-    // Sobrescreve duracao do audio com valor calculado
-    if (diagnostico.canais_recomendados?.audiolivro) {
-      diagnostico.canais_recomendados.audiolivro.duracao_estimada_horas = calcularDuracaoAudio(numPalavras);
-    }
+  if (estado.status === "erro") {
+    return NextResponse.json({ status: "erro", erro: estado.erro_mensagem }, { status: 500 });
+  }
 
-    const requiredFields: (keyof DiagnosticoResult)[] = [
-      "genero_provavel", "confianca_genero", "num_capitulos", "num_palavras",
-      "paginas_estimadas", "complexidade", "complexidade_flesch", "tom_narrativo",
-      "pontos_fortes", "pontos_melhorar", "mercado_alvo", "tamanho_mercado",
-      "potencial_comercial", "faixa_preco_sugerida", "comparaveis_mercado", "proximos_passos",
-      // novos campos
-      "faixa_preco_detalhada", "canais_recomendados",
-    ];
-    for (const campo of requiredFields) {
-      if (diagnostico[campo] === undefined) {
-        throw new Error(`Campo ausente na resposta da IA: ${campo}`);
+  // ── PROCESSANDO CAPÍTULOS ───────────────────────────────────────────────
+  if (estado.status === "processando_capitulos") {
+    const fragmentosPendentes = estado._fragmentos_pendentes ?? fragmentarParaDiagnostico(textoCompleto, titulo);
+
+    const hashesProcessados = new Set(estado.fragmentos_cache.map(f => f.hash));
+    const faltantes = fragmentosPendentes.filter(f => !hashesProcessados.has(f.hash));
+
+    while (faltantes.length > 0 && (Date.now() - startTime) < TIMEOUT_INTERNO_MS) {
+      const lote = faltantes.splice(0, LOTE_PARALELO);
+      const resultados = await Promise.allSettled(
+        lote.map(f => analisarFragmento(f, project_id, user.id))
+      );
+
+      for (const r of resultados) {
+        if (r.status === "fulfilled") {
+          estado.fragmentos_cache.push(r.value);
+          estado.progresso.atual = estado.fragmentos_cache.length;
+        }
       }
+
+      await supabase
+        .from("projects")
+        .update({
+          diagnostico: { ...estado, _fragmentos_pendentes: fragmentosPendentes },
+        })
+        .eq("id", project_id)
+        .eq("user_id", user.id);
     }
-  } catch (e: unknown) {
-    console.error("[diagnostico] Erro Claude:", e);
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json(
-      { error: `Erro ao processar diagnóstico: ${msg}` },
-      { status: 502 }
-    );
+
+    if (faltantes.length === 0) {
+      estado.status = "consolidando";
+      estado.progresso.total = estado.fragmentos_cache.length;
+      estado.progresso.atual = estado.fragmentos_cache.length;
+      delete estado._fragmentos_pendentes;
+
+      await supabase
+        .from("projects")
+        .update({ diagnostico: estado })
+        .eq("id", project_id)
+        .eq("user_id", user.id);
+    } else {
+      return NextResponse.json({ status: estado.status, progresso: estado.progresso });
+    }
   }
 
-  const { error: updateErr } = await supabase
+  // ── CONSOLIDANDO ────────────────────────────────────────────────────────
+  if (estado.status === "consolidando") {
+    if ((Date.now() - startTime) > TIMEOUT_INTERNO_MS - 15_000) {
+      return NextResponse.json({ status: estado.status, progresso: estado.progresso });
+    }
+
+    try {
+      const numPalavrasTotal = estado.fragmentos_cache.reduce((sum, f) => sum + f.num_palavras, 0);
+      const resultado = await consolidarDiagnostico(
+        estado.fragmentos_cache,
+        numPalavrasTotal,
+        project_id,
+        user.id
+      );
+
+      estado.status = "concluido";
+      estado.concluido_em = new Date().toISOString();
+      estado.resultado = resultado;
+
+      const estadoFinal: DiagnosticoState = {
+        ...estado,
+        fragmentos_cache: [],
+      };
+
+      await supabase
+        .from("projects")
+        .update({ diagnostico: estadoFinal })
+        .eq("id", project_id)
+        .eq("user_id", user.id);
+
+      return NextResponse.json({ status: "concluido", progresso: estado.progresso, diagnostico: resultado });
+    } catch (err) {
+      console.error("[diagnostico_reduce] Falhou:", err);
+      const estadoErro: DiagnosticoState = {
+        ...estado,
+        status: "erro",
+        erro_mensagem: err instanceof Error ? err.message : String(err),
+      };
+
+      await supabase
+        .from("projects")
+        .update({ diagnostico: estadoErro })
+        .eq("id", project_id)
+        .eq("user_id", user.id);
+
+      return NextResponse.json({ status: "erro", erro: estadoErro.erro_mensagem }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ status: estado.status, progresso: estado.progresso });
+}
+
+// ─── GET (status check rápido) ───────────────────────────────────────────────
+
+export async function GET(request: NextRequest) {
+  let user: { id: string };
+  let supabase: Awaited<ReturnType<typeof import("@/lib/supabase-server")["requireAuth"]>>["supabase"];
+
+  try {
+    ({ user, supabase } = await requireAuth());
+  } catch (res) {
+    return res as Response;
+  }
+
+  const project_id = request.nextUrl.searchParams.get("project_id");
+  if (!project_id) {
+    return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
+  }
+
+  const { data: project } = await supabase
     .from("projects")
-    .update({ diagnostico, etapa_atual: "diagnostico" })
+    .select("diagnostico")
     .eq("id", project_id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .single();
 
-  if (updateErr) {
-    console.error("[diagnostico] Erro ao salvar:", updateErr);
-    return NextResponse.json(
-      { error: "Diagnóstico gerado, mas falha ao salvar no banco." },
-      { status: 500 }
-    );
+  if (!project) {
+    return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, diagnostico });
+  const estado = project.diagnostico as DiagnosticoState | null;
+  if (!estado) {
+    return NextResponse.json({ status: "ausente" });
+  }
+
+  return NextResponse.json({
+    status: estado.status,
+    progresso: estado.progresso,
+    diagnostico: estado.status === "concluido" ? estado.resultado : undefined,
+    erro: estado.erro_mensagem,
+  });
 }
