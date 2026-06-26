@@ -121,3 +121,20 @@ export function getFormatoDef(value: FormatoLivro): FormatoDef {
   if (!def) throw new Error(`Formato desconhecido: ${value}`);
   return def;
 }
+
+// ─── Cálculo de lombada ──────────────────────────────────────────────────────
+// Fórmula gráfica brasileira para papéis lisos (offset, avena):
+//   lombada_mm = (gramatura_gsm × paginas) / 14400 × 10
+// Resultado em mm, arredondado para 1 casa decimal.
+//
+// Default 75g/m² cobre offset 75g (econômico) e aproxima avena 80g (premium).
+
+export const PAPEL_GRAMATURA_PADRAO_GSM = 75;
+
+export function estimarLombadaMm(
+  paginas: number,
+  gramaturaGsm: number = PAPEL_GRAMATURA_PADRAO_GSM
+): number {
+  if (paginas <= 0) return 0;
+  return Math.round((gramaturaGsm * paginas / 14400) * 100) / 10;
+}

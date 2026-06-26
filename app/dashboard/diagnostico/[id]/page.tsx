@@ -363,6 +363,40 @@ export default async function DiagnosticoPage({ params }: PageProps) {
         "Pesquisar capas de romance contemporâneo brasileiro para briefing visual",
         "Definir estratégia de lançamento: Amazon KDP + Skoob + BookTok",
       ],
+      formato_sugerido: {
+        formato: "padrao_br",
+        label: "Padrão editorial · 16×23 cm",
+        paginas_estimadas: 329,
+        lombada_mm: 17.1,
+        motivo: "Seu manuscrito tem 72.400 palavras, o que resulta em aproximadamente 329 páginas no formato 16×23 cm.",
+        cascata: [
+          { formato: "padrao_br", paginas: 329, lombada_mm: 17.1 },
+          { formato: "compacto", paginas: 402, lombada_mm: 20.9 },
+          { formato: "bolso", paginas: 584, lombada_mm: 30.4 },
+        ],
+      },
+      tempo_leitura_horas: 6,
+      canais_recomendados: {
+        ebook: {
+          recomendado: true,
+          plataformas: ["Amazon Kindle", "Apple Books", "Kobo", "Google Play Books"],
+          descricao: "Romance contemporâneo funciona muito bem em eBook — leitura sequencial e alto engajamento mobile.",
+        },
+        fisico: {
+          recomendado: true,
+          descricao: "Boa adequação para POD físico, especialmente como item de presente.",
+        },
+        audiolivro: {
+          recomendado: true,
+          duracao_estimada_horas: 8,
+          descricao: "Narração natural funciona bem para romance — emoções dialogadas se destacam em áudio.",
+        },
+      },
+      faixa_preco_detalhada: {
+        ebook: "R$14,90 – R$19,90",
+        fisico: "R$34,90 – R$44,90",
+        audiolivro: "R$24,90 – R$34,90",
+      },
     };
     return (
       <DiagnosticoView
