@@ -1,8 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+
+type ProcessingStatus =
+  | "idle"
+  | "parsing"
+  | "starting"
+  | "processando_capitulos"
+  | "consolidando"
+  | "concluido"
+  | "erro";
+
+interface PollResponse {
+  status: "processando_capitulos" | "consolidando" | "concluido" | "erro" | "ausente";
+  progresso?: { atual: number; total: number };
+  diagnostico?: unknown;
+  erro?: string;
+}
 
 export function DiagnosticoActions({
   projectId,
@@ -13,14 +29,81 @@ export function DiagnosticoActions({
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<"idle" | "parsing" | "analyzing">("idle");
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [status, setStatus] = useState<ProcessingStatus>("idle");
+  const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tempoDecorrido, setTempoDecorrido] = useState(0);
 
+  // ─── Polling loop ──────────────────────────────────────────────────────────
+  const pollDiagnostico = useCallback(async () => {
+    try {
+      const res = await fetch("/api/agentes/diagnostico", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+
+      const data = await res.json() as PollResponse;
+
+      if (!res.ok) {
+        setStatus("erro");
+        setError(data.erro ?? `Erro HTTP ${res.status}`);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        return;
+      }
+
+      if (data.progresso) setProgresso(data.progresso);
+
+      if (data.status === "concluido") {
+        setStatus("concluido");
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        router.refresh();
+      } else if (data.status === "erro") {
+        setStatus("erro");
+        setError(data.erro ?? "Erro desconhecido no diagnóstico.");
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      } else if (data.status === "processando_capitulos" || data.status === "consolidando") {
+        setStatus(data.status);
+      }
+    } catch (err) {
+      console.error("[poll] Erro:", err);
+      // Continua tentando — pode ser instabilidade de rede
+    }
+  }, [projectId, router]);
+
+  // ─── Timer de tempo decorrido ──────────────────────────────────────────────
+  useEffect(() => {
+    if (status === "processando_capitulos" || status === "consolidando") {
+      const id = setInterval(() => setTempoDecorrido(t => t + 1), 1000);
+      return () => clearInterval(id);
+    } else {
+      setTempoDecorrido(0);
+    }
+  }, [status]);
+
+  // ─── Início do polling ────────────────────────────────────────────────────
+  const iniciarPolling = useCallback(() => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    // Primeira chamada imediata, depois a cada 5s
+    pollDiagnostico();
+    pollIntervalRef.current = setInterval(pollDiagnostico, 5000);
+  }, [pollDiagnostico]);
+
+  // Cleanup no unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+
+  // ─── Upload + início ──────────────────────────────────────────────────────
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setError(null);
+    setProgresso(null);
 
     try {
       setStatus("parsing");
@@ -30,31 +113,39 @@ export function DiagnosticoActions({
       const parseData = await parseRes.json() as { texto?: string; error?: string };
       if (!parseRes.ok) throw new Error(parseData.error ?? "Erro ao processar arquivo.");
 
-      setStatus("analyzing");
+      setStatus("starting");
       const diagRes = await fetch("/api/agentes/diagnostico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texto: parseData.texto, project_id: projectId }),
       });
-      const diagData = await diagRes.json() as { ok?: boolean; error?: string };
-      if (!diagRes.ok) throw new Error(diagData.error ?? "Erro ao gerar diagnóstico.");
+      const diagData = await diagRes.json() as PollResponse;
+      if (!diagRes.ok) throw new Error(diagData.erro ?? "Erro ao iniciar diagnóstico.");
 
-      router.refresh();
+      if (diagData.progresso) setProgresso(diagData.progresso);
+      setStatus("processando_capitulos");
+      iniciarPolling();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
+      setStatus("erro");
     } finally {
-      setStatus("idle");
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
-  const isLoading = status !== "idle";
-  const statusLabel =
-    status === "parsing"   ? "Extraindo texto…" :
-    status === "analyzing" ? "Analisando com IA…" :
-    "↑ Enviar novo arquivo";
+  // ─── UI ────────────────────────────────────────────────────────────────────
+  const isLoading = status !== "idle" && status !== "concluido" && status !== "erro";
 
-  // Route to revision if selected, otherwise skip straight to elements
+  const statusLabel = (() => {
+    if (status === "parsing") return "Extraindo texto…";
+    if (status === "starting") return "Iniciando análise…";
+    if (status === "processando_capitulos" && progresso) {
+      return `Analisando capítulo ${progresso.atual} de ${progresso.total}…`;
+    }
+    if (status === "consolidando") return "Consolidando análise…";
+    return "↑ Enviar novo arquivo";
+  })();
+
   const nextHref =
     usarRevisao === false
       ? `/dashboard/elementos/${projectId}`
@@ -85,6 +176,9 @@ export function DiagnosticoActions({
           {statusLabel}
         </button>
         <p className="text-xs text-zinc-400">Aceita .docx, .pdf ou .txt</p>
+        {isLoading && tempoDecorrido > 0 && (
+          <p className="text-xs text-zinc-400">Tempo decorrido: {tempoDecorrido}s</p>
+        )}
         {error && <p className="text-red-500 text-xs max-w-xs">{error}</p>}
       </div>
 
