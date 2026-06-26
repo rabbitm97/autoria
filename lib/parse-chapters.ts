@@ -41,6 +41,23 @@ const TAMANHO_BLOCO_FALLBACK = 30_000;
 // Versão consolidada — combina o melhor das 3 versões originais.
 const CHAPTER_RE = /^(cap[íi]tulo\s+\d+[.:–—\s].*|chapter\s+\d+[.:–—\s].*|\d+\.\s+.{3,60}|[A-ZÁÀÃÂÉÊÍÓÔÕÚ\s]{4,60})$/;
 
+// ─── isChapterHeading ────────────────────────────────────────────────────────
+
+/**
+ * Verifica se uma linha é um heading de capítulo, usando a heurística
+ * consolidada (regex + MAIÚSCULAS curtas).
+ *
+ * Útil para callers que precisam dessa decisão mas têm parser próprio
+ * (ex: gerar-epub que preserva parágrafos com estrutura específica).
+ *
+ * A linha deve vir já com `trim()` aplicado.
+ */
+export function isChapterHeading(line: string): boolean {
+  if (!line) return false;
+  return CHAPTER_RE.test(line) ||
+    (line.length < 60 && line === line.toUpperCase() && line.length > 3);
+}
+
 // ─── parseChapters ───────────────────────────────────────────────────────────
 
 /**
@@ -62,9 +79,7 @@ export function parseChapters(texto: string, bookTitle: string): Chapter[] {
 
   for (const raw of lines) {
     const line = raw.trim();
-    const isHeading =
-      CHAPTER_RE.test(line) ||
-      (line.length < 60 && line === line.toUpperCase() && line.length > 3);
+    const isHeading = isChapterHeading(line);
 
     if (isHeading && line) {
       if (current.text.trim()) chapters.push(current);
