@@ -13,6 +13,19 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+interface DiagnosticoStateMinimo {
+  status: "processando_capitulos" | "consolidando" | "concluido" | "erro";
+  progresso?: { atual: number; total: number };
+  resultado?: DiagnosticoResult;
+  erro?: string;
+}
+
+type EstadoDiagnostico =
+  | { tipo: "ausente" }
+  | { tipo: "processando"; status: "processando_capitulos" | "consolidando"; progresso?: { atual: number; total: number } }
+  | { tipo: "erro"; mensagem: string }
+  | { tipo: "concluido"; diagnostico: DiagnosticoResult };
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -109,16 +122,30 @@ function ListCard({
   );
 }
 
-function PendingState({ projectId }: { projectId: string }) {
+function PendingState({
+  projectId,
+  status,
+  progresso,
+}: {
+  projectId: string;
+  status?: "processando_capitulos" | "consolidando";
+  progresso?: { atual: number; total: number };
+}) {
+  const mensagem = (() => {
+    if (status === "consolidando") return "Consolidando análise final…";
+    if (status === "processando_capitulos" && progresso) {
+      return `Analisando capítulo ${progresso.atual} de ${progresso.total}…`;
+    }
+    return "A IA está analisando seu manuscrito. Isso leva alguns segundos.";
+  })();
+
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center px-4">
       <div className="w-16 h-16 rounded-full border-4 border-brand-gold border-t-transparent animate-spin mb-6" />
       <h2 className="font-heading text-2xl text-brand-primary mb-2">
         Diagnóstico em andamento…
       </h2>
-      <p className="text-zinc-500 max-w-sm leading-relaxed mb-8">
-        A IA está analisando seu manuscrito. Isso leva alguns segundos.
-      </p>
+      <p className="text-zinc-500 max-w-sm leading-relaxed mb-8">{mensagem}</p>
       <Link
         href={`/dashboard/diagnostico/${projectId}`}
         className="text-brand-gold text-sm underline underline-offset-4 hover:text-brand-gold/80 transition-colors"
@@ -129,38 +156,86 @@ function PendingState({ projectId }: { projectId: string }) {
   );
 }
 
+function ErrorState({ projectId, mensagem }: { projectId: string; mensagem: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+      <div className="w-16 h-16 rounded-full bg-red-50 border-2 border-red-200 flex items-center justify-center mb-6">
+        <span className="text-red-500 text-2xl">!</span>
+      </div>
+      <h2 className="font-heading text-2xl text-brand-primary mb-2">
+        Erro no diagnóstico
+      </h2>
+      <p className="text-zinc-600 max-w-md leading-relaxed mb-8">{mensagem}</p>
+      <Link
+        href={`/dashboard/diagnostico/${projectId}`}
+        className="text-brand-gold text-sm underline underline-offset-4 hover:text-brand-gold/80 transition-colors"
+      >
+        Tentar novamente
+      </Link>
+    </div>
+  );
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 function DiagnosticoView({
   manuscritoNome,
-  diagnostico,
+  estado,
   projectId,
   usarRevisao,
 }: {
   manuscritoNome: string;
-  diagnostico: DiagnosticoResult | null;
+  estado: EstadoDiagnostico;
   projectId: string;
   usarRevisao: boolean | null;
 }) {
-  const complexidade = diagnostico
-    ? (COMPLEXIDADE_MAP[diagnostico.complexidade] ?? COMPLEXIDADE_MAP["médio"])
-    : null;
-  const potencial = diagnostico
-    ? (POTENCIAL_MAP[diagnostico.potencial_comercial] ?? POTENCIAL_MAP["médio"])
-    : null;
-  const mercado = diagnostico
-    ? (MERCADO_MAP[diagnostico.tamanho_mercado] ?? MERCADO_MAP["adequado"])
-    : null;
+  if (estado.tipo === "ausente") {
+    return (
+      <div>
+        <EtapasProgress currentStep={0} projectId={projectId} />
+        <main className="max-w-4xl mx-auto px-4 py-10">
+          <PendingState projectId={projectId} />
+        </main>
+      </div>
+    );
+  }
+
+  if (estado.tipo === "processando") {
+    return (
+      <div>
+        <EtapasProgress currentStep={0} projectId={projectId} />
+        <main className="max-w-4xl mx-auto px-4 py-10">
+          <PendingState
+            projectId={projectId}
+            status={estado.status}
+            progresso={estado.progresso}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  if (estado.tipo === "erro") {
+    return (
+      <div>
+        <EtapasProgress currentStep={0} projectId={projectId} />
+        <main className="max-w-4xl mx-auto px-4 py-10">
+          <ErrorState projectId={projectId} mensagem={estado.mensagem} />
+        </main>
+      </div>
+    );
+  }
+
+  const diagnostico = estado.diagnostico;
+  const complexidade = COMPLEXIDADE_MAP[diagnostico.complexidade] ?? COMPLEXIDADE_MAP["médio"];
+  const potencial = POTENCIAL_MAP[diagnostico.potencial_comercial] ?? POTENCIAL_MAP["médio"];
+  const mercado = MERCADO_MAP[diagnostico.tamanho_mercado] ?? MERCADO_MAP["adequado"];
 
   return (
     <div>
       <EtapasProgress currentStep={0} projectId={projectId} />
 
       <main className="max-w-4xl mx-auto px-4 py-10">
-        {!diagnostico ? (
-          <PendingState projectId={projectId} />
-        ) : (
-          <>
             {/* Header */}
             <div className="mb-8">
               <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -203,7 +278,7 @@ function DiagnosticoView({
                 </div>
                 <div>
                   <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Complexidade</p>
-                  <Badge label={complexidade!.label} color={complexidade!.color} bg={complexidade!.bg} />
+                  <Badge label={complexidade.label} color={complexidade.color} bg={complexidade.bg} />
                   <div className="mt-3">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs text-zinc-400">Flesch</span>
@@ -239,11 +314,11 @@ function DiagnosticoView({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
                 <div className="bg-zinc-50 rounded-xl p-4">
                   <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Potencial Comercial</p>
-                  <Badge label={potencial!.label} color={potencial!.color} bg={potencial!.bg} />
+                  <Badge label={potencial.label} color={potencial.color} bg={potencial.bg} />
                 </div>
                 <div className="bg-zinc-50 rounded-xl p-4">
                   <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Tamanho do Mercado</p>
-                  <Badge label={mercado!.label} color={mercado!.color} bg={mercado!.bg} />
+                  <Badge label={mercado.label} color={mercado.color} bg={mercado.bg} />
                 </div>
                 <div className="bg-zinc-50 rounded-xl p-4">
                   <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Faixa de Preço</p>
@@ -294,8 +369,6 @@ function DiagnosticoView({
 
             {/* CTAs */}
             <DiagnosticoActions projectId={projectId} usarRevisao={usarRevisao} />
-          </>
-        )}
       </main>
     </div>
   );
@@ -401,7 +474,7 @@ export default async function DiagnosticoPage({ params }: PageProps) {
     return (
       <DiagnosticoView
         manuscritoNome="A Última Carta (demo)"
-        diagnostico={mock}
+        estado={{ tipo: "concluido", diagnostico: mock }}
         projectId={id}
         usarRevisao={true}
       />
@@ -418,15 +491,39 @@ export default async function DiagnosticoPage({ params }: PageProps) {
 
   if (!project) notFound();
 
-  const diagnostico = project.diagnostico as DiagnosticoResult | null;
+  const raw = project.diagnostico as DiagnosticoStateMinimo | DiagnosticoResult | null;
   const ms = project.manuscripts as unknown as { nome?: string; titulo?: string | null } | null;
   const manuscritoNome = (ms?.titulo?.trim()) || ms?.nome || "Manuscrito";
   const usarRevisao = project.usar_revisao as boolean | null;
 
+  const estado: EstadoDiagnostico = (() => {
+    if (!raw) return { tipo: "ausente" };
+
+    if ("status" in raw && typeof raw.status === "string") {
+      const s = raw as DiagnosticoStateMinimo;
+      if (s.status === "concluido" && s.resultado) {
+        return { tipo: "concluido", diagnostico: s.resultado };
+      }
+      if (s.status === "erro") {
+        return { tipo: "erro", mensagem: s.erro ?? "Erro desconhecido no diagnóstico." };
+      }
+      if (s.status === "processando_capitulos" || s.status === "consolidando") {
+        return { tipo: "processando", status: s.status, progresso: s.progresso };
+      }
+      return { tipo: "ausente" };
+    }
+
+    if ("num_palavras" in raw) {
+      return { tipo: "concluido", diagnostico: raw as DiagnosticoResult };
+    }
+
+    return { tipo: "ausente" };
+  })();
+
   return (
     <DiagnosticoView
       manuscritoNome={manuscritoNome}
-      diagnostico={diagnostico}
+      estado={estado}
       projectId={id}
       usarRevisao={usarRevisao}
     />
