@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
+import { RevisaoLoading } from "@/components/revisao/RevisaoLoading";
 import type { SugestaoRevisao, RevisaoResult, RevisaoProcessingState } from "@/app/api/agentes/revisao/route";
 import { supabase } from "@/lib/supabase";
 
@@ -594,56 +595,15 @@ export default function RevisaoPage() {
           </div>
 
         ) : pollProgress !== null ? (
-          /* Batch em processamento */
-          (() => {
-            const totalDone = pollProgress.done + pollProgress.processing;
-            const pct = pollProgress.total > 0
-              ? Math.max(5, Math.round((totalDone / pollProgress.total) * 100))
-              : 5;
-            const elapsed = pollProgress.iniciado_em
-              ? Math.floor((Date.now() - new Date(pollProgress.iniciado_em).getTime()) / 1000)
-              : 0;
-            const mins = Math.floor(elapsed / 60);
-            const secs = elapsed % 60;
-            const tempoStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-
-            let mensagem: string;
-            if (pollProgress.done === pollProgress.total && pollProgress.total > 0) {
-              mensagem = "Finalizando análise…";
-            } else if (pollProgress.done > 0) {
-              mensagem = `${pollProgress.done} de ${pollProgress.total} partes concluídas${pollProgress.processing > 0 ? ` · ${pollProgress.processing} em análise` : ""}`;
-            } else if (pollProgress.processing > 0) {
-              mensagem = `Analisando ${pollProgress.processing} de ${pollProgress.total} partes em paralelo…`;
-            } else if (elapsed < 15) {
-              mensagem = "Enviando texto para a IA…";
-            } else if (elapsed < 60) {
-              mensagem = "Aguardando início da análise…";
-            } else {
-              mensagem = "Análise pode levar alguns minutos para textos longos…";
-            }
-
-            return (
-              <div className="flex flex-col items-center justify-center py-24 px-6">
-                <div className="w-full max-w-md">
-                  <div className="h-2 bg-zinc-100 rounded-full overflow-hidden mb-3">
-                    <div
-                      className="h-full bg-brand-gold transition-all duration-700 ease-out"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <p className="text-sm text-zinc-700 text-center mb-1">{mensagem}</p>
-                  <p className="text-xs text-zinc-400 text-center font-mono">
-                    {tempoStr} decorridos
-                  </p>
-                  {error && (
-                    <div className="mt-6 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm text-left">
-                      {error}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })()
+          /* Batch em processamento — animação editorial; troca para estado de erro se polling falhar */
+          <RevisaoLoading
+            erro={error}
+            onRefazer={() => {
+              setError(null);
+              setPollProgress(null);
+              triggerRevisao();
+            }}
+          />
 
         ) : !revisao ? (
           /* Not yet run */
