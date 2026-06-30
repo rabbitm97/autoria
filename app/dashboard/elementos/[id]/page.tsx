@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { EscolhaFormato } from "@/components/escolha-formato";
 import type { ElementosEditoriais } from "@/app/api/agentes/elementos-editoriais/route";
+import type { FormatoSugerido } from "@/app/api/agentes/diagnostico/route";
 import type { FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 
@@ -22,6 +23,7 @@ export default function ElementosPage() {
   const [error, setError] = useState<string | null>(null);
   const [formato, setFormato] = useState<FormatoLivro | null>(null);
   const [formatoLocked, setFormatoLocked] = useState(false);
+  const [sugestaoFormato, setSugestaoFormato] = useState<FormatoSugerido | null>(null);
 
   // Editable state
   const [sinopseCurta, setSinopseCurta] = useState("");
@@ -39,7 +41,7 @@ export default function ElementosPage() {
     const [projRes, fmtRes] = await Promise.all([
       supabase
         .from("projects")
-        .select("dados_elementos, manuscripts(nome, titulo)")
+        .select("dados_elementos, diagnostico, manuscripts(nome, titulo)")
         .eq("id", projectId)
         .single(),
       fetch(`/api/projects/${projectId}/formato`).then(r => r.json()).catch(() => null),
@@ -50,6 +52,14 @@ export default function ElementosPage() {
       if (el) populateFields(el);
       const ms = projRes.data.manuscripts as unknown as { nome?: string; titulo?: string | null } | null;
       setManuscritoNome((ms?.titulo?.trim()) || ms?.nome || "Manuscrito");
+
+      const diag = projRes.data.diagnostico as {
+        status?: string;
+        resultado?: { formato_sugerido?: FormatoSugerido };
+      } | null;
+      if (diag?.status === "concluido" && diag.resultado?.formato_sugerido) {
+        setSugestaoFormato(diag.resultado.formato_sugerido);
+      }
     }
 
     if (fmtRes) {
@@ -185,9 +195,49 @@ export default function ElementosPage() {
                 <p className="text-zinc-400 text-xs mb-4">
                   Define as dimensões físicas do miolo, capa e PDF. Bloqueado após a capa ser gerada.
                 </p>
+
+                {sugestaoFormato && !formatoLocked && (
+                  sugestaoFormato.formato === null ? (
+                    <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-amber-900 mb-1">
+                        Escolha manual recomendada
+                      </p>
+                      <p className="text-sm text-amber-800 leading-relaxed">
+                        {sugestaoFormato.motivo}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mb-4 bg-brand-gold/5 border border-brand-gold/20 rounded-xl p-4">
+                      <div className="flex items-start gap-3">
+                        <span className="text-brand-gold text-lg leading-none mt-0.5">✦</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-brand-gold mb-1">
+                            Sugestão do diagnóstico
+                          </p>
+                          <p className="text-sm font-medium text-brand-primary mb-1">
+                            {sugestaoFormato.label}
+                          </p>
+                          <p className="text-xs text-zinc-600 leading-relaxed mb-2">
+                            {sugestaoFormato.motivo}
+                          </p>
+                          <p className="text-[11px] text-zinc-500">
+                            Estimativa: ~{sugestaoFormato.paginas_estimadas} páginas · lombada {sugestaoFormato.lombada_mm.toFixed(1)} mm
+                          </p>
+                          {sugestaoFormato.aviso && (
+                            <p className="text-[11px] text-amber-700 mt-1.5">⚠ {sugestaoFormato.aviso}</p>
+                          )}
+                          <p className="text-[10px] text-zinc-400 italic mt-2 leading-relaxed">
+                            Estimativa considera corpo do texto em 11pt (padrão editorial). O número final de páginas será calculado após a diagramação.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
+
                 <EscolhaFormato
                   projectId={projectId}
-                  initialFormato={formato}
+                  initialFormato={formato ?? sugestaoFormato?.formato ?? null}
                   locked={formatoLocked}
                   onSaved={setFormato}
                 />
