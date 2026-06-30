@@ -18,8 +18,19 @@ export interface FormatoSpecs {
     bottom_mm: number;
     inner_mm: number;
   };
-  wpp: number;      // palavras por página (estimativa)
-  bleed_mm: number; // sangria para versão de gráfica
+  /**
+   * Palavras por página (estimativa empírica), calibrado para o corpo_pt
+   * declarado em `wpp_base_corpo_pt`. A função `wppEfetivo` em
+   * `lib/miolo-builder.ts` escala matematicamente para outros corpos.
+   */
+  wpp: number;
+  /**
+   * Corpo de texto (em pt) usado como base de calibração do `wpp`.
+   * Bolso é calibrado em 10pt (default de mass-market paperback);
+   * demais formatos em 11pt (sweet spot editorial).
+   */
+  wpp_base_corpo_pt: number;
+  bleed_mm: number;
 }
 
 export interface FormatoDef {
@@ -45,6 +56,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
       width_mm: 160, height_mm: 230,
       margens: { top_mm: 20, outer_mm: 15, bottom_mm: 24, inner_mm: 18 },
       wpp: 220,
+      wpp_base_corpo_pt: 11,
       bleed_mm: 3,
     },
   },
@@ -60,6 +72,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
       width_mm: 140, height_mm: 210,
       margens: { top_mm: 18, outer_mm: 13, bottom_mm: 22, inner_mm: 17 },
       wpp: 180,
+      wpp_base_corpo_pt: 11,
       bleed_mm: 3,
     },
   },
@@ -74,7 +87,8 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
       width_cm: 11, height_cm: 18,
       width_mm: 110, height_mm: 180,
       margens: { top_mm: 15, outer_mm: 11, bottom_mm: 18, inner_mm: 14 },
-      wpp: 124,
+      wpp: 190,
+      wpp_base_corpo_pt: 10,
       bleed_mm: 3,
     },
   },
@@ -90,6 +104,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
       width_mm: 200, height_mm: 200,
       margens: { top_mm: 22, outer_mm: 18, bottom_mm: 25, inner_mm: 22 },
       wpp: 300,
+      wpp_base_corpo_pt: 11,
       bleed_mm: 3,
     },
   },
@@ -105,6 +120,7 @@ export const FORMATOS_LIVRO: readonly FormatoDef[] = [
       width_mm: 210, height_mm: 297,
       margens: { top_mm: 30, outer_mm: 20, bottom_mm: 30, inner_mm: 25 },
       wpp: 380,
+      wpp_base_corpo_pt: 11,
       bleed_mm: 3,
     },
   },

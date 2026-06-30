@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
   const spec = getFormatoDef(config.formato).specs;
-  const wppAjustado = wppEfetivo(spec.wpp, config.corpo_pt);
+  const wppAjustado = wppEfetivo(spec, config.corpo_pt);
   const paginasEstimadas = Math.max(1, Math.round(numPalavras / wppAjustado));
   // Fórmula gráfica BR para papéis lisos: lombada (cm) = (gsm × pgs) / 14400
   // Multiplica por 10 para mm, arredonda para 1 casa decimal.

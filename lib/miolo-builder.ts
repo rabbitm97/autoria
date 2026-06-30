@@ -80,28 +80,31 @@ export function getDefaultCorpoPt(template: TemplateId, formato?: FormatoLivro):
   return TEMPLATE_DEFAULT_CORPO_PT[template] ?? 11;
 }
 
-// O wpp em formatos.ts é calibrado empiricamente para corpo_pt = 11
-// (sweet spot do mercado para body em livros). Quando o autor escolhe
-// corpo_pt diferente, a quantidade de texto por página varia
+// O wpp em formatos.ts é calibrado empiricamente para um corpo_pt específico
+// por formato (declarado em spec.wpp_base_corpo_pt). Quando o autor escolhe
+// corpo_pt diferente da base, a quantidade de texto por página varia
 // quadraticamente: linhas por página escalam linearmente com font, e
 // chars por linha também — área ocupada por char é quadrática.
 //
-// Para corpo_pt = X, wpp_efetivo = wpp_base × (11 / X)².
+// Para corpo_pt = X, wpp_efetivo = spec.wpp × (spec.wpp_base_corpo_pt / X)².
 //
-// Validado empiricamente com erro < 2% em todos os formatos.
-const CORPO_PT_BASE_WPP = 11;
+// Calibração de referência:
+//   padrao_br, compacto, quadrado, a4 → base 11pt
+//   bolso → base 10pt (mass-market paperback)
 
 /**
  * Calcula wpp ajustado para o corpo_pt efetivamente usado no livro.
- * Use sempre que for estimar páginas a partir de wpp do formato.
- * Se corpoPt for undefined ou fora da faixa válida (9–14), assume base.
+ * Use sempre que for estimar páginas a partir do spec do formato.
+ * Se corpoPt for undefined ou fora da faixa válida (9–14), assume a base
+ * declarada em spec.wpp_base_corpo_pt.
  */
-export function wppEfetivo(wppBase: number, corpoPt: number | undefined): number {
+export function wppEfetivo(spec: FormatoSpecs, corpoPt: number | undefined): number {
+  const base = spec.wpp_base_corpo_pt;
   const corpo = (typeof corpoPt === "number" && corpoPt >= 9 && corpoPt <= 14)
     ? corpoPt
-    : CORPO_PT_BASE_WPP;
-  const fator = (CORPO_PT_BASE_WPP / corpo) ** 2;
-  return Math.max(1, Math.round(wppBase * fator));
+    : base;
+  const fator = (base / corpo) ** 2;
+  return Math.max(1, Math.round(spec.wpp * fator));
 }
 
 const TEMPLATE_DEFAULT_SUMARIO: Record<TemplateId, boolean> = {
@@ -1079,7 +1082,7 @@ export function buildBookHtml(params: {
 
   // wpp ajustado pelo corpo_pt efetivo — calculado uma vez e reutilizado
   // nos cálculos de paginação do TOC e dos capítulos.
-  const wppAjustado = wppEfetivo(spec.wpp, corpoPt);
+  const wppAjustado = wppEfetivo(spec, corpoPt);
 
   // Marcas de corte são sempre aplicadas no builder de gráfica.
   // O builder digital (lib/miolo-builder-digital.ts) reescreve o @page

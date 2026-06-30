@@ -10,6 +10,7 @@ import {
   getDefaultCorpoPt,
   getDefaultSumario,
   clampCorpoPt,
+  wppEfetivo,
   type TemplateOption,
 } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
@@ -608,11 +609,15 @@ export default function MioloPage() {
 
   // ── Estimated pages ──────────────────────────────────────────────────────
 
-  const wpps: Record<FormatoLivro, number> = { bolso: 200, compacto: 230, padrao_br: 260, quadrado: 300, a4: 380 };
-  const paginasEst = palavrasTotal > 0 ? Math.max(1, Math.round(palavrasTotal / wpps[formato])) : null;
-
   const selectedTemplate = TEMPLATE_OPTIONS.find(t => t.value === template);
   const selectedFormato = FORMATOS_LIVRO.find(f => f.value === formato);
+
+  // Estimativa unificada: usa wppEfetivo da lib do builder, com o spec do
+  // formato selecionado e o corpo_pt corrente. Mantém o frontend coerente
+  // com o que o agente miolo calculará no backend.
+  const paginasEst = (palavrasTotal > 0 && selectedFormato)
+    ? Math.max(1, Math.round(palavrasTotal / wppEfetivo(selectedFormato.specs, corpoPt)))
+    : null;
 
   function handleTemplateChange(novo: TemplateId) {
     setTemplate(novo);
