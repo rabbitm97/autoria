@@ -222,10 +222,48 @@ export function estimarPaginas(
 
 export const PAPEL_GRAMATURA_PADRAO_GSM = 75;
 
+/**
+ * Lombada mínima visível em uma capa montada. Abaixo desse valor (livros
+ * de ~40 páginas ou menos) a lombada colapsa graficamente — texto fica
+ * ilegível e o miolo "engasga" no design.
+ *
+ * Vivia hardcoded como `Math.max(2, ...)` em 3 funções locais de lombada
+ * no pipeline de capa (`lib/capa-frente-extractor.ts`,
+ * `app/editor/capa/[project_id]/lib/dimensions.ts`,
+ * `app/dashboard/capa/[id]/page.tsx`). Centralizado aqui.
+ */
+export const LOMBADA_MIN_CAPA_MM = 2;
+
+/**
+ * Fórmula gráfica brasileira para papéis lisos (offset 75 g/m², avena 80 g/m²
+ * aproximado): lombada (cm) = (gramatura_gsm × paginas) / 14400.
+ * Equivalente algébrico: lombada (mm) = paginas × gramatura_gsm / 1440.
+ *
+ * Resultado em mm, arredondado para 1 casa decimal.
+ * NÃO aplica mínimo. Para miolo, gerar-pdf, estimativa, ficha CIP.
+ */
 export function estimarLombadaMm(
   paginas: number,
   gramaturaGsm: number = PAPEL_GRAMATURA_PADRAO_GSM
 ): number {
   if (paginas <= 0) return 0;
   return Math.round((gramaturaGsm * paginas / 14400) * 100) / 10;
+}
+
+/**
+ * Lombada para o pipeline de capa: usa `estimarLombadaMm` e aplica clamp
+ * de `LOMBADA_MIN_CAPA_MM` para garantir que a capa nunca tente renderizar
+ * uma lombada degenerada em livros pequenos.
+ *
+ * USE em: gerar-capa, upload-capa, gerar-elemento-capa, editor visual,
+ * capa-frente-extractor, dashboard de capa.
+ *
+ * NÃO USE em: miolo, gerar-pdf, ficha CIP (esses querem o valor matemático,
+ * sem clamp).
+ */
+export function estimarLombadaCapaMm(
+  paginas: number,
+  gramaturaGsm: number = PAPEL_GRAMATURA_PADRAO_GSM
+): number {
+  return Math.max(LOMBADA_MIN_CAPA_MM, estimarLombadaMm(paginas, gramaturaGsm));
 }

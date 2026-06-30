@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import sharp from "sharp";
-import { estimarLombadaMm } from "./formatos";
+import { estimarLombadaCapaMm } from "./formatos";
 
 const DPI = 300;
 const MM_TO_PX = DPI / 25.4;
@@ -41,7 +41,7 @@ const LOMBADA_MIN_MM = 1;    // lombada mínima plausível
 const LOMBADA_MAX_MM = 100;  // lombada máxima plausível (~1400 páginas)
 
 function calcularLombadaMm(paginas: number): number {
-  return Math.max(2, estimarLombadaMm(paginas));
+  return estimarLombadaCapaMm(paginas);
 }
 
 export interface ExtractFrontInput {

@@ -1,4 +1,4 @@
-import { estimarLombadaMm } from "@/lib/formatos";
+import { estimarLombadaCapaMm } from "@/lib/formatos";
 
 // 300 DPI: 1mm = DPI/25.4 px ≈ 11.811 px
 export const DPI = 300;
@@ -17,7 +17,7 @@ export const SANGRIA_MM = 3;
 export const ORELHA_MM = 80;
 
 export function calcularLombada(pages: number): number {
-  return Math.max(2, estimarLombadaMm(pages));
+  return estimarLombadaCapaMm(pages);
 }
 
 export function calcularLarguraTotal(

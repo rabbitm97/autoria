@@ -8,7 +8,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult, CapaValidacao } from "@/app/api/agentes/upload-capa/route";
-import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
+import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ const CORES_PRESET = [
 ];
 
 function calcLombadaMm(paginas: number) {
-  return estimarLombadaMm(paginas);
+  return estimarLombadaCapaMm(paginas);
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

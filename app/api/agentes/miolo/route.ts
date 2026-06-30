@@ -1,18 +1,12 @@
 export const maxDuration = 60;
 
-// Gramatura padrão do papel em g/m². Constante por enquanto — quando a
-// escolha de papel for implementada (backlog), virá do config do projeto.
-// Cobre offset 75gsm e avena 80gsm (média ~75). Papéis porosos (couché,
-// pólen) terão fórmula própria por fabricante quando suportados.
-const PAPEL_GRAMATURA_GSM = 75;
-
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml, clampCorpoPt } from "@/lib/miolo-builder";
-import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas } from "@/lib/formatos";
+import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas, estimarLombadaMm } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
 import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
@@ -33,7 +27,7 @@ export interface MioloResult {
    * `paginas_reais ?? paginas_estimadas` como fallback honesto.
    */
   paginas_reais: number | null;
-  lombada_mm: number;          // (PAPEL_GRAMATURA_GSM × paginas / 14400) × 10 — fórmula gráfica BR
+  lombada_mm: number;          // estimarLombadaMm — fórmula gráfica BR para papéis lisos (offset 75 g/m², avena 80 g/m² aprox.)
   palavras: number;
   caracteres: number;
   gerado_em: string;
@@ -272,7 +266,7 @@ export async function POST(request: NextRequest) {
   // Multiplica por 10 para mm, arredonda para 1 casa decimal.
   // Usa paginasReais do builder (estimativa detalhada) para a lombada
   // exibida pré-PDF; o gerar-pdf recalcula com a contagem real depois.
-  const lombadaMm = Math.round((PAPEL_GRAMATURA_GSM * paginasReais / 14400) * 100) / 10;
+  const lombadaMm = estimarLombadaMm(paginasReais);
 
   // Upload HTML to storage
   const storageClient = createClient(

@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
-import { estimarLombadaMm } from "@/lib/formatos";
+import { estimarLombadaCapaMm } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
     is_regeneracao,
     paginas_estimadas: paginas,
-    lombada_mm: estimarLombadaMm(paginas),
+    lombada_mm: estimarLombadaCapaMm(paginas),
   };
 
   await supabase
