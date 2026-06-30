@@ -168,14 +168,21 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
   }
 
   // Schema 3: Upload
+  // O upload é sempre uma capa panorâmica completa por design — o validador
+  // em `app/api/agentes/upload-capa/route.ts` calcula
+  // totalWMm = sangria + orelhas + contracapa + lombada + frente + orelhas + sangria
+  // e rejeita arquivos que não baterem com essa geometria. Portanto
+  // `is_panoramica` é sempre `true`. Sem isso, o Book3D em
+  // `app/dashboard/prova/[id]/page.tsx` trata o PNG inteiro como se fosse
+  // apenas a frente — e a lombada/contracapa aparecem pintadas na frente
+  // do livro 3D.
   if (isUploadCapa(dados_capa)) {
     const url = typeof dados_capa.url === "string" ? dados_capa.url : null;
-    const usaCompleta = !!urlCompleta;
     return {
       pronta: !!(urlCompleta ?? url),
       origem: "upload",
       url_principal: urlCompleta ?? url,
-      is_panoramica: usaCompleta,
+      is_panoramica: true,
       fills: null,
       lombada_mm: typeof dados_capa.lombada_mm_na_validacao === "number" ? dados_capa.lombada_mm_na_validacao : null,
       largura_px: typeof dados_capa.largura_px === "number" ? dados_capa.largura_px : null,
