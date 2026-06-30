@@ -11,8 +11,8 @@ import { requireAuth } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
-import { buildBookHtml, clampCorpoPt, wppEfetivo } from "@/lib/miolo-builder";
-import { isFormatoValido, FORMATOS_VALORES, getFormatoDef } from "@/lib/formatos";
+import { buildBookHtml, clampCorpoPt } from "@/lib/miolo-builder";
+import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
 import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
@@ -27,9 +27,15 @@ export interface MioloResult {
   html_storage_path: string;
   capitulos: CapituloInfo[];
   paginas_estimadas: number;
-  paginas_reais: number;       // counted from actual HTML page breaks
-  lombada_mm: number;          // (PAPEL_GRAMATURA_GSM × paginas_reais / 14400) × 10 — fórmula gráfica BR para papéis lisos (offset, avena)
+  /**
+   * Páginas reais, contadas do PDF.
+   * `null` até o `gerar-pdf` rodar. Consumidores devem usar
+   * `paginas_reais ?? paginas_estimadas` como fallback honesto.
+   */
+  paginas_reais: number | null;
+  lombada_mm: number;          // (PAPEL_GRAMATURA_GSM × paginas / 14400) × 10 — fórmula gráfica BR
   palavras: number;
+  caracteres: number;
   gerado_em: string;
 }
 
@@ -259,11 +265,13 @@ export async function POST(request: NextRequest) {
       : pass1;
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
+  const numCaracteres = texto.length;
   const spec = getFormatoDef(config.formato).specs;
-  const wppAjustado = wppEfetivo(spec, config.corpo_pt);
-  const paginasEstimadas = Math.max(1, Math.round(numPalavras / wppAjustado));
+  const paginasEstimadas = estimarPaginas(spec, config.corpo_pt, numCaracteres);
   // Fórmula gráfica BR para papéis lisos: lombada (cm) = (gsm × pgs) / 14400
   // Multiplica por 10 para mm, arredonda para 1 casa decimal.
+  // Usa paginasReais do builder (estimativa detalhada) para a lombada
+  // exibida pré-PDF; o gerar-pdf recalcula com a contagem real depois.
   const lombadaMm = Math.round((PAPEL_GRAMATURA_GSM * paginasReais / 14400) * 100) / 10;
 
   // Upload HTML to storage
@@ -310,16 +318,23 @@ export async function POST(request: NextRequest) {
     html_storage_path: storagePath,
     capitulos: capitulosInfo,
     paginas_estimadas: paginasEstimadas,
-    paginas_reais: paginasReais,
+    // paginas_reais começa null. Só o `gerar-pdf` (que conta o PDF gerado
+    // via pdf-lib) sabe o valor real. Consumidores fazem
+    // `paginas_reais ?? paginas_estimadas` como fallback honesto.
+    paginas_reais: null,
     lombada_mm: lombadaMm,
     palavras: numPalavras,
+    caracteres: numCaracteres,
     gerado_em: new Date().toISOString(),
   };
 
-  // Save to project
+  // Save to project. Invalida dados_pdf: ao regerar o miolo, qualquer PDF
+  // antigo perde validade (a configuração mudou). Sem isso, a sidebar da
+  // Diagramação continua exibindo "Páginas" e "Lombada" como se o PDF
+  // ainda fosse válido, induzindo o autor ao erro.
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({ dados_miolo: mioloResult, etapa_atual: "diagramacao" })
+    .update({ dados_miolo: mioloResult, dados_pdf: null, etapa_atual: "diagramacao" })
     .eq("id", project_id)
     .eq("user_id", user.id);
 

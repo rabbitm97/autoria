@@ -7,6 +7,7 @@ import { getAgentPrompt } from "@/lib/agent-prompts";
 import {
   FORMATOS_LIVRO,
   estimarLombadaMm,
+  estimarPaginas,
   type FormatoLivro,
 } from "@/lib/formatos";
 import {
@@ -66,6 +67,7 @@ interface FragmentoAnalisado {
   idx: number;
   titulo: string;
   num_palavras: number;
+  num_caracteres: number;
   genero_local: string;
   tom_local: string;
   flesch_local: number;
@@ -209,19 +211,21 @@ function detectarCategoriaEspecial(generoLower: string): "abnt" | "infantil" | "
   return null;
 }
 
-function calcularSugestaoFormato(numPalavras: number, generoLower: string): FormatoSugerido {
+function calcularSugestaoFormato(numPalavras: number, numCaracteres: number, generoLower: string): FormatoSugerido {
   const categoria = detectarCategoriaEspecial(generoLower);
 
+  // Cascade calcula páginas com a base do formato (corpoPt undefined).
+  // Estimativa em caracteres, função única (lib/formatos.ts).
   const formatosCascata: FormatoLivro[] = ["padrao_br", "compacto", "bolso"];
   const cascataDetalhada = formatosCascata.map(fmt => {
     const def = FORMATOS_LIVRO.find(f => f.value === fmt)!;
-    const paginas = Math.max(1, Math.round(numPalavras / def.specs.wpp));
+    const paginas = estimarPaginas(def.specs, undefined, numCaracteres);
     return { formato: fmt, paginas, lombada_mm: estimarLombadaMm(paginas) };
   });
 
   if (categoria === "abnt") {
     const a4 = FORMATOS_LIVRO.find(f => f.value === "a4")!;
-    const paginas = Math.max(1, Math.round(numPalavras / a4.specs.wpp));
+    const paginas = estimarPaginas(a4.specs, undefined, numCaracteres);
     return {
       formato: "a4",
       label: "ABNT · A4 (21×29,7 cm)",
@@ -336,6 +340,7 @@ async function analisarFragmento(
       idx: fragmento.idx,
       titulo: fragmento.titulo,
       num_palavras: fragmento.num_palavras,
+      num_caracteres: fragmento.texto.length,
       genero_local: parsed.genero_local ?? "Não identificado",
       tom_local: parsed.tom_local ?? "Não identificado",
       flesch_local: parsed.flesch_local ?? 50,
@@ -349,6 +354,7 @@ async function analisarFragmento(
       idx: fragmento.idx,
       titulo: fragmento.titulo,
       num_palavras: fragmento.num_palavras,
+      num_caracteres: fragmento.texto.length,
       genero_local: "",
       tom_local: "",
       flesch_local: 0,
@@ -364,6 +370,7 @@ async function analisarFragmento(
 async function consolidarDiagnostico(
   fragmentos: FragmentoAnalisado[],
   numPalavrasTotal: number,
+  numCaracteresTotal: number,
   projectId: string,
   userId: string
 ): Promise<DiagnosticoResult> {
@@ -406,7 +413,7 @@ async function consolidarDiagnostico(
   );
 
   const generoLower = (parsed.genero_provavel ?? "").toLowerCase();
-  const formato_sugerido = calcularSugestaoFormato(numPalavrasTotal, generoLower);
+  const formato_sugerido = calcularSugestaoFormato(numPalavrasTotal, numCaracteresTotal, generoLower);
 
   return {
     ...parsed,
@@ -565,9 +572,11 @@ export async function POST(request: NextRequest) {
 
     try {
       const numPalavrasTotal = estado.fragmentos_cache.reduce((sum, f) => sum + f.num_palavras, 0);
+      const numCaracteresTotal = estado.fragmentos_cache.reduce((sum, f) => sum + f.num_caracteres, 0);
       const resultado = await consolidarDiagnostico(
         estado.fragmentos_cache,
         numPalavrasTotal,
+        numCaracteresTotal,
         project_id,
         user.id
       );

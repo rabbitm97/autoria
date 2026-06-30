@@ -8,7 +8,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult, CapaValidacao } from "@/app/api/agentes/upload-capa/route";
-import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef } from "@/lib/formatos";
+import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ const CORES_PRESET = [
 ];
 
 function calcLombadaMm(paginas: number) {
-  return Math.round(paginas * 0.07 * 10) / 10;
+  return estimarLombadaMm(paginas);
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -716,7 +716,7 @@ export default function CapaPage() {
         const capaDados = data?.dados_capa as { lombada_mm?: number; modo?: string } | null;
         if (capaDados?.modo === "ia" && capaDados?.lombada_mm) {
           const diff = Math.abs(capaDados.lombada_mm - miolo.lombada_mm);
-          setAjusteDisponivel(diff > 2 ? { anterior: capaDados.lombada_mm, nova: miolo.lombada_mm, diff } : null);
+          setAjusteDisponivel(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: capaDados.lombada_mm, nova: miolo.lombada_mm, diff } : null);
         } else {
           setAjusteDisponivel(null);
         }

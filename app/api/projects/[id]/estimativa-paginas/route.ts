@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
-import { isFormatoValido, getFormatoDef, type FormatoLivro } from "@/lib/formatos";
+import { isFormatoValido, getFormatoDef, estimarPaginas, estimarLombadaMm, type FormatoLivro } from "@/lib/formatos";
 
 // ─── GET /api/projects/[id]/estimativa-paginas?formato=padrao_br ──────────────
 
@@ -76,11 +76,16 @@ export async function GET(
   }
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
-  const wpp = getFormatoDef(formato).specs.wpp;
+  const numCaracteres = texto.length;
+  const spec = getFormatoDef(formato).specs;
 
-  const paginas_base = Math.max(1, Math.round(numPalavras / wpp));
-  const paginas_estimadas = Math.ceil(paginas_base * 1.10);
-  const lombada_estimada_mm = Math.round(paginas_estimadas * 0.07 * 10) / 10;
+  // Sem corpoPt nesta rota (não é passado): assume base do formato.
+  // Sem multiplicador de margem (a antiga × 1.10 era percentual, mas as
+  // páginas pré-textuais são quantidade fixa — já incluídas em EXTRAS_PADRAO
+  // dentro de estimarPaginas).
+  const paginas_estimadas = estimarPaginas(spec, undefined, numCaracteres);
+  const paginas_base = paginas_estimadas;
+  const lombada_estimada_mm = estimarLombadaMm(paginas_estimadas);
 
   return NextResponse.json({
     palavras: numPalavras,

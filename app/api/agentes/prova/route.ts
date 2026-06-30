@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
+import { LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { PDFDocument } from "pdf-lib";
 import {
   FORMATS,
@@ -285,7 +286,7 @@ export async function POST(req: NextRequest) {
   // 5. Consistência: lombada da capa vs miolo
   if (capaResolvida.pronta && capaResolvida.lombada_mm !== null && miolo?.lombada_mm) {
     const diff = Math.abs(capaResolvida.lombada_mm - miolo.lombada_mm);
-    if (diff > 2) {
+    if (diff > LIMITE_DIVERGENCIA_LOMBADA_MM) {
       itens.push({
         categoria: "consistencia",
         status: "aviso",

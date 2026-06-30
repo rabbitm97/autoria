@@ -4,13 +4,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoLivro } from "@/app/api/agentes/miolo/route";
-import { FORMATOS_LIVRO } from "@/lib/formatos";
+import { FORMATOS_LIVRO, estimarPaginas, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import {
   TEMPLATE_OPTIONS,
   getDefaultCorpoPt,
   getDefaultSumario,
   clampCorpoPt,
-  wppEfetivo,
   type TemplateOption,
 } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
@@ -105,6 +104,7 @@ export default function MioloPage() {
   const [genero, setGenero] = useState<string | null>(null);
   const [manuscritoNome, setManuscritoNome] = useState("Manuscrito");
   const [palavrasTotal, setPalavrasTotal] = useState(0);
+  const [caracteresTotal, setCaracteresTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // ── Step state ──────────────────────────────────────────────────────────────
@@ -159,14 +159,13 @@ export default function MioloPage() {
   const [lombadaAjusteDisponivel, setLombadaAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [lombadaUploadAvisoAtivo, setLombadaUploadAvisoAtivo] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [ajustando, setAjustando] = useState(false);
-  const [pdfGeradoEm, setPdfGeradoEm] = useState<string | null>(null);
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_miolo, dados_capa, dados_pdf, manuscripts(nome, titulo, texto, genero_principal, capitulos_aprovados)")
+      .select("dados_miolo, dados_capa, manuscripts(nome, titulo, texto, genero_principal, capitulos_aprovados)")
       .eq("id", projectId)
       .single();
 
@@ -180,6 +179,7 @@ export default function MioloPage() {
       setManuscritoNome((ms?.titulo?.trim()) || ms?.nome || "Manuscrito");
       const wc = ms?.texto?.split(/\s+/).filter(Boolean).length ?? 0;
       setPalavrasTotal(wc);
+      setCaracteresTotal(ms?.texto?.length ?? 0);
 
       if (ms?.capitulos_aprovados && ms.capitulos_aprovados.length > 0) {
         setCapitulosList([...ms.capitulos_aprovados].sort((a, b) => a.pos - b.pos));
@@ -191,8 +191,6 @@ export default function MioloPage() {
 
       const capaData = project.dados_capa as { lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
       setDadosCapa(capaData);
-      const pdfData = project.dados_pdf as { gerado_em?: string } | null;
-      setPdfGeradoEm(pdfData?.gerado_em ?? null);
       const [fmtRes, aprRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null),
         fetch(`/api/agentes/miolo/aprovar-capitulos?project_id=${projectId}`)
@@ -319,10 +317,10 @@ export default function MioloPage() {
       const lombadaMiolo = data.miolo!.lombada_mm;
       if (dadosCapa?.modo === "ia" && dadosCapa?.lombada_mm) {
         const diff = Math.abs(dadosCapa.lombada_mm - lombadaMiolo);
-        setLombadaAjusteDisponivel(diff > 2 ? { anterior: dadosCapa.lombada_mm, nova: lombadaMiolo, diff } : null);
+        setLombadaAjusteDisponivel(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: dadosCapa.lombada_mm, nova: lombadaMiolo, diff } : null);
       } else if (dadosCapa?.modo === "upload" && dadosCapa?.lombada_mm_na_validacao) {
         const diff = Math.abs(dadosCapa.lombada_mm_na_validacao - lombadaMiolo);
-        setLombadaUploadAvisoAtivo(diff > 2 ? { anterior: dadosCapa.lombada_mm_na_validacao, nova: lombadaMiolo, diff } : null);
+        setLombadaUploadAvisoAtivo(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: dadosCapa.lombada_mm_na_validacao, nova: lombadaMiolo, diff } : null);
       }
 
       if (data.html) {
@@ -612,11 +610,8 @@ export default function MioloPage() {
   const selectedTemplate = TEMPLATE_OPTIONS.find(t => t.value === template);
   const selectedFormato = FORMATOS_LIVRO.find(f => f.value === formato);
 
-  // Estimativa unificada: usa wppEfetivo da lib do builder, com o spec do
-  // formato selecionado e o corpo_pt corrente. Mantém o frontend coerente
-  // com o que o agente miolo calculará no backend.
-  const paginasEst = (palavrasTotal > 0 && selectedFormato)
-    ? Math.max(1, Math.round(palavrasTotal / wppEfetivo(selectedFormato.specs, corpoPt)))
+  const paginasEst = (caracteresTotal > 0 && selectedFormato)
+    ? estimarPaginas(selectedFormato.specs, corpoPt, caracteresTotal)
     : null;
 
   function handleTemplateChange(novo: TemplateId) {
@@ -932,9 +927,9 @@ export default function MioloPage() {
                 <p className="text-blue-600">Formato: <strong>{selectedFormato?.dimensoes}</strong></p>
                 <p className="text-blue-600">Template: <strong>{selectedTemplate?.label}</strong></p>
                 <p className="text-blue-600">Capítulos: <strong>{miolo?.capitulos.length}</strong></p>
-                {pdfGeradoEm ? (
+                {miolo?.paginas_reais != null ? (
                   <>
-                    <p className="text-blue-600">Páginas: <strong>{miolo?.paginas_reais ?? miolo?.paginas_estimadas}</strong></p>
+                    <p className="text-blue-600">Páginas: <strong>{miolo.paginas_reais}</strong></p>
                     {miolo?.lombada_mm && (
                       <p className="text-blue-600">Lombada: <strong>{miolo.lombada_mm}mm</strong></p>
                     )}

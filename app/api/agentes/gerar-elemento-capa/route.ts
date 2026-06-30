@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
+import { estimarLombadaMm } from "@/lib/formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const lombada_mm = paginas ? Math.round(paginas * 0.07 * 10) / 10 : undefined;
+  const lombada_mm = paginas ? estimarLombadaMm(paginas) : undefined;
 
   // ── Dev mode: return mock images ─────────────────────────────────────────
   if (dev) {

@@ -1,4 +1,4 @@
-import { type FormatoLivro, type FormatoSpecs, getFormatoDef } from "./formatos";
+import { type FormatoLivro, type FormatoSpecs, cppEfetivo, getFormatoDef } from "./formatos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,8 @@ export interface MioloConfig {
 export interface CapituloInfo {
   id: string;
   titulo: string;
-  palavras: number;
+  palavras: number;     // usado em UI ("Y palavras") e em métricas legíveis
+  caracteres: number;   // usado em estimativa (cpp); inclui espaços e pontuação
 }
 
 // ─── Tamanho de corpo default por template ───────────────────────────────────
@@ -80,32 +81,11 @@ export function getDefaultCorpoPt(template: TemplateId, formato?: FormatoLivro):
   return TEMPLATE_DEFAULT_CORPO_PT[template] ?? 11;
 }
 
-// O wpp em formatos.ts é calibrado empiricamente para um corpo_pt específico
-// por formato (declarado em spec.wpp_base_corpo_pt). Quando o autor escolhe
-// corpo_pt diferente da base, a quantidade de texto por página varia
-// quadraticamente: linhas por página escalam linearmente com font, e
-// chars por linha também — área ocupada por char é quadrática.
-//
-// Para corpo_pt = X, wpp_efetivo = spec.wpp × (spec.wpp_base_corpo_pt / X)².
-//
-// Calibração de referência:
-//   padrao_br, compacto, quadrado, a4 → base 11pt
-//   bolso → base 10pt (mass-market paperback)
-
-/**
- * Calcula wpp ajustado para o corpo_pt efetivamente usado no livro.
- * Use sempre que for estimar páginas a partir do spec do formato.
- * Se corpoPt for undefined ou fora da faixa válida (9–14), assume a base
- * declarada em spec.wpp_base_corpo_pt.
- */
-export function wppEfetivo(spec: FormatoSpecs, corpoPt: number | undefined): number {
-  const base = spec.wpp_base_corpo_pt;
-  const corpo = (typeof corpoPt === "number" && corpoPt >= 9 && corpoPt <= 14)
-    ? corpoPt
-    : base;
-  const fator = (base / corpo) ** 2;
-  return Math.max(1, Math.round(spec.wpp * fator));
-}
+// Estimativa de páginas mudou para caracteres por página (cpp).
+// A função canônica vive em `lib/formatos.ts`: `cppEfetivo(spec, corpoPt)`.
+// Aqui só re-exportamos para compatibilidade com consumidores que
+// importavam de `miolo-builder`.
+export { cppEfetivo };
 
 const TEMPLATE_DEFAULT_SUMARIO: Record<TemplateId, boolean> = {
   literario:         false,
@@ -1080,9 +1060,9 @@ export function buildBookHtml(params: {
   // Tamanho de corpo: usa override do autor se vier, senão default do template.
   const corpoPt = clampCorpoPt(config.corpo_pt) ?? getDefaultCorpoPt(config.template, config.formato);
 
-  // wpp ajustado pelo corpo_pt efetivo — calculado uma vez e reutilizado
+  // cpp ajustado pelo corpo_pt efetivo — calculado uma vez e reutilizado
   // nos cálculos de paginação do TOC e dos capítulos.
-  const wppAjustado = wppEfetivo(spec, corpoPt);
+  const cppAjustado = cppEfetivo(spec, corpoPt);
 
   // Marcas de corte são sempre aplicadas no builder de gráfica.
   // O builder digital (lib/miolo-builder-digital.ts) reescreve o @page
@@ -1122,6 +1102,7 @@ export function buildBookHtml(params: {
     id: `cap-${i}`,
     titulo: seg.titulo,
     palavras: seg.texto.split(/\s+/).filter(Boolean).length,
+    caracteres: seg.texto.length,
   }));
 
   const sections: string[] = [];
@@ -1181,7 +1162,7 @@ ${config.epigrafe_autor ? `  <p class="epigrafe-autor">— ${escHtml(cleanFrontM
       let running = 1;
       for (const info of capitulosInfo) {
         pages.push(running);
-        const pagesInChapter = Math.max(1, Math.ceil(info.palavras / wppAjustado));
+        const pagesInChapter = Math.max(1, Math.ceil(info.caracteres / cppAjustado));
         running += pagesInChapter;
         if (running % 2 === 0) running++;
       }
@@ -1207,7 +1188,7 @@ ${tocItems}
   segments.forEach((seg, i) => {
     const info = capitulosInfo[i];
     realChapterStartPages.push(numberedPagesEstimate + 1);
-    numberedPagesEstimate += Math.max(1, Math.ceil(info.palavras / wppAjustado));
+    numberedPagesEstimate += Math.max(1, Math.ceil(info.caracteres / cppAjustado));
 
     // Roteador de parser por template. Cada parser sabe gerar o HTML interno
     // do capítulo respeitando convenções do gênero.

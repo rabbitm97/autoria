@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
-import { getFormatoDef, type FormatoLivro } from "@/lib/formatos";
+import { getFormatoDef, estimarLombadaMm, type FormatoLivro } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ export function calcExpectedDims(opts: {
   dpi: number;
 }): { wMm: number; hMm: number; wPx: number; hPx: number; lombadaMm: number } {
   const specs = getFormatoDef(opts.formato).specs;
-  const lombadaMm = Math.round(opts.paginas * 0.07 * 10) / 10;
+  const lombadaMm = estimarLombadaMm(opts.paginas);
   const sangriaMm = specs.bleed_mm;
   const orelhasMm = opts.usar_orelhas ? 80 : 0;
 

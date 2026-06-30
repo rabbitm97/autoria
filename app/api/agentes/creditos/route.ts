@@ -5,7 +5,7 @@ import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/ant
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { createClient } from "@supabase/supabase-js";
-import { type FormatoLivro, getFormatoDef, isFormatoValido } from "@/lib/formatos";
+import { type FormatoLivro, getFormatoDef, isFormatoValido, estimarPaginas } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
 
@@ -242,9 +242,10 @@ export async function POST(request: NextRequest) {
   if (paginasParaFicha < 1) {
     const msText = project.manuscripts as unknown as { texto_revisado?: string; texto?: string } | null;
     const textoFull = msText?.texto_revisado ?? msText?.texto ?? "";
-    const palavras = textoFull.split(/\s+/).filter(Boolean).length;
-    const wpp = getFormatoDef(configResolved.formato).specs.wpp;
-    paginasParaFicha = Math.max(1, Math.round(palavras / wpp));
+    const numCaracteres = textoFull.length;
+    const spec = getFormatoDef(configResolved.formato).specs;
+    // Sem corpoPt no CreditosConfig: assume base do formato.
+    paginasParaFicha = estimarPaginas(spec, undefined, numCaracteres);
     paginasOrigem = "estimada";
   }
 

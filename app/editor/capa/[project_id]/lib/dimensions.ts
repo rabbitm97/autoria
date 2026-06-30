@@ -1,3 +1,5 @@
+import { estimarLombadaMm } from "@/lib/formatos";
+
 // 300 DPI: 1mm = DPI/25.4 px ≈ 11.811 px
 export const DPI = 300;
 export const MM_TO_PX = DPI / 25.4;
@@ -14,10 +16,8 @@ export const FORMATS = {
 export const SANGRIA_MM = 3;
 export const ORELHA_MM = 80;
 
-// Calibrated against existing calcLombadaMm in dashboard/capa/[id]/page.tsx
-// and MM_PER_PAGE = 0.07 in montar-capa/route.ts
 export function calcularLombada(pages: number): number {
-  return Math.max(2, Math.round(pages * 0.07 * 10) / 10);
+  return Math.max(2, estimarLombadaMm(pages));
 }
 
 export function calcularLarguraTotal(

@@ -11,7 +11,7 @@ import type { MioloResult } from "@/app/api/agentes/miolo/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-import type { FormatoLivro } from "@/lib/formatos";
+import { estimarLombadaMm, type FormatoLivro } from "@/lib/formatos";
 export type { FormatoLivro as Formato } from "@/lib/formatos";
 
 // Dimensões físicas dos formatos em mm + sangria.
@@ -410,8 +410,10 @@ export async function POST(req: NextRequest) {
 
   // ── Sync paginas_reais + lombada_mm in dados_miolo ────────────────────────
   // PDF page count is authoritative; update miolo so qa/route.ts cross-check
-  // (capa lombada vs paginas reais) stays consistent.
-  const lombada_mm = Math.round(numPaginas * 0.07 * 10) / 10;
+  // (capa lombada vs paginas reais) stays consistent. Usa a fórmula gráfica
+  // brasileira unificada (`estimarLombadaMm`), substituindo a fórmula antiga
+  // `pgs × 0.07` que divergia ~35% da realidade.
+  const lombada_mm = estimarLombadaMm(numPaginas);
   await supabase
     .from("projects")
     .update({
