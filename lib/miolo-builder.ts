@@ -46,8 +46,13 @@ export interface CapituloInfo {
 
 // ─── Tamanho de corpo default por template ───────────────────────────────────
 // Cada template publica um default editorialmente ajustado à sua categoria.
+// Quando o formato é informado, regras específicas têm prioridade:
+//   - ABNT  → 12pt sempre (NBR 14724, não negociável)
+//   - Infantil → 13pt sempre (leitor iniciante)
+//   - bolso → 10pt (mass-market paperback exige fonte menor)
+// Demais combinações usam o default do template.
 // O autor pode sobrescrever via UI (faixa 9.0–14.0pt, step 0.5).
-// Se o autor trocar de template, a UI deve resetar para o default do novo.
+// Se o autor trocar de template ou formato, a UI deve resetar para o default novo.
 
 const TEMPLATE_DEFAULT_CORPO_PT: Record<TemplateId, number> = {
   literario:         11,
@@ -63,7 +68,15 @@ const TEMPLATE_DEFAULT_CORPO_PT: Record<TemplateId, number> = {
   religioso:         11,
 };
 
-export function getDefaultCorpoPt(template: TemplateId): number {
+export function getDefaultCorpoPt(template: TemplateId, formato?: FormatoLivro): number {
+  // Regras editoriais não negociáveis (têm prioridade sobre o formato)
+  if (template === "abnt") return 12;
+  if (template === "infantil") return 13;
+
+  // Mass-market paperback exige fonte menor
+  if (formato === "bolso") return 10;
+
+  // Default por template
   return TEMPLATE_DEFAULT_CORPO_PT[template] ?? 11;
 }
 
@@ -1062,7 +1075,7 @@ export function buildBookHtml(params: {
   const spec = getFormatoDef(config.formato).specs;
 
   // Tamanho de corpo: usa override do autor se vier, senão default do template.
-  const corpoPt = clampCorpoPt(config.corpo_pt) ?? getDefaultCorpoPt(config.template);
+  const corpoPt = clampCorpoPt(config.corpo_pt) ?? getDefaultCorpoPt(config.template, config.formato);
 
   // wpp ajustado pelo corpo_pt efetivo — calculado uma vez e reutilizado
   // nos cálculos de paginação do TOC e dos capítulos.

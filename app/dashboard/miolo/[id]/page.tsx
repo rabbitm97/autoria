@@ -158,13 +158,14 @@ export default function MioloPage() {
   const [lombadaAjusteDisponivel, setLombadaAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [lombadaUploadAvisoAtivo, setLombadaUploadAvisoAtivo] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [ajustando, setAjustando] = useState(false);
+  const [pdfGeradoEm, setPdfGeradoEm] = useState<string | null>(null);
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_miolo, dados_capa, manuscripts(nome, titulo, texto, genero_principal, capitulos_aprovados)")
+      .select("dados_miolo, dados_capa, dados_pdf, manuscripts(nome, titulo, texto, genero_principal, capitulos_aprovados)")
       .eq("id", projectId)
       .single();
 
@@ -189,6 +190,8 @@ export default function MioloPage() {
 
       const capaData = project.dados_capa as { lombada_mm?: number; lombada_mm_na_validacao?: number; modo?: string } | null;
       setDadosCapa(capaData);
+      const pdfData = project.dados_pdf as { gerado_em?: string } | null;
+      setPdfGeradoEm(pdfData?.gerado_em ?? null);
       const [fmtRes, aprRes] = await Promise.all([
         fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null),
         fetch(`/api/agentes/miolo/aprovar-capitulos?project_id=${projectId}`)
@@ -207,14 +210,16 @@ export default function MioloPage() {
       const existingMiolo = project.dados_miolo as MioloResult | null;
       // Restaurar configuração salva
       const existingConfig = (project.dados_miolo as { config?: { corpo_pt?: unknown; sumario?: unknown; tem_capitulos?: unknown } } | null)?.config;
+      // formato já foi resolvido acima via fmtRes (linha 197)
+      const formatoResolvido = (fmtRes && (fmtRes as { formato: FormatoLivro | null }).formato) ?? formato;
       if (existingConfig) {
         const savedCorpoPt = clampCorpoPt(existingConfig.corpo_pt);
         if (savedCorpoPt !== undefined) setCorpoPt(savedCorpoPt);
-        else setCorpoPt(getDefaultCorpoPt(suggestedTemplate));
+        else setCorpoPt(getDefaultCorpoPt(suggestedTemplate, formatoResolvido));
         if (typeof existingConfig.sumario === "boolean") setSumario(existingConfig.sumario);
         if (existingConfig.tem_capitulos === false) setTemCapitulos(false);
       } else {
-        setCorpoPt(getDefaultCorpoPt(suggestedTemplate));
+        setCorpoPt(getDefaultCorpoPt(suggestedTemplate, formatoResolvido));
       }
 
       if (existingMiolo) {
@@ -611,7 +616,7 @@ export default function MioloPage() {
 
   function handleTemplateChange(novo: TemplateId) {
     setTemplate(novo);
-    setCorpoPt(getDefaultCorpoPt(novo));
+    setCorpoPt(getDefaultCorpoPt(novo, formato));
     setSumario(getDefaultSumario(novo));
   }
 
@@ -698,7 +703,7 @@ export default function MioloPage() {
                   onChange={e => setCorpoPt(Number(e.target.value))}
                   className="w-full"
                 />
-                <p className="text-[11px] text-zinc-400 mt-1">Recomendado: {getDefaultCorpoPt(template)} pt</p>
+                <p className="text-[11px] text-zinc-400 mt-1">Recomendado: {getDefaultCorpoPt(template, formato)} pt</p>
               </div>
             </div>
           </section>
@@ -901,7 +906,7 @@ export default function MioloPage() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs bg-zinc-100 text-zinc-500 px-3 py-1.5 rounded-lg">
-                {miolo?.capitulos.length ?? 0} cap. · ~{miolo?.paginas_estimadas ?? 0} pág. · {miolo?.palavras?.toLocaleString("pt-BR")} palavras
+                {miolo?.capitulos.length ?? 0} cap. · {miolo?.palavras?.toLocaleString("pt-BR")} palavras
               </span>
             </div>
           </div>
@@ -921,11 +926,17 @@ export default function MioloPage() {
                 <p className="font-semibold text-blue-700 mb-1.5">📄 Configurações do arquivo</p>
                 <p className="text-blue-600">Formato: <strong>{selectedFormato?.dimensoes}</strong></p>
                 <p className="text-blue-600">Template: <strong>{selectedTemplate?.label}</strong></p>
-                <p className="text-blue-600">Páginas: <strong>{miolo?.paginas_reais ?? miolo?.paginas_estimadas}</strong></p>
-                {miolo?.lombada_mm && (
-                  <p className="text-blue-600">Lombada: <strong>{miolo.lombada_mm}mm</strong></p>
-                )}
                 <p className="text-blue-600">Capítulos: <strong>{miolo?.capitulos.length}</strong></p>
+                {pdfGeradoEm ? (
+                  <>
+                    <p className="text-blue-600">Páginas: <strong>{miolo?.paginas_reais ?? miolo?.paginas_estimadas}</strong></p>
+                    {miolo?.lombada_mm && (
+                      <p className="text-blue-600">Lombada: <strong>{miolo.lombada_mm}mm</strong></p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-blue-400 italic mt-1">Páginas e lombada disponíveis após gerar o PDF.</p>
+                )}
               </div>
 
               {/* Chapter navigation */}
