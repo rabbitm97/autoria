@@ -1,4 +1,4 @@
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import type { Region } from "./elements";
 import type { FormatKey } from "../types";
 
@@ -23,25 +23,26 @@ export function getFillRect(
   region: Region,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
 ): RegionRect | null {
   const f = FORMATS[format];
   const lombada = calcularLombada(pages);
   const alturaTotal = f.height_mm + 2 * SANGRIA_MM;
-  const orelha = comOrelhas ? ORELHA_MM : 0;
+  const temOrelhas = orelhaMm > 0;
+  const orelha = temOrelhas ? orelhaMm : 0;
 
   let x_start: number;
   let x_end: number;
 
   if (region === "orelha_verso") {
-    if (!comOrelhas) return null;
+    if (!temOrelhas) return null;
     // Left-most region — extends into left bleed (outer edge)
     x_start = 0;
-    x_end = SANGRIA_MM + ORELHA_MM;
+    x_end = SANGRIA_MM + orelha;
   } else if (region === "contracapa") {
-    if (comOrelhas) {
+    if (temOrelhas) {
       // Bounded by orelha_verso fold (left) and lombada fold (right) — no extension
-      x_start = SANGRIA_MM + ORELHA_MM;
+      x_start = SANGRIA_MM + orelha;
       x_end = x_start + f.width_mm;
     } else {
       // Left-most region without flaps — extends into left bleed (outer edge)
@@ -53,9 +54,9 @@ export function getFillRect(
     x_start = SANGRIA_MM + orelha + f.width_mm;
     x_end = x_start + lombada;
   } else if (region === "capa") {
-    if (comOrelhas) {
+    if (temOrelhas) {
       // Bounded by lombada fold (left) and orelha_frente fold (right) — no extension
-      x_start = SANGRIA_MM + ORELHA_MM + f.width_mm + lombada;
+      x_start = SANGRIA_MM + orelha + f.width_mm + lombada;
       x_end = x_start + f.width_mm;
     } else {
       // Right-most region without flaps — extends into right bleed (outer edge)
@@ -63,10 +64,10 @@ export function getFillRect(
       x_end = x_start + f.width_mm + SANGRIA_MM;
     }
   } else if (region === "orelha_frente") {
-    if (!comOrelhas) return null;
+    if (!temOrelhas) return null;
     // Right-most region — extends into right bleed (outer edge)
-    x_start = SANGRIA_MM + ORELHA_MM + 2 * f.width_mm + lombada;
-    x_end = x_start + ORELHA_MM + SANGRIA_MM;
+    x_start = SANGRIA_MM + orelha + 2 * f.width_mm + lombada;
+    x_end = x_start + orelha + SANGRIA_MM;
   } else {
     return null;
   }

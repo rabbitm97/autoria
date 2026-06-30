@@ -24,7 +24,28 @@
 //   }
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { getOrelhaDefault, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+
 export type OrigemCapa = "editor" | "ia" | "upload" | null;
+
+/**
+ * Resolve `orelha_mm` numérico a partir dos três schemas. Aceita também
+ * o boolean legado (`comOrelhas` / `usar_orelhas`) e converte para o
+ * default do formato. Retorna 0 quando nada definido.
+ */
+function resolveOrelhaMm(
+  numericValue: unknown,
+  legacyBoolean: unknown,
+  formato: FormatKey,
+): number {
+  if (typeof numericValue === "number" && Number.isFinite(numericValue)) {
+    return clampOrelhaMm(formato, numericValue);
+  }
+  if (typeof legacyBoolean === "boolean") {
+    return legacyBoolean ? getOrelhaDefault(formato) : 0;
+  }
+  return 0;
+}
 
 export interface CapaResolvida {
   /** True quando há pelo menos uma URL de capa utilizável. */
@@ -74,6 +95,14 @@ export interface CapaResolvida {
 
   /** Resolução em DPI (apenas para upload; assumido 300 para IA/Editor). */
   dpi: number | null;
+
+  /**
+   * Largura da orelha em milímetros. 0 = sem orelhas. Resolve a partir do
+   * campo numérico canônico de cada schema (`orelhaMm` no editor_data,
+   * `orelha_mm` em IA/upload) com fallback para o boolean legado
+   * (`comOrelhas`/`usar_orelhas`) convertido pelo default do formato.
+   */
+  orelha_mm: number;
 }
 
 // ─── Type guards para cada schema ────────────────────────────────────────────
@@ -83,7 +112,11 @@ type DadosCapa = Record<string, unknown> | null | undefined;
 function isEditorCapa(c: DadosCapa): c is Record<string, unknown> & {
   source: "editor";
   imagem_url?: string;
-  editor_data?: { fills?: { capa?: string; lombada?: string; contracapa?: string } };
+  editor_data?: {
+    fills?: { capa?: string; lombada?: string; contracapa?: string };
+    orelhaMm?: number;
+    comOrelhas?: boolean;
+  };
   confirmed_at?: string;
 } {
   return !!c && (c as Record<string, unknown>).source === "editor";
@@ -94,6 +127,8 @@ function isIACapa(c: DadosCapa): c is Record<string, unknown> & {
   url_escolhida?: string;
   opcoes?: { url: string }[];
   lombada_mm?: number;
+  orelha_mm?: number;
+  usar_orelhas?: boolean;
 } {
   return !!c && (c as Record<string, unknown>).modo === "ia";
 }
@@ -105,6 +140,8 @@ function isUploadCapa(c: DadosCapa): c is Record<string, unknown> & {
   altura_px?: number;
   dpi?: number;
   lombada_mm_na_validacao?: number;
+  orelha_mm?: number;
+  usar_orelhas?: boolean;
 } {
   return !!c && (c as Record<string, unknown>).modo === "upload";
 }
@@ -124,7 +161,10 @@ function urlCompletaFrom(c: DadosCapa): string | null {
  * Sempre retorna um objeto válido — nunca lança nem retorna null. Quando não
  * há capa, todos os campos ficam `null` / `false` e `pronta = false`.
  */
-export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
+export function resolveCapaCompleta(
+  dados_capa: DadosCapa,
+  formato: FormatKey = "padrao_br",
+): CapaResolvida {
   const urlCompleta = urlCompletaFrom(dados_capa);
 
   // Schema 1: Editor visual
@@ -134,6 +174,11 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
     // Editor SEMPRE exporta panorâmica. Se url_completa existir (montar-capa
     // foi rodado em cima), usa essa; senão usa imagem_url do Editor.
     const urlPrincipal = urlCompleta ?? imagemUrl;
+    const orelha_mm = resolveOrelhaMm(
+      dados_capa.editor_data?.orelhaMm,
+      dados_capa.editor_data?.comOrelhas,
+      formato,
+    );
     return {
       pronta: !!urlPrincipal && !!dados_capa.confirmed_at,
       origem: "editor",
@@ -144,6 +189,7 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
       largura_px: null,
       altura_px: null,
       dpi: 300,
+      orelha_mm,
     };
   }
 
@@ -154,6 +200,7 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
     const urlFrente = escolhida ?? primeiraOpcao;
     // Se montar-capa foi rodado, url_completa tem prioridade e é panorâmica.
     const usaCompleta = !!urlCompleta;
+    const orelha_mm = resolveOrelhaMm(dados_capa.orelha_mm, dados_capa.usar_orelhas, formato);
     return {
       pronta: !!(urlCompleta ?? urlFrente),
       origem: "ia",
@@ -164,6 +211,7 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
       largura_px: null,
       altura_px: null,
       dpi: 300,
+      orelha_mm,
     };
   }
 
@@ -178,6 +226,7 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
   // do livro 3D.
   if (isUploadCapa(dados_capa)) {
     const url = typeof dados_capa.url === "string" ? dados_capa.url : null;
+    const orelha_mm = resolveOrelhaMm(dados_capa.orelha_mm, dados_capa.usar_orelhas, formato);
     return {
       pronta: !!(urlCompleta ?? url),
       origem: "upload",
@@ -188,6 +237,7 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
       largura_px: typeof dados_capa.largura_px === "number" ? dados_capa.largura_px : null,
       altura_px: typeof dados_capa.altura_px === "number" ? dados_capa.altura_px : null,
       dpi: typeof dados_capa.dpi === "number" ? dados_capa.dpi : 300,
+      orelha_mm,
     };
   }
 
@@ -202,5 +252,6 @@ export function resolveCapaCompleta(dados_capa: DadosCapa): CapaResolvida {
     largura_px: null,
     altura_px: null,
     dpi: null,
+    orelha_mm: 0,
   };
 }

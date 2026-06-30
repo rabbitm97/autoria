@@ -9,7 +9,6 @@ import type { ProvaResult, ProvaItem } from "@/app/api/agentes/prova/types";
 import {
   FORMATS,
   SANGRIA_MM,
-  ORELHA_MM,
   calcularLombada,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -32,7 +31,7 @@ interface BookData {
   lombadaMm: number;
   paginas: number;
   capaTemEditorData: boolean;
-  comOrelhas: boolean;
+  orelhaMm: number;
   orelhaRatioW: number;
 }
 
@@ -245,7 +244,7 @@ function Book3D({ book }: {
         <p className="text-xs text-zinc-400">{book.paginas} páginas · Lombada {book.lombadaMm}mm</p>
       </div>
 
-      {book.comOrelhas && (
+      {book.orelhaMm > 0 && (
         <div className="mt-6 mx-auto max-w-md bg-amber-50/60 border border-amber-100 rounded-xl px-4 py-3 flex items-start gap-3">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
             <circle cx="12" cy="12" r="10" />
@@ -520,20 +519,19 @@ export default function ProvaPage() {
         } | null;
 
         const dadosCapa = project.dados_capa as Record<string, unknown> | null;
-        const capaResolvida = resolveCapaCompleta(dadosCapa);
-        const editorDataRaw = dadosCapa?.editor_data as { version?: number; comOrelhas?: boolean } | undefined;
-        const capaTemEditorData = editorDataRaw?.version === 1;
-        const comOrelhas = Boolean(editorDataRaw?.comOrelhas);
-
-        const paginasReais = miolo?.paginas_reais ?? 0;
         const formatoKey = ((project.formato as string) in FORMATS
           ? (project.formato as keyof typeof FORMATS)
           : "padrao_br") as keyof typeof FORMATS;
+        const capaResolvida = resolveCapaCompleta(dadosCapa, formatoKey);
+        const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
+        const capaTemEditorData = editorDataRaw?.version === 1;
+
+        const paginasReais = miolo?.paginas_reais ?? 0;
         const f = FORMATS[formatoKey] ?? FORMATS.padrao_br;
         const lombadaMmCalc = calcularLombada(paginasReais);
-        const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+        const orelhaMm = capaResolvida.orelha_mm;
         const totalWMm = f.width_mm * 2 + lombadaMmCalc + orelhaMm * 2 + SANGRIA_MM * 2;
-        const orelhaRatioW = comOrelhas ? (ORELHA_MM + SANGRIA_MM) / totalWMm : 0;
+        const orelhaRatioW = orelhaMm > 0 ? (orelhaMm + SANGRIA_MM) / totalWMm : 0;
 
         setBookData({
           coverUrl: capaResolvida.url_principal,
@@ -544,7 +542,7 @@ export default function ProvaPage() {
           lombadaMm: capaResolvida.lombada_mm ?? miolo?.lombada_mm ?? 10,
           paginas: paginasReais || (miolo?.paginas_estimadas ?? 0),
           capaTemEditorData,
-          comOrelhas,
+          orelhaMm,
           orelhaRatioW,
         });
       }

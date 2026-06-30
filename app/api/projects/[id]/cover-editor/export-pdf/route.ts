@@ -17,8 +17,10 @@ import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib
 import {
   FORMATS,
   SANGRIA_MM,
-  ORELHA_MM,
   calcularLombada,
+  clampOrelhaMm,
+  getOrelhaDefault,
+  type FormatKey,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 const MARKS_MM = 10;
@@ -114,9 +116,24 @@ export async function POST(
   const miolo = (project?.dados_miolo ?? null) as { paginas_reais?: number } | null;
 
   const rawFormat = (project?.formato ?? body.format ?? "") as string;
-  const format = rawFormat in FORMATS ? (rawFormat as keyof typeof FORMATS) : "padrao_br";
+  const format: FormatKey = rawFormat in FORMATS ? (rawFormat as FormatKey) : "padrao_br";
   const pages = miolo?.paginas_reais ?? body.pages ?? 200;
-  const comOrelhas = editorData.comOrelhas ?? Boolean(capa?.usar_orelhas);
+
+  // Resolve orelhaMm with legacy fallbacks:
+  // 1) editorData.orelhaMm (preferred)  2) editorData.comOrelhas (legacy)
+  // 3) capa.orelha_mm (preferred DB)    4) capa.usar_orelhas (legacy DB)
+  const editorRaw = editorData as unknown as Record<string, unknown>;
+  let orelhaMm = 0;
+  if (typeof editorRaw.orelhaMm === "number" && Number.isFinite(editorRaw.orelhaMm)) {
+    orelhaMm = clampOrelhaMm(format, editorRaw.orelhaMm);
+  } else if (typeof editorRaw.comOrelhas === "boolean") {
+    orelhaMm = editorRaw.comOrelhas ? getOrelhaDefault(format) : 0;
+  } else if (typeof capa?.orelha_mm === "number" && Number.isFinite(capa.orelha_mm)) {
+    orelhaMm = clampOrelhaMm(format, capa.orelha_mm as number);
+  } else if (typeof capa?.usar_orelhas === "boolean") {
+    orelhaMm = capa.usar_orelhas ? getOrelhaDefault(format) : 0;
+  }
+
   const projectName = extractTitle(editorData.elements);
 
   if (dev) {
@@ -156,7 +173,7 @@ export async function POST(
       .jpeg({ quality: 95 })
       .toBuffer();
 
-    const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, { format, pages, comOrelhas, projectName });
+    const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, { format, pages, orelhaMm, projectName });
     pdfBuffer = Buffer.from(pdfBytes);
   } else if (versao === "grafica_rgb") {
     // RGB: usa o JPEG da capa sem conversão de cor — gráficas digitais (POD)
@@ -164,7 +181,7 @@ export async function POST(
       .jpeg({ quality: 95 })
       .toBuffer();
 
-    const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, { format, pages, comOrelhas, projectName });
+    const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, { format, pages, orelhaMm, projectName });
     pdfBuffer = Buffer.from(pdfBytes);
   } else {
     // Digital: eBook não tem orelhas. Cortar sangria de todos os 4 lados E orelhas (esquerda e direita).
@@ -172,8 +189,7 @@ export async function POST(
     const imgW = imgMeta.width ?? 0;
     const imgH = imgMeta.height ?? 0;
 
-    const ORELHA_PX = Math.round(ORELHA_MM * 300 / 25.4);
-    const orelhaPxParaCortar = comOrelhas ? ORELHA_PX : 0;
+    const orelhaPxParaCortar = orelhaMm > 0 ? Math.round(orelhaMm * 300 / 25.4) : 0;
     const leftOffset = SANGRIA_PX + orelhaPxParaCortar;
 
     const trimmedBuffer = await sharp(fullCoverBuffer)
@@ -187,8 +203,8 @@ export async function POST(
       .toBuffer();
 
     const coverImageSrc = `data:image/jpeg;base64,${trimmedBuffer.toString("base64")}`;
-    // comOrelhas: false — digital nunca renderiza orelhas no HTML
-    const html = renderCoverFromImage(coverImageSrc, { format, pages, comOrelhas: false, projectName }, "digital");
+    // orelhaMm: 0 — digital nunca renderiza orelhas no HTML
+    const html = renderCoverFromImage(coverImageSrc, { format, pages, orelhaMm: 0, projectName }, "digital");
 
     const f = FORMATS[format];
     const lombadaMm = calcularLombada(pages);

@@ -2,7 +2,14 @@
 
 import { useState, useRef, type JSX } from "react";
 import { useEditorStore } from "../lib/editor-store";
-import { FORMATS, calcularLombada, SANGRIA_MM, ORELHA_MM } from "../lib/dimensions";
+import {
+  FORMATS,
+  calcularLombada,
+  SANGRIA_MM,
+  ORELHA_MIN_MM,
+  getOrelhaDefault,
+  getOrelhaMax,
+} from "../lib/dimensions";
 import { FONT_CATALOG, FONT_CATALOG_BY_ID } from "../lib/fonts";
 import { generateBarcodeDataUrl } from "../lib/barcode";
 import { createSmartFieldElement, type SmartFieldContentMap } from "../lib/smart-field-layout";
@@ -62,9 +69,12 @@ function Section({
 
 // ── Seção 1: Formato e estrutura ──────────────────────────────────────────────
 function SectionFormato() {
-  const { format, pages, comOrelhas, setComOrelhas } = useEditorStore();
-  const fmtInfo = FORMATS[format];
+  const { format, pages, orelhaMm, setOrelhaMm } = useEditorStore();
   const lombadaMm = calcularLombada(pages);
+  const temOrelhas = orelhaMm > 0;
+  const orelhaMinCm = ORELHA_MIN_MM / 10;
+  const orelhaMaxCm = getOrelhaMax(format) / 10;
+  const orelhaCm = temOrelhas ? Math.round(orelhaMm / 10) : 0;
 
   return (
     <Section title="Formato e estrutura">
@@ -93,41 +103,63 @@ function SectionFormato() {
             </span>
           </div>
         </div>
-        <label className="flex cursor-pointer items-center justify-between">
-          <span className="text-xs text-zinc-600">Orelhas (8cm)</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={comOrelhas}
-            onClick={() => setComOrelhas(!comOrelhas)}
-            className={`relative h-5 w-9 rounded-full border-2 transition-colors ${
-              comOrelhas ? "border-[#c9a84c] bg-[#c9a84c]" : "border-zinc-300 bg-zinc-200"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
-                comOrelhas ? "left-4" : "left-0.5"
+        <div>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-xs text-zinc-600">Orelhas</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={temOrelhas}
+              onClick={() => setOrelhaMm(temOrelhas ? 0 : getOrelhaDefault(format))}
+              className={`relative h-5 w-9 rounded-full border-2 transition-colors ${
+                temOrelhas ? "border-[#c9a84c] bg-[#c9a84c]" : "border-zinc-300 bg-zinc-200"
               }`}
-            />
-          </button>
-        </label>
-        {comOrelhas && (
-          <p className="text-[10px] text-zinc-400">+2 × 80mm laterais no canvas</p>
-        )}
+            >
+              <span
+                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
+                  temOrelhas ? "left-4" : "left-0.5"
+                }`}
+              />
+            </button>
+          </label>
+          {temOrelhas && (
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={orelhaMinCm}
+                  max={orelhaMaxCm}
+                  step={1}
+                  value={orelhaCm}
+                  onChange={(e) => {
+                    const cm = Number(e.target.value);
+                    if (!Number.isFinite(cm)) return;
+                    setOrelhaMm(cm * 10);
+                  }}
+                  className="w-16 rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
+                />
+                <span className="text-[10px] text-zinc-400">
+                  cm (mín. {orelhaMinCm} · máx. {orelhaMaxCm})
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-400">+2 × {orelhaCm}cm laterais no canvas</p>
+            </div>
+          )}
+        </div>
       </div>
     </Section>
   );
 }
 
 // ── Seção 2: Cores de fundo ───────────────────────────────────────────────────
-function SectionCores({ comOrelhas }: { comOrelhas: boolean }) {
+function SectionCores({ temOrelhas }: { temOrelhas: boolean }) {
   const { fills, setFill } = useEditorStore();
 
   const regions: { key: Region; label: string }[] = [
     { key: "capa", label: "Capa (frente)" },
     { key: "contracapa", label: "Contracapa" },
     { key: "lombada", label: "Lombada" },
-    ...(comOrelhas
+    ...(temOrelhas
       ? ([
           { key: "orelha_frente" as Region, label: "Orelha frontal" },
           { key: "orelha_verso" as Region, label: "Orelha traseira" },
@@ -153,7 +185,7 @@ function SectionCores({ comOrelhas }: { comOrelhas: boolean }) {
 
 // ── Seção 3: Texto (smart fields) ─────────────────────────────────────────────
 function SectionTexto({ projectData }: { projectData: ProjectData }) {
-  const { elements, fills, format, pages, comOrelhas, addElement } = useEditorStore();
+  const { elements, fills, format, pages, orelhaMm, addElement } = useEditorStore();
   const [pendingField, setPendingField] = useState<SmartField | null>(null);
 
   const lombadaContent = [projectData.title, projectData.authorName]
@@ -185,7 +217,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
       field,
       format,
       pages,
-      comOrelhas,
+      orelhaMm,
       fills,
       resolvedContent,
       elements.length,
@@ -231,12 +263,12 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
           ))}
           <button
             onClick={() => {
-              const { elements, addElement, format, pages, comOrelhas, fills } = useEditorStore.getState();
+              const { elements, addElement, format, orelhaMm, fills } = useEditorStore.getState();
               const f = FORMATS[format];
               addElement({
                 id: nanoid(),
                 type: "text",
-                x_mm: SANGRIA_MM + (comOrelhas ? ORELHA_MM : 0) + f.width_mm / 4,
+                x_mm: SANGRIA_MM + orelhaMm + f.width_mm / 4,
                 y_mm: SANGRIA_MM + 30,
                 width_mm: f.width_mm / 2,
                 height_mm: 20,
@@ -271,7 +303,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
 
 // ── Seção 4: Imagens ──────────────────────────────────────────────────────────
 function SectionImagens({ projectId }: { projectId: string }) {
-  const { addElement, format, comOrelhas } = useEditorStore();
+  const { addElement, format, orelhaMm } = useEditorStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -290,7 +322,6 @@ function SectionImagens({ projectId }: { projectId: string }) {
       if (!res.ok) throw new Error("Falha no upload");
       const { url } = await res.json();
       const f = FORMATS[format];
-      const orelhaMm = comOrelhas ? ORELHA_MM : 0;
       addElement(
         createImageElement({
           id: nanoid(),
@@ -364,13 +395,12 @@ function SectionImagens({ projectId }: { projectId: string }) {
 
 // ── Seção 5: Elementos da marca ───────────────────────────────────────────────
 function SectionMarca({ projectData }: { projectData: ProjectData }) {
-  const { addElement, elements, format, comOrelhas, isbn, setIsbn } = useEditorStore();
+  const { addElement, elements, format, orelhaMm, isbn, setIsbn } = useEditorStore();
   const [isbnInput, setIsbnInput] = useState(projectData.isbn ?? "");
   const [generating, setGenerating] = useState(false);
 
   function addLogo(variant: "dourado" | "azul") {
     const f = FORMATS[format];
-    const orelhaMm = comOrelhas ? ORELHA_MM : 0;
     const xCapaStart = SANGRIA_MM + orelhaMm + f.width_mm + 3;
     addElement(
       createLogoElement({
@@ -395,7 +425,6 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
       return;
     }
     const f = FORMATS[format];
-    const orelhaMm = comOrelhas ? ORELHA_MM : 0;
     const xContraStart = SANGRIA_MM + orelhaMm;
     addElement(
       createBarcodeElement({
@@ -461,13 +490,12 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
 
 // ── Seção 6: Formas ───────────────────────────────────────────────────────────
 function SectionFormas() {
-  const { addElement, elements, format, pages, comOrelhas, selectElement } = useEditorStore();
+  const { addElement, elements, format, pages, orelhaMm, selectElement } = useEditorStore();
 
   function addShape(shape: ShapeKind) {
     const f = FORMATS[format];
     const lombada = calcularLombada(pages);
-    const orelha = comOrelhas ? ORELHA_MM : 0;
-    const capaStartMm = SANGRIA_MM + orelha + f.width_mm + lombada;
+    const capaStartMm = SANGRIA_MM + orelhaMm + f.width_mm + lombada;
     const centerX = capaStartMm + f.width_mm / 2;
     const centerY = SANGRIA_MM + f.height_mm / 2;
     const W = 40;
@@ -651,7 +679,7 @@ function SectionCamadas() {
 
 // ── Main sidebar ──────────────────────────────────────────────────────────────
 export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
-  const { comOrelhas } = useEditorStore();
+  const { orelhaMm } = useEditorStore();
 
   return (
     <div
@@ -659,7 +687,7 @@ export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
       style={{ width: 240, flexShrink: 0 }}
     >
       <SectionFormato />
-      <SectionCores comOrelhas={comOrelhas} />
+      <SectionCores temOrelhas={orelhaMm > 0} />
       <SectionTexto projectData={projectData} />
       <SectionImagens projectId={projectData.projectId} />
       <SectionMarca projectData={projectData} />

@@ -1,4 +1,4 @@
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import type { FormatKey } from "../types";
 
 const MARKS_MM = 10;
@@ -8,7 +8,7 @@ const CROP_LEN = 5;
 export interface CoverImageMeta {
   format: FormatKey;
   pages: number;
-  comOrelhas: boolean;
+  orelhaMm: number;
   projectName?: string;
 }
 
@@ -44,12 +44,13 @@ export function buildMarksSvg(
   totalHMm: number,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
   projectName: string,
 ): string {
   const f = FORMATS[format];
   const lombada = calcularLombada(pages);
-  const orelha = comOrelhas ? ORELHA_MM : 0;
+  const temOrelhas = orelhaMm > 0;
+  const orelha = temOrelhas ? orelhaMm : 0;
   const graficaW = totalWMm + MARKS_MM * 2;
   const graficaH = totalHMm + MARKS_MM * 2;
   const trimW = totalWMm - SANGRIA_MM * 2;
@@ -71,10 +72,10 @@ export function buildMarksSvg(
   ].join("\n");
 
   const foldXsMm: number[] = [];
-  if (comOrelhas) foldXsMm.push(SANGRIA_MM + orelha);
+  if (temOrelhas) foldXsMm.push(SANGRIA_MM + orelha);
   foldXsMm.push(SANGRIA_MM + orelha + f.width_mm);
   foldXsMm.push(SANGRIA_MM + orelha + f.width_mm + lombada);
-  if (comOrelhas) foldXsMm.push(SANGRIA_MM + orelha + f.width_mm + lombada + f.width_mm);
+  if (temOrelhas) foldXsMm.push(SANGRIA_MM + orelha + f.width_mm + lombada + f.width_mm);
 
   const foldLines = foldXsMm.map((xPaper) => {
     const xG = MARKS_MM + xPaper;
@@ -136,8 +137,8 @@ export function renderCoverFromImage(
 ): string {
   const f = FORMATS[meta.format];
   const lombadaMm = calcularLombada(meta.pages);
-  const orelhaMm = meta.comOrelhas ? ORELHA_MM : 0;
-  const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
+  const orelhas = meta.orelhaMm > 0 ? meta.orelhaMm * 2 : 0;
+  const totalWMm = f.width_mm * 2 + lombadaMm + orelhas + SANGRIA_MM * 2;
   const totalHMm = f.height_mm + SANGRIA_MM * 2;
 
   const printCss = `* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }`;
@@ -170,7 +171,7 @@ export function renderCoverFromImage(
     totalHMm,
     meta.format,
     meta.pages,
-    meta.comOrelhas,
+    meta.orelhaMm,
     meta.projectName ?? "",
   );
 

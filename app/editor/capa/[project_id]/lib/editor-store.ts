@@ -12,7 +12,7 @@ import {
   ZOOM_STEP,
   ZOOM_FIT_MARGIN,
 } from "./constants";
-import { FORMATS, SANGRIA_MM, ORELHA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, MM_TO_PX, calcularLombada, clampOrelhaMm } from "./dimensions";
 import type { AnyElement, RegionFills, Region } from "./elements";
 import type { SaveStatus, EditorData } from "./editor-serializer";
 import { nanoid } from "nanoid";
@@ -25,7 +25,7 @@ interface EditorState {
   // Viewport
   format: FormatKey;
   pages: number;
-  comOrelhas: boolean;
+  orelhaMm: number;
   zoom: number;
   panX: number;
   panY: number;
@@ -54,7 +54,7 @@ interface EditorState {
   stageInstance: Konva.Stage | null;
 
   // Viewport actions
-  setComOrelhas: (v: boolean) => void;
+  setOrelhaMm: (v: number) => void;
   setZoom: (z: number) => void;
   setPan: (x: number, y: number) => void;
   zoomIn: () => void;
@@ -90,7 +90,7 @@ interface EditorState {
   setSaveStatus: (status: SaveStatus) => void;
   setStageInstance: (stage: Konva.Stage | null) => void;
   setConfirmedSnapshot: (snap: ConfirmedSnapshot | null) => void;
-  hydrate: (data: Pick<EditorData, "comOrelhas" | "elements" | "fills" | "isbn">) => void;
+  hydrate: (data: Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn">) => void;
 
   // Clipboard (internal — persisted in localStorage v2)
   clipboard: AnyElement[] | null;
@@ -105,7 +105,7 @@ interface EditorState {
 const DEFAULT_STATE = {
   format: "padrao_br" as FormatKey,
   pages: 200,
-  comOrelhas: false,
+  orelhaMm: 0,
   zoom: 0.5,
   panX: 0,
   panY: 0,
@@ -126,7 +126,7 @@ const DEFAULT_STATE = {
 export const useEditorStore = create<EditorState>((set, get) => ({
   ...DEFAULT_STATE,
 
-  setComOrelhas: (v) => set({ comOrelhas: v }),
+  setOrelhaMm: (v) => set((s) => ({ orelhaMm: clampOrelhaMm(s.format, v) })),
   setZoom: (z) => set({ zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z)) }),
   setPan: (x, y) => set({ panX: x, panY: y }),
 
@@ -140,10 +140,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   fitToScreen: (containerW, containerH) => {
-    const { format, pages, comOrelhas } = get();
+    const { format, pages, orelhaMm } = get();
     const f = FORMATS[format];
     const lombada = calcularLombada(pages);
-    const orelhas = comOrelhas ? ORELHA_MM * 2 : 0;
+    const orelhas = orelhaMm > 0 ? orelhaMm * 2 : 0;
     const totalWMm = f.width_mm * 2 + lombada + orelhas + SANGRIA_MM * 2;
     const totalHMm = f.height_mm + SANGRIA_MM * 2;
     const totalWPx = totalWMm * MM_TO_PX;
@@ -292,12 +292,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setConfirmedSnapshot: (snap) => set({ confirmedSnapshot: snap }),
 
   hydrate: (data) =>
-    set({
-      comOrelhas: data.comOrelhas ?? false,
+    set((s) => ({
+      orelhaMm: clampOrelhaMm(s.format, typeof data.orelhaMm === "number" ? data.orelhaMm : 0),
       elements: data.elements ?? [],
       fills: data.fills ?? {},
       isbn: data.isbn ?? null,
-    }),
+    })),
 
   copyElement: (els) => {
     try {
@@ -349,7 +349,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   reset: () =>
     set({
-      comOrelhas: false,
+      orelhaMm: 0,
       elements: [],
       selectedIds: [],
       fills: {},

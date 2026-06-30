@@ -2,6 +2,11 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import {
+  clampOrelhaMm,
+  getOrelhaDefault,
+  type FormatKey,
+} from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 /**
  * Extrai o storage path de uma URL signed do Supabase.
@@ -59,7 +64,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Pré-requisito: capa precisa ter passado pelo Editor (editor_data)
-  const editorData = capa.editor_data as { version?: number; comOrelhas?: boolean; elements?: unknown[] } | undefined;
+  const editorData = capa.editor_data as
+    | { version?: number; orelhaMm?: number; comOrelhas?: boolean; elements?: unknown[] }
+    | undefined;
   if (!editorData || editorData.version !== 1) {
     return NextResponse.json(
       {
@@ -143,6 +150,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Persiste em dados_capa.pdf_grafica
+  const formatoAtual = (project.formato ?? "padrao_br") as FormatKey;
+  const orelhaMmAtual =
+    typeof editorData.orelhaMm === "number"
+      ? clampOrelhaMm(formatoAtual, editorData.orelhaMm)
+      : editorData.comOrelhas
+        ? getOrelhaDefault(formatoAtual)
+        : 0;
+
   const newCapa = {
     ...capa,
     pdf_grafica: {
@@ -150,7 +165,8 @@ export async function POST(req: NextRequest) {
       gerado_em: new Date().toISOString(),
       formato: project.formato,
       paginas_no_momento: paginasReais,
-      com_orelhas: Boolean(editorData.comOrelhas),
+      orelha_mm: orelhaMmAtual,
+      com_orelhas: orelhaMmAtual > 0,
     },
   };
 

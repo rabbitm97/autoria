@@ -1,19 +1,19 @@
 import type Konva from "konva";
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import type { FormatKey } from "../types";
 
 async function captureStageRegion(
   stage: Konva.Stage,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
   mimeType: "image/png" | "image/jpeg",
   quality: number,
 ): Promise<string> {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
-  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
-  const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
+  const orelhas = orelhaMm > 0 ? orelhaMm * 2 : 0;
+  const totalWMm = f.width_mm * 2 + lombadaMm + orelhas + SANGRIA_MM * 2;
   const totalWPx = totalWMm * (300 / 25.4);
   const totalHPx = (f.height_mm + SANGRIA_MM * 2) * (300 / 25.4);
 
@@ -61,9 +61,9 @@ export async function captureStageAsDataUrl(
   stage: Konva.Stage,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
 ): Promise<string> {
-  return captureStageRegion(stage, format, pages, comOrelhas, "image/png", 1);
+  return captureStageRegion(stage, format, pages, orelhaMm, "image/png", 1);
 }
 
 // JPEG for server-bound PDF pipeline — substantially smaller than PNG
@@ -71,10 +71,10 @@ export async function captureStageAsJpegDataUrl(
   stage: Konva.Stage,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
   quality = 0.92,
 ): Promise<string> {
-  return captureStageRegion(stage, format, pages, comOrelhas, "image/jpeg", quality);
+  return captureStageRegion(stage, format, pages, orelhaMm, "image/jpeg", quality);
 }
 
 export function dataUrlToBlob(dataUrl: string): Blob {
@@ -90,8 +90,8 @@ export async function captureStageAsBlob(
   stage: Konva.Stage,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
 ): Promise<Blob> {
-  const dataUrl = await captureStageAsDataUrl(stage, format, pages, comOrelhas);
+  const dataUrl = await captureStageAsDataUrl(stage, format, pages, orelhaMm);
   return dataUrlToBlob(dataUrl);
 }

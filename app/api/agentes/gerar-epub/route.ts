@@ -221,7 +221,6 @@ export async function POST(req: NextRequest) {
   let palavrasChave: string[] = [];
   let dadosMiolo: { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null = null;
   let projectFormato: FormatoCapa | null = null;
-  let editorData: { comOrelhas?: boolean } | undefined;
   let capaResolvida: ReturnType<typeof resolveCapaCompleta> | null = null;
 
   if (isDev()) {
@@ -254,11 +253,12 @@ export async function POST(req: NextRequest) {
       autor_primeiro_nome?: string;
       autor_sobrenome?: string;
     } | null;
-    capaResolvida = resolveCapaCompleta(project.dados_capa as Record<string, unknown> | null);
-    dadosMiolo = project.dados_miolo as { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null;
     projectFormato = project.formato as FormatoCapa | null;
-    const dadosCapaRaw = project.dados_capa as Record<string, unknown> | null;
-    editorData = dadosCapaRaw?.editor_data as { comOrelhas?: boolean } | undefined;
+    capaResolvida = resolveCapaCompleta(
+      project.dados_capa as Record<string, unknown> | null,
+      projectFormato ?? "padrao_br",
+    );
+    dadosMiolo = project.dados_miolo as { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null;
 
     titulo       = ms?.titulo?.trim() || "Sem título";
     subtitulo    = ms?.subtitulo?.trim() ?? "";
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
         url: capaUrl,
         formato: projectFormato!,
         paginas: paginas!,
-        comOrelhas: editorData?.comOrelhas ?? false,
+        orelhaMm: capaResolvida?.orelha_mm ?? 0,
       });
       if (front) {
         coverBuffer = front.buffer;

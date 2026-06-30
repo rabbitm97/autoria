@@ -6,6 +6,7 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { getFormatoDef, estimarLombadaCapaMm, type FormatoLivro } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
+import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ export interface CapaUploadResult {
   largura_px: number;
   altura_px: number;
   dpi: number;
+  orelha_mm: number;
   lombada_mm_na_validacao: number;
   validacao: CapaValidacao;
   gerado_em: string;
@@ -37,13 +39,13 @@ export interface CapaValidacao {
 export function calcExpectedDims(opts: {
   formato: FormatoLivro;
   paginas: number;
-  usar_orelhas: boolean;
+  orelha_mm: number;
   dpi: number;
 }): { wMm: number; hMm: number; wPx: number; hPx: number; lombadaMm: number } {
   const specs = getFormatoDef(opts.formato).specs;
   const lombadaMm = estimarLombadaCapaMm(opts.paginas);
   const sangriaMm = specs.bleed_mm;
-  const orelhasMm = opts.usar_orelhas ? 80 : 0;
+  const orelhasMm = opts.orelha_mm > 0 ? opts.orelha_mm : 0;
 
   const totalWMm =
     sangriaMm +
@@ -93,7 +95,8 @@ export async function POST(req: NextRequest) {
     altura_px: number;
     dpi?: number;
     paginas: number;
-    usar_orelhas: boolean;
+    orelha_mm?: number;
+    usar_orelhas?: boolean;
   };
   try {
     body = await req.json();
@@ -109,6 +112,7 @@ export async function POST(req: NextRequest) {
     altura_px,
     dpi = 300,
     paginas,
+    orelha_mm: rawOrelhaMm,
     usar_orelhas,
   } = body;
 
@@ -128,8 +132,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Resolve orelha_mm: prefer numeric input, fallback to legacy boolean.
+  let orelhaMm = 0;
+  if (typeof rawOrelhaMm === "number" && Number.isFinite(rawOrelhaMm)) {
+    orelhaMm = clampOrelhaMm(formato as FormatKey, rawOrelhaMm);
+  } else if (typeof usar_orelhas === "boolean") {
+    orelhaMm = usar_orelhas ? getOrelhaDefault(formato as FormatKey) : 0;
+  }
+
   // ── Validate dimensions ───────────────────────────────────────────────────
-  const expected = calcExpectedDims({ formato, paginas, usar_orelhas, dpi });
+  const expected = calcExpectedDims({ formato, paginas, orelha_mm: orelhaMm, dpi });
   const mm2px = dpi / 25.4;
   const tolPx = Math.round(2 * mm2px); // ±2mm tolerance
 
@@ -182,6 +194,7 @@ export async function POST(req: NextRequest) {
     largura_px,
     altura_px,
     dpi,
+    orelha_mm: orelhaMm,
     lombada_mm_na_validacao: expected.lombadaMm,
     validacao,
     gerado_em: new Date().toISOString(),

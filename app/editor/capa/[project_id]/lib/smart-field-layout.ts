@@ -1,4 +1,4 @@
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import { createTextElement } from "./elements";
 import type { TextElement, RegionFills } from "./elements";
 import type { SmartField } from "./elements";
@@ -87,14 +87,14 @@ export function createSmartFieldElement(
   field: SmartField,
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
   fills: RegionFills,
   content: SmartFieldContentMap,
   existingZIndex: number,
 ): TextElement {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
-  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+  const temOrelhas = orelhaMm > 0;
 
   const sangria = SANGRIA_MM;
   const xCapaStart = sangria + orelhaMm + f.width_mm + lombadaMm;
@@ -110,7 +110,7 @@ export function createSmartFieldElement(
       : field === "bio"
       ? fills.orelha_frente
       : field === "sinopse_longa"
-      ? (comOrelhas ? fills.orelha_verso : fills.contracapa)
+      ? (temOrelhas ? fills.orelha_verso : fills.contracapa)
       : field === "sinopse_curta"
       ? fills.contracapa
       : fills.capa;

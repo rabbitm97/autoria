@@ -23,7 +23,6 @@ import {
   FORMATS,
   MM_TO_PX,
   SANGRIA_MM,
-  ORELHA_MM,
   calcularLombada,
 } from "../lib/dimensions";
 import {
@@ -240,7 +239,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   const {
     format,
     pages,
-    comOrelhas,
+    orelhaMm,
     zoom,
     panX,
     panY,
@@ -298,7 +297,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     if (!mounted || containerSize.w <= 0 || containerSize.h <= 0) return;
     fitToScreen(containerSize.w, containerSize.h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerSize.w, containerSize.h, format, pages, comOrelhas]);
+  }, [containerSize.w, containerSize.h, format, pages, orelhaMm]);
 
   // Attach Transformer to selected nodes
   useEffect(() => {
@@ -368,7 +367,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   // Dimensions
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
-  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+  const temOrelhas = orelhaMm > 0;
   const sangriaPx = SANGRIA_MM * MM_TO_PX;
   const orelhaPx = orelhaMm * MM_TO_PX;
   const lombadaPx = lombadaMm * MM_TO_PX;
@@ -392,11 +391,12 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     const inSangria =
       xPaper < sangriaPx || xPaper > xSangriaR || yPaper < sangriaPx || yPaper > totalHPx - sangriaPx;
     if (inSangria) return { region: "SANGRIA", message: "3mm de margem de corte. Não coloque texto importante aqui." };
-    if (comOrelhas && xPaper >= sangriaPx && xPaper < xOrelhaVersoEnd) return { region: "ORELHA TRASEIRA", message: "Dobra de 8cm. Outros livros do autor ou texto institucional." };
+    const orelhaCm = Math.round(orelhaMm / 10);
+    if (temOrelhas && xPaper >= sangriaPx && xPaper < xOrelhaVersoEnd) return { region: "ORELHA TRASEIRA", message: `Dobra de ${orelhaCm}cm. Outros livros do autor ou texto institucional.` };
     if (xPaper >= xOrelhaVersoEnd && xPaper < xContraEnd) return { region: "CONTRACAPA", message: "Verso. Sinopse, código de barras ISBN e logo da editora." };
     if (xPaper >= xContraEnd && xPaper < xLombadaEnd) return { region: "LOMBADA", message: `${lombadaMm.toFixed(1)}mm, calculada a partir de ${pages} páginas.` };
     if (xPaper >= xLombadaEnd && xPaper < xFrenteEnd) return { region: "CAPA", message: "Frente do livro. Aqui ficam título, autor e imagem principal." };
-    if (comOrelhas && xPaper >= xFrenteEnd && xPaper < xOrelhaFrenteEnd) return { region: "ORELHA FRONTAL", message: "Dobra de 8cm. Foto e bio do autor." };
+    if (temOrelhas && xPaper >= xFrenteEnd && xPaper < xOrelhaFrenteEnd) return { region: "ORELHA FRONTAL", message: `Dobra de ${orelhaCm}cm. Foto e bio do autor.` };
     return null;
   }
 
@@ -404,7 +404,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   function handleDragMove(e: any, elId: string) {
     if (!snapEnabled) return;
     const node = e.target;
-    const guides = getStructuralGuides(format, pages, comOrelhas);
+    const guides = getStructuralGuides(format, pages, orelhaMm);
     const bounds = {
       x: node.x(),
       y: node.y(),
@@ -545,7 +545,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [legendasAtivas, comOrelhas, lombadaMm, pages, zoom, panX, panY],
+    [legendasAtivas, orelhaMm, lombadaMm, pages, zoom, panX, panY],
   );
 
   const handleStageMouseDown = useCallback((e: any) => {
@@ -685,7 +685,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           {ALL_REGIONS.map((key) => {
             const color = fills[key];
             if (!color) return null;
-            const rect = getFillRect(key, format, pages, comOrelhas);
+            const rect = getFillRect(key, format, pages, orelhaMm);
             if (!rect) return null;
             return (
               <Rect
@@ -887,7 +887,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           <Line points={[xContraEnd, 0, xContraEnd, totalHPx]} stroke={GUIDE_DOBRA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
           <Line points={[xLombadaEnd, 0, xLombadaEnd, totalHPx]} stroke={GUIDE_DOBRA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
           <Line points={[xLombadaCenter, 0, xLombadaCenter, totalHPx]} stroke={GUIDE_LOMBADA_CENTER_COLOR} strokeWidth={gs * 0.8} dash={[2 / zoom, 5 / zoom]} />
-          {comOrelhas && (
+          {temOrelhas && (
             <>
               <Line points={[xOrelhaVersoEnd, 0, xOrelhaVersoEnd, totalHPx]} stroke={GUIDE_ORELHA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
               <Line points={[xFrenteEnd, 0, xFrenteEnd, totalHPx]} stroke={GUIDE_ORELHA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
@@ -917,7 +917,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                 {lombadaPx * zoom > 18 && shouldShowLabel(!!fills.lombada, hasElementsInXRange(elements, xLombadaStartMm, xLombadaEndMm), legendasAtivas) && (
                   <KonvaText x={xLombadaCenter} y={totalHPx / 2} text="LOMBADA" fontSize={9 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" rotation={-90} align="center" />
                 )}
-                {comOrelhas && orelhaPx * zoom > 30 && (
+                {temOrelhas && orelhaPx * zoom > 30 && (
                   <>
                     {shouldShowLabel(!!fills.orelha_verso, hasElementsInXRange(elements, SANGRIA_MM, xContracapaStartMm), legendasAtivas) && (
                       <KonvaText x={sangriaPx} y={totalHPx / 2} width={orelhaPx} align="center" offsetY={10 / zoom} text={"ORELHA\nTRASEIRA"} fontSize={11 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />

@@ -68,12 +68,12 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     const warning = validate();
     if (warning) { alert(warning); return; }
 
-    const { stageInstance, format, pages, comOrelhas } = useEditorStore.getState();
+    const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
     if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
 
     setItem("png", { status: "busy" });
     try {
-      const dataUrl = await captureStageAsDataUrl(stageInstance, format, pages, comOrelhas);
+      const dataUrl = await captureStageAsDataUrl(stageInstance, format, pages, orelhaMm);
       downloadBlob(dataUrlToBlob(dataUrl), `${slugify(projectTitle)}-capa-300dpi.png`);
       setItem("png", IDLE);
     } catch (err) {
@@ -93,12 +93,12 @@ export function useCoverExport(projectId: string, projectTitle: string) {
 
     try {
       const storeState = useEditorStore.getState();
-      const { stageInstance, format, pages, comOrelhas } = storeState;
+      const { stageInstance, format, pages, orelhaMm } = storeState;
       if (!stageInstance) throw new Error("Canvas não pronto. Tente novamente.");
 
       const editorData = serializeEditorState(storeState);
 
-      const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, comOrelhas);
+      const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm);
       const jpegBlob = dataUrlToBlob(jpegDataUrl);
 
       const uploadRes = await fetch(`/api/projects/${projectId}/cover-editor/upload-cover-image`, {

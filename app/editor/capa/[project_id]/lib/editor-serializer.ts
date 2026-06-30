@@ -1,4 +1,5 @@
 import type { AnyElement, RegionFills } from "./elements";
+import { getOrelhaDefault, type FormatKey } from "./dimensions";
 
 export interface EditorMeta {
   last_saved_at: string;
@@ -8,7 +9,7 @@ export interface EditorMeta {
 
 export interface EditorData {
   version: 1;
-  comOrelhas: boolean;
+  orelhaMm: number;
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
@@ -22,7 +23,7 @@ export type SaveStatus =
   | { kind: "error"; error: string };
 
 export function serializeEditorState(state: {
-  comOrelhas: boolean;
+  orelhaMm: number;
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
@@ -30,7 +31,7 @@ export function serializeEditorState(state: {
 }): EditorData {
   return {
     version: 1,
-    comOrelhas: state.comOrelhas,
+    orelhaMm: state.orelhaMm,
     elements: state.elements,
     fills: state.fills,
     isbn: state.isbn,
@@ -44,16 +45,23 @@ export function serializeEditorState(state: {
 
 export function deserializeEditorState(
   data: unknown,
-): Pick<EditorData, "comOrelhas" | "elements" | "fills" | "isbn"> | null {
+  format: FormatKey,
+): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn"> | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.version !== 1) {
     console.warn("[editor] unknown editor_data version:", d.version);
     return null;
   }
+  // Prefer new orelhaMm; fall back to legacy comOrelhas boolean.
+  let orelhaMm = 0;
+  if (typeof d.orelhaMm === "number" && Number.isFinite(d.orelhaMm)) {
+    orelhaMm = d.orelhaMm;
+  } else if (typeof d.comOrelhas === "boolean") {
+    orelhaMm = d.comOrelhas ? getOrelhaDefault(format) : 0;
+  }
   return {
-    // Compat: projects saved before this fix won't have comOrelhas — default false
-    comOrelhas: typeof d.comOrelhas === "boolean" ? d.comOrelhas : false,
+    orelhaMm,
     elements: Array.isArray(d.elements)
       ? (d.elements as AnyElement[]).map((el) => {
           if (el.type === "text" && typeof (el as any).lineHeight !== "number") {

@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
+import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ export interface CapaGeradaResult {
   cor_predominante: string;
   quarta_capa_texto: string;
   usar_orelhas: boolean;
+  orelha_mm: number;
   prompt_usado: string;
   opcoes: OpcaoCapa[];
   url_escolhida: string | null;
@@ -118,6 +120,7 @@ export async function POST(req: NextRequest) {
     estilo?: EstiloCapa;
     cor_predominante?: string;
     usar_orelhas?: boolean;
+    orelha_mm?: number;
     quarta_capa_texto?: string;
     imagemRef?: string;
     is_regeneracao?: boolean;
@@ -133,6 +136,7 @@ export async function POST(req: NextRequest) {
     estilo = "minimalista",
     cor_predominante = "azul escuro",
     usar_orelhas = false,
+    orelha_mm: rawOrelhaMm,
     imagemRef,
     is_regeneracao = false,
   } = body;
@@ -151,7 +155,7 @@ export async function POST(req: NextRequest) {
   // ── Fetch project + manuscripts from DB ───────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, creditos, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("id, creditos, formato, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -177,6 +181,15 @@ export async function POST(req: NextRequest) {
 
   const dadosMiolo = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
   const paginas = dadosMiolo?.paginas_reais ?? dadosMiolo?.paginas_estimadas ?? 200;
+
+  const formato: FormatKey = ((project as { formato?: string }).formato as FormatKey) ?? "padrao_br";
+  let orelha_mm = 0;
+  if (typeof rawOrelhaMm === "number" && Number.isFinite(rawOrelhaMm)) {
+    orelha_mm = clampOrelhaMm(formato, rawOrelhaMm);
+  } else if (typeof usar_orelhas === "boolean") {
+    orelha_mm = usar_orelhas ? getOrelhaDefault(formato) : 0;
+  }
+  const usar_orelhas_resolved = orelha_mm > 0;
 
   const quarta_capa_texto = body.quarta_capa_texto ?? sinopse.slice(0, 500);
 
@@ -280,7 +293,8 @@ export async function POST(req: NextRequest) {
     estilo,
     cor_predominante,
     quarta_capa_texto,
-    usar_orelhas,
+    usar_orelhas: usar_orelhas_resolved,
+    orelha_mm,
     prompt_usado: prompt,
     opcoes,
     url_escolhida: opcoes[0]?.url ?? null,

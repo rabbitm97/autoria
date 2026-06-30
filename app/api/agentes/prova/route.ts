@@ -10,8 +10,10 @@ import { PDFDocument } from "pdf-lib";
 import {
   FORMATS,
   SANGRIA_MM,
-  ORELHA_MM,
   calcularLombada,
+  clampOrelhaMm,
+  getOrelhaDefault,
+  type FormatKey,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
 export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult };
@@ -29,14 +31,15 @@ async function analisarCapaGrafica(params: {
     gerado_em: string;
     formato: string;
     paginas_no_momento: number;
-    com_orelhas: boolean;
+    orelha_mm?: number;
+    com_orelhas?: boolean;
   };
   paginas_atuais: number;
   formato_atual: string;
-  com_orelhas_atual: boolean;
+  orelha_mm_atual: number;
 }): Promise<ProvaItem[]> {
   const itens: ProvaItem[] = [];
-  const { pdf_grafica, paginas_atuais, formato_atual, com_orelhas_atual } = params;
+  const { pdf_grafica, paginas_atuais, formato_atual, orelha_mm_atual } = params;
 
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -113,8 +116,7 @@ async function analisarCapaGrafica(params: {
   }
 
   const lombadaMmEsperada = calcularLombada(paginas_atuais);
-  const orelhaMm = com_orelhas_atual ? ORELHA_MM : 0;
-  const totalWMm = f.width_mm * 2 + lombadaMmEsperada + orelhaMm * 2 + SANGRIA_MM * 2;
+  const totalWMm = f.width_mm * 2 + lombadaMmEsperada + orelha_mm_atual * 2 + SANGRIA_MM * 2;
   const totalHMm = f.height_mm + SANGRIA_MM * 2;
   const expectedW = totalWMm + MARKS_MM * 2;
   const expectedH = totalHMm + MARKS_MM * 2;
@@ -224,7 +226,10 @@ export async function POST(req: NextRequest) {
   const capa = project.dados_capa as Record<string, unknown> | null;
 
   // 1. Capa digital (imagem confirmada)
-  const capaResolvida = resolveCapaCompleta(capa);
+  const capaResolvida = resolveCapaCompleta(
+    capa,
+    (project.formato ?? "padrao_br") as FormatKey,
+  );
   if (!capaResolvida.pronta) {
     itens.push({
       categoria: "capa",
@@ -305,14 +310,21 @@ export async function POST(req: NextRequest) {
         gerado_em: string;
         formato: string;
         paginas_no_momento: number;
-        com_orelhas: boolean;
+        orelha_mm?: number;
+        com_orelhas?: boolean;
       }
     | undefined;
 
   const editorData = capa?.editor_data as
-    | { version?: number; comOrelhas?: boolean }
+    | { version?: number; orelhaMm?: number; comOrelhas?: boolean }
     | undefined;
-  const comOrelhasAtual = Boolean(editorData?.comOrelhas);
+  const formatoAtual = (project.formato ?? "padrao_br") as FormatKey;
+  const orelhaMmAtual =
+    typeof editorData?.orelhaMm === "number"
+      ? clampOrelhaMm(formatoAtual, editorData.orelhaMm)
+      : editorData?.comOrelhas
+        ? getOrelhaDefault(formatoAtual)
+        : 0;
 
   const itensCapaGrafica: ProvaItem[] = [];
 
@@ -329,7 +341,7 @@ export async function POST(req: NextRequest) {
       pdf_grafica: pdfGrafica,
       paginas_atuais: paginasReais,
       formato_atual: project.formato as string,
-      com_orelhas_atual: comOrelhasAtual,
+      orelha_mm_atual: orelhaMmAtual,
     });
     itensCapaGrafica.push(...analiseItens);
   }

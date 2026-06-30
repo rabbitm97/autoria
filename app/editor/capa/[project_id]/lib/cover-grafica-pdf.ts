@@ -10,7 +10,7 @@
 
 import { PDFDocument, cmyk, StandardFonts } from "pdf-lib";
 import { join } from "path";
-import { FORMATS, SANGRIA_MM, ORELHA_MM, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import type { FormatKey } from "../types";
 
 const MARKS_MM = 10;
@@ -37,7 +37,7 @@ function yPt(y_mm: number, pageH_mm: number): number {
 export interface GraficaMeta {
   format: FormatKey;
   pages: number;
-  comOrelhas: boolean;
+  orelhaMm: number;
   projectName: string;
 }
 
@@ -47,7 +47,8 @@ export async function buildGraficaPdf(
 ): Promise<Uint8Array> {
   const f = FORMATS[meta.format];
   const lombadaMm = calcularLombada(meta.pages);
-  const orelhaMm = meta.comOrelhas ? ORELHA_MM : 0;
+  const orelhaMm = meta.orelhaMm > 0 ? meta.orelhaMm : 0;
+  const temOrelhas = orelhaMm > 0;
   const totalWMm = f.width_mm * 2 + lombadaMm + orelhaMm * 2 + SANGRIA_MM * 2;
   const totalHMm = f.height_mm + SANGRIA_MM * 2;
   const graficaW = totalWMm + MARKS_MM * 2;
@@ -108,10 +109,10 @@ export async function buildGraficaPdf(
 
   // ── Fold marks (dashed) ──────────────────────────────────────────────────
   const foldXsMm: number[] = [];
-  if (meta.comOrelhas) foldXsMm.push(SANGRIA_MM + orelhaMm);
+  if (temOrelhas) foldXsMm.push(SANGRIA_MM + orelhaMm);
   foldXsMm.push(SANGRIA_MM + orelhaMm + f.width_mm);
   foldXsMm.push(SANGRIA_MM + orelhaMm + f.width_mm + lombadaMm);
-  if (meta.comOrelhas) foldXsMm.push(SANGRIA_MM + orelhaMm + f.width_mm + lombadaMm + f.width_mm);
+  if (temOrelhas) foldXsMm.push(SANGRIA_MM + orelhaMm + f.width_mm + lombadaMm + f.width_mm);
 
   for (const xPaper of foldXsMm) {
     const xG = MARKS_MM + xPaper;

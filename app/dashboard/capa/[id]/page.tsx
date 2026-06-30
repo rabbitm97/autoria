@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult, CapaValidacao } from "@/app/api/agentes/upload-capa/route";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
+import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -132,8 +133,13 @@ function ModoUpload({
   useEffect(() => {
     if (estimativaPaginas != null) setPaginas(estimativaPaginas);
   }, [estimativaPaginas]);
-  const [usarOrelhas, setUsarOrelhas] = useState(false);
+  const [orelhaMm, setOrelhaMm] = useState(0);
   const [dpi, setDpi] = useState<300 | 150>(300);
+
+  // Clamp orelhaMm to format range whenever format changes
+  useEffect(() => {
+    setOrelhaMm((prev) => (prev > 0 ? clampOrelhaMm(formato as FormatKey, prev) : 0));
+  }, [formato]);
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -142,11 +148,16 @@ function ModoUpload({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const usarOrelhas = orelhaMm > 0;
+  const orelhaMaxCm = getOrelhaMax(formato as FormatKey) / 10;
+  const orelhaMinCm = ORELHA_MIN_MM / 10;
+  const orelhaCm = Math.round(orelhaMm / 10);
+
   // Use real lombada from diagramação if available, otherwise estimate
   const lombada = lombadaReal ?? calcLombadaMm(paginas);
   const fmtSpecs = getFormatoDef(formato).specs;
   const sangria = fmtSpecs.bleed_mm;
-  const orelha = usarOrelhas ? 80 : 0;
+  const orelha = orelhaMm;
   const espWMm = sangria + orelha + fmtSpecs.width_mm + lombada + fmtSpecs.width_mm + orelha + sangria;
   const espHMm = sangria + fmtSpecs.height_mm + sangria;
   const mm2px = dpi / 25.4;
@@ -207,7 +218,7 @@ function ModoUpload({
           altura_px: dims.h,
           dpi,
           paginas,
-          usar_orelhas: usarOrelhas,
+          orelha_mm: orelhaMm,
         }),
       });
       const data = await r.json();
@@ -267,16 +278,34 @@ function ModoUpload({
               <option value={150}>150 DPI (digital)</option>
             </select>
           </div>
-          <div className="flex flex-col justify-center">
+          <div className="flex flex-col justify-center gap-2">
             <label className="flex items-center gap-2 cursor-pointer mt-4">
-              <div onClick={() => setUsarOrelhas(!usarOrelhas)}
+              <div onClick={() => setOrelhaMm(usarOrelhas ? 0 : getOrelhaDefault(formato as FormatKey))}
                 className={`w-10 h-5 rounded-full border-2 transition-colors relative
                   ${usarOrelhas ? "bg-brand-gold border-brand-gold" : "bg-zinc-200 border-zinc-300"}`}>
                 <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all
                   ${usarOrelhas ? "left-5" : "left-0.5"}`} />
               </div>
-              <span className="text-xs text-zinc-600">Orelhas (8cm)</span>
+              <span className="text-xs text-zinc-600">Orelhas</span>
             </label>
+            {usarOrelhas && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={orelhaMinCm}
+                  max={orelhaMaxCm}
+                  step={1}
+                  value={orelhaCm}
+                  onChange={(e) => {
+                    const cm = Number(e.target.value);
+                    if (!Number.isFinite(cm)) return;
+                    setOrelhaMm(clampOrelhaMm(formato as FormatKey, cm * 10));
+                  }}
+                  className="w-14 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-brand-gold"
+                />
+                <span className="text-xs text-zinc-500">cm ({orelhaMinCm}–{orelhaMaxCm})</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -358,6 +387,7 @@ function ModoUpload({
 
 function ModoIA({
   projectId,
+  formatoInicial,
   titulo,
   autor,
   sinopse,
@@ -367,6 +397,7 @@ function ModoIA({
   onVoltar,
 }: {
   projectId: string;
+  formatoInicial: FormatoLivro;
   titulo: string;
   autor: string;
   sinopse: string;
@@ -381,10 +412,18 @@ function ModoIA({
     if (estimativaPaginas != null) setPaginas(estimativaPaginas);
   }, [estimativaPaginas]);
 
+  const formato = formatoInicial;
   const [estilo, setEstilo] = useState<EstiloCapa>("minimalista");
   const [cor, setCor] = useState(CORES_PRESET[0].value);
   const [corHex, setCorHex] = useState(CORES_PRESET[0].hex);
-  const [usarOrelhas, setUsarOrelhas] = useState(false);
+  const [orelhaMm, setOrelhaMm] = useState(0);
+  useEffect(() => {
+    setOrelhaMm((prev) => (prev > 0 ? clampOrelhaMm(formato as FormatKey, prev) : 0));
+  }, [formato]);
+  const usarOrelhas = orelhaMm > 0;
+  const orelhaMaxCm = getOrelhaMax(formato as FormatKey) / 10;
+  const orelhaMinCm = ORELHA_MIN_MM / 10;
+  const orelhaCm = Math.round(orelhaMm / 10);
   const [quartaTexto, setQuartaTexto] = useState(sinopse?.slice(0, 500) ?? "");
   const [imgRef, setImgRef] = useState<string | null>(null);
 
@@ -406,6 +445,7 @@ function ModoIA({
           project_id: projectId,
           estilo,
           cor_predominante: cor,
+          orelha_mm: orelhaMm,
           usar_orelhas: usarOrelhas,
           quarta_capa_texto: quartaTexto,
           imagemRef: imgRef ?? undefined,
@@ -477,17 +517,36 @@ function ModoIA({
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Opções adicionais</p>
 
             <label className="flex items-center gap-3 cursor-pointer">
-              <div onClick={() => setUsarOrelhas(!usarOrelhas)}
+              <div onClick={() => setOrelhaMm(usarOrelhas ? 0 : getOrelhaDefault(formato as FormatKey))}
                 className={`w-10 h-5 rounded-full border-2 transition-colors relative
                   ${usarOrelhas ? "bg-brand-gold border-brand-gold" : "bg-zinc-200 border-zinc-300"}`}>
                 <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all
                   ${usarOrelhas ? "left-5" : "left-0.5"}`} />
               </div>
               <div>
-                <p className="text-sm text-zinc-700 font-medium">Incluir orelhas (8cm)</p>
+                <p className="text-sm text-zinc-700 font-medium">Incluir orelhas</p>
                 <p className="text-xs text-zinc-400">Dobras laterais — espaço para bio do autor</p>
               </div>
             </label>
+            {usarOrelhas && (
+              <div className="flex items-center gap-2 pl-13">
+                <label className="text-xs text-zinc-500">Largura:</label>
+                <input
+                  type="number"
+                  min={orelhaMinCm}
+                  max={orelhaMaxCm}
+                  step={1}
+                  value={orelhaCm}
+                  onChange={(e) => {
+                    const cm = Number(e.target.value);
+                    if (!Number.isFinite(cm)) return;
+                    setOrelhaMm(clampOrelhaMm(formato as FormatKey, cm * 10));
+                  }}
+                  className="w-16 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-brand-gold"
+                />
+                <span className="text-xs text-zinc-500">cm ({orelhaMinCm}–{orelhaMaxCm})</span>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">
@@ -958,6 +1017,7 @@ export default function CapaPage() {
         ) : modo === "ia" ? (
           <ModoIA
             projectId={id}
+            formatoInicial={formatoGlobal}
             titulo={titulo}
             autor={autor}
             sinopse={sinopse}

@@ -3,6 +3,11 @@ import type { EditorData } from "./lib/editor-serializer";
 
 export type FormatKey = FormatoLivro;
 
+export type HydratableEditorData = Pick<
+  EditorData,
+  "orelhaMm" | "elements" | "fills" | "isbn"
+>;
+
 export interface ProjectData {
   projectId: string;
   format: FormatKey;
@@ -14,7 +19,7 @@ export interface ProjectData {
   synopsisShort: string;
   synopsisLong: string;
   pagesSource: "real" | "estimated" | "default";
-  initialEditorData: EditorData | null;
+  initialEditorData: HydratableEditorData | null;
   confirmedAt: string | null;
   confirmedImageUrl: string | null;
 }

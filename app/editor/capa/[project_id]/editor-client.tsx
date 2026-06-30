@@ -81,7 +81,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
     if (projectData.isbn) setIsbn(projectData.isbn);
     if (projectData.initialEditorData) {
       useEditorStore.getState().hydrate({
-        comOrelhas: projectData.initialEditorData.comOrelhas,
+        orelhaMm: projectData.initialEditorData.orelhaMm,
         elements: projectData.initialEditorData.elements,
         fills: projectData.initialEditorData.fills,
         isbn: projectData.initialEditorData.isbn,
@@ -127,7 +127,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
   useEffect(() => {
     const unsubscribe = useEditorStore.subscribe((state, prev) => {
       if (
-        state.comOrelhas !== prev.comOrelhas ||
+        state.orelhaMm !== prev.orelhaMm ||
         state.elements !== prev.elements ||
         state.fills !== prev.fills ||
         state.isbn !== prev.isbn

@@ -1,4 +1,4 @@
-import { FORMATS, SANGRIA_MM, ORELHA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
+import { FORMATS, SANGRIA_MM, MM_TO_PX, calcularLombada } from "./dimensions";
 import type { FormatKey } from "../types";
 
 export interface SnapGuides {
@@ -16,11 +16,11 @@ export interface SnapResult {
 export function getStructuralGuides(
   format: FormatKey,
   pages: number,
-  comOrelhas: boolean,
+  orelhaMm: number,
 ): SnapGuides {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
-  const orelhaMm = comOrelhas ? ORELHA_MM : 0;
+  const temOrelhas = orelhaMm > 0;
 
   const sangriaPx = SANGRIA_MM * MM_TO_PX;
   const orelhaPx = orelhaMm * MM_TO_PX;
@@ -46,7 +46,7 @@ export function getStructuralGuides(
     totalWPx / 2,
   ];
 
-  if (comOrelhas) {
+  if (temOrelhas) {
     xs.push(xFrenteEnd + orelhaPx);
   }
 

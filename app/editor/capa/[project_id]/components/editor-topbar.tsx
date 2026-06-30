@@ -17,7 +17,7 @@ interface EditorTopbarProps {
 
 export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
   const router = useRouter();
-  const { legendasAtivas, toggleLegendas, stageInstance, format, pages, comOrelhas } = useEditorStore();
+  const { legendasAtivas, toggleLegendas, stageInstance, format, pages, orelhaMm } = useEditorStore();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTab, setPreviewTab] = useState<"live" | "confirmed">("live");
   const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
     setLivePreviewUrl(null);
     if (stageInstance) {
       try {
-        const url = await captureStageAsDataUrl(stageInstance, format, pages, comOrelhas);
+        const url = await captureStageAsDataUrl(stageInstance, format, pages, orelhaMm);
         setLivePreviewUrl(url);
       } catch {
         // ignore capture errors

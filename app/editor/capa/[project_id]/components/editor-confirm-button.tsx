@@ -19,7 +19,7 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
   async function handleConfirm() {
     // Read imperatively to guarantee we have the current store value at click time,
     // not a stale value from a previous render's closure
-    const { stageInstance, format, pages, comOrelhas } = useEditorStore.getState();
+    const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
     if (!stageInstance) {
       setState("error");
       setTimeout(() => setState("idle"), 3000);
@@ -28,7 +28,7 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
     setState("confirming");
 
     try {
-      // Ensure editor_data (including comOrelhas) is saved before confirming
+      // Ensure editor_data (including orelhaMm) is saved before confirming
       const currentState = useEditorStore.getState();
       const snapshot = serializeEditorState(currentState);
       await fetch(`/api/projects/${projectId}/cover-editor`, {
@@ -37,7 +37,7 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
         body: JSON.stringify(snapshot),
       });
 
-      const blob = await captureStageAsBlob(stageInstance, format, pages, comOrelhas);
+      const blob = await captureStageAsBlob(stageInstance, format, pages, orelhaMm);
       const form = new FormData();
       form.append("png", blob, "cover.png");
 
