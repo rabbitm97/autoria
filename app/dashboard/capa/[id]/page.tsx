@@ -7,7 +7,7 @@ import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
-import type { CapaUploadResult, CapaValidacao } from "@/app/api/agentes/upload-capa/route";
+import type { CapaUploadResult } from "@/app/api/agentes/upload-capa/route";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
@@ -15,6 +15,15 @@ import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type Form
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 type Modo = "escolha" | "upload" | "ia";
+
+/**
+ * Limite de tamanho para upload (arquivo original, antes de qualquer conversão).
+ * Rationale: pipeline serverless da Vercel Hobby tem limite de ~4.5MB no body
+ * de requests e memória apertada em `sharp`/`pdfjs`. Aceitar arquivos muito
+ * grandes trava a conversão de PDF no cliente e o registro no servidor.
+ * Autores com arquivos maiores são orientados a comprimir ou a nos contactar.
+ */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 
 const ESTILOS: { id: EstiloCapa; label: string; emoji: string }[] = [
@@ -174,12 +183,27 @@ function ModoUpload({
   const [preview, setPreview] = useState<string | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [convertingPdf, setConvertingPdf] = useState(false);
+  // PDF cru quando o autor sobe um PDF — a conversão para PNG é o que
+  // vai para o pipeline principal (dims/análise), mas o PDF original é
+  // preservado em paralelo no Storage para eventual reimpressão.
+  const [pdfOriginal, setPdfOriginal] = useState<File | null>(null);
+
+  // Ref no input de arquivo — permite "Trocar capa" abrir o picker sem
+  // desmontar o dropzone (que passaria por onRefazer/reset).
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Upload state
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(!!dadosSalvos && dadosSalvos.modo === "upload");
-  const [validacao, setValidacao] = useState<CapaValidacao | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Origem do arquivo já persistido (para renderizar recomendações sem
+  // avisar sobre DPI quando a origem era PDF).
+  const origemArquivoSalva = (dadosSalvos?.origem_arquivo ?? undefined) as
+    | "pdf"
+    | "png"
+    | "jpg"
+    | undefined;
 
   // Se veio com dados salvos (autor recarregou a página com upload já feito),
   // popula preview a partir da URL do banco.
@@ -211,34 +235,10 @@ function ModoUpload({
   const espWPx = Math.round(espWMm * mm2px);
   const espHPx = Math.round(espHMm * mm2px);
 
-  // Auto-validação de dimensões (client-side, síncrona)
-  useEffect(() => {
-    if (!dims) {
-      setValidacao(null);
-      return;
-    }
-    const tolPx = Math.round(2 * mm2px);
-    const wOk = Math.abs(dims.w - espWPx) <= tolPx;
-    const hOk = Math.abs(dims.h - espHPx) <= tolPx;
-    const rW = Math.round((dims.w / mm2px) * 10) / 10;
-    const rH = Math.round((dims.h / mm2px) * 10) / 10;
-    const detalhes: string[] = [];
-    if (!wOk) detalhes.push(`Largura: ${rW}mm (esperado ${espWMm}mm ±2mm)`);
-    if (!hOk) detalhes.push(`Altura: ${rH}mm (esperado ${espHMm}mm ±2mm)`);
-    if (wOk && hOk) detalhes.push("Dimensões dentro da tolerância ±2mm.");
-    setValidacao({
-      ok: wOk && hOk,
-      largura_esperada_mm: espWMm,
-      altura_esperada_mm: espHMm,
-      largura_recebida_mm: rW,
-      altura_recebida_mm: rH,
-      tolerancia_mm: 2,
-      detalhes,
-    });
-  }, [dims, espWMm, espHMm, espWPx, espHPx, mm2px]);
-
   // Auto-upload: dispara quando file + dims estão disponíveis e upload
-  // ainda não rodou nesta sessão.
+  // ainda não rodou nesta sessão. Sem validação client-side de dimensões
+  // aqui — a análise técnica (populada por polling) reporta o mesmo com
+  // mais precisão; duplicar apenas confundia o autor.
   const uploadTriggeredRef = useRef(false);
   useEffect(() => {
     if (!file || !dims || uploading || uploaded) return;
@@ -250,11 +250,28 @@ function ModoUpload({
 
   async function handleFileChange(f: File) {
     setError(null);
-    setValidacao(null);
     uploadTriggeredRef.current = false;
+
+    // Limite de tamanho: aplica-se ao arquivo original enviado (antes de
+    // qualquer conversão). Autores com arquivos maiores são orientados a
+    // comprimir ou contactar o suporte.
+    if (f.size > MAX_UPLOAD_BYTES) {
+      const mb = (f.size / (1024 * 1024)).toFixed(1);
+      const limitMb = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
+      const isPdfOriginal = f.type === "application/pdf";
+      setError(
+        `Arquivo com ${mb}MB — acima do limite de ${limitMb}MB. ` +
+          (isPdfOriginal
+            ? "PDFs muito grandes travam a conversão no navegador. Exporte com resolução menor (150 DPI é suficiente para capa) ou envie a arte em PNG. "
+            : "Reduza a resolução ou salve em JPG. ") +
+          "Se precisar de ajuda, escreva para oi@autoria.app.",
+      );
+      return;
+    }
 
     // PDF → PNG (primeira página @ 300 DPI)
     if (f.type === "application/pdf") {
+      setPdfOriginal(f);
       setConvertingPdf(true);
       try {
         const pdfjs = await import("pdfjs-dist");
@@ -281,12 +298,14 @@ function ModoUpload({
         setDims({ w: canvas.width, h: canvas.height });
       } catch (e) {
         setError(e instanceof Error ? `Falha ao ler PDF: ${e.message}` : "Falha ao ler PDF.");
+        setPdfOriginal(null);
       } finally {
         setConvertingPdf(false);
       }
       return;
     }
 
+    setPdfOriginal(null);
     setFile(f);
     setPreview(URL.createObjectURL(f));
     const img = new window.Image();
@@ -294,12 +313,33 @@ function ModoUpload({
     img.src = URL.createObjectURL(f);
   }
 
+  /**
+   * Abre o picker de arquivos sem passar por `onRefazer`. Diferença
+   * fundamental: `onRefazer` chama o endpoint de reset e volta ao grid
+   * de escolha; `handleTrocarArquivo` só limpa o estado local do card
+   * e reabre o input. Assim o autor troca a capa sem perder o modo
+   * upload nem contexto de dimensões esperadas.
+   */
+  function handleTrocarArquivo() {
+    setFile(null);
+    setPreview(null);
+    setDims(null);
+    setError(null);
+    setPdfOriginal(null);
+    setUploaded(false);
+    uploadTriggeredRef.current = false;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  }
+
   async function handleUpload() {
     if (!file || !dims) return;
     setUploading(true);
     setError(null);
     try {
-      // 1. Presign
+      // 1. Presign para o PNG principal
       const presignRes = await fetch("/api/agentes/upload-capa/presign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,12 +354,47 @@ function ModoUpload({
       // 2. Upload direto para o Storage. Usa a SDK do Supabase — mais
       // confiável que PUT cru contra a signed URL (que pode variar entre
       // versões do supabase-js quanto a headers/token).
-      const { error: uploadError } = await supabase.storage
+      const uploadPng = supabase.storage
         .from("capas")
         .uploadToSignedUrl(storage_path, token, file, { contentType: file.type });
-      if (uploadError) throw new Error(`Falha ao enviar imagem: ${uploadError.message}`);
+
+      // 2b. Em paralelo: preserva o PDF original quando aplicável. Se
+      // falhar, apenas loga — não bloqueia o fluxo principal do PNG.
+      let pdfOriginalPath: string | null = null;
+      const uploadPdfOriginal = pdfOriginal
+        ? (async () => {
+            try {
+              const presignPdf = await fetch("/api/agentes/upload-capa/presign", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ project_id: projectId, mime_type: "application/pdf" }),
+              });
+              if (!presignPdf.ok) throw new Error("presign do PDF original falhou");
+              const { token: pdfToken, storage_path: pdfPath } = await presignPdf.json();
+              const { error: pdfUploadError } = await supabase.storage
+                .from("capas")
+                .uploadToSignedUrl(pdfPath, pdfToken, pdfOriginal, {
+                  contentType: "application/pdf",
+                });
+              if (pdfUploadError) throw new Error(pdfUploadError.message);
+              pdfOriginalPath = pdfPath;
+            } catch (err) {
+              console.warn("[upload-capa] falha ao preservar PDF original (não-fatal):", err);
+            }
+          })()
+        : Promise.resolve();
+
+      const [uploadResult] = await Promise.all([uploadPng, uploadPdfOriginal]);
+      if (uploadResult.error) {
+        throw new Error(`Falha ao enviar imagem: ${uploadResult.error.message}`);
+      }
 
       // 3. Registra na aplicação
+      const origemArquivo: "pdf" | "png" | "jpg" = pdfOriginal
+        ? "pdf"
+        : file.type.includes("png")
+        ? "png"
+        : "jpg";
       const registerRes = await fetch("/api/agentes/upload-capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -332,6 +407,8 @@ function ModoUpload({
           dpi,
           paginas,
           orelha_mm: orelhaMm,
+          origem_arquivo: origemArquivo,
+          pdf_original_path: pdfOriginalPath,
         }),
       });
       if (!registerRes.ok) {
@@ -447,60 +524,51 @@ function ModoUpload({
             Arquivo da capa
           </p>
 
+          {/* Input persistente: fica sempre montado para que
+              `handleTrocarArquivo` possa abrir o picker programaticamente
+              sem passar por remontagens do dropzone. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,application/pdf"
+            className="hidden"
+            disabled={convertingPdf}
+            onChange={(e) => {
+              if (e.target.files?.[0]) void handleFileChange(e.target.files[0]);
+            }}
+          />
+
           {preview ? (
             <div className="space-y-3">
               <div className="relative w-full max-h-64 overflow-hidden rounded-xl border border-zinc-200 flex items-center justify-center bg-zinc-50">
                 <img src={preview} alt="Preview" className="max-h-64 object-contain" />
               </div>
               <div className="flex items-center gap-3 text-xs text-zinc-500">
-                <span>{file?.name ?? "capa"} — {dims ? `${dims.w}×${dims.h}px` : "detectando…"}</span>
+                {/* Metadata do arquivo: só nome. Dimensões em pixels não
+                    ajudam o autor a decidir nada — o que importa é o
+                    resultado da análise técnica, que aparece abaixo. */}
+                <span className="truncate">{file?.name ?? "capa"}</span>
                 {uploading && (
-                  <span className="flex items-center gap-1.5 text-brand-primary">
+                  <span className="flex items-center gap-1.5 text-brand-primary shrink-0">
                     <span className="w-3 h-3 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
                     Enviando…
                   </span>
                 )}
                 {uploaded && !uploading && (
-                  <span className="text-emerald-600 flex items-center gap-1">✓ Enviada</span>
+                  <span className="text-emerald-600 flex items-center gap-1 shrink-0">✓ Enviada</span>
                 )}
                 <button
-                  onClick={() => {
-                    if (uploaded) {
-                      onRefazer();
-                    } else {
-                      setFile(null);
-                      setPreview(null);
-                      setDims(null);
-                      setValidacao(null);
-                      uploadTriggeredRef.current = false;
-                    }
-                  }}
+                  onClick={handleTrocarArquivo}
                   disabled={uploading}
-                  className="ml-auto text-zinc-500 hover:text-zinc-700 underline underline-offset-2 disabled:opacity-40"
+                  className="ml-auto text-zinc-500 hover:text-zinc-700 underline underline-offset-2 disabled:opacity-40 shrink-0"
                 >
-                  {uploaded ? "Trocar capa" : "Remover"}
+                  {uploaded ? "Trocar arquivo" : "Remover"}
                 </button>
               </div>
 
-              {/* Validação client-side de dimensões (feedback imediato) */}
-              {validacao && !uploaded && (
-                <div
-                  className={`rounded-xl p-3 border text-xs ${
-                    validacao.ok
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      : "bg-amber-50 border-amber-200 text-amber-700"
-                  }`}
-                >
-                  <p className="font-semibold mb-0.5">
-                    {validacao.ok ? "✓ Dimensões dentro da tolerância" : "⚠ Dimensões divergem"}
-                  </p>
-                  {validacao.detalhes.map((d, i) => (
-                    <p key={i}>{d}</p>
-                  ))}
-                </div>
-              )}
-
-              {/* Recomendações técnicas completas (via polling do CapaPage) */}
+              {/* Recomendações técnicas completas (via polling do CapaPage).
+                  Sem validação client-side de dimensões: a análise técnica
+                  reporta o mesmo (e mais). Duplicar confunde o autor. */}
               {uploaded && (
                 <RecomendacoesTecnicas
                   analise={analise}
@@ -509,6 +577,7 @@ function ModoUpload({
                     formato,
                     orelhaDeclarada: orelhaMm,
                     lombadaEstimada: lombada,
+                    origemArquivo: origemArquivoSalva,
                   }}
                   loading={!analise}
                 />
@@ -521,9 +590,12 @@ function ModoUpload({
               )}
             </div>
           ) : (
-            <label
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={convertingPdf}
               className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed
-              border-zinc-300 rounded-xl cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50 transition-colors"
+              border-zinc-300 rounded-xl cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50 transition-colors disabled:cursor-wait"
             >
               {convertingPdf ? (
                 <>
@@ -535,19 +607,18 @@ function ModoUpload({
                 <>
                   <UploadIcon />
                   <p className="text-sm font-medium text-zinc-600 mt-2">Clique para selecionar</p>
-                  <p className="text-xs text-zinc-400 mt-1">PNG, JPG ou PDF, alta resolução</p>
+                  <p className="text-xs text-zinc-400 mt-1">PNG, JPG ou PDF, até 25MB</p>
                 </>
               )}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,application/pdf"
-                className="hidden"
-                disabled={convertingPdf}
-                onChange={(e) => {
-                  if (e.target.files?.[0]) void handleFileChange(e.target.files[0]);
-                }}
-              />
-            </label>
+            </button>
+          )}
+
+          {/* Erro fora do preview: aparece também quando o arquivo é
+              rejeitado por tamanho antes de virar preview. */}
+          {!preview && error && (
+            <div className="rounded-xl p-3 border border-red-200 bg-red-50 text-xs text-red-700">
+              {error}
+            </div>
           )}
         </div>
       </div>
@@ -847,9 +918,31 @@ type Recomendacao = {
 
 function buildRecomendacoes(
   analise: AnaliseTecnica | undefined,
+  origemArquivo?: "pdf" | "png" | "jpg",
 ): Recomendacao[] {
   if (!analise) return [];
   const recs: Recomendacao[] = [];
+
+  // Ordem intencional: começamos pelas dimensões porque um arquivo com
+  // dimensão errada é o único problema que impede o fluxo. Sangria vem
+  // logo depois porque afeta impressão diretamente. Colorspace, DPI e
+  // demais avisos são secundários.
+
+  // Sangria (mais crítico depois de dimensões — sem sangria, a impressão
+  // física fica com filete branco na borda)
+  if (analise.sangria === "presente") {
+    recs.push({
+      nivel: "ok",
+      titulo: "Sangria de 3mm presente",
+      detalhe: "As bordas da capa têm a margem de segurança que a gráfica precisa para cortar sem deixar filete branco.",
+    });
+  } else if (analise.sangria === "ausente" || analise.sangria === "parcial") {
+    recs.push({
+      nivel: "aviso",
+      titulo: analise.sangria === "ausente" ? "Sangria de 3mm ausente" : "Sangria de 3mm parcial",
+      detalhe: "Para eBook e Kindle isso não importa. Para impressão física, sem sangria a gráfica pode deixar um filete branco fino na borda ao cortar — recomendamos redimensionar a arte com +3mm em cada lado.",
+    });
+  }
 
   // Colorspace
   if (analise.colorspace === "cmyk") {
@@ -866,43 +959,24 @@ function buildRecomendacoes(
     });
   }
 
-  // Sangria
-  if (analise.sangria === "presente") {
-    recs.push({
-      nivel: "ok",
-      titulo: "Sangria de 3mm presente",
-      detalhe: "As bordas da capa têm a margem de segurança que a gráfica precisa para cortar sem deixar filete branco.",
-    });
-  } else if (analise.sangria === "ausente" || analise.sangria === "parcial") {
-    recs.push({
-      nivel: "aviso",
-      titulo: analise.sangria === "ausente" ? "Sangria de 3mm ausente" : "Sangria de 3mm parcial",
-      detalhe: "Para eBook e Kindle isso não importa. Para impressão física, sem sangria a gráfica pode deixar um filete branco fino na borda ao cortar — recomendamos redimensionar a arte com +3mm em cada lado.",
-    });
-  }
-
-  // DPI
-  if (analise.dpi >= 300) {
-    recs.push({
-      nivel: "ok",
-      titulo: `${analise.dpi} DPI`,
-      detalhe: "Resolução alta o suficiente para impressão profissional sem pixelização.",
-    });
-  } else if (analise.dpi > 0) {
-    recs.push({
-      nivel: "aviso",
-      titulo: `Resolução ${analise.dpi} DPI`,
-      detalhe: `Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados no papel.`,
-    });
-  }
-
-  // Marcas de corte
-  if (analise.marcas_corte === "detectadas") {
-    recs.push({
-      nivel: "info",
-      titulo: "Marcas de corte detectadas",
-      detalhe: "Sua capa tem indicações de onde a gráfica deve cortar. Isso é bom — mostra que ela foi preparada para produção.",
-    });
+  // DPI — pula quando o original era PDF. PDF é vetorial: o DPI da imagem
+  // rasterizada no cliente reflete só o parâmetro de conversão (300),
+  // não a qualidade real do arquivo. Reportar isso para PDF confunde o
+  // autor.
+  if (origemArquivo !== "pdf") {
+    if (analise.dpi >= 300) {
+      recs.push({
+        nivel: "ok",
+        titulo: `${analise.dpi} DPI`,
+        detalhe: "Resolução alta o suficiente para impressão profissional sem pixelização.",
+      });
+    } else if (analise.dpi > 0) {
+      recs.push({
+        nivel: "aviso",
+        titulo: `Resolução ${analise.dpi} DPI`,
+        detalhe: `Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados no papel.`,
+      });
+    }
   }
 
   // Lombada deduzida vs esperada
@@ -945,19 +1019,35 @@ function buildRecomendacoes(
     }
   }
 
+  // Marcas de corte (por último — puramente informativo)
+  if (analise.marcas_corte === "detectadas") {
+    recs.push({
+      nivel: "info",
+      titulo: "Marcas de corte detectadas",
+      detalhe: "Sua capa tem indicações de onde a gráfica deve cortar. Isso é bom — mostra que ela foi preparada para produção.",
+    });
+  }
+
   return recs;
 }
 
 function RecomendacoesTecnicas({
   analise,
+  contexto,
   loading,
 }: {
   analise: AnaliseTecnica | undefined;
   contexto?: {
-    paginas: number;
-    formato: FormatoLivro;
-    orelhaDeclarada: number;
-    lombadaEstimada: number;
+    paginas?: number;
+    formato?: FormatoLivro;
+    orelhaDeclarada?: number;
+    lombadaEstimada?: number;
+    /**
+     * Tipo do arquivo original enviado pelo autor. Quando "pdf", omitimos
+     * a recomendação de DPI (a rasterização em 300 no cliente não reflete
+     * a qualidade real do PDF).
+     */
+    origemArquivo?: "pdf" | "png" | "jpg";
   };
   loading?: boolean;
 }) {
@@ -970,7 +1060,7 @@ function RecomendacoesTecnicas({
     );
   }
 
-  const recs = buildRecomendacoes(analise);
+  const recs = buildRecomendacoes(analise, contexto?.origemArquivo);
   if (recs.length === 0) {
     return (
       <div className="mt-4 text-xs text-zinc-500">
@@ -1077,7 +1167,12 @@ function ResultadoCard({
           </div>
         )}
 
-        <RecomendacoesTecnicas analise={analise} />
+        <RecomendacoesTecnicas
+          analise={analise}
+          contexto={{
+            origemArquivo: dados.origem_arquivo as "pdf" | "png" | "jpg" | undefined,
+          }}
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

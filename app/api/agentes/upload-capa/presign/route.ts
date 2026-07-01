@@ -34,8 +34,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = mime_type.includes("png") ? "png" : "jpg";
-  const storagePath = `${userId}/${project_id}/capa_upload.${ext}`;
+  // O PDF entra em paralelo ao PNG convertido: mesma pasta, sufixo `_original`.
+  // Assim o PNG (usado como capa final) e o PDF (preservado para o autor
+  // reimprimir/redistribuir) coexistem sem sobrescrever um ao outro.
+  const isPdf = mime_type === "application/pdf";
+  const ext = isPdf ? "pdf" : mime_type.includes("png") ? "png" : "jpg";
+  const filenameSuffix = isPdf ? "_original" : "";
+  const storagePath = `${userId}/${project_id}/capa_upload${filenameSuffix}.${ext}`;
 
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

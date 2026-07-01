@@ -22,6 +22,16 @@ export interface CapaUploadResult {
   lombada_mm_na_validacao: number;
   validacao: CapaValidacao;
   gerado_em: string;
+  /**
+   * Origem do arquivo enviado pelo autor. Quando o autor sobe um PDF,
+   * o cliente converte a primeira página em PNG (usado como `url`) mas
+   * preserva o PDF cru em `pdf_original_path`. `origem_arquivo` reflete
+   * o tipo original — usado nas recomendações para pular avisos que só
+   * fazem sentido para imagem (ex: DPI, já que PDF é vetorial).
+   */
+  origem_arquivo: "pdf" | "png" | "jpg";
+  /** Path no bucket `capas` do PDF original quando `origem_arquivo === "pdf"`. */
+  pdf_original_path: string | null;
 }
 
 export interface CapaValidacao {
@@ -97,6 +107,8 @@ export async function POST(req: NextRequest) {
     paginas: number;
     orelha_mm?: number;
     usar_orelhas?: boolean;
+    origem_arquivo?: "pdf" | "png" | "jpg";
+    pdf_original_path?: string | null;
   };
   try {
     body = await req.json();
@@ -114,6 +126,8 @@ export async function POST(req: NextRequest) {
     paginas,
     orelha_mm: rawOrelhaMm,
     usar_orelhas,
+    origem_arquivo: rawOrigemArquivo,
+    pdf_original_path: rawPdfOriginalPath,
   } = body;
 
   if (!project_id || !storage_path || !largura_px || !altura_px) {
@@ -186,6 +200,22 @@ export async function POST(req: NextRequest) {
     .from("capas")
     .getPublicUrl(storage_path);
 
+  // Origem do arquivo: prefere o campo explícito do body; se ausente
+  // (clientes legados), inferir do mime_type. PDF vem sempre por
+  // `origem_arquivo` porque a conversão para PNG ocorre no cliente e o
+  // mime_type que chega aqui já é image/png.
+  const origemArquivo: "pdf" | "png" | "jpg" =
+    rawOrigemArquivo ??
+    (mime_type === "application/pdf"
+      ? "pdf"
+      : mime_type.includes("png")
+      ? "png"
+      : "jpg");
+  const pdfOriginalPath =
+    origemArquivo === "pdf" && typeof rawPdfOriginalPath === "string"
+      ? rawPdfOriginalPath
+      : null;
+
   const result: CapaUploadResult = {
     project_id,
     modo: "upload",
@@ -198,6 +228,8 @@ export async function POST(req: NextRequest) {
     lombada_mm_na_validacao: expected.lombadaMm,
     validacao,
     gerado_em: new Date().toISOString(),
+    origem_arquivo: origemArquivo,
+    pdf_original_path: pdfOriginalPath,
   };
 
   // Zera explicitamente qualquer schema residual (editor/IA anterior) para o
