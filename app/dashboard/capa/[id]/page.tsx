@@ -8,6 +8,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult, CapaValidacao } from "@/app/api/agentes/upload-capa/route";
+import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
@@ -708,6 +709,86 @@ function ModoIA({
 
 // ─── Result card ──────────────────────────────────────────────────────────────
 
+function AnaliseBadge({
+  label,
+  variant,
+}: {
+  label: string;
+  variant: "ok" | "aviso" | "info";
+}) {
+  const styles = {
+    ok:    "bg-emerald-50 text-emerald-800 border-emerald-200",
+    aviso: "bg-amber-50 text-amber-800 border-amber-200",
+    info:  "bg-blue-50 text-blue-800 border-blue-200",
+  } as const;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${styles[variant]}`}>
+      {label}
+    </span>
+  );
+}
+
+function AnaliseTecnicaBlock({ analise }: { analise: AnaliseTecnica | undefined }) {
+  if (!analise) {
+    return (
+      <div className="mt-4 text-xs text-zinc-500 flex items-center gap-2">
+        <span className="inline-block h-2 w-2 rounded-full bg-zinc-300 animate-pulse"></span>
+        Analisando capa tecnicamente...
+      </div>
+    );
+  }
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="text-xs font-medium text-zinc-700">Análise técnica</div>
+      <div className="flex flex-wrap gap-2">
+        <AnaliseBadge
+          label={
+            analise.colorspace === "cmyk" ? "CMYK ✓"
+            : analise.colorspace === "srgb" ? "RGB"
+            : analise.colorspace === "rgb16" ? "RGB 16-bit"
+            : "Cor desconhecida"
+          }
+          variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
+        />
+        <AnaliseBadge
+          label={
+            analise.sangria === "presente" ? "Sangria ✓"
+            : analise.sangria === "ausente" ? "Sem sangria"
+            : analise.sangria === "parcial" ? "Sangria parcial"
+            : "Dimensões atípicas"
+          }
+          variant={analise.sangria === "presente" ? "ok" : "aviso"}
+        />
+        <AnaliseBadge
+          label={`${analise.dpi} DPI`}
+          variant={analise.dpi >= 300 ? "ok" : "aviso"}
+        />
+        {analise.marcas_corte === "detectadas" && (
+          <AnaliseBadge label="Com marcas de corte" variant="info" />
+        )}
+      </div>
+      {analise.avisos.length > 0 && (
+        <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 p-3">
+          <div className="text-xs font-medium text-amber-900 mb-1">
+            Atenção para publicação em gráfica
+          </div>
+          <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
+            {analise.avisos.map((aviso, idx) => (
+              <li key={idx}>{aviso}</li>
+            ))}
+          </ul>
+          {!analise.ok_grafica && (
+            <div className="mt-2 text-xs text-amber-900">
+              Para eBook e Kindle, esta capa está pronta. Correções serão aplicadas
+              automaticamente ao gerar o PDF para gráfica.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultadoCard({
   dados,
   onContinuar,
@@ -721,6 +802,7 @@ function ResultadoCard({
 }) {
   const modo = (dados.source === "editor" ? "editor" : dados.modo) as string;
   const url = (dados.imagem_url ?? dados.url_escolhida ?? dados.url) as string | undefined;
+  const analise = dados.analise_tecnica as AnaliseTecnica | undefined;
 
   return (
     <div className="space-y-6">
@@ -749,6 +831,8 @@ function ResultadoCard({
             </div>
           </div>
         )}
+
+        <AnaliseTecnicaBlock analise={analise} />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -1032,6 +1116,33 @@ export default function CapaPage() {
                           Confirmada em {new Date(editorConfirmedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}.
                         </p>
                       )}
+                      {(() => {
+                        const analise = dados?.analise_tecnica as AnaliseTecnica | undefined;
+                        if (!analise) {
+                          return (
+                            <p className="text-[11px] text-zinc-500 mt-2 flex items-center gap-1.5">
+                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-300 animate-pulse"></span>
+                              Analisando tecnicamente...
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <AnaliseBadge
+                              label={analise.colorspace === "cmyk" ? "CMYK ✓" : analise.colorspace === "srgb" ? "RGB" : analise.colorspace === "rgb16" ? "RGB 16" : "Cor?"}
+                              variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
+                            />
+                            <AnaliseBadge
+                              label={analise.sangria === "presente" ? "Sangria ✓" : analise.sangria === "ausente" ? "Sem sangria" : analise.sangria === "parcial" ? "Sangria parcial" : "Dimensões?"}
+                              variant={analise.sangria === "presente" ? "ok" : "aviso"}
+                            />
+                            <AnaliseBadge
+                              label={`${analise.dpi} DPI`}
+                              variant={analise.dpi >= 300 ? "ok" : "aviso"}
+                            />
+                          </div>
+                        );
+                      })()}
                       <div className="mt-auto pt-4 flex flex-col gap-2">
                         <Link
                           href={`/editor/capa/${id}`}

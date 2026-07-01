@@ -240,6 +240,15 @@ export async function POST(req: NextRequest) {
     console.warn("[upload-capa] preparar-capa-grafica fire-and-forget falhou:", err);
   });
 
+  // Fire-and-forget análise técnica (14.M.1). Roda em background e persiste
+  // em dados_capa.analise_tecnica. A UI mostra badges assim que ficar pronto.
+  fetch(`${req.nextUrl.origin}/api/projects/${project_id}/capa/analisar`, {
+    method: "POST",
+    headers: { cookie: req.headers.get("cookie") ?? "" },
+  }).catch((err) => {
+    console.warn("[upload-capa] analisar fire-and-forget falhou:", err);
+  });
+
   return NextResponse.json(result);
   } catch (err) {
     console.error("[upload-capa] Erro não tratado no handler POST:", err);

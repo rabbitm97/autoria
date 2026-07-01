@@ -98,6 +98,15 @@ export async function POST(
     console.warn("[cover-editor/confirm] preparar-capa-grafica fire-and-forget falhou:", err);
   });
 
+  // Fire-and-forget análise técnica (14.M.1). Detecta colorspace/sangria/DPI
+  // da capa exportada pelo editor e persiste em dados_capa.analise_tecnica.
+  fetch(`${req.nextUrl.origin}/api/projects/${id}/capa/analisar`, {
+    method: "POST",
+    headers: { cookie: req.headers.get("cookie") ?? "" },
+  }).catch((err) => {
+    console.warn("[cover-editor/confirm] analisar fire-and-forget falhou:", err);
+  });
+
   return NextResponse.json({
     imagem_url: imagemUrl,
     confirmed_at: confirmedAt,

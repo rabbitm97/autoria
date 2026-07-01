@@ -25,6 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getOrelhaDefault, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 
 export type OrigemCapa = "editor" | "ia" | "upload" | null;
 
@@ -103,6 +104,16 @@ export interface CapaResolvida {
    * (`comOrelhas`/`usar_orelhas`) convertido pelo default do formato.
    */
   orelha_mm: number;
+
+  /**
+   * Análise técnica (colorspace, sangria, DPI, marcas de corte). Populada
+   * assincronamente por `POST /api/projects/[id]/capa/analisar` após upload
+   * ou confirm do editor. `undefined` significa "análise ainda não rodou" —
+   * a UI mostra "Analisando..." nesse caso. Passthrough puro: o resolver
+   * não valida nem transforma; só passa adiante o que estiver em
+   * `dados_capa.analise_tecnica`.
+   */
+  analise_tecnica?: AnaliseTecnica;
 }
 
 // ─── Type guards para cada schema ────────────────────────────────────────────
@@ -197,6 +208,7 @@ export function resolveCapaCompleta(
       altura_px: null,
       dpi: 300,
       orelha_mm,
+      analise_tecnica: (dados_capa as { analise_tecnica?: AnaliseTecnica }).analise_tecnica,
     };
   }
 
@@ -219,6 +231,7 @@ export function resolveCapaCompleta(
       altura_px: null,
       dpi: 300,
       orelha_mm,
+      analise_tecnica: (dados_capa as { analise_tecnica?: AnaliseTecnica }).analise_tecnica,
     };
   }
 
@@ -255,6 +268,7 @@ export function resolveCapaCompleta(
       altura_px: typeof dados_capa.altura_px === "number" ? dados_capa.altura_px : null,
       dpi: typeof dados_capa.dpi === "number" ? dados_capa.dpi : 300,
       orelha_mm,
+      analise_tecnica: (dados_capa as { analise_tecnica?: AnaliseTecnica }).analise_tecnica,
     };
   }
 
