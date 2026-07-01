@@ -164,9 +164,50 @@ function ModoUpload({
   const espWPx = Math.round(espWMm * mm2px);
   const espHPx = Math.round(espHMm * mm2px);
 
-  function handleFileChange(f: File) {
-    setFile(f);
+  const [convertingPdf, setConvertingPdf] = useState(false);
+
+  async function handleFileChange(f: File) {
     setValidacao(null);
+    setError(null);
+
+    // PDF: renderizar primeira página em canvas 300 DPI e converter para PNG.
+    // pdf.js é carregado sob demanda para não pesar o bundle da rota.
+    if (f.type === "application/pdf") {
+      setConvertingPdf(true);
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+          "pdfjs-dist/build/pdf.worker.min.mjs",
+          import.meta.url,
+        ).toString();
+        const buf = await f.arrayBuffer();
+        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        const page = await doc.getPage(1);
+        // pdf.js usa 72 dpi como base → escala 300/72 para 300 DPI.
+        const viewport = page.getViewport({ scale: 300 / 72 });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Não foi possível criar contexto 2D para renderizar o PDF.");
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (!blob) throw new Error("Falha ao converter PDF em imagem.");
+        const pngName = f.name.replace(/\.pdf$/i, "") + ".png";
+        const pngFile = new File([blob], pngName, { type: "image/png" });
+        setFile(pngFile);
+        const url = URL.createObjectURL(pngFile);
+        setPreview(url);
+        setDims({ w: canvas.width, h: canvas.height });
+      } catch (e) {
+        setError(e instanceof Error ? `Falha ao ler PDF: ${e.message}` : "Falha ao ler PDF.");
+      } finally {
+        setConvertingPdf(false);
+      }
+      return;
+    }
+
+    setFile(f);
     const url = URL.createObjectURL(f);
     setPreview(url);
     const img = new window.Image();
@@ -359,11 +400,22 @@ function ModoUpload({
         ) : (
           <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed
             border-zinc-300 rounded-xl cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50 transition-colors">
-            <UploadIcon />
-            <p className="text-sm font-medium text-zinc-600 mt-2">Clique para selecionar</p>
-            <p className="text-xs text-zinc-400 mt-1">PNG ou JPEG, alta resolução</p>
-            <input type="file" accept="image/png,image/jpeg" className="hidden"
-              onChange={e => { if (e.target.files?.[0]) handleFileChange(e.target.files[0]); }} />
+            {convertingPdf ? (
+              <>
+                <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                <p className="text-sm font-medium text-zinc-600 mt-2">Convertendo PDF…</p>
+                <p className="text-xs text-zinc-400 mt-1">Renderizando a primeira página</p>
+              </>
+            ) : (
+              <>
+                <UploadIcon />
+                <p className="text-sm font-medium text-zinc-600 mt-2">Clique para selecionar</p>
+                <p className="text-xs text-zinc-400 mt-1">PNG, JPG ou PDF, alta resolução</p>
+              </>
+            )}
+            <input type="file" accept="image/png,image/jpeg,application/pdf" className="hidden"
+              disabled={convertingPdf}
+              onChange={e => { if (e.target.files?.[0]) void handleFileChange(e.target.files[0]); }} />
           </label>
         )}
       </div>

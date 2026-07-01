@@ -209,6 +209,20 @@ export async function POST(req: NextRequest) {
     lockFormato(project_id),
   ]);
 
+  // Dispara PDF gráfica em background (fire-and-forget). Só surte efeito se
+  // o miolo já foi gerado — caso contrário a rota devolve 422 e a UI trata
+  // depois. Não bloqueia a resposta do upload.
+  fetch(`${req.nextUrl.origin}/api/agentes/prova/preparar-capa-grafica`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      cookie: req.headers.get("cookie") ?? "",
+    },
+    body: JSON.stringify({ project_id }),
+  }).catch((err) => {
+    console.warn("[upload-capa] preparar-capa-grafica fire-and-forget falhou:", err);
+  });
+
   return NextResponse.json(result);
   } catch (err) {
     console.error("[upload-capa] Erro não tratado no handler POST:", err);

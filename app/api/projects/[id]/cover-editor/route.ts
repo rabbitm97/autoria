@@ -107,9 +107,13 @@ export async function PUT(
     },
   };
 
+  // Autosave sinaliza que o autor mexeu em algo depois de confirmar. Invalida
+  // qualquer pdf_grafica pré-gerado — ele será regerado no próximo confirm ou
+  // por demanda na tela de Prova.
   const novoDadosCapa = {
     ...existingCapa,
     editor_data: newEditorData,
+    pdf_grafica: null,
   };
 
   const { error: updateErr } = await supabase

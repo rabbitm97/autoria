@@ -116,9 +116,16 @@ function isEditorCapa(c: DadosCapa): c is Record<string, unknown> & {
     fills?: { capa?: string; lombada?: string; contracapa?: string };
     orelhaMm?: number;
     comOrelhas?: boolean;
+    backgroundUrl?: string | null;
   };
   confirmed_at?: string;
 } {
+  // A discriminação é feita EXCLUSIVAMENTE pelo `source: "editor"`. Isso é
+  // intencional: quando o autor faz um upload e depois abre o editor visual
+  // para retocar, o autosave grava `editor_data` mas mantém `modo: "upload"`
+  // no root — só a confirmação explícita migra `source: "editor"`. Enquanto
+  // isso não acontece, `dados_capa` continua sendo tratado como upload puro
+  // (imagem panorâmica direta, sem os fills/elementos do editor).
   return !!c && (c as Record<string, unknown>).source === "editor";
 }
 

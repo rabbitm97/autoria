@@ -13,6 +13,13 @@ export interface EditorData {
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
+  /**
+   * URL da imagem panorâmica exibida travada atrás dos elementos. Populado
+   * automaticamente quando o autor abre o editor sobre uma capa de upload,
+   * antes de confirmar. Após confirmar, o `source` migra para `"editor"` mas
+   * este campo continua carregando o link do PNG original.
+   */
+  backgroundUrl: string | null;
   meta: EditorMeta;
 }
 
@@ -27,6 +34,7 @@ export function serializeEditorState(state: {
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
+  backgroundUrl: string | null;
   autosaveCount: number;
 }): EditorData {
   return {
@@ -35,6 +43,7 @@ export function serializeEditorState(state: {
     elements: state.elements,
     fills: state.fills,
     isbn: state.isbn,
+    backgroundUrl: state.backgroundUrl,
     meta: {
       last_saved_at: new Date().toISOString(),
       last_saved_by: "",
@@ -46,7 +55,7 @@ export function serializeEditorState(state: {
 export function deserializeEditorState(
   data: unknown,
   format: FormatKey,
-): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn"> | null {
+): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl"> | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.version !== 1) {
@@ -72,5 +81,6 @@ export function deserializeEditorState(
       : [],
     fills: (d.fills as RegionFills) ?? {},
     isbn: typeof d.isbn === "string" ? d.isbn : null,
+    backgroundUrl: typeof d.backgroundUrl === "string" ? d.backgroundUrl : null,
   };
 }

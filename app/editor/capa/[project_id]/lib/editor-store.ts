@@ -43,6 +43,11 @@ interface EditorState {
   // Project
   isbn: string | null;
 
+  // Background — imagem de upload renderizada travada atrás dos elementos.
+  // Só é populado quando o projeto entra no editor com uma capa de upload
+  // panorâmica. Nunca é editável, só descartável (usuário pode remover).
+  backgroundUrl: string | null;
+
   // Persistence
   saveStatus: SaveStatus;
   autosaveCount: number;
@@ -85,12 +90,13 @@ interface EditorState {
 
   // Project
   setIsbn: (isbn: string | null) => void;
+  setBackgroundUrl: (url: string | null) => void;
 
   // Persistence
   setSaveStatus: (status: SaveStatus) => void;
   setStageInstance: (stage: Konva.Stage | null) => void;
   setConfirmedSnapshot: (snap: ConfirmedSnapshot | null) => void;
-  hydrate: (data: Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn">) => void;
+  hydrate: (data: Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl">) => void;
 
   // Clipboard (internal — persisted in localStorage v2)
   clipboard: AnyElement[] | null;
@@ -116,6 +122,7 @@ const DEFAULT_STATE = {
   selectedIds: [] as string[],
   fills: {} as RegionFills,
   isbn: null as string | null,
+  backgroundUrl: null as string | null,
   saveStatus: { kind: "idle" } as SaveStatus,
   autosaveCount: 0,
   confirmedSnapshot: null as ConfirmedSnapshot | null,
@@ -285,6 +292,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setIsbn: (isbn) => set({ isbn }),
 
+  setBackgroundUrl: (url) => set({ backgroundUrl: url }),
+
   setSaveStatus: (status) => set({ saveStatus: status }),
 
   setStageInstance: (stage) => set({ stageInstance: stage }),
@@ -297,6 +306,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       elements: data.elements ?? [],
       fills: data.fills ?? {},
       isbn: data.isbn ?? null,
+      backgroundUrl: data.backgroundUrl ?? null,
     })),
 
   copyElement: (els) => {
@@ -354,6 +364,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selectedIds: [],
       fills: {},
       isbn: null,
+      backgroundUrl: null,
       legendasAtivas: false,
       saveStatus: { kind: "idle" },
       autosaveCount: 0,

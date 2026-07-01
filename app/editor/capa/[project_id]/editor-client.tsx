@@ -85,7 +85,12 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         elements: projectData.initialEditorData.elements,
         fills: projectData.initialEditorData.fills,
         isbn: projectData.initialEditorData.isbn,
+        backgroundUrl: projectData.initialEditorData.backgroundUrl,
       });
+    } else if (projectData.backgroundUrl) {
+      // Sem editor_data prévio (autor abrindo editor em cima de upload puro):
+      // popular só o backgroundUrl para renderizar o PNG travado.
+      useEditorStore.getState().setBackgroundUrl(projectData.backgroundUrl);
     }
     // Hydrate confirmed snapshot: the loaded editor_data IS the confirmed baseline
     if (projectData.confirmedAt) {

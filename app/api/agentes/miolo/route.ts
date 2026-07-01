@@ -326,9 +326,38 @@ export async function POST(request: NextRequest) {
   // antigo perde validade (a configuração mudou). Sem isso, a sidebar da
   // Diagramação continua exibindo "Páginas" e "Lombada" como se o PDF
   // ainda fosse válido, induzindo o autor ao erro.
+  //
+  // Também invalida pdf_grafica de dados_capa quando a contagem estimada de
+  // páginas diverge — a lombada usada no PDF gráfica anterior fica errada.
+  // Se a estimativa bater com o valor gravado, preserva.
+  const { data: capaRow } = await supabase
+    .from("projects")
+    .select("dados_capa")
+    .eq("id", project_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const capaAtual = (capaRow?.dados_capa ?? null) as Record<string, unknown> | null;
+  let novoDadosCapa: Record<string, unknown> | null = capaAtual;
+  if (capaAtual?.pdf_grafica) {
+    const pg = capaAtual.pdf_grafica as { paginas_no_momento?: number } | null;
+    if (pg?.paginas_no_momento !== paginasEstimadas) {
+      novoDadosCapa = { ...capaAtual, pdf_grafica: null };
+    }
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    dados_miolo: mioloResult,
+    dados_pdf: null,
+    etapa_atual: "diagramacao",
+  };
+  if (novoDadosCapa !== capaAtual) {
+    updatePayload.dados_capa = novoDadosCapa;
+  }
+
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({ dados_miolo: mioloResult, dados_pdf: null, etapa_atual: "diagramacao" })
+    .update(updatePayload)
     .eq("id", project_id)
     .eq("user_id", user.id);
 

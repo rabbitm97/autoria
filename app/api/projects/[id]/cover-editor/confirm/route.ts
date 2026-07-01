@@ -84,6 +84,20 @@ export async function POST(
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
 
+  // Dispara PDF gráfica em background (fire-and-forget). Não bloqueia a
+  // resposta — se falhar, o autor pode tentar novamente pela tela de Prova.
+  // Só faz sentido se o miolo já foi gerado; a rota lida com esse caso.
+  fetch(`${req.nextUrl.origin}/api/agentes/prova/preparar-capa-grafica`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      cookie: req.headers.get("cookie") ?? "",
+    },
+    body: JSON.stringify({ project_id: id }),
+  }).catch((err) => {
+    console.warn("[cover-editor/confirm] preparar-capa-grafica fire-and-forget falhou:", err);
+  });
+
   return NextResponse.json({
     imagem_url: imagemUrl,
     confirmed_at: confirmedAt,

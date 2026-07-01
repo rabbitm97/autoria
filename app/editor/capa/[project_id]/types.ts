@@ -5,7 +5,7 @@ export type FormatKey = FormatoLivro;
 
 export type HydratableEditorData = Pick<
   EditorData,
-  "orelhaMm" | "elements" | "fills" | "isbn"
+  "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl"
 >;
 
 export interface ProjectData {
@@ -22,4 +22,11 @@ export interface ProjectData {
   initialEditorData: HydratableEditorData | null;
   confirmedAt: string | null;
   confirmedImageUrl: string | null;
+  /**
+   * URL panorâmica que o editor deve exibir como layer travada de fundo. Vem
+   * de `dados_capa.editor_data.backgroundUrl` (edições anteriores) ou, quando
+   * o autor entra no editor a partir de uma capa de upload sem edição prévia,
+   * de `dados_capa.url` (o próprio PNG do upload).
+   */
+  backgroundUrl: string | null;
 }

@@ -85,6 +85,14 @@ export default async function EditorCapaPage({
     format,
   );
 
+  // Background do editor: se já há editor_data com backgroundUrl salvo, ele
+  // vem no `initialEditorData`. Caso contrário — autor abrindo o editor pela
+  // primeira vez em cima de um upload puro — pegamos o `url` do modo upload.
+  // IA fica sempre sem background (retorna só a frente, não uma panorâmica).
+  const uploadUrl =
+    capa?.modo === "upload" && typeof capa?.url === "string" ? (capa.url as string) : null;
+  const backgroundUrl = initialEditorData?.backgroundUrl ?? uploadUrl;
+
   const projectData: ProjectData = {
     projectId: project_id,
     format,
@@ -99,6 +107,7 @@ export default async function EditorCapaPage({
     initialEditorData,
     confirmedAt,
     confirmedImageUrl,
+    backgroundUrl,
   };
 
   return <EditorClient projectData={projectData} />;

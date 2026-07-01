@@ -249,6 +249,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     elements,
     selectedIds,
     fills,
+    backgroundUrl,
     setPan,
     fitToScreen,
     updateElement,
@@ -257,6 +258,8 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     selectElements,
     clearSelection,
   } = useEditorStore();
+
+  const [backgroundImage] = useImage(backgroundUrl ?? "", "anonymous");
 
   const [tooltip, setTooltip] = useState<TooltipInfo>({
     visible: false,
@@ -678,6 +681,16 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
             shadowOffset={{ x: 0, y: 3 / zoom }}
             shadowOpacity={1}
           />
+          {backgroundImage && (
+            <KonvaImage
+              image={backgroundImage}
+              x={0}
+              y={0}
+              width={totalWPx}
+              height={totalHPx}
+              listening={false}
+            />
+          )}
         </Layer>
 
         {/* Region fill layer */}
