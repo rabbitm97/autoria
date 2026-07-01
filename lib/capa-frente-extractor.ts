@@ -59,6 +59,12 @@ export interface ExtractFrontResult {
 interface GeometriaInferida {
   lombadaMm: number;
   orelhaMm: number;
+  /**
+   * `true` = imagem tem sangria de 3mm em todos os lados (padrão gráfico BR).
+   * `false` = imagem sem sangria (layout digital, e-book, upload casual).
+   * Define os offsets `xMm` e `yMm` do crop.
+   */
+  temSangria: boolean;
   fonte: "imagem" | "imagem-testando-alternativas" | "fallback-paginas";
 }
 
@@ -79,26 +85,35 @@ function inferirGeometria(params: {
   const { widthPx, heightPx, formato, orelhaMmDeclarado, paginasDeclaradas } = params;
   const specs = getFormatoDef(formato).specs;
 
-  // 1. Valida altura primeiro — deve bater com height_mm + 2*sangria
-  //    (independente da lombada/orelhas).
-  const expectedHeightMm = specs.height_mm + 2 * SANGRIA_MM;
   const actualHeightMm = heightPx / MM_TO_PX;
-  if (Math.abs(actualHeightMm - expectedHeightMm) > TOL_MM) {
-    console.warn(
-      `[capa-frente-extractor] altura da imagem (${actualHeightMm.toFixed(1)}mm) ` +
-      `diverge do formato ${formato} (esperado ${expectedHeightMm}mm). ` +
-      `Inferência abortada — usando fallback via paginas.`,
-    );
-    return {
-      lombadaMm: estimarLombadaCapaMm(paginasDeclaradas),
-      orelhaMm: orelhaMmDeclarado,
-      fonte: "fallback-paginas",
-    };
-  }
-
   const actualWidthMm = widthPx / MM_TO_PX;
 
-  // 2. Testa candidatos de orelha em ordem de plausibilidade:
+  // 1. Detecta se a imagem tem sangria vertical (padrão gráfico) ou não
+  //    (layout digital/e-book).
+  const heightComSangria = specs.height_mm + 2 * SANGRIA_MM;
+  const heightSemSangria = specs.height_mm;
+  const bateComSangria = Math.abs(actualHeightMm - heightComSangria) <= TOL_MM;
+  const bateSemSangria = Math.abs(actualHeightMm - heightSemSangria) <= TOL_MM;
+
+  if (!bateComSangria && !bateSemSangria) {
+    // Altura não bate com nenhum dos dois modelos — imagem exótica ou corrompida.
+    console.warn(
+      `[capa-frente-extractor] altura da imagem (${actualHeightMm.toFixed(1)}mm) ` +
+      `não bate nem com sangria (${heightComSangria}mm) nem sem sangria ` +
+      `(${heightSemSangria}mm) para formato ${formato}. Fallback via paginas.`,
+    );
+    return fallbackViaPaginas({
+      paginasDeclaradas,
+      orelhaMmDeclarado,
+      actualWidthMm,
+      widthMm: specs.width_mm,
+    });
+  }
+
+  const temSangria = bateComSangria;
+  const sangriaLarguraMm = temSangria ? 2 * SANGRIA_MM : 0;
+
+  // 2. Testa candidatos de orelha na largura em ordem de plausibilidade:
   //    (a) valor declarado (do resolver / editor / upload)
   //    (b) 0 mm (caso o autor tenha marcado com orelhas mas a imagem não tem)
   //    (c) 60, 70, 80, 90, 100 mm (varredura por padrões editoriais BR)
@@ -109,7 +124,7 @@ function inferirGeometria(params: {
   ]);
 
   for (const orelhaCandidato of candidatos) {
-    const fixedMm = 2 * SANGRIA_MM + 2 * specs.width_mm + 2 * orelhaCandidato;
+    const fixedMm = sangriaLarguraMm + 2 * specs.width_mm + 2 * orelhaCandidato;
     const lombadaCandidata = actualWidthMm - fixedMm;
 
     if (lombadaCandidata >= LOMBADA_MIN_MM && lombadaCandidata <= LOMBADA_MAX_MM) {
@@ -119,27 +134,75 @@ function inferirGeometria(params: {
       if (fonte === "imagem-testando-alternativas") {
         console.warn(
           `[capa-frente-extractor] orelhaMm declarado (${orelhaMmDeclarado}) parece ` +
-          `dessincronizado da imagem real. Usando orelhaMm=${orelhaCandidato}.`,
+          `dessincronizado da imagem real. Usando orelhaMm=${orelhaCandidato} ` +
+          `(temSangria=${temSangria}).`,
         );
       }
 
       return {
         lombadaMm: Math.round(lombadaCandidata * 10) / 10,
         orelhaMm: orelhaCandidato,
+        temSangria,
         fonte,
       };
     }
   }
 
-  // 3. Nenhum candidato bateu — fallback final via páginas
+  // 3. Altura bateu mas nenhum orelhaCandidato deu lombada válida — fallback
   console.warn(
-    `[capa-frente-extractor] não consegui inferir geometria. ` +
-    `largura=${actualWidthMm.toFixed(1)}mm, orelhaMm-declarado=${orelhaMmDeclarado}mm. ` +
-    `Usando fallback via paginas.`,
+    `[capa-frente-extractor] não consegui inferir orelhaMm/lombada. ` +
+    `largura=${actualWidthMm.toFixed(1)}mm, orelhaMm-declarado=${orelhaMmDeclarado}mm, ` +
+    `temSangria=${temSangria}. Fallback via paginas.`,
   );
+  return fallbackViaPaginas({
+    paginasDeclaradas,
+    orelhaMmDeclarado,
+    actualWidthMm,
+    widthMm: specs.width_mm,
+    temSangriaConhecida: temSangria,
+  });
+}
+
+/**
+ * Fallback quando a inferência via imagem falha. Estima lombada via páginas,
+ * mas revalida `orelhaMm` contra a largura da imagem para não gerar crop
+ * fora dos limites.
+ */
+function fallbackViaPaginas(params: {
+  paginasDeclaradas: number;
+  orelhaMmDeclarado: number;
+  actualWidthMm: number;
+  widthMm: number;
+  /** Se a validação de altura já deu conta de determinar. */
+  temSangriaConhecida?: boolean;
+}): GeometriaInferida {
+  const { paginasDeclaradas, orelhaMmDeclarado, actualWidthMm, widthMm, temSangriaConhecida } = params;
+  const lombadaEstimada = estimarLombadaCapaMm(paginasDeclaradas);
+  const temSangria = temSangriaConhecida ?? true;  // assume padrão gráfico por default
+  const sangriaLarguraMm = temSangria ? 2 * SANGRIA_MM : 0;
+
+  // Verifica se a orelhaMm declarada cabe na largura da imagem.
+  // Se 2×frente + 2×orelha + sangria + lombada > widthMm, a geometria é
+  // impossível — força orelhaMm=0 para o crop ficar dentro dos limites.
+  const requeridoComOrelha = sangriaLarguraMm + 2 * widthMm + 2 * orelhaMmDeclarado + lombadaEstimada;
+  if (requeridoComOrelha > actualWidthMm + TOL_MM) {
+    console.warn(
+      `[capa-frente-extractor] fallback: orelhaMm declarado (${orelhaMmDeclarado}) ` +
+      `não cabe na largura da imagem (${actualWidthMm.toFixed(1)}mm — ` +
+      `requereria ${requeridoComOrelha.toFixed(1)}mm). Forçando orelhaMm=0.`,
+    );
+    return {
+      lombadaMm: lombadaEstimada,
+      orelhaMm: 0,
+      temSangria,
+      fonte: "fallback-paginas",
+    };
+  }
+
   return {
-    lombadaMm: estimarLombadaCapaMm(paginasDeclaradas),
+    lombadaMm: lombadaEstimada,
     orelhaMm: orelhaMmDeclarado,
+    temSangria,
     fonte: "fallback-paginas",
   };
 }
@@ -203,13 +266,16 @@ export async function extractFrontCover(
 
   console.log(
     `[capa-frente-extractor] geometria: lombada=${geom.lombadaMm}mm ` +
-    `orelhaMm=${geom.orelhaMm} fonte=${geom.fonte} ` +
+    `orelhaMm=${geom.orelhaMm} temSangria=${geom.temSangria} fonte=${geom.fonte} ` +
     `(declarado: paginas=${paginas} orelhaMm=${orelhaMm})`,
   );
 
-  // Calcula região da frente usando a geometria inferida
-  const xMm = SANGRIA_MM + geom.orelhaMm + specs.width_mm + geom.lombadaMm;
-  const yMm = SANGRIA_MM;
+  // Calcula região da frente usando a geometria inferida. Os offsets `xMm` e
+  // `yMm` dependem de `temSangria`: 3mm quando o autor entregou capa com
+  // sangria (padrão gráfico), 0 quando entregou sem (digital/e-book).
+  const offsetSangriaMm = geom.temSangria ? SANGRIA_MM : 0;
+  const xMm = offsetSangriaMm + geom.orelhaMm + specs.width_mm + geom.lombadaMm;
+  const yMm = offsetSangriaMm;
   const widthMm = specs.width_mm;
   const heightMm = specs.height_mm;
 
