@@ -285,26 +285,26 @@ export async function POST(req: NextRequest) {
       dadosMiolo?.config?.paginas_estimadas ??
       null;
 
-    // Recorta a frente de QUALQUER capa panorâmica, não só do editor visual.
-    // Uploads e IAs com `montar-capa` rodado também são panorâmicos e precisam
-    // do mesmo tratamento — no e-reader/Kindle a capa aparece só como frente,
-    // não como panorama.
+    // Recorta a frente de qualquer capa panorâmica — sem depender de miolo
+    // gerado. A inferência da geometria dentro do extractor usa as dimensões
+    // reais da imagem (largura em mm) para deduzir lombada e orelhas; só o
+    // fallback interno precisa de páginas, mas ele quase nunca é acionado.
     //
-    // O `capa-frente-extractor` infere a geometria (lombada e orelhas) das
-    // dimensões reais da imagem, independente da origem — é seguro remover
-    // a restrição de origem que vinha do 14.H (evitava regressão até termos
-    // certeza que o extractor funcionava com outros pipelines).
+    // Autor pode gerar EPUB antes do miolo (fluxo permitido), então
+    // exigir paginas >= 1 aqui cortava esse caso indevidamente e forçava
+    // EPUB com capa panorâmica inteira.
     const podeRecortar =
       capaResolvida?.is_panoramica === true &&
-      projectFormato &&
-      paginas != null &&
-      paginas >= 1;
+      !!projectFormato;
 
     if (podeRecortar) {
       const front = await extractFrontCover({
         url: capaUrl,
         formato: projectFormato!,
-        paginas: paginas!,
+        // paginas: 0 quando miolo ainda não foi gerado. O extractor tenta
+        // inferir via largura da imagem primeiro; só cai no fallback via
+        // páginas em casos exóticos (imagem com altura fora de tolerância).
+        paginas: paginas ?? 0,
         // orelha_mm canônico do resolver — funciona para editor/upload/IA.
         // Fallback 0 se o resolver não populou por algum motivo.
         orelhaMm: capaResolvida?.orelha_mm ?? 0,

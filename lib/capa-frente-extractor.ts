@@ -28,7 +28,18 @@ export type FormatoCapa = FormatoLivro;
 
 // Tolerâncias
 const TOL_MM = 1.0;          // 1mm de tolerância para validar altura
-const LOMBADA_MIN_MM = 1;    // lombada mínima plausível
+
+/**
+ * Lombada mínima aceita pela inferência. Zero permite capas layout e-book
+ * (frente + contracapa colados, sem lombada física) — comum em uploads
+ * para publicação digital-only ou primeiros testes de fluxo.
+ *
+ * Se um dia isso causar falso-positivo (imagem 100% frente sendo
+ * interpretada como capa panorâmica de largura exata), voltar a mínimo
+ * de 1mm e tratar layout e-book com flag explícita no schema.
+ */
+const LOMBADA_MIN_MM = 0;
+
 const LOMBADA_MAX_MM = 100;  // lombada máxima plausível (~1400 páginas)
 
 export interface ExtractFrontInput {
