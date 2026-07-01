@@ -40,6 +40,29 @@ export interface AnaliseTecnica {
   altura_mm: number;
   largura_esperada_mm: number;
   altura_esperada_mm: number;
+  /**
+   * Lombada esperada em mm com base no número de páginas informado
+   * (calculada via `estimarLombadaCapaMm(paginas)`). 0 quando não panorâmica.
+   */
+  lombada_esperada_mm: number;
+  /**
+   * Orelha esperada em mm (o valor que o autor declarou no formulário
+   * antes de subir a capa). 0 = sem orelhas.
+   */
+  orelha_esperada_mm: number;
+  /**
+   * Lombada deduzida a partir das dimensões reais da imagem, assumindo
+   * as orelhas declaradas. Fórmula:
+   *   lombada_deduzida = largura_real - 2*sangria - 2*frente - 2*orelha_declarada
+   * `null` quando não panorâmica ou dedução impossível (dimensões atípicas).
+   */
+  lombada_deduzida_mm: number | null;
+  /**
+   * Orelha deduzida a partir das dimensões, testando primeiro sem orelhas
+   * e depois com orelhas nos padrões editoriais BR (60-100mm em passos de 10).
+   * `null` quando não panorâmica ou nenhum candidato bater.
+   */
+  orelha_deduzida_mm: number | null;
   colorspace: Colorspace;
   dpi: number;
   sangria: SangriaStatus;
@@ -91,6 +114,10 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       altura_mm: 0,
       largura_esperada_mm,
       altura_esperada_mm,
+      lombada_esperada_mm: 0,
+      orelha_esperada_mm: 0,
+      lombada_deduzida_mm: null,
+      orelha_deduzida_mm: null,
       colorspace: "other",
       dpi: 0,
       sangria: "desconhecido",
@@ -115,6 +142,10 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       altura_mm: 0,
       largura_esperada_mm,
       altura_esperada_mm,
+      lombada_esperada_mm: 0,
+      orelha_esperada_mm: 0,
+      lombada_deduzida_mm: null,
+      orelha_deduzida_mm: null,
       colorspace: "other",
       dpi: 0,
       sangria: "desconhecido",
@@ -135,6 +166,10 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       altura_mm: 0,
       largura_esperada_mm,
       altura_esperada_mm,
+      lombada_esperada_mm: 0,
+      orelha_esperada_mm: 0,
+      lombada_deduzida_mm: null,
+      orelha_deduzida_mm: null,
       colorspace: "other",
       dpi: 0,
       sangria: "desconhecido",
@@ -153,24 +188,60 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
     : "other";
 
   // ── DPI ─────────────────────────────────────────────────────────────────
-  // sharp reporta density em DPI para PNG/JPG quando o arquivo declara.
-  // Quando não declara, inferimos assumindo que largura_esperada_mm @ 300dpi
-  // deveria bater com widthPx.
+  // Prioridade:
+  //   1. metadata.density (arquivo declara — mais confiável)
+  //   2. Testa se widthPx bate esperado panorâmico @ 300 DPI
+  //   3. Testa se widthPx bate esperado só-frente @ 300 DPI (autor pode
+  //      ter subido só a frente por engano — vamos reportar sangria/
+  //      dimensão errada, mas evitamos falso DPI baixo)
+  //   4. Inferência final: assume 300 DPI e deixa dimensões falarem
   let dpi = 0;
   if (typeof meta.density === "number" && meta.density > 0) {
     dpi = Math.round(meta.density);
   } else {
-    const esperadoPx300 = largura_esperada_mm * MM_TO_PX;
-    if (Math.abs(widthPx - esperadoPx300) / esperadoPx300 < 0.05) {
+    const esperadoPx300Panoramica = largura_esperada_mm * MM_TO_PX;
+    const larguraSoFrente_mm = specs.width_mm + 2 * SANGRIA_ESPERADA_MM;
+    const esperadoPx300Frente = larguraSoFrente_mm * MM_TO_PX;
+
+    if (Math.abs(widthPx - esperadoPx300Panoramica) / esperadoPx300Panoramica < 0.05) {
+      dpi = 300;
+    } else if (Math.abs(widthPx - esperadoPx300Frente) / esperadoPx300Frente < 0.05) {
       dpi = 300;
     } else {
-      dpi = Math.round((widthPx / largura_esperada_mm) * 25.4);
+      // Última tentativa: assume 300 DPI e reporta as dimensões que sairem.
+      // Se autor tiver de fato baixa resolução, largura_mm resultante vai
+      // ficar aberrante e a validação de sangria vai reportar "desconhecido".
+      dpi = 300;
     }
   }
 
   // ── Dimensões em mm ─────────────────────────────────────────────────────
   const largura_mm = Math.round((widthPx / (dpi > 0 ? dpi : 300)) * 25.4 * 10) / 10;
   const altura_mm = Math.round((heightPx / (dpi > 0 ? dpi : 300)) * 25.4 * 10) / 10;
+
+  // ── Dedução de lombada e orelha a partir das dimensões reais ────────────
+  // Só faz sentido em capa panorâmica. Fórmula:
+  //   largura_real = 2*sangria + 2*orelha + 2*frente + lombada
+  //   → lombada = largura_real - 2*sangria - 2*orelha - 2*frente
+  //
+  // Testamos primeiro com a orelha declarada. Se lombada resultante for
+  // absurda (< 0 ou > 100mm), tentamos outros candidatos de orelha nos
+  // padrões editoriais BR: 0, 60, 70, 80, 90, 100.
+  let lombada_deduzida_mm: number | null = null;
+  let orelha_deduzida_mm: number | null = null;
+
+  if (panoramica) {
+    const larguraDisponivel_mm = largura_mm - 2 * SANGRIA_ESPERADA_MM - 2 * specs.width_mm;
+    const candidatos = [orelhaMm, 0, 60, 70, 80, 90, 100];
+    for (const orelhaCandidato of candidatos) {
+      const lombadaCandidata = larguraDisponivel_mm - 2 * orelhaCandidato;
+      if (lombadaCandidata >= 1 && lombadaCandidata <= 100) {
+        lombada_deduzida_mm = Math.round(lombadaCandidata * 10) / 10;
+        orelha_deduzida_mm = orelhaCandidato;
+        break;
+      }
+    }
+  }
 
   // ── Sangria ─────────────────────────────────────────────────────────────
   const larguraOkComSangria = Math.abs(largura_mm - largura_esperada_mm) <= TOL_MM;
@@ -256,6 +327,10 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
     altura_mm,
     largura_esperada_mm: Math.round(largura_esperada_mm * 10) / 10,
     altura_esperada_mm: Math.round(altura_esperada_mm * 10) / 10,
+    lombada_esperada_mm: Math.round(lombadaMm * 10) / 10,
+    orelha_esperada_mm: orelhaMm,
+    lombada_deduzida_mm,
+    orelha_deduzida_mm,
     colorspace,
     dpi,
     sangria,

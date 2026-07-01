@@ -84,17 +84,34 @@ export async function POST(
       panoramica: resolved.is_panoramica,
     });
 
-    // Persiste em dados_capa.analise_tecnica sem tocar em outros campos.
-    // JSONB do Supabase é substituído inteiro no update — merge explícito
-    // é necessário para não zerar o resto de dados_capa.
-    const novoDadosCapa = { ...dadosCapa, analise_tecnica: analise };
+    // Re-fetch dados_capa imediatamente antes do PATCH: reduz race com
+    // upload-capa/cover-editor/confirm que podem ter escrito no campo
+    // durante os 2-3s de análise. Sem isso, o merge shallow com o
+    // dadosCapa carregado no início pode sobrescrever mudanças recentes.
+    const { data: atual } = await supabase
+      .from("projects")
+      .select("dados_capa")
+      .eq("id", projectId)
+      .eq("user_id", userId)
+      .single();
+
+    const dadosCapaAtual = (atual?.dados_capa ?? dadosCapa) as Record<string, unknown>;
+
+    // Se dadosCapa foi zerado durante a análise (ex: autor apertou
+    // "Refazer" chamando /capa/reset), não persiste — a capa nem existe mais.
+    if (!dadosCapaAtual || Object.keys(dadosCapaAtual).length === 0) {
+      console.warn(`[capa/analisar] dados_capa foi zerado durante análise do projeto ${projectId}; não persistindo.`);
+      return NextResponse.json({ ok: true, analise, persisted: false });
+    }
+
+    const novoDadosCapa = { ...dadosCapaAtual, analise_tecnica: analise };
     await supabase
       .from("projects")
       .update({ dados_capa: novoDadosCapa })
       .eq("id", projectId)
       .eq("user_id", userId);
 
-    return NextResponse.json({ ok: true, analise });
+    return NextResponse.json({ ok: true, analise, persisted: true });
   } catch (err) {
     console.error("[capa/analisar] falha:", err);
     return NextResponse.json(

@@ -165,6 +165,31 @@ function ModoUpload({
   const espWPx = Math.round(espWMm * mm2px);
   const espHPx = Math.round(espHMm * mm2px);
 
+  // Auto-executa verificação de dimensões sempre que o autor sobe arquivo
+  // OU muda páginas/orelhas/DPI. Elimina necessidade do botão "Verificar
+  // dimensões" — o resultado aparece imediato.
+  useEffect(() => {
+    if (!dims) return;
+    const tolPx = Math.round(2 * mm2px);
+    const wOk = Math.abs(dims.w - espWPx) <= tolPx;
+    const hOk = Math.abs(dims.h - espHPx) <= tolPx;
+    const rW = Math.round((dims.w / mm2px) * 10) / 10;
+    const rH = Math.round((dims.h / mm2px) * 10) / 10;
+    const detalhes: string[] = [];
+    if (!wOk) detalhes.push(`Largura: ${rW}mm (esperado ${espWMm}mm ±2mm)`);
+    if (!hOk) detalhes.push(`Altura: ${rH}mm (esperado ${espHMm}mm ±2mm)`);
+    if (wOk && hOk) detalhes.push("Dimensões dentro da tolerância ±2mm.");
+    setValidacao({
+      ok: wOk && hOk,
+      largura_esperada_mm: espWMm,
+      altura_esperada_mm: espHMm,
+      largura_recebida_mm: rW,
+      altura_recebida_mm: rH,
+      tolerancia_mm: 2,
+      detalhes,
+    });
+  }, [dims, espWMm, espHMm, espWPx, espHPx, mm2px]);
+
   const [convertingPdf, setConvertingPdf] = useState(false);
 
   async function handleFileChange(f: File) {
@@ -214,21 +239,6 @@ function ModoUpload({
     const img = new window.Image();
     img.onload = () => setDims({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = url;
-  }
-
-  function checkDims() {
-    if (!dims) return;
-    const tolPx = Math.round(2 * mm2px);
-    const wOk = Math.abs(dims.w - espWPx) <= tolPx;
-    const hOk = Math.abs(dims.h - espHPx) <= tolPx;
-    const rW = Math.round((dims.w / mm2px) * 10) / 10;
-    const rH = Math.round((dims.h / mm2px) * 10) / 10;
-    const detalhes: string[] = [];
-    if (!wOk) detalhes.push(`Largura: ${rW}mm (esperado ${espWMm}mm ±2mm)`);
-    if (!hOk) detalhes.push(`Altura: ${rH}mm (esperado ${espHMm}mm ±2mm)`);
-    if (wOk && hOk) detalhes.push("Dimensões dentro da tolerância ±2mm.");
-    setValidacao({ ok: wOk && hOk, largura_esperada_mm: espWMm, altura_esperada_mm: espHMm,
-      largura_recebida_mm: rW, altura_recebida_mm: rH, tolerancia_mm: 2, detalhes });
   }
 
   async function handleUpload() {
@@ -372,12 +382,6 @@ function ModoUpload({
             </div>
             <p className="text-xs text-zinc-500">{file?.name} — {dims ? `${dims.w}×${dims.h}px` : "detectando…"}</p>
             <div className="flex gap-2">
-              {dims && !validacao && (
-                <button onClick={checkDims}
-                  className="px-4 py-2 rounded-lg bg-brand-primary text-brand-gold text-xs font-medium hover:bg-brand-primary/90 transition-colors">
-                  Verificar dimensões
-                </button>
-              )}
               <button onClick={() => { setFile(null); setPreview(null); setDims(null); setValidacao(null); }}
                 className="px-4 py-2 rounded-lg border border-zinc-200 text-zinc-600 text-xs hover:border-zinc-300 transition-colors">
                 Remover
@@ -385,16 +389,15 @@ function ModoUpload({
             </div>
 
             {validacao && (
-              <div className={`rounded-xl p-4 border text-sm ${validacao.ok
+              <div className={`rounded-xl p-3 border text-xs ${validacao.ok
                 ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                 : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-                <p className="font-semibold mb-1">{validacao.ok ? "✓ Dimensões corretas" : "⚠ Dimensões fora do esperado"}</p>
-                {validacao.detalhes.map((d, i) => <p key={i} className="text-xs">{d}</p>)}
-                {!validacao.ok && (
-                  <p className="text-xs mt-2 text-amber-600">
-                    Você ainda pode aceitar e continuar, mas a capa pode não se adequar ao formato de impressão.
-                  </p>
-                )}
+                <p className="font-semibold">
+                  {validacao.ok ? "✓ Dimensões dentro da tolerância" : "⚠ Dimensões fora do esperado"}
+                </p>
+                {!validacao.ok && validacao.detalhes.map((d, i) => (
+                  <p key={i} className="mt-0.5">{d}</p>
+                ))}
               </div>
             )}
           </div>
@@ -707,6 +710,174 @@ function ModoIA({
   );
 }
 
+// ─── Recomendações técnicas (verbal, contextual) ──────────────────────────────
+
+type Recomendacao = {
+  nivel: "ok" | "aviso" | "info";
+  titulo: string;
+  detalhe: string;
+};
+
+function buildRecomendacoes(
+  analise: AnaliseTecnica | undefined,
+): Recomendacao[] {
+  if (!analise) return [];
+  const recs: Recomendacao[] = [];
+
+  // Colorspace
+  if (analise.colorspace === "cmyk") {
+    recs.push({
+      nivel: "ok",
+      titulo: "Cores em CMYK",
+      detalhe: "Perfeito para impressão. As cores no papel vão sair exatamente como você vê.",
+    });
+  } else if (analise.colorspace === "srgb" || analise.colorspace === "rgb16") {
+    recs.push({
+      nivel: "aviso",
+      titulo: "Cores em RGB",
+      detalhe: "A capa está em RGB (padrão de tela). Para eBook e Kindle está pronta. Para impressão física, converteremos automaticamente para CMYK — algumas cores muito saturadas podem ficar levemente diferentes no papel.",
+    });
+  }
+
+  // Sangria
+  if (analise.sangria === "presente") {
+    recs.push({
+      nivel: "ok",
+      titulo: "Sangria de 3mm presente",
+      detalhe: "As bordas da capa têm a margem de segurança que a gráfica precisa para cortar sem deixar filete branco.",
+    });
+  } else if (analise.sangria === "ausente" || analise.sangria === "parcial") {
+    recs.push({
+      nivel: "aviso",
+      titulo: analise.sangria === "ausente" ? "Sangria de 3mm ausente" : "Sangria de 3mm parcial",
+      detalhe: "Para eBook e Kindle isso não importa. Para impressão física, sem sangria a gráfica pode deixar um filete branco fino na borda ao cortar — recomendamos redimensionar a arte com +3mm em cada lado.",
+    });
+  }
+
+  // DPI
+  if (analise.dpi >= 300) {
+    recs.push({
+      nivel: "ok",
+      titulo: `${analise.dpi} DPI`,
+      detalhe: "Resolução alta o suficiente para impressão profissional sem pixelização.",
+    });
+  } else if (analise.dpi > 0) {
+    recs.push({
+      nivel: "aviso",
+      titulo: `Resolução ${analise.dpi} DPI`,
+      detalhe: `Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados no papel.`,
+    });
+  }
+
+  // Marcas de corte
+  if (analise.marcas_corte === "detectadas") {
+    recs.push({
+      nivel: "info",
+      titulo: "Marcas de corte detectadas",
+      detalhe: "Sua capa tem indicações de onde a gráfica deve cortar. Isso é bom — mostra que ela foi preparada para produção.",
+    });
+  }
+
+  // Lombada deduzida vs esperada
+  if (
+    analise.lombada_deduzida_mm != null &&
+    analise.lombada_esperada_mm > 0
+  ) {
+    const diff = analise.lombada_deduzida_mm - analise.lombada_esperada_mm;
+    const absDiff = Math.abs(diff);
+    if (absDiff <= 1) {
+      recs.push({
+        nivel: "ok",
+        titulo: `Lombada com ${analise.lombada_deduzida_mm}mm`,
+        detalhe: `Bate com a espessura estimada pelo miolo (${analise.lombada_esperada_mm}mm).`,
+      });
+    } else {
+      recs.push({
+        nivel: "aviso",
+        titulo: `Lombada diverge em ${absDiff.toFixed(1)}mm`,
+        detalhe: `Sua capa tem lombada de ${analise.lombada_deduzida_mm}mm, mas o miolo indica ${analise.lombada_esperada_mm}mm. Diferenças acima de 1mm fazem o texto da lombada aparecer torto ou na dobra. Se você já sabe a espessura final do livro, revise; senão, gere a capa novamente após confirmar o miolo.`,
+      });
+    }
+  }
+
+  // Orelha deduzida vs esperada
+  if (
+    analise.orelha_deduzida_mm != null &&
+    analise.orelha_esperada_mm != null
+  ) {
+    if (analise.orelha_deduzida_mm !== analise.orelha_esperada_mm) {
+      recs.push({
+        nivel: "aviso",
+        titulo: analise.orelha_deduzida_mm === 0
+          ? "Sem orelhas detectadas"
+          : `Orelhas de ${analise.orelha_deduzida_mm}mm detectadas`,
+        detalhe: analise.orelha_esperada_mm === 0
+          ? `Você não marcou orelhas, mas a imagem parece incluir espaço para orelhas de ${analise.orelha_deduzida_mm}mm. Marque a caixa "Orelhas" acima para bater com a arte enviada.`
+          : `Você marcou orelhas de ${analise.orelha_esperada_mm}mm, mas a imagem indica ${analise.orelha_deduzida_mm}mm. Ajuste no campo acima ou reenvie a arte.`,
+      });
+    }
+  }
+
+  return recs;
+}
+
+function RecomendacoesTecnicas({
+  analise,
+}: {
+  analise: AnaliseTecnica | undefined;
+}) {
+  if (!analise) {
+    return (
+      <div className="mt-4 text-xs text-zinc-500 flex items-center gap-2">
+        <span className="inline-block h-2 w-2 rounded-full bg-zinc-300 animate-pulse"></span>
+        Analisando capa tecnicamente...
+      </div>
+    );
+  }
+
+  const recs = buildRecomendacoes(analise);
+  if (recs.length === 0) {
+    return (
+      <div className="mt-4 text-xs text-zinc-500">
+        Análise técnica concluída — nenhum aviso.
+      </div>
+    );
+  }
+
+  const styles = {
+    ok:    { border: "border-emerald-200", bg: "bg-emerald-50", text: "text-emerald-900", dot: "bg-emerald-500" },
+    aviso: { border: "border-amber-200",   bg: "bg-amber-50",   text: "text-amber-900",   dot: "bg-amber-500" },
+    info:  { border: "border-blue-200",    bg: "bg-blue-50",    text: "text-blue-900",    dot: "bg-blue-500" },
+  } as const;
+
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="text-xs font-medium text-zinc-700">Análise técnica da capa</div>
+      <div className="space-y-2">
+        {recs.map((rec, idx) => {
+          const s = styles[rec.nivel];
+          return (
+            <div key={idx} className={`rounded-lg border ${s.border} ${s.bg} p-3`}>
+              <div className="flex items-start gap-2">
+                <span className={`inline-block h-2 w-2 rounded-full mt-1.5 shrink-0 ${s.dot}`} />
+                <div className="flex-1">
+                  <p className={`text-xs font-semibold ${s.text}`}>{rec.titulo}</p>
+                  <p className={`text-xs mt-0.5 ${s.text} opacity-80 leading-relaxed`}>{rec.detalhe}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!analise.ok_grafica && (
+        <p className="text-xs text-zinc-500 pt-1">
+          Para eBook e Kindle, a capa já está pronta. Ajustes acima só afetam impressão física.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Result card ──────────────────────────────────────────────────────────────
 
 function AnaliseBadge({
@@ -725,67 +896,6 @@ function AnaliseBadge({
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${styles[variant]}`}>
       {label}
     </span>
-  );
-}
-
-function AnaliseTecnicaBlock({ analise }: { analise: AnaliseTecnica | undefined }) {
-  if (!analise) {
-    return (
-      <div className="mt-4 text-xs text-zinc-500 flex items-center gap-2">
-        <span className="inline-block h-2 w-2 rounded-full bg-zinc-300 animate-pulse"></span>
-        Analisando capa tecnicamente...
-      </div>
-    );
-  }
-  return (
-    <div className="mt-4 space-y-2">
-      <div className="text-xs font-medium text-zinc-700">Análise técnica</div>
-      <div className="flex flex-wrap gap-2">
-        <AnaliseBadge
-          label={
-            analise.colorspace === "cmyk" ? "CMYK ✓"
-            : analise.colorspace === "srgb" ? "RGB"
-            : analise.colorspace === "rgb16" ? "RGB 16-bit"
-            : "Cor desconhecida"
-          }
-          variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
-        />
-        <AnaliseBadge
-          label={
-            analise.sangria === "presente" ? "Sangria ✓"
-            : analise.sangria === "ausente" ? "Sem sangria"
-            : analise.sangria === "parcial" ? "Sangria parcial"
-            : "Dimensões atípicas"
-          }
-          variant={analise.sangria === "presente" ? "ok" : "aviso"}
-        />
-        <AnaliseBadge
-          label={`${analise.dpi} DPI`}
-          variant={analise.dpi >= 300 ? "ok" : "aviso"}
-        />
-        {analise.marcas_corte === "detectadas" && (
-          <AnaliseBadge label="Com marcas de corte" variant="info" />
-        )}
-      </div>
-      {analise.avisos.length > 0 && (
-        <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 p-3">
-          <div className="text-xs font-medium text-amber-900 mb-1">
-            Atenção para publicação em gráfica
-          </div>
-          <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
-            {analise.avisos.map((aviso, idx) => (
-              <li key={idx}>{aviso}</li>
-            ))}
-          </ul>
-          {!analise.ok_grafica && (
-            <div className="mt-2 text-xs text-amber-900">
-              Para eBook e Kindle, esta capa está pronta. Correções serão aplicadas
-              automaticamente ao gerar o PDF para gráfica.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -832,7 +942,7 @@ function ResultadoCard({
           </div>
         )}
 
-        <AnaliseTecnicaBlock analise={analise} />
+        <RecomendacoesTecnicas analise={analise} />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -876,7 +986,10 @@ export default function CapaPage() {
 
   // Single source of truth for book format — selected once here, propagates to Créditos + Diagramação
   const [formatoGlobal, setFormatoGlobal] = useState<FormatoLivro>("padrao_br");
-  // Real lombada calculated after Diagramação (paginas_reais × 0.07 mm)
+  // Lombada real: sempre RECALCULADA a partir de paginas_reais usando a
+  // fórmula unificada de `estimarLombadaCapaMm`. NÃO confiar em
+  // `dados_miolo.lombada_mm` do banco — projetos com miolo gerado antes
+  // do 14.G tinham fórmula legada (× 0.078) fossilizada nesse campo.
   const [lombadaReal, setLombadaReal] = useState<number | null>(null);
   // Estimated pages from manuscript (or real pages if miolo already generated)
   const [estimativaPaginas, setEstimativaPaginas] = useState<number | null>(null);
@@ -912,15 +1025,17 @@ export default function CapaPage() {
       const fmtRes = await fetch(`/api/projects/${id}/formato`).then(r => r.ok ? r.json() : null);
       if (fmtRes?.formato) setFormatoGlobal(fmtRes.formato as FormatoLivro);
 
-      // Load real lombada if diagramação was already done
+      // Load real lombada if diagramação was already done — recalculada
+      // a partir de paginas_reais (nunca lê lombada_mm fossilizada do banco)
       const miolo = data?.dados_miolo as { lombada_mm?: number; paginas_reais?: number } | null;
-      if (miolo?.lombada_mm) {
-        setLombadaReal(miolo.lombada_mm);
+      if (miolo?.paginas_reais) {
+        const lombadaRecalculada = estimarLombadaCapaMm(miolo.paginas_reais);
+        setLombadaReal(lombadaRecalculada);
         // Detect divergence with the lombada used when the IA cover was generated
         const capaDados = data?.dados_capa as { lombada_mm?: number; modo?: string } | null;
         if (capaDados?.modo === "ia" && capaDados?.lombada_mm) {
-          const diff = Math.abs(capaDados.lombada_mm - miolo.lombada_mm);
-          setAjusteDisponivel(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: capaDados.lombada_mm, nova: miolo.lombada_mm, diff } : null);
+          const diff = Math.abs(capaDados.lombada_mm - lombadaRecalculada);
+          setAjusteDisponivel(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: capaDados.lombada_mm, nova: lombadaRecalculada, diff } : null);
         } else {
           setAjusteDisponivel(null);
         }
@@ -931,6 +1046,48 @@ export default function CapaPage() {
   }, [id]);
 
   useEffect(() => { loadProject(); }, [loadProject]);
+
+  // Polling de análise técnica. Dispara quando `dados` está populado mas
+  // ainda não tem `analise_tecnica` (esperando o fire-and-forget do
+  // /analisar terminar). Consulta o banco a cada 3s, para em 60s ou
+  // quando popular.
+  useEffect(() => {
+    if (!dados) return;
+    if (dados.modo === "skip") return;
+    if (dados.analise_tecnica) return;
+    const hasUrl = dados.url || dados.url_escolhida || dados.imagem_url;
+    if (!hasUrl) return;
+
+    let cancelled = false;
+    let ticks = 0;
+    const MAX_TICKS = 20; // 20 × 3s = 60s
+    const INTERVAL_MS = 3000;
+
+    const poll = async () => {
+      if (cancelled) return;
+      ticks++;
+      try {
+        const { data: proj } = await supabase
+          .from("projects")
+          .select("dados_capa")
+          .eq("id", id)
+          .single();
+        const capa = proj?.dados_capa as Record<string, unknown> | null;
+        if (capa?.analise_tecnica) {
+          setDados(capa);
+          return;
+        }
+      } catch (err) {
+        console.warn("[capa polling] falha:", err);
+      }
+      if (ticks < MAX_TICKS && !cancelled) {
+        setTimeout(poll, INTERVAL_MS);
+      }
+    };
+
+    const timer = setTimeout(poll, INTERVAL_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [dados, id]);
 
   useEffect(() => {
     if (!id || !formatoGlobal) return;
@@ -945,6 +1102,39 @@ export default function CapaPage() {
   }, [id, formatoGlobal]);
 
   async function handleContinuar() {
+    // Se a análise técnica marcou !ok_grafica, alerta o autor antes de
+    // avançar. Os itens listados NÃO bloqueiam publicação em eBook/Kindle,
+    // mas afetam impressão física. window.confirm é intencional: dialog
+    // custom aqui seria overkill para um gate opcional.
+    const analise = dados?.analise_tecnica as AnaliseTecnica | undefined;
+    if (analise && !analise.ok_grafica) {
+      const problemas: string[] = [];
+      if (analise.colorspace !== "cmyk") {
+        problemas.push("• Capa em RGB (converteremos para CMYK ao imprimir)");
+      }
+      if (analise.sangria !== "presente") {
+        problemas.push("• Sangria de 3mm ausente ou incompleta");
+      }
+      if (analise.dpi > 0 && analise.dpi < 300) {
+        problemas.push(`• Resolução de ${analise.dpi} DPI (recomendado 300)`);
+      }
+      if (
+        analise.lombada_deduzida_mm != null &&
+        analise.lombada_esperada_mm > 0 &&
+        Math.abs(analise.lombada_deduzida_mm - analise.lombada_esperada_mm) > 1
+      ) {
+        const diff = Math.abs(analise.lombada_deduzida_mm - analise.lombada_esperada_mm);
+        problemas.push(`• Lombada diverge do estimado em ${diff.toFixed(1)}mm`);
+      }
+      if (problemas.length > 0) {
+        const msg =
+          "Sua capa tem divergências que podem afetar a impressão física:\n\n" +
+          problemas.join("\n") +
+          "\n\nPara eBook e Kindle a capa está pronta. Deseja avançar mesmo assim?";
+        if (!window.confirm(msg)) return;
+      }
+    }
+
     await supabase
       .from("projects")
       .update({ etapa_atual: "creditos" })
