@@ -285,9 +285,17 @@ export async function POST(req: NextRequest) {
       dadosMiolo?.config?.paginas_estimadas ??
       null;
 
+    // Recorta a frente de QUALQUER capa panorâmica, não só do editor visual.
+    // Uploads e IAs com `montar-capa` rodado também são panorâmicos e precisam
+    // do mesmo tratamento — no e-reader/Kindle a capa aparece só como frente,
+    // não como panorama.
+    //
+    // O `capa-frente-extractor` infere a geometria (lombada e orelhas) das
+    // dimensões reais da imagem, independente da origem — é seguro remover
+    // a restrição de origem que vinha do 14.H (evitava regressão até termos
+    // certeza que o extractor funcionava com outros pipelines).
     const podeRecortar =
       capaResolvida?.is_panoramica === true &&
-      capaResolvida.origem === "editor" &&
       projectFormato &&
       paginas != null &&
       paginas >= 1;
@@ -297,6 +305,8 @@ export async function POST(req: NextRequest) {
         url: capaUrl,
         formato: projectFormato!,
         paginas: paginas!,
+        // orelha_mm canônico do resolver — funciona para editor/upload/IA.
+        // Fallback 0 se o resolver não populou por algum motivo.
         orelhaMm: capaResolvida?.orelha_mm ?? 0,
       });
       if (front) {

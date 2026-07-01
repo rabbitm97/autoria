@@ -17,30 +17,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import sharp from "sharp";
-import { estimarLombadaCapaMm } from "./formatos";
+import { estimarLombadaCapaMm, getFormatoDef, type FormatoLivro } from "./formatos";
 
 const DPI = 300;
 const MM_TO_PX = DPI / 25.4;
 const SANGRIA_MM = 3;
 
-const FORMATS = {
-  padrao_br: { width_mm: 160, height_mm: 230 },
-  compacto:  { width_mm: 140, height_mm: 210 },
-  bolso:     { width_mm: 110, height_mm: 180 },
-  quadrado:  { width_mm: 200, height_mm: 200 },
-  a4:        { width_mm: 210, height_mm: 297 },
-} as const;
-
-export type FormatoCapa = keyof typeof FORMATS;
+// Tipo re-exportado para compatibilidade com callers existentes.
+export type FormatoCapa = FormatoLivro;
 
 // Tolerâncias
 const TOL_MM = 1.0;          // 1mm de tolerância para validar altura
 const LOMBADA_MIN_MM = 1;    // lombada mínima plausível
 const LOMBADA_MAX_MM = 100;  // lombada máxima plausível (~1400 páginas)
-
-function calcularLombadaMm(paginas: number): number {
-  return estimarLombadaCapaMm(paginas);
-}
 
 export interface ExtractFrontInput {
   url: string;
@@ -59,13 +48,15 @@ export interface ExtractFrontResult {
 interface GeometriaInferida {
   lombadaMm: number;
   orelhaMm: number;
-  fonte: "imagem" | "fallback-paginas";
+  fonte: "imagem" | "imagem-testando-alternativas" | "fallback-paginas";
 }
 
 /**
- * Infere lombada a partir das dimensões reais da imagem, mantendo orelhaMm
- * declarado como verdade. Se o resultado não bater com altura/largura
- * esperadas, faz fallback para cálculo via paginas declaradas.
+ * Infere lombada a partir das dimensões reais da imagem. Testa múltiplos
+ * candidatos de orelha (declarado + 0 + padrões editoriais BR) porque o valor
+ * declarado pode estar dessincronizado da imagem exportada (autor mudou
+ * orelha_mm depois de exportar; upload + editor híbrido). Fallback via
+ * paginas quando nenhum candidato bate.
  */
 function inferirGeometria(params: {
   widthPx: number;
@@ -75,10 +66,11 @@ function inferirGeometria(params: {
   paginasDeclaradas: number;
 }): GeometriaInferida | null {
   const { widthPx, heightPx, formato, orelhaMmDeclarado, paginasDeclaradas } = params;
-  const f = FORMATS[formato];
+  const specs = getFormatoDef(formato).specs;
 
-  // 1. Valida altura primeiro — deve bater com height_mm + 2*sangria (independente da lombada/orelhas)
-  const expectedHeightMm = f.height_mm + 2 * SANGRIA_MM;
+  // 1. Valida altura primeiro — deve bater com height_mm + 2*sangria
+  //    (independente da lombada/orelhas).
+  const expectedHeightMm = specs.height_mm + 2 * SANGRIA_MM;
   const actualHeightMm = heightPx / MM_TO_PX;
   if (Math.abs(actualHeightMm - expectedHeightMm) > TOL_MM) {
     console.warn(
@@ -87,33 +79,55 @@ function inferirGeometria(params: {
       `Inferência abortada — usando fallback via paginas.`,
     );
     return {
-      lombadaMm: calcularLombadaMm(paginasDeclaradas),
+      lombadaMm: estimarLombadaCapaMm(paginasDeclaradas),
       orelhaMm: orelhaMmDeclarado,
       fonte: "fallback-paginas",
     };
   }
 
-  // 2. Calcula lombada a partir da largura, assumindo orelhaMm declarado
   const actualWidthMm = widthPx / MM_TO_PX;
-  const fixedDeclarado = 2 * SANGRIA_MM + 2 * f.width_mm + 2 * orelhaMmDeclarado;
-  const lombadaDeclarado = actualWidthMm - fixedDeclarado;
 
-  if (lombadaDeclarado >= LOMBADA_MIN_MM && lombadaDeclarado <= LOMBADA_MAX_MM) {
-    return {
-      lombadaMm: Math.round(lombadaDeclarado * 10) / 10,
-      orelhaMm: orelhaMmDeclarado,
-      fonte: "imagem",
-    };
+  // 2. Testa candidatos de orelha em ordem de plausibilidade:
+  //    (a) valor declarado (do resolver / editor / upload)
+  //    (b) 0 mm (caso o autor tenha marcado com orelhas mas a imagem não tem)
+  //    (c) 60, 70, 80, 90, 100 mm (varredura por padrões editoriais BR)
+  const candidatos = new Set<number>([
+    Math.max(0, orelhaMmDeclarado),
+    0,
+    60, 70, 80, 90, 100,
+  ]);
+
+  for (const orelhaCandidato of candidatos) {
+    const fixedMm = 2 * SANGRIA_MM + 2 * specs.width_mm + 2 * orelhaCandidato;
+    const lombadaCandidata = actualWidthMm - fixedMm;
+
+    if (lombadaCandidata >= LOMBADA_MIN_MM && lombadaCandidata <= LOMBADA_MAX_MM) {
+      const fonte: GeometriaInferida["fonte"] =
+        orelhaCandidato === orelhaMmDeclarado ? "imagem" : "imagem-testando-alternativas";
+
+      if (fonte === "imagem-testando-alternativas") {
+        console.warn(
+          `[capa-frente-extractor] orelhaMm declarado (${orelhaMmDeclarado}) parece ` +
+          `dessincronizado da imagem real. Usando orelhaMm=${orelhaCandidato}.`,
+        );
+      }
+
+      return {
+        lombadaMm: Math.round(lombadaCandidata * 10) / 10,
+        orelhaMm: orelhaCandidato,
+        fonte,
+      };
+    }
   }
 
-  // 3. Lombada absurda — fallback via paginas (mantém orelhaMm declarado)
+  // 3. Nenhum candidato bateu — fallback final via páginas
   console.warn(
-    `[capa-frente-extractor] lombada inferida fora dos limites: ` +
-    `largura=${actualWidthMm.toFixed(1)}mm, lombada=${lombadaDeclarado.toFixed(1)}mm, ` +
-    `orelhaMm=${orelhaMmDeclarado}. Usando fallback via paginas.`,
+    `[capa-frente-extractor] não consegui inferir geometria. ` +
+    `largura=${actualWidthMm.toFixed(1)}mm, orelhaMm-declarado=${orelhaMmDeclarado}mm. ` +
+    `Usando fallback via paginas.`,
   );
   return {
-    lombadaMm: calcularLombadaMm(paginasDeclaradas),
+    lombadaMm: estimarLombadaCapaMm(paginasDeclaradas),
     orelhaMm: orelhaMmDeclarado,
     fonte: "fallback-paginas",
   };
@@ -128,7 +142,10 @@ export async function extractFrontCover(
 ): Promise<ExtractFrontResult | null> {
   const { url, formato, paginas, orelhaMm } = input;
 
-  if (!FORMATS[formato]) {
+  let specs: ReturnType<typeof getFormatoDef>["specs"];
+  try {
+    specs = getFormatoDef(formato).specs;
+  } catch {
     console.warn(`[capa-frente-extractor] formato desconhecido: ${formato}`);
     return null;
   }
@@ -180,11 +197,10 @@ export async function extractFrontCover(
   );
 
   // Calcula região da frente usando a geometria inferida
-  const f = FORMATS[formato];
-  const xMm = SANGRIA_MM + geom.orelhaMm + f.width_mm + geom.lombadaMm;
+  const xMm = SANGRIA_MM + geom.orelhaMm + specs.width_mm + geom.lombadaMm;
   const yMm = SANGRIA_MM;
-  const widthMm = f.width_mm;
-  const heightMm = f.height_mm;
+  const widthMm = specs.width_mm;
+  const heightMm = specs.height_mm;
 
   const left = Math.round(xMm * MM_TO_PX);
   const top = Math.round(yMm * MM_TO_PX);
