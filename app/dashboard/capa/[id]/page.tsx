@@ -111,13 +111,32 @@ function RadioBtn({
 
 // ─── Upload mode ──────────────────────────────────────────────────────────────
 
+/**
+ * ModoUpload unificado (14.M.1.2).
+ *
+ * Card único com duas seções:
+ *  1. Informações do formato: formato, orelhas (toggle+input), lombada
+ *     calculada, dimensões esperadas.
+ *  2. Arquivo: dropzone com upload automático, preview, recomendações
+ *     técnicas inline.
+ *
+ * Sem campo "Páginas" (o valor vem de paginas_reais/estimativa),
+ * sem seletor de DPI (sempre 300), sem botão manual de conferência
+ * (validação client-side é automática), sem tela ResultadoCard
+ * intermediária (o próprio card mostra estado salvo).
+ *
+ * Upload dispara automaticamente quando arquivo é selecionado. Análise
+ * técnica é populada via polling no CapaPage (14.M.1.1).
+ */
 function ModoUpload({
   projectId,
   formatoInicial,
   lombadaReal,
   estimativaPaginas,
-  fonteEstimativa,
+  dadosSalvos,
   onSalvo,
+  onContinuar,
+  onRefazer,
   onVoltar,
 }: {
   projectId: string;
@@ -125,36 +144,63 @@ function ModoUpload({
   lombadaReal: number | null;
   estimativaPaginas: number | null;
   fonteEstimativa: "miolo_real" | "estimado" | null;
+  dadosSalvos: Record<string, unknown> | null;
   onSalvo: (result: CapaUploadResult) => void;
+  onContinuar: () => void;
+  onRefazer: () => void;
   onVoltar: () => void;
 }) {
   const formato = formatoInicial;
-  const [paginas, setPaginas] = useState(estimativaPaginas ?? 200);
 
-  useEffect(() => {
-    if (estimativaPaginas != null) setPaginas(estimativaPaginas);
-  }, [estimativaPaginas]);
+  // Páginas usadas para calcular lombada — nunca editável. Se miolo já
+  // gerado, usa paginas_reais (recalculada em lombadaReal via
+  // estimarLombadaCapaMm no loadProject do CapaPage — 14.M.1.1). Senão,
+  // estimativa a partir de caracteres/cpp do endpoint (14.M.1.2A).
+  const paginas = estimativaPaginas ?? 200;
+
+  // Orelhas: única decisão real do autor neste card.
   const [orelhaMm, setOrelhaMm] = useState(0);
-  const [dpi, setDpi] = useState<300 | 150>(300);
 
-  // Clamp orelhaMm to format range whenever format changes
+  // Clamp orelhaMm ao trocar formato
   useEffect(() => {
     setOrelhaMm((prev) => (prev > 0 ? clampOrelhaMm(formato as FormatKey, prev) : 0));
   }, [formato]);
 
+  // DPI fixo em 300 (assumido). Análise técnica reporta DPI real depois.
+  const dpi = 300;
+
+  // Arquivo local
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
-  const [validacao, setValidacao] = useState<CapaValidacao | null>(null);
+  const [convertingPdf, setConvertingPdf] = useState(false);
+
+  // Upload state
   const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState(!!dadosSalvos && dadosSalvos.modo === "upload");
+  const [validacao, setValidacao] = useState<CapaValidacao | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Se veio com dados salvos (autor recarregou a página com upload já feito),
+  // popula preview a partir da URL do banco.
+  useEffect(() => {
+    if (dadosSalvos && dadosSalvos.modo === "upload") {
+      const url = dadosSalvos.url as string | undefined;
+      const wPx = dadosSalvos.largura_px as number | undefined;
+      const hPx = dadosSalvos.altura_px as number | undefined;
+      const orelhaSalva = dadosSalvos.orelha_mm as number | undefined;
+      if (url) setPreview(url);
+      if (wPx && hPx) setDims({ w: wPx, h: hPx });
+      if (typeof orelhaSalva === "number") setOrelhaMm(orelhaSalva);
+      setUploaded(true);
+    }
+  }, [dadosSalvos]);
 
   const usarOrelhas = orelhaMm > 0;
   const orelhaMaxCm = getOrelhaMax(formato as FormatKey) / 10;
   const orelhaMinCm = ORELHA_MIN_MM / 10;
   const orelhaCm = Math.round(orelhaMm / 10);
 
-  // Use real lombada from diagramação if available, otherwise estimate
   const lombada = lombadaReal ?? calcLombadaMm(paginas);
   const fmtSpecs = getFormatoDef(formato).specs;
   const sangria = fmtSpecs.bleed_mm;
@@ -165,11 +211,12 @@ function ModoUpload({
   const espWPx = Math.round(espWMm * mm2px);
   const espHPx = Math.round(espHMm * mm2px);
 
-  // Auto-executa verificação de dimensões sempre que o autor sobe arquivo
-  // OU muda páginas/orelhas/DPI. Elimina necessidade do botão "Verificar
-  // dimensões" — o resultado aparece imediato.
+  // Auto-validação de dimensões (client-side, síncrona)
   useEffect(() => {
-    if (!dims) return;
+    if (!dims) {
+      setValidacao(null);
+      return;
+    }
     const tolPx = Math.round(2 * mm2px);
     const wOk = Math.abs(dims.w - espWPx) <= tolPx;
     const hOk = Math.abs(dims.h - espHPx) <= tolPx;
@@ -190,14 +237,23 @@ function ModoUpload({
     });
   }, [dims, espWMm, espHMm, espWPx, espHPx, mm2px]);
 
-  const [convertingPdf, setConvertingPdf] = useState(false);
+  // Auto-upload: dispara quando file + dims estão disponíveis e upload
+  // ainda não rodou nesta sessão.
+  const uploadTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!file || !dims || uploading || uploaded) return;
+    if (uploadTriggeredRef.current) return;
+    uploadTriggeredRef.current = true;
+    void handleUpload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file, dims]);
 
   async function handleFileChange(f: File) {
-    setValidacao(null);
     setError(null);
+    setValidacao(null);
+    uploadTriggeredRef.current = false;
 
-    // PDF: renderizar primeira página em canvas 300 DPI e converter para PNG.
-    // pdf.js é carregado sob demanda para não pesar o bundle da rota.
+    // PDF → PNG (primeira página @ 300 DPI)
     if (f.type === "application/pdf") {
       setConvertingPdf(true);
       try {
@@ -209,21 +265,19 @@ function ModoUpload({
         const buf = await f.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
         const page = await doc.getPage(1);
-        // pdf.js usa 72 dpi como base → escala 300/72 para 300 DPI.
         const viewport = page.getViewport({ scale: 300 / 72 });
         const canvas = document.createElement("canvas");
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
         const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Não foi possível criar contexto 2D para renderizar o PDF.");
+        if (!ctx) throw new Error("Não foi possível criar contexto 2D.");
         await page.render({ canvasContext: ctx, viewport }).promise;
         const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
         if (!blob) throw new Error("Falha ao converter PDF em imagem.");
         const pngName = f.name.replace(/\.pdf$/i, "") + ".png";
         const pngFile = new File([blob], pngName, { type: "image/png" });
         setFile(pngFile);
-        const url = URL.createObjectURL(pngFile);
-        setPreview(url);
+        setPreview(URL.createObjectURL(pngFile));
         setDims({ w: canvas.width, h: canvas.height });
       } catch (e) {
         setError(e instanceof Error ? `Falha ao ler PDF: ${e.message}` : "Falha ao ler PDF.");
@@ -234,11 +288,10 @@ function ModoUpload({
     }
 
     setFile(f);
-    const url = URL.createObjectURL(f);
-    setPreview(url);
+    setPreview(URL.createObjectURL(f));
     const img = new window.Image();
     img.onload = () => setDims({ w: img.naturalWidth, h: img.naturalHeight });
-    img.src = url;
+    img.src = URL.createObjectURL(f);
   }
 
   async function handleUpload() {
@@ -246,25 +299,33 @@ function ModoUpload({
     setUploading(true);
     setError(null);
     try {
+      // 1. Presign
       const presignRes = await fetch("/api/agentes/upload-capa/presign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId, mime_type: file.type }),
       });
-      const presign = await presignRes.json();
-      if (!presignRes.ok) throw new Error(presign.error ?? "Erro ao obter URL de upload");
+      if (!presignRes.ok) {
+        const j = await presignRes.json().catch(() => ({}));
+        throw new Error(j.error ?? "Falha ao obter URL de upload.");
+      }
+      const { token, storage_path } = await presignRes.json();
 
+      // 2. Upload direto para o Storage. Usa a SDK do Supabase — mais
+      // confiável que PUT cru contra a signed URL (que pode variar entre
+      // versões do supabase-js quanto a headers/token).
       const { error: uploadError } = await supabase.storage
         .from("capas")
-        .uploadToSignedUrl(presign.storage_path, presign.token, file, { contentType: file.type });
-      if (uploadError) throw new Error(`Erro ao enviar imagem: ${uploadError.message}`);
+        .uploadToSignedUrl(storage_path, token, file, { contentType: file.type });
+      if (uploadError) throw new Error(`Falha ao enviar imagem: ${uploadError.message}`);
 
-      const r = await fetch("/api/agentes/upload-capa", {
+      // 3. Registra na aplicação
+      const registerRes = await fetch("/api/agentes/upload-capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           project_id: projectId,
-          storage_path: presign.storage_path,
+          storage_path,
           mime_type: file.type,
           largura_px: dims.w,
           altura_px: dims.h,
@@ -273,15 +334,24 @@ function ModoUpload({
           orelha_mm: orelhaMm,
         }),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Erro ao enviar");
-      onSalvo(data as CapaUploadResult);
+      if (!registerRes.ok) {
+        const j = await registerRes.json().catch(() => ({}));
+        throw new Error(j.error ?? "Falha ao registrar capa.");
+      }
+      const result: CapaUploadResult = await registerRes.json();
+      setUploaded(true);
+      onSalvo(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro desconhecido");
+      setError(e instanceof Error ? e.message : "Erro no upload.");
+      uploadTriggeredRef.current = false; // permite retry
     } finally {
       setUploading(false);
     }
   }
+
+  const analise = dadosSalvos?.analise_tecnica as AnaliseTecnica | undefined;
+
+  const podeContinuar = uploaded && !uploading;
 
   return (
     <div className="space-y-6">
@@ -289,150 +359,207 @@ function ModoUpload({
         ← Voltar
       </button>
 
-      <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-6">
-        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Configurar dimensões</p>
+      <div>
+        <h2 className="text-lg font-medium text-brand-primary mb-1">Envie sua capa</h2>
+        <p className="text-xs text-zinc-500">
+          Suba o arquivo panorâmico (frente + lombada + verso), com sangria de 3mm.
+        </p>
+      </div>
 
-        {/* Format — inherited from page-level selector */}
-        <div className="flex items-center gap-3 py-2 px-3 bg-zinc-50 rounded-xl">
-          <p className="text-xs text-zinc-500">Formato:</p>
-          <p className="text-sm font-medium text-brand-primary">{getFormatoDef(formato).label} ({getFormatoDef(formato).dimensoes})</p>
-          <p className="text-xs text-zinc-400 ml-auto">Alterável na tela anterior</p>
-        </div>
-        <div className="hidden">
+      {/* Card único unificado */}
+      <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
+        {/* ── Seção 1: Informações do formato ────────────────────── */}
+        <div className="p-6 space-y-5">
+          {/* Formato */}
+          <div className="flex items-center gap-3 py-2 px-3 bg-zinc-50 rounded-xl">
+            <p className="text-xs text-zinc-500">Formato:</p>
+            <p className="text-sm font-medium text-brand-primary">
+              {getFormatoDef(formato).label} ({getFormatoDef(formato).dimensoes})
+            </p>
+            <p className="text-xs text-zinc-400 ml-auto">Alterável em Elementos</p>
+          </div>
+
+          {/* Orelhas + lombada */}
+          <div className="flex items-start gap-6 flex-wrap">
+            {/* Orelhas */}
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <div
+                  onClick={() => setOrelhaMm(usarOrelhas ? 0 : getOrelhaDefault(formato as FormatKey))}
+                  className={`w-10 h-5 rounded-full border-2 transition-colors relative
+                    ${usarOrelhas ? "bg-brand-gold border-brand-gold" : "bg-zinc-200 border-zinc-300"}`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all
+                      ${usarOrelhas ? "left-5" : "left-0.5"}`}
+                  />
+                </div>
+                <span className="text-xs text-zinc-600">Orelhas</span>
+              </label>
+              {usarOrelhas && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={orelhaMinCm}
+                    max={orelhaMaxCm}
+                    step={1}
+                    value={orelhaCm}
+                    onChange={(e) => {
+                      const cm = Number(e.target.value);
+                      if (!Number.isFinite(cm)) return;
+                      setOrelhaMm(clampOrelhaMm(formato as FormatKey, cm * 10));
+                    }}
+                    className="w-14 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-brand-gold"
+                  />
+                  <span className="text-xs text-zinc-500">cm ({orelhaMinCm}–{orelhaMaxCm})</span>
+                </div>
+              )}
+            </div>
+
+            {/* Lombada (label puro, sem input) */}
+            <div className="text-xs text-zinc-600 pt-1">
+              Lombada: <span className="font-medium text-zinc-800">{lombada}mm</span>
+            </div>
+          </div>
+
+          {/* Dimensões esperadas */}
+          <div className="bg-zinc-50 rounded-xl p-4 text-xs text-zinc-600">
+            <p className="font-medium mb-1 text-zinc-700">Dimensões esperadas para sua capa:</p>
+            <p className="text-zinc-700">
+              {espWMm}mm × {espHMm}mm ({espWPx}px × {espHPx}px @ {dpi}dpi)
+            </p>
+            <p className="text-zinc-400 mt-1">
+              = {sangria}mm sangria
+              {usarOrelhas && ` + ${orelha}mm orelha`}
+              {" "}+ {fmtSpecs.width_mm}mm frente + {lombada}mm lombada + {fmtSpecs.width_mm}mm verso
+              {usarOrelhas && ` + ${orelha}mm orelha`}
+              {" "}+ {sangria}mm sangria
+            </p>
+          </div>
         </div>
 
-        {/* Pages + orelhas + DPI */}
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Páginas</label>
-            {fonteEstimativa === "miolo_real" && (
-              <p className="text-xs text-emerald-700 mb-2 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                Número real do miolo já diagramado ({paginas} págs., lombada {calcLombadaMm(paginas)}mm).
-              </p>
-            )}
-            {fonteEstimativa === "estimado" && (
-              <p className="text-xs text-zinc-500 mb-2 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                Estimativa baseada no manuscrito. Ajustamos automaticamente após a diagramação se a lombada divergir.
-              </p>
-            )}
-            <input type="number" min={10} max={1500} value={paginas}
-              onChange={e => setPaginas(Number(e.target.value))}
-              className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-gold" />
-            <p className="text-[10px] text-zinc-400 mt-1">Lombada: {lombada}mm</p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-zinc-500 mb-1.5">Resolução</label>
-            <select value={dpi} onChange={e => setDpi(Number(e.target.value) as 300 | 150)}
-              className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-gold">
-              <option value={300}>300 DPI (impresso)</option>
-              <option value={150}>150 DPI (digital)</option>
-            </select>
-          </div>
-          <div className="flex flex-col justify-center gap-2">
-            <label className="flex items-center gap-2 cursor-pointer mt-4">
-              <div onClick={() => setOrelhaMm(usarOrelhas ? 0 : getOrelhaDefault(formato as FormatKey))}
-                className={`w-10 h-5 rounded-full border-2 transition-colors relative
-                  ${usarOrelhas ? "bg-brand-gold border-brand-gold" : "bg-zinc-200 border-zinc-300"}`}>
-                <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all
-                  ${usarOrelhas ? "left-5" : "left-0.5"}`} />
-              </div>
-              <span className="text-xs text-zinc-600">Orelhas</span>
-            </label>
-            {usarOrelhas && (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min={orelhaMinCm}
-                  max={orelhaMaxCm}
-                  step={1}
-                  value={orelhaCm}
-                  onChange={(e) => {
-                    const cm = Number(e.target.value);
-                    if (!Number.isFinite(cm)) return;
-                    setOrelhaMm(clampOrelhaMm(formato as FormatKey, cm * 10));
-                  }}
-                  className="w-14 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-brand-gold"
-                />
-                <span className="text-xs text-zinc-500">cm ({orelhaMinCm}–{orelhaMaxCm})</span>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Divider */}
+        <div className="border-t border-zinc-100"></div>
 
-        {/* Expected size */}
-        <div className="bg-zinc-50 rounded-xl p-4 text-xs text-zinc-600">
-          <p className="font-medium mb-1">Dimensões esperadas para sua capa:</p>
-          <p>{espWMm}mm × {espHMm}mm ({espWPx}px × {espHPx}px @ {dpi}dpi)</p>
-          <p className="text-zinc-400 mt-1">
-            = {sangria}mm sangria + {usarOrelhas ? `${orelha}mm orelha + ` : ""}{fmtSpecs.width_mm}mm frente + {lombada}mm lombada{lombadaReal !== null ? " ✓ real" : " (estimativa)"} + {fmtSpecs.width_mm}mm verso{usarOrelhas ? ` + ${orelha}mm orelha` : ""} + {sangria}mm sangria
+        {/* ── Seção 2: Arquivo da capa ────────────────────────────── */}
+        <div className="p-6 space-y-4">
+          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            Arquivo da capa
           </p>
+
+          {preview ? (
+            <div className="space-y-3">
+              <div className="relative w-full max-h-64 overflow-hidden rounded-xl border border-zinc-200 flex items-center justify-center bg-zinc-50">
+                <img src={preview} alt="Preview" className="max-h-64 object-contain" />
+              </div>
+              <div className="flex items-center gap-3 text-xs text-zinc-500">
+                <span>{file?.name ?? "capa"} — {dims ? `${dims.w}×${dims.h}px` : "detectando…"}</span>
+                {uploading && (
+                  <span className="flex items-center gap-1.5 text-brand-primary">
+                    <span className="w-3 h-3 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                    Enviando…
+                  </span>
+                )}
+                {uploaded && !uploading && (
+                  <span className="text-emerald-600 flex items-center gap-1">✓ Enviada</span>
+                )}
+                <button
+                  onClick={() => {
+                    if (uploaded) {
+                      onRefazer();
+                    } else {
+                      setFile(null);
+                      setPreview(null);
+                      setDims(null);
+                      setValidacao(null);
+                      uploadTriggeredRef.current = false;
+                    }
+                  }}
+                  disabled={uploading}
+                  className="ml-auto text-zinc-500 hover:text-zinc-700 underline underline-offset-2 disabled:opacity-40"
+                >
+                  {uploaded ? "Trocar capa" : "Remover"}
+                </button>
+              </div>
+
+              {/* Validação client-side de dimensões (feedback imediato) */}
+              {validacao && !uploaded && (
+                <div
+                  className={`rounded-xl p-3 border text-xs ${
+                    validacao.ok
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                      : "bg-amber-50 border-amber-200 text-amber-700"
+                  }`}
+                >
+                  <p className="font-semibold mb-0.5">
+                    {validacao.ok ? "✓ Dimensões dentro da tolerância" : "⚠ Dimensões divergem"}
+                  </p>
+                  {validacao.detalhes.map((d, i) => (
+                    <p key={i}>{d}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Recomendações técnicas completas (via polling do CapaPage) */}
+              {uploaded && (
+                <RecomendacoesTecnicas
+                  analise={analise}
+                  contexto={{
+                    paginas,
+                    formato,
+                    orelhaDeclarada: orelhaMm,
+                    lombadaEstimada: lombada,
+                  }}
+                  loading={!analise}
+                />
+              )}
+
+              {error && (
+                <div className="rounded-xl p-3 border border-red-200 bg-red-50 text-xs text-red-700">
+                  {error}
+                </div>
+              )}
+            </div>
+          ) : (
+            <label
+              className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed
+              border-zinc-300 rounded-xl cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50 transition-colors"
+            >
+              {convertingPdf ? (
+                <>
+                  <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                  <p className="text-sm font-medium text-zinc-600 mt-2">Convertendo PDF…</p>
+                  <p className="text-xs text-zinc-400 mt-1">Renderizando a primeira página</p>
+                </>
+              ) : (
+                <>
+                  <UploadIcon />
+                  <p className="text-sm font-medium text-zinc-600 mt-2">Clique para selecionar</p>
+                  <p className="text-xs text-zinc-400 mt-1">PNG, JPG ou PDF, alta resolução</p>
+                </>
+              )}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,application/pdf"
+                className="hidden"
+                disabled={convertingPdf}
+                onChange={(e) => {
+                  if (e.target.files?.[0]) void handleFileChange(e.target.files[0]);
+                }}
+              />
+            </label>
+          )}
         </div>
       </div>
 
-      {/* Upload zone */}
-      <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Arquivo da capa</p>
-
-        {preview ? (
-          <div className="space-y-4">
-            <div className="relative w-full max-h-48 overflow-hidden rounded-xl border border-zinc-200 flex items-center justify-center bg-zinc-50">
-              <img src={preview} alt="Preview" className="max-h-48 object-contain" />
-            </div>
-            <p className="text-xs text-zinc-500">{file?.name} — {dims ? `${dims.w}×${dims.h}px` : "detectando…"}</p>
-            <div className="flex gap-2">
-              <button onClick={() => { setFile(null); setPreview(null); setDims(null); setValidacao(null); }}
-                className="px-4 py-2 rounded-lg border border-zinc-200 text-zinc-600 text-xs hover:border-zinc-300 transition-colors">
-                Remover
-              </button>
-            </div>
-
-            {validacao && (
-              <div className={`rounded-xl p-3 border text-xs ${validacao.ok
-                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-                <p className="font-semibold">
-                  {validacao.ok ? "✓ Dimensões dentro da tolerância" : "⚠ Dimensões fora do esperado"}
-                </p>
-                {!validacao.ok && validacao.detalhes.map((d, i) => (
-                  <p key={i} className="mt-0.5">{d}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed
-            border-zinc-300 rounded-xl cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50 transition-colors">
-            {convertingPdf ? (
-              <>
-                <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                <p className="text-sm font-medium text-zinc-600 mt-2">Convertendo PDF…</p>
-                <p className="text-xs text-zinc-400 mt-1">Renderizando a primeira página</p>
-              </>
-            ) : (
-              <>
-                <UploadIcon />
-                <p className="text-sm font-medium text-zinc-600 mt-2">Clique para selecionar</p>
-                <p className="text-xs text-zinc-400 mt-1">PNG, JPG ou PDF, alta resolução</p>
-              </>
-            )}
-            <input type="file" accept="image/png,image/jpeg,application/pdf" className="hidden"
-              disabled={convertingPdf}
-              onChange={e => { if (e.target.files?.[0]) void handleFileChange(e.target.files[0]); }} />
-          </label>
-        )}
-      </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
-      )}
-
-      {file && dims && (
-        <button onClick={handleUpload} disabled={uploading}
-          className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
-            hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
-          {uploading ? "Salvando…" : "Aceitar e continuar →"}
+      {/* Botão Continuar (só aparece após upload concluído) */}
+      {podeContinuar && (
+        <button
+          onClick={onContinuar}
+          className="w-full py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
+            hover:bg-brand-gold/90 transition-colors"
+        >
+          Continuar para Créditos →
         </button>
       )}
     </div>
@@ -823,10 +950,18 @@ function buildRecomendacoes(
 
 function RecomendacoesTecnicas({
   analise,
+  loading,
 }: {
   analise: AnaliseTecnica | undefined;
+  contexto?: {
+    paginas: number;
+    formato: FormatoLivro;
+    orelhaDeclarada: number;
+    lombadaEstimada: number;
+  };
+  loading?: boolean;
 }) {
-  if (!analise) {
+  if (loading || !analise) {
     return (
       <div className="mt-4 text-xs text-zinc-500 flex items-center gap-2">
         <span className="inline-block h-2 w-2 rounded-full bg-zinc-300 animate-pulse"></span>
@@ -1020,7 +1155,16 @@ export default function CapaPage() {
       }
 
       const capa = data?.dados_capa as Record<string, unknown> | null;
-      if (capa) setDados(capa);
+      if (capa) {
+        setDados(capa);
+        // Se capa foi salva via upload, entrar direto no modo upload — a UI
+        // do ModoUpload é responsável por mostrar preview + análise + botão
+        // continuar. O grid de escolha (Upload/IA/Editor) só aparece quando
+        // ainda não há capa ou quando o autor está pra reiniciar.
+        if ((capa as { modo?: string }).modo === "upload") {
+          setModo("upload");
+        }
+      }
 
       const fmtRes = await fetch(`/api/projects/${id}/formato`).then(r => r.ok ? r.json() : null);
       if (fmtRes?.formato) setFormatoGlobal(fmtRes.formato as FormatoLivro);
@@ -1157,6 +1301,9 @@ export default function CapaPage() {
 
   function handleSalvoUpload(result: CapaUploadResult) {
     setDados(result as unknown as Record<string, unknown>);
+    // Não muda modo — permanece em "upload" para que o ModoUpload mostre
+    // preview + análise inline. Botão "Continuar" fica dentro do próprio
+    // ModoUpload (implementado na Passada 2).
   }
 
   if (loading) {
@@ -1182,8 +1329,10 @@ export default function CapaPage() {
           </p>
         </div>
 
-        {/* Already has result — only show ResultadoCard for upload/IA, not editor (handled in grid) */}
-        {dados && modo === "escolha" && dados.source !== "editor" ? (
+        {/* Already has result — só a IA usa ResultadoCard. Upload é
+            renderizado pelo próprio ModoUpload (com preview + análise
+            inline). Editor confirmado usa card compacto no grid. */}
+        {dados && modo === "escolha" && dados.modo === "ia" ? (
           <ResultadoCard
             dados={dados}
             onContinuar={handleContinuar}
@@ -1385,7 +1534,18 @@ export default function CapaPage() {
             lombadaReal={lombadaReal}
             estimativaPaginas={estimativaPaginas}
             fonteEstimativa={fonteEstimativa}
-            onSalvo={r => { handleSalvoUpload(r); setModo("escolha"); }}
+            dadosSalvos={dados}
+            onSalvo={handleSalvoUpload}
+            onContinuar={handleContinuar}
+            onRefazer={async () => {
+              try {
+                await fetch(`/api/projects/${id}/capa/reset`, { method: "POST" });
+              } catch (err) {
+                console.error("[capa] falha ao resetar (não-fatal):", err);
+              }
+              setDados(null);
+              setModo("escolha");
+            }}
             onVoltar={() => setModo("escolha")}
           />
         ) : modo === "ia" ? (
