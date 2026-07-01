@@ -226,7 +226,17 @@ export function resolveCapaCompleta(
   // do livro 3D.
   if (isUploadCapa(dados_capa)) {
     const url = typeof dados_capa.url === "string" ? dados_capa.url : null;
-    const orelha_mm = resolveOrelhaMm(dados_capa.orelha_mm, dados_capa.usar_orelhas, formato);
+    // Fallback para editor_data.orelhaMm: cobre dois casos:
+    //   1. Uploads pré-14.J (que não gravavam orelha_mm no root)
+    //   2. Autor que fez upload e depois abriu o editor visual —
+    //      o autosave do editor grava orelhaMm dentro de editor_data
+    //      preservando modo:"upload" no root
+    const editorOrelhaMm = (dados_capa.editor_data as { orelhaMm?: number } | undefined)?.orelhaMm;
+    const orelha_mm = resolveOrelhaMm(
+      dados_capa.orelha_mm ?? editorOrelhaMm,
+      dados_capa.usar_orelhas,
+      formato,
+    );
     return {
       pronta: !!(urlCompleta ?? url),
       origem: "upload",
