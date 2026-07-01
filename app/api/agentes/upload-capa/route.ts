@@ -200,10 +200,27 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
   };
 
+  // Zera explicitamente qualquer schema residual (editor/IA anterior) para o
+  // resolver em lib/capa-resolver.ts não misturar rastros entre pipelines.
+  // A coluna JSONB do Supabase é substituída inteira em `.update({ dados_capa })`,
+  // mas manter os `null`s explícitos serve de defesa contra merges parciais
+  // e deixa clara a intenção no schema. Ver comentário no isEditorCapa em
+  // lib/capa-resolver.ts.
+  const dadosCapaPayload = {
+    ...result,
+    source: null,
+    imagem_url: null,
+    confirmed_at: null,
+    editor_data: null,
+    url_escolhida: null,
+    opcoes: null,
+    pdf_grafica: null,
+  };
+
   await Promise.all([
     supabase
       .from("projects")
-      .update({ dados_capa: result, etapa_atual: "capa" })
+      .update({ dados_capa: dadosCapaPayload, etapa_atual: "capa" })
       .eq("id", project_id)
       .eq("user_id", userId),
     lockFormato(project_id),

@@ -712,10 +712,12 @@ function ResultadoCard({
   dados,
   onContinuar,
   onRefazer,
+  onEditarEditor,
 }: {
   dados: Record<string, unknown>;
   onContinuar: () => void;
   onRefazer: () => void;
+  onEditarEditor?: () => void;
 }) {
   const modo = (dados.source === "editor" ? "editor" : dados.modo) as string;
   const url = (dados.imagem_url ?? dados.url_escolhida ?? dados.url) as string | undefined;
@@ -742,8 +744,8 @@ function ResultadoCard({
 
         {url && (
           <div className="flex justify-center mb-4">
-            <div className="relative w-40 aspect-[2/3] rounded-xl overflow-hidden border border-zinc-200 shadow-sm">
-              <Image src={url} alt="Capa" fill className="object-cover" />
+            <div className="relative w-full max-w-xl aspect-[16/5] rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-50">
+              <Image src={url} alt="Capa" fill className="object-contain" />
             </div>
           </div>
         )}
@@ -755,6 +757,13 @@ function ResultadoCard({
             hover:border-brand-gold/30 transition-colors">
           Refazer capa
         </button>
+        {onEditarEditor && (
+          <button onClick={onEditarEditor}
+            className="px-6 py-3 rounded-xl border border-brand-gold/40 text-brand-primary text-sm
+              hover:bg-brand-gold/5 transition-colors">
+            Editar no editor
+          </button>
+        )}
         <button onClick={onContinuar}
           className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
             hover:bg-brand-gold/90 transition-colors">
@@ -905,6 +914,7 @@ export default function CapaPage() {
             dados={dados}
             onContinuar={handleContinuar}
             onRefazer={() => { setDados(null); setModo("escolha"); }}
+            onEditarEditor={() => router.push(`/editor/capa/${id}`)}
           />
         ) : modo === "escolha" ? (
           <div className="space-y-6">
@@ -994,8 +1004,8 @@ export default function CapaPage() {
                   {editorConfirmed ? (
                     <div className="flex flex-col p-6 bg-white rounded-2xl border border-emerald-200 text-left">
                       {editorThumbnail ? (
-                        <div className="mb-3 w-[120px] overflow-hidden rounded-lg border border-zinc-200">
-                          <img src={editorThumbnail} alt="Capa atual" className="h-20 w-full object-cover" />
+                        <div className="mb-3 w-full aspect-[16/5] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                          <img src={editorThumbnail} alt="Capa atual" className="h-full w-full object-contain" />
                         </div>
                       ) : (
                         <div className="mb-3 w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">

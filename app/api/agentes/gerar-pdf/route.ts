@@ -95,10 +95,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(mock);
   }
 
-  // ── Load dados_miolo ──────────────────────────────────────────────────────
+  // ── Load dados_miolo + dados_capa ─────────────────────────────────────────
+  // `dados_capa` é usado no fim para decidir se disparamos `preparar-capa-grafica`
+  // retroativamente (quando o autor confirmou a capa ANTES de gerar o miolo,
+  // preparar-capa-grafica devolve 422 — só dá pra rodar quando o miolo existe,
+  // ou seja, agora).
   const { data: project } = await supabase
     .from("projects")
-    .select("dados_miolo")
+    .select("dados_miolo, dados_capa")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -425,6 +429,35 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", project_id)
     .eq("user_id", userId);
+
+  // Dispara PDF gráfica em background quando a capa já está confirmada mas
+  // ainda não tem `pdf_grafica`. Cobre o caso: autor confirmou a capa (editor
+  // ou upload) ANTES de gerar o miolo — naquela hora, preparar-capa-grafica
+  // devolveu 422 porque não tinha lombada real. Agora que o miolo existe,
+  // rodamos o pipeline. Fire-and-forget: não bloqueia a resposta do PDF.
+  const capaCheck = project?.dados_capa as {
+    source?: string;
+    modo?: string;
+    confirmed_at?: string;
+    pdf_grafica?: unknown;
+  } | null;
+  const capaConfirmada =
+    capaCheck?.source === "editor" ||
+    capaCheck?.modo === "upload" ||
+    Boolean(capaCheck?.confirmed_at);
+  const pdfGraficaAusente = capaCheck?.pdf_grafica == null;
+  if (capaConfirmada && pdfGraficaAusente) {
+    fetch(`${req.nextUrl.origin}/api/agentes/prova/preparar-capa-grafica`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: req.headers.get("cookie") ?? "",
+      },
+      body: JSON.stringify({ project_id }),
+    }).catch((err) => {
+      console.warn("[gerar-pdf] preparar-capa-grafica retroativo falhou:", err);
+    });
+  }
 
   return NextResponse.json(dados_pdf);
   } catch (err) {
