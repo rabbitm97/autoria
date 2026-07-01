@@ -913,7 +913,18 @@ export default function CapaPage() {
           <ResultadoCard
             dados={dados}
             onContinuar={handleContinuar}
-            onRefazer={() => { setDados(null); setModo("escolha"); }}
+            onRefazer={async () => {
+              // Zera dados_capa no banco antes de limpar estado local. Sem
+              // isso, o editor abre "continuando" a capa anterior (background
+              // + elements persistidos em editor_data) em vez de em branco.
+              try {
+                await fetch(`/api/projects/${id}/capa/reset`, { method: "POST" });
+              } catch (err) {
+                console.error("[capa] falha ao resetar dados_capa (não-fatal):", err);
+              }
+              setDados(null);
+              setModo("escolha");
+            }}
             onEditarEditor={() => router.push(`/editor/capa/${id}`)}
           />
         ) : modo === "escolha" ? (

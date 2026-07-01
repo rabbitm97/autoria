@@ -1,0 +1,104 @@
+export const maxDuration = 30;
+
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
+import { createClient } from "@supabase/supabase-js";
+
+/**
+ * POST /api/projects/[id]/capa/reset
+ *
+ * Zera `dados_capa` para que a próxima entrada na etapa de Capa
+ * (upload, IA ou editor) parta de um estado limpo. Também limpa
+ * arquivos residuais no Storage: PNG do upload, capa exportada do
+ * editor e PDF gráfica antigos.
+ *
+ * Chamada pelo botão "Refazer capa" na tela de Capa quando o autor
+ * quer descartar completamente a capa atual (upload ou IA) e recomeçar.
+ * Sem essa limpeza, o editor abre "continuando" de onde parou.
+ */
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+
+  let userId: string;
+  let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+  if (isDev()) {
+    userId = "dev-user";
+    supabase = await createSupabaseServerClient();
+  } else {
+    try {
+      const auth = await requireAuth();
+      userId = auth.user.id;
+      supabase = auth.supabase;
+    } catch (e) {
+      return e as Response;
+    }
+  }
+
+  // Ler dados_capa atual para saber quais paths do Storage limpar.
+  const { data: project, error: loadErr } = await supabase
+    .from("projects")
+    .select("dados_capa")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .single();
+
+  if (loadErr || !project) {
+    return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+  }
+
+  const capa = project.dados_capa as Record<string, unknown> | null;
+
+  // Coleta paths de storage para remoção — best-effort, sem falhar se
+  // já não existirem.
+  const storageClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
+  const pathsBucketCapas: string[] = [];
+  const pathsBucketEditorAssets: string[] = [];
+
+  if (capa) {
+    // Upload (bucket "capas")
+    const uploadPath = capa.storage_path as string | undefined;
+    if (uploadPath) pathsBucketCapas.push(uploadPath);
+
+    // PDF gráfica e PNG exportado do editor (bucket "editor-assets")
+    const pdfGraf = capa.pdf_grafica as { storage_path?: string } | null;
+    if (pdfGraf?.storage_path) pathsBucketEditorAssets.push(pdfGraf.storage_path);
+
+    // imagem_url do editor é uma signed URL — extrair o path
+    const imagemUrl = capa.imagem_url as string | undefined;
+    if (imagemUrl) {
+      const match = imagemUrl.match(/\/editor-assets\/([^?]+)/);
+      if (match) pathsBucketEditorAssets.push(match[1]);
+    }
+  }
+
+  // Remove — best-effort, ignora erros
+  if (pathsBucketCapas.length > 0) {
+    await storageClient.storage.from("capas").remove(pathsBucketCapas).catch(() => null);
+  }
+  if (pathsBucketEditorAssets.length > 0) {
+    await storageClient.storage.from("editor-assets").remove(pathsBucketEditorAssets).catch(() => null);
+  }
+
+  // Zera dados_capa e volta etapa para "capa" (garantia).
+  const { error: updateErr } = await supabase
+    .from("projects")
+    .update({ dados_capa: null, etapa_atual: "capa" })
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (updateErr) {
+    console.error("[capa/reset] erro ao zerar dados_capa:", updateErr);
+    return NextResponse.json({ error: "Falha ao resetar a capa." }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
