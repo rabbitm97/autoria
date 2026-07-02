@@ -217,21 +217,16 @@ function ModoUpload({
   useEffect(() => {
     if (dadosSalvos && dadosSalvos.modo === "upload") {
       const url = dadosSalvos.url as string | undefined;
-      const geradoEm = dadosSalvos.gerado_em as string | undefined;
       const wPx = dadosSalvos.largura_px as number | undefined;
       const hPx = dadosSalvos.altura_px as number | undefined;
       const orelhaSalva = dadosSalvos.orelha_mm as number | undefined;
 
-      // Cache busting: storage path é sempre `capa_upload.png` (upsert),
-      // então CDN do Supabase serve versão em cache após trocar capa.
-      // Anexar ?v=${gerado_em} força CDN a considerar URL diferente.
-      const urlComVersao = url && geradoEm
-        ? `${url}?v=${encodeURIComponent(geradoEm)}`
-        : url;
-
-      if (urlComVersao) {
-        console.info(`[capa upload] repopulando preview com ${urlComVersao}`);
-        setPreview(urlComVersao);
+      // Signed URLs (do 14.M.1.6) já são únicas por sessão e contém
+      // ?token=... — anexar ?v= adicional quebrava a assinatura.
+      // Cache busting agora é implícito: cada nova análise gera URL nova.
+      if (url) {
+        console.info(`[capa upload] repopulando preview com ${url}`);
+        setPreview(url);
       }
       if (wPx && hPx) setDims({ w: wPx, h: hPx });
       if (typeof orelhaSalva === "number") setOrelhaMm(orelhaSalva);
