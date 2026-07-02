@@ -143,9 +143,11 @@ function ModoUpload({
   lombadaReal,
   estimativaPaginas,
   dadosSalvos,
+  pollingTimeout,
   onSalvo,
   onContinuar,
   onRefazer,
+  onReanalisar,
   onVoltar,
 }: {
   projectId: string;
@@ -154,9 +156,11 @@ function ModoUpload({
   estimativaPaginas: number | null;
   fonteEstimativa: "miolo_real" | "estimado" | null;
   dadosSalvos: Record<string, unknown> | null;
+  pollingTimeout: boolean;
   onSalvo: (result: CapaUploadResult) => void;
   onContinuar: () => void;
   onRefazer: () => void;
+  onReanalisar: () => void;
   onVoltar: () => void;
 }) {
   const formato = formatoInicial;
@@ -577,10 +581,10 @@ function ModoUpload({
             <div className="space-y-3">
               <div className="relative w-full max-h-64 overflow-hidden rounded-xl border border-zinc-200 flex items-center justify-center bg-zinc-50">
                 <img
-                  src={preview}
+                  src={preview ?? undefined}
                   alt="Preview"
                   className="max-h-64 object-contain"
-                  key={(dadosSalvos?.gerado_em as string | undefined) ?? preview ?? "empty"}
+                  key={preview ?? "empty"}
                 />
               </div>
               <div className="flex items-center gap-3 text-xs text-zinc-500">
@@ -625,7 +629,7 @@ function ModoUpload({
               {/* Recomendações técnicas completas (via polling do CapaPage).
                   Sem validação client-side de dimensões: a análise técnica
                   reporta o mesmo (e mais). Duplicar confunde o autor. */}
-              {uploaded && (
+              {uploaded && !pollingTimeout && (
                 <RecomendacoesTecnicas
                   analise={analise}
                   contexto={{
@@ -637,6 +641,22 @@ function ModoUpload({
                   }}
                   loading={!analise}
                 />
+              )}
+              {uploaded && pollingTimeout && !analise && (
+                <div className="rounded-xl p-4 border border-amber-200 bg-amber-50 text-xs text-amber-800">
+                  <p className="font-medium mb-1">Análise demorou mais que o esperado</p>
+                  <p className="mb-3">
+                    A análise técnica ainda não chegou. Isso pode acontecer se o
+                    arquivo é muito grande ou se houve troca de arquivo durante o
+                    processamento.
+                  </p>
+                  <button
+                    onClick={onReanalisar}
+                    className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium transition-colors"
+                  >
+                    Tentar de novo
+                  </button>
+                </div>
               )}
 
               {error && (
@@ -1301,6 +1321,12 @@ export default function CapaPage() {
   // Lombada adjustment
   const [ajusteDisponivel, setAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [ajustando, setAjustando] = useState(false);
+  // Polling timeout (14.M.1.7): quando o polling estoura 60s sem análise,
+  // mostra CTA de reanalisar em vez de deixar spinner infinito.
+  const [pollingTimeout, setPollingTimeout] = useState(false);
+  // Nonce incrementado por handleReanalisar para forçar o effect do polling
+  // a re-executar mesmo quando `dados` não muda entre tentativas.
+  const [reanalisarNonce, setReanalisarNonce] = useState(0);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
@@ -1367,9 +1393,17 @@ export default function CapaPage() {
   useEffect(() => {
     if (!dados) return;
     if (dados.modo === "skip") return;
-    if (dados.analise_tecnica) return;
+    if (dados.analise_tecnica) {
+      setPollingTimeout(false);
+      return;
+    }
     const hasUrl = dados.url || dados.url_escolhida || dados.imagem_url;
     if (!hasUrl) return;
+
+    // Novo ciclo de polling: garante que qualquer timeout anterior é limpo
+    // antes de reiniciar. Necessário para o botão "Reanalisar" (via
+    // reanalisarNonce) desligar o CTA de erro assim que o polling retomar.
+    setPollingTimeout(false);
 
     let cancelled = false;
     let ticks = 0;
@@ -1388,6 +1422,7 @@ export default function CapaPage() {
         const capa = proj?.dados_capa as Record<string, unknown> | null;
         if (capa?.analise_tecnica) {
           setDados(capa);
+          setPollingTimeout(false);
           return;
         }
       } catch (err) {
@@ -1395,12 +1430,29 @@ export default function CapaPage() {
       }
       if (ticks < MAX_TICKS && !cancelled) {
         setTimeout(poll, INTERVAL_MS);
+      } else if (!cancelled) {
+        // Estourou 60s sem análise: sinaliza timeout para a UI mostrar CTA.
+        setPollingTimeout(true);
       }
     };
 
     const timer = setTimeout(poll, INTERVAL_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [dados, id]);
+  }, [dados, id, reanalisarNonce]);
+
+  // Handler do CTA "Tentar de novo" quando o polling estourou. Dispara
+  // /analisar manualmente e bumpa o nonce para o effect do polling
+  // re-executar (dados não muda entre tentativas, então só o nonce
+  // dispara o retry).
+  async function handleReanalisar() {
+    setPollingTimeout(false);
+    setReanalisarNonce((n) => n + 1);
+    try {
+      await fetch(`/api/projects/${id}/capa/analisar`, { method: "POST" });
+    } catch (err) {
+      console.warn("[capa reanalisar] falhou:", err);
+    }
+  }
 
   useEffect(() => {
     if (!id || !formatoGlobal) return;
@@ -1704,6 +1756,7 @@ export default function CapaPage() {
             estimativaPaginas={estimativaPaginas}
             fonteEstimativa={fonteEstimativa}
             dadosSalvos={dados}
+            pollingTimeout={pollingTimeout}
             onSalvo={handleSalvoUpload}
             onContinuar={handleContinuar}
             onRefazer={async () => {
@@ -1715,6 +1768,7 @@ export default function CapaPage() {
               setDados(null);
               setModo("escolha");
             }}
+            onReanalisar={handleReanalisar}
             onVoltar={() => setModo("escolha")}
           />
         ) : modo === "ia" ? (

@@ -134,6 +134,27 @@ export async function POST(
       return NextResponse.json({ ok: true, analise, persisted: false });
     }
 
+    // Descarta análise stale: se autor trocou capa durante os 2-3s de
+    // análise, a URL analisada não bate com a URL atual do projeto.
+    // Nesse caso, persistir sobrescreveria dados corretos com informação
+    // antiga sobre a capa que não existe mais.
+    //
+    // Compara sem query string porque signed URLs (14.M.1.6) mudam a cada
+    // sessão — mesma capa pode ter URL diferente em momentos diferentes.
+    const urlAtualNoDado = (dadosCapaAtual as { url?: string }).url;
+    if (urlAtualNoDado && analise.url_analisada) {
+      const urlAtualClean = urlAtualNoDado.split("?")[0];
+      const urlAnaliseClean = analise.url_analisada.split("?")[0];
+      if (urlAtualClean !== urlAnaliseClean) {
+        console.warn(
+          `[capa/analisar] URL analisada divergente da atual — descartando análise stale.\n` +
+          `  Analisada: ${urlAnaliseClean}\n` +
+          `  Atual:     ${urlAtualClean}`
+        );
+        return NextResponse.json({ ok: true, analise, persisted: false, reason: "url_stale" });
+      }
+    }
+
     const novoDadosCapa = { ...dadosCapaAtual, analise_tecnica: analise };
     await supabase
       .from("projects")
