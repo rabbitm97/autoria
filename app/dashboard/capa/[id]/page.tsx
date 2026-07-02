@@ -207,6 +207,13 @@ function ModoUpload({
 
   // Se veio com dados salvos (autor recarregou a página com upload já feito),
   // popula preview a partir da URL do banco.
+  //
+  // Depende explicitamente de `dadosSalvos.gerado_em` (além de dadosSalvos)
+  // para garantir que trocar capa (mesma URL, novo timestamp) dispare
+  // repopulação do preview. Sem esta dependência, React pode considerar
+  // dadosSalvos "igual" via reference equality e não reprocessar.
+  const dadosSalvosGeradoEm = dadosSalvos?.gerado_em as string | undefined;
+
   useEffect(() => {
     if (dadosSalvos && dadosSalvos.modo === "upload") {
       const url = dadosSalvos.url as string | undefined;
@@ -214,18 +221,23 @@ function ModoUpload({
       const wPx = dadosSalvos.largura_px as number | undefined;
       const hPx = dadosSalvos.altura_px as number | undefined;
       const orelhaSalva = dadosSalvos.orelha_mm as number | undefined;
+
       // Cache busting: storage path é sempre `capa_upload.png` (upsert),
       // então CDN do Supabase serve versão em cache após trocar capa.
       // Anexar ?v=${gerado_em} força CDN a considerar URL diferente.
       const urlComVersao = url && geradoEm
         ? `${url}?v=${encodeURIComponent(geradoEm)}`
         : url;
-      if (urlComVersao) setPreview(urlComVersao);
+
+      if (urlComVersao) {
+        console.info(`[capa upload] repopulando preview com ${urlComVersao}`);
+        setPreview(urlComVersao);
+      }
       if (wPx && hPx) setDims({ w: wPx, h: hPx });
       if (typeof orelhaSalva === "number") setOrelhaMm(orelhaSalva);
       setUploaded(true);
     }
-  }, [dadosSalvos]);
+  }, [dadosSalvos, dadosSalvosGeradoEm]);
 
   const usarOrelhas = orelhaMm > 0;
   const orelhaMaxCm = getOrelhaMax(formato as FormatKey) / 10;
@@ -581,8 +593,20 @@ function ModoUpload({
                     ajudam o autor a decidir nada — o que importa é o
                     resultado da análise técnica, que aparece abaixo. */}
                 <span className="truncate">
-                  {file?.name
+                  {/*
+                    Prioridade do nome exibido:
+                    1. pdfOriginal.name — quando autor selecionou PDF na sessão
+                       (antes ou durante upload). Preserva "capa.pdf" mesmo
+                       quando internamente `file` é o PNG convertido.
+                    2. dadosSalvos.filename_original — nome persistido após
+                       upload concluído. Cobre reload da página e o caso
+                       normal pós-upload.
+                    3. file.name — arquivo local em memória, casos não-PDF.
+                    4. Fallback "capa".
+                  */}
+                  {pdfOriginal?.name
                     ?? (dadosSalvos?.filename_original as string | undefined)
+                    ?? file?.name
                     ?? "capa"}
                 </span>
                 {uploading && (
@@ -1020,10 +1044,12 @@ function buildRecomendacoes(
   // rasterização feita no cliente (300) não reflete a qualidade real.
   // Trocamos por uma nota informativa em vez de omitir silenciosamente.
   if (origemArquivo === "pdf") {
+    // PDF é vetorial: nível OK explícito. Autor precisa entender que
+    // enviar PDF é o *melhor* caminho, não algo que só evita reportar DPI.
     recs.push({
-      nivel: "info",
+      nivel: "ok",
       titulo: "PDF vetorial",
-      detalhe: "O arquivo original é PDF vetorial: a qualidade não depende de DPI e será nítida em qualquer tamanho de impressão.",
+      detalhe: "O arquivo original é PDF vetorial — o formato ideal para impressão. A qualidade não depende de DPI e será nítida em qualquer tamanho.",
     });
   } else if (analise.dpi >= 300) {
     recs.push({
