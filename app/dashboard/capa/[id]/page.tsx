@@ -998,68 +998,72 @@ function buildRecomendacoes(
   if (!analise) return [];
   const recs: Recomendacao[] = [];
 
-  // Ordem intencional: dimensões/sangria SEMPRE primeiro — é o único
-  // grupo que pode impedir a produção física. Colorspace, DPI, lombada
-  // e orelha vêm depois. Marcas de corte por último (informativo).
+  // ──────────────────────────────────────────────────────────────────
+  // 1. CONFIGURAÇÃO DA CAPA (dimensões + marcas + sangria unificados)
+  //    Sempre primeira linha. Mensagens específicas por configuração.
+  // ──────────────────────────────────────────────────────────────────
+  const sangriaMm = analise.sangria_detectada_mm ?? 0;
+  const areaUtil = analise.area_util_mm;
 
-  // Dimensões + sangria em um único bloco: sangria só faz sentido lida
-  // junto do tamanho recebido vs esperado. Cobrimos os 4 estados de
-  // `sangria` (incluindo "desconhecido", que antes ficava em silêncio).
-  const dimsDetalhe =
-    `Recebido: ${analise.largura_mm}mm × ${analise.altura_mm}mm. ` +
-    `Esperado: ${analise.largura_esperada_mm}mm × ${analise.altura_esperada_mm}mm.`;
-  if (analise.sangria === "presente") {
+  if (analise.configuracao === "A") {
     recs.push({
       nivel: "ok",
-      titulo: "Capa dentro do esperado",
-      detalhe: `${dimsDetalhe} A sangria de 3mm está presente nas bordas — a gráfica corta sem deixar filete branco.`,
+      titulo: "Capa pronta para gráfica",
+      detalhe: `Marcas de corte, sangria de ${sangriaMm}mm e dimensões corretas${
+        areaUtil ? ` (${areaUtil.largura}mm × ${areaUtil.altura}mm dentro do corte)` : ""
+      }. Formato ideal para impressão profissional.`,
     });
-  } else if (analise.sangria === "ausente") {
+  } else if (analise.configuracao === "B") {
     recs.push({
       nivel: "aviso",
-      titulo: "Sangria de 3mm ausente",
-      detalhe: `${dimsDetalhe} As bordas não têm margem de sangria. Para eBook e Kindle não importa; para impressão, a gráfica pode deixar um filete branco fino no corte — redimensione a arte com +3mm em cada lado.`,
+      titulo: "Capa com sangria, sem marcas de corte",
+      detalhe: `Sua capa tem sangria de ${sangriaMm}mm mas não tem marcas de corte. Para eBook, Kindle e impressão sob demanda está pronta. Para gráfica offset, ideal ter marcas de corte para orientar o operador — não é bloqueador, mas alguns fluxos exigem.`,
     });
-  } else if (analise.sangria === "parcial") {
+  } else if (analise.configuracao === "C") {
     recs.push({
       nivel: "aviso",
-      titulo: "Sangria detectada só em um eixo",
-      detalhe: `${dimsDetalhe} Encontramos sangria em uma direção mas não na outra. Para impressão física, revise o layout para garantir 3mm em cada uma das quatro bordas.`,
+      titulo: "Capa no formato de eBook",
+      detalhe: `Sua capa está no formato correto da área útil${
+        areaUtil ? ` (${areaUtil.largura}mm × ${areaUtil.altura}mm)` : ""
+      }. Para eBook e Kindle está pronta. Para impressão física, falta a sangria de 3mm (evita filete branco na borda) e as marcas de corte (orientam o corte da gráfica).`,
     });
   } else {
-    // "desconhecido" — não foi possível avaliar a sangria a partir da imagem
     recs.push({
       nivel: "aviso",
       titulo: "Dimensões fora do esperado",
-      detalhe: `${dimsDetalhe} As medidas divergem do gabarito do formato, então não conseguimos avaliar a sangria com precisão. Reenvie uma arte com as dimensões corretas para o formato escolhido.`,
+      detalhe: `Sua capa tem ${analise.largura_mm}mm × ${analise.altura_mm}mm, mas não bate com nenhuma configuração esperada para este formato e número de páginas. Verifique se o formato do livro está correto e se a capa é panorâmica (frente + lombada + verso).`,
     });
   }
 
-  // Colorspace — mensagem depende da fonte da detecção. Quando veio do PDF
-  // cru, temos alta confiança; quando veio só do PNG rasterizado, o CMYK
-  // original pode ter sido perdido na conversão do cliente.
+  // ──────────────────────────────────────────────────────────────────
+  // 2. Colorspace
+  // ──────────────────────────────────────────────────────────────────
   if (analise.colorspace === "cmyk") {
     recs.push({
       nivel: "ok",
       titulo: "Cores em CMYK",
       detalhe: analise.colorspace_source === "pdf"
-        ? "Detectamos CMYK no PDF original. Perfeito para impressão — as cores no papel saem como você vê."
-        : "Perfeito para impressão. As cores no papel vão sair exatamente como você vê.",
+        ? "Perfeito para impressão profissional. Detectado direto do PDF."
+        : "Perfeito para impressão. As cores no papel vão sair como você vê.",
     });
   } else if (analise.colorspace === "srgb" || analise.colorspace === "rgb16") {
     recs.push({
       nivel: "aviso",
       titulo: "Cores em RGB",
-      detalhe: "A capa está em RGB (padrão de tela). Para eBook e Kindle está pronta. Para impressão física, o ideal é converter para CMYK no seu editor (Photoshop/Illustrator/Affinity) antes de enviar — algumas cores muito saturadas podem ficar visivelmente diferentes no papel se a conversão for feita só na gráfica.",
+      detalhe: "Sua capa está em RGB (padrão de tela). Para eBook, Kindle e impressão sob demanda, está pronta. Para tiragens grandes em gráfica offset, algumas cores muito saturadas podem sair levemente diferentes no papel.",
+    });
+  } else if (analise.colorspace === "other") {
+    recs.push({
+      nivel: "aviso",
+      titulo: "Espaço de cor não identificado",
+      detalhe: "Não conseguimos determinar o espaço de cor do arquivo. Recomendamos exportar como PNG, JPG ou PDF padrão.",
     });
   }
 
-  // DPI — quando o original era PDF, o formato é vetorial e o DPI da
-  // rasterização feita no cliente (300) não reflete a qualidade real.
-  // Trocamos por uma nota informativa em vez de omitir silenciosamente.
+  // ──────────────────────────────────────────────────────────────────
+  // 3. DPI — pulamos quando o original era PDF
+  // ──────────────────────────────────────────────────────────────────
   if (origemArquivo === "pdf") {
-    // PDF é vetorial: nível OK explícito. Autor precisa entender que
-    // enviar PDF é o *melhor* caminho, não algo que só evita reportar DPI.
     recs.push({
       nivel: "ok",
       titulo: "PDF vetorial",
@@ -1075,28 +1079,31 @@ function buildRecomendacoes(
     recs.push({
       nivel: "aviso",
       titulo: `Resolução ${analise.dpi} DPI`,
-      detalhe: `Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados no papel.`,
+      detalhe: "Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados.",
     });
   }
 
-  // Lombada — só reportamos quando há divergência relevante (>1mm).
-  // O caso "bate certinho" já está implícito nas dimensões acima; não
-  // precisa poluir a lista com uma linha "ok" extra.
+  // ──────────────────────────────────────────────────────────────────
+  // 4. Lombada deduzida vs esperada
+  // ──────────────────────────────────────────────────────────────────
   if (
     analise.lombada_deduzida_mm != null &&
     analise.lombada_esperada_mm > 0
   ) {
-    const absDiff = Math.abs(analise.lombada_deduzida_mm - analise.lombada_esperada_mm);
+    const diff = analise.lombada_deduzida_mm - analise.lombada_esperada_mm;
+    const absDiff = Math.abs(diff);
     if (absDiff > 1) {
       recs.push({
         nivel: "aviso",
         titulo: `Lombada diverge em ${absDiff.toFixed(1)}mm`,
-        detalhe: `Sua capa tem lombada de ${analise.lombada_deduzida_mm}mm, mas o miolo indica ${analise.lombada_esperada_mm}mm. Diferenças acima de 1mm fazem o texto da lombada aparecer torto ou na dobra. Se você já sabe a espessura final do livro, revise; senão, gere a capa novamente após confirmar o miolo.`,
+        detalhe: `Sua capa tem lombada de ${analise.lombada_deduzida_mm}mm, mas o miolo indica ${analise.lombada_esperada_mm}mm. Diferenças acima de 1mm fazem o texto da lombada aparecer torto ou na dobra.`,
       });
     }
   }
 
-  // Orelha deduzida vs esperada
+  // ──────────────────────────────────────────────────────────────────
+  // 5. Orelha deduzida vs esperada
+  // ──────────────────────────────────────────────────────────────────
   if (
     analise.orelha_deduzida_mm != null &&
     analise.orelha_esperada_mm != null &&
@@ -1105,20 +1112,11 @@ function buildRecomendacoes(
     recs.push({
       nivel: "aviso",
       titulo: analise.orelha_deduzida_mm === 0
-        ? "Sem orelhas detectadas"
+        ? "Sem orelhas detectadas na imagem"
         : `Orelhas de ${analise.orelha_deduzida_mm}mm detectadas`,
       detalhe: analise.orelha_esperada_mm === 0
-        ? `Você não marcou orelhas, mas a imagem parece incluir espaço para orelhas de ${analise.orelha_deduzida_mm}mm. Marque a caixa "Orelhas" acima para bater com a arte enviada.`
+        ? `Você não marcou orelhas, mas a imagem parece incluir espaço para orelhas de ${analise.orelha_deduzida_mm}mm. Marque a opção "Orelhas" acima para bater com a arte.`
         : `Você marcou orelhas de ${analise.orelha_esperada_mm}mm, mas a imagem indica ${analise.orelha_deduzida_mm}mm. Ajuste no campo acima ou reenvie a arte.`,
-    });
-  }
-
-  // Marcas de corte (por último — puramente informativo)
-  if (analise.marcas_corte === "detectadas") {
-    recs.push({
-      nivel: "info",
-      titulo: "Marcas de corte detectadas",
-      detalhe: "Sua capa tem indicações de onde a gráfica deve cortar. Isso é bom — mostra que ela foi preparada para produção.",
     });
   }
 
