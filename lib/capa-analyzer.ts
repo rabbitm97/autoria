@@ -70,14 +70,33 @@ export interface AnaliseTecnica {
   ok_grafica: boolean;
   ok_ebook: boolean;
   avisos: string[];
+  /**
+   * Fonte da detecção de colorspace. "pdf" quando o autor enviou PDF e nós
+   * conseguimos analisar o PDF cru (mais confiável para colorspace nativo);
+   * "png" quando análise rodou apenas no PNG (rasterização perde informação
+   * de colorspace CMYK original).
+   */
+  colorspace_source: "pdf" | "png";
+  /**
+   * Dimensões do PDF original em mm (via pdf-lib), quando disponível.
+   * `null` quando fonte é PNG.
+   */
+  pdf_dimensoes_mm?: { largura: number; altura: number } | null;
   debug?: {
     darkPixelsTopLeft: number;
     darkPixelsTopRight: number;
+    pdfDetectionError?: string;
   };
 }
 
 export interface AnalisarInput {
   url: string;
+  /**
+   * URL pública do PDF original quando o autor enviou PDF e nós preservamos
+   * o arquivo cru. Quando presente, o analyzer usa o PDF para detectar
+   * colorspace (mais confiável) e ignora o resultado do PNG.
+   */
+  pdfOriginalUrl?: string;
   formato: FormatoLivro;
   paginas: number;
   orelhaMm: number;
@@ -89,8 +108,62 @@ export interface AnalisarInput {
   panoramica: boolean;
 }
 
+/**
+ * Analisa o PDF original quando disponível. Retorna:
+ *  - colorspace: detectado via search bruto no buffer descomprimido
+ *    (`/DeviceCMYK` vs `/DeviceRGB`). Heurística ~90% precisa: PDFs com
+ *    zlib streams podem esconder markers, mas cobre a maioria dos casos
+ *    profissionais (InDesign, Illustrator, Photoshop export).
+ *  - dimensões: extraídas via pdf-lib (primeira página).
+ *
+ * Nunca lança — retorna `null` em qualquer falha, com o erro registrado
+ * no `debug.pdfDetectionError` do output principal.
+ */
+async function detectPdfOriginal(pdfUrl: string): Promise<{
+  colorspace: Colorspace;
+  largura_mm: number;
+  altura_mm: number;
+} | { error: string }> {
+  try {
+    const res = await fetch(pdfUrl);
+    if (!res.ok) return { error: `HTTP ${res.status} ao baixar PDF` };
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    // Colorspace: busca por markers padrão no PDF. Aceita false positives
+    // pequenos (ex: comentários de metadados com "CMYK") em troca de
+    // pegar CMYK real que estaria escondido em streams zlib caso
+    // fôssemos parsear estruturalmente.
+    const text = buffer.toString("latin1"); // preserva bytes brutos
+    const hasCmyk = /\/DeviceCMYK|\/DefaultCMYK|\/CMYK\b/i.test(text);
+    const hasRgb = /\/DeviceRGB|\/DefaultRGB|\/RGB\b/i.test(text);
+    let colorspace: Colorspace;
+    if (hasCmyk) {
+      // Quando ambos aparecem (comum em PDFs mistos), CMYK vence porque
+      // representa a intenção do designer para gráfica.
+      colorspace = "cmyk";
+    } else if (hasRgb) {
+      colorspace = "srgb";
+    } else {
+      colorspace = "other";
+    }
+
+    // Dimensões via pdf-lib (primeira página).
+    const { PDFDocument } = await import("pdf-lib");
+    const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+    const page = doc.getPage(0);
+    const { width: widthPt, height: heightPt } = page.getSize();
+    // Convert pontos → mm (1 pt = 25.4/72 mm)
+    const largura_mm = Math.round((widthPt * 25.4) / 72 * 10) / 10;
+    const altura_mm = Math.round((heightPt * 25.4) / 72 * 10) / 10;
+
+    return { colorspace, largura_mm, altura_mm };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica> {
-  const { url, formato, paginas, orelhaMm, panoramica } = input;
+  const { url, pdfOriginalUrl, formato, paginas, orelhaMm, panoramica } = input;
   const analisado_em = new Date().toISOString();
 
   const specs = getFormatoDef(formato).specs;
@@ -127,6 +200,8 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       avisos: [
         `Não foi possível analisar a capa: ${err instanceof Error ? err.message : "erro de rede"}.`,
       ],
+      colorspace_source: "png" as const,
+      pdf_dimensoes_mm: null,
     };
   }
 
@@ -153,6 +228,8 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       ok_grafica: false,
       ok_ebook: false,
       avisos: [`Arquivo inválido ou corrompido: ${err instanceof Error ? err.message : "erro"}.`],
+      colorspace_source: "png" as const,
+      pdf_dimensoes_mm: null,
     };
   }
 
@@ -177,15 +254,36 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       ok_grafica: false,
       ok_ebook: false,
       avisos: ["Não foi possível ler dimensões da imagem."],
+      colorspace_source: "png" as const,
+      pdf_dimensoes_mm: null,
     };
   }
 
   // ── Colorspace ──────────────────────────────────────────────────────────
-  const colorspace: Colorspace =
+  // Sempre analisamos o PNG primeiro (fonte de dados garantida). Se PDF
+  // original está disponível, sobrescrevemos com o resultado do PDF —
+  // mais confiável, especialmente para autores que exportaram CMYK do
+  // InDesign/Illustrator.
+  let colorspace: Colorspace =
     meta.space === "cmyk" ? "cmyk"
     : meta.space === "srgb" || meta.space === "rgb" ? "srgb"
     : meta.space === "rgb16" ? "rgb16"
     : "other";
+  let colorspace_source: "pdf" | "png" = "png";
+  let pdf_dimensoes_mm: { largura: number; altura: number } | null = null;
+  let pdfDetectionError: string | undefined;
+
+  if (pdfOriginalUrl) {
+    const pdfResult = await detectPdfOriginal(pdfOriginalUrl);
+    if ("error" in pdfResult) {
+      pdfDetectionError = pdfResult.error;
+      console.warn(`[capa-analyzer] falha na análise do PDF original: ${pdfResult.error}`);
+    } else {
+      colorspace = pdfResult.colorspace;
+      colorspace_source = "pdf";
+      pdf_dimensoes_mm = { largura: pdfResult.largura_mm, altura: pdfResult.altura_mm };
+    }
+  }
 
   // ── DPI ─────────────────────────────────────────────────────────────────
   // Prioridade:
@@ -338,6 +436,12 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
     ok_grafica,
     ok_ebook,
     avisos,
-    debug: { darkPixelsTopLeft: darkTL, darkPixelsTopRight: darkTR },
+    colorspace_source,
+    pdf_dimensoes_mm,
+    debug: {
+      darkPixelsTopLeft: darkTL,
+      darkPixelsTopRight: darkTR,
+      pdfDetectionError,
+    },
   };
 }

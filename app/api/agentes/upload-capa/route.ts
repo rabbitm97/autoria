@@ -32,6 +32,19 @@ export interface CapaUploadResult {
   origem_arquivo: "pdf" | "png" | "jpg";
   /** Path no bucket `capas` do PDF original quando `origem_arquivo === "pdf"`. */
   pdf_original_path: string | null;
+  /**
+   * Nome do arquivo original enviado pelo autor (antes de qualquer conversão
+   * PDF→PNG feita no cliente). Usado no preview para o autor reconhecer
+   * seu próprio arquivo. Fallback para "capa" quando não fornecido.
+   */
+  filename_original: string | null;
+  /**
+   * Motivo pelo qual o PDF original NÃO foi preservado, quando aplicável.
+   * `null` significa "sucesso" ou "não era PDF". Preenchido pelo frontend
+   * quando o upload paralelo falha, permitindo rastreamento sem quebrar
+   * o fluxo principal.
+   */
+  pdf_original_error: string | null;
 }
 
 export interface CapaValidacao {
@@ -109,6 +122,8 @@ export async function POST(req: NextRequest) {
     usar_orelhas?: boolean;
     origem_arquivo?: "pdf" | "png" | "jpg";
     pdf_original_path?: string | null;
+    filename_original?: string | null;
+    pdf_original_error?: string | null;
   };
   try {
     body = await req.json();
@@ -128,6 +143,8 @@ export async function POST(req: NextRequest) {
     usar_orelhas,
     origem_arquivo: rawOrigemArquivo,
     pdf_original_path: rawPdfOriginalPath,
+    filename_original: rawFilenameOriginal,
+    pdf_original_error: rawPdfOriginalError,
   } = body;
 
   if (!project_id || !storage_path || !largura_px || !altura_px) {
@@ -230,6 +247,8 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
     origem_arquivo: origemArquivo,
     pdf_original_path: pdfOriginalPath,
+    filename_original: typeof rawFilenameOriginal === "string" ? rawFilenameOriginal : null,
+    pdf_original_error: typeof rawPdfOriginalError === "string" ? rawPdfOriginalError : null,
   };
 
   // Zera explicitamente qualquer schema residual (editor/IA anterior) para o

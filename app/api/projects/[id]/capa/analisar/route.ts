@@ -75,9 +75,20 @@ export async function POST(
     dadosMiolo?.config?.paginas_estimadas ??
     100;
 
+  // Resolve URL pública do PDF original quando disponível — permite que
+  // o analyzer inspecione o PDF cru para detectar colorspace CMYK real,
+  // impossível de recuperar do PNG rasterizado.
+  const pdfOriginalPath = (dadosCapa as { pdf_original_path?: string | null }).pdf_original_path;
+  let pdfOriginalUrl: string | undefined;
+  if (pdfOriginalPath) {
+    const { data: { publicUrl } } = supabase.storage.from("capas").getPublicUrl(pdfOriginalPath);
+    pdfOriginalUrl = publicUrl;
+  }
+
   try {
     const analise = await analisarCapa({
       url: resolved.url_principal,
+      pdfOriginalUrl,
       formato,
       paginas,
       orelhaMm: resolved.orelha_mm,

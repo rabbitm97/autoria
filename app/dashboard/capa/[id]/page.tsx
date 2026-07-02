@@ -210,10 +210,17 @@ function ModoUpload({
   useEffect(() => {
     if (dadosSalvos && dadosSalvos.modo === "upload") {
       const url = dadosSalvos.url as string | undefined;
+      const geradoEm = dadosSalvos.gerado_em as string | undefined;
       const wPx = dadosSalvos.largura_px as number | undefined;
       const hPx = dadosSalvos.altura_px as number | undefined;
       const orelhaSalva = dadosSalvos.orelha_mm as number | undefined;
-      if (url) setPreview(url);
+      // Cache busting: storage path é sempre `capa_upload.png` (upsert),
+      // então CDN do Supabase serve versão em cache após trocar capa.
+      // Anexar ?v=${gerado_em} força CDN a considerar URL diferente.
+      const urlComVersao = url && geradoEm
+        ? `${url}?v=${encodeURIComponent(geradoEm)}`
+        : url;
+      if (urlComVersao) setPreview(urlComVersao);
       if (wPx && hPx) setDims({ w: wPx, h: hPx });
       if (typeof orelhaSalva === "number") setOrelhaMm(orelhaSalva);
       setUploaded(true);
@@ -358,9 +365,12 @@ function ModoUpload({
         .from("capas")
         .uploadToSignedUrl(storage_path, token, file, { contentType: file.type });
 
-      // 2b. Em paralelo: preserva o PDF original quando aplicável. Se
-      // falhar, apenas loga — não bloqueia o fluxo principal do PNG.
+      // 2b. Em paralelo: preserva o PDF original quando aplicável.
+      // Usa `fetch` direto ao signed URL (mais simples de debugar que
+      // `uploadToSignedUrl`) e registra causa da falha em uma variável
+      // separada — enviada ao backend para rastreamento sem bloquear.
       let pdfOriginalPath: string | null = null;
+      let pdfOriginalError: string | null = null;
       const uploadPdfOriginal = pdfOriginal
         ? (async () => {
             try {
@@ -369,17 +379,32 @@ function ModoUpload({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ project_id: projectId, mime_type: "application/pdf" }),
               });
-              if (!presignPdf.ok) throw new Error("presign do PDF original falhou");
-              const { token: pdfToken, storage_path: pdfPath } = await presignPdf.json();
-              const { error: pdfUploadError } = await supabase.storage
-                .from("capas")
-                .uploadToSignedUrl(pdfPath, pdfToken, pdfOriginal, {
-                  contentType: "application/pdf",
-                });
-              if (pdfUploadError) throw new Error(pdfUploadError.message);
+              if (!presignPdf.ok) {
+                const errBody = await presignPdf.text().catch(() => "");
+                throw new Error(`presign PDF falhou (HTTP ${presignPdf.status}): ${errBody.slice(0, 200)}`);
+              }
+              const { signed_url: pdfSignedUrl, token: pdfToken, storage_path: pdfPath } = await presignPdf.json();
+
+              // Upload direto via signed URL (fetch nu, não wrapper).
+              const putRes = await fetch(pdfSignedUrl, {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/pdf",
+                  Authorization: `Bearer ${pdfToken}`,
+                  "x-upsert": "true",
+                },
+                body: pdfOriginal,
+              });
+              if (!putRes.ok) {
+                const errBody = await putRes.text().catch(() => "");
+                throw new Error(`PUT PDF falhou (HTTP ${putRes.status}): ${errBody.slice(0, 200)}`);
+              }
               pdfOriginalPath = pdfPath;
+              console.info(`[upload-capa] PDF original preservado em ${pdfPath}`);
             } catch (err) {
-              console.warn("[upload-capa] falha ao preservar PDF original (não-fatal):", err);
+              const msg = err instanceof Error ? err.message : String(err);
+              console.error("[upload-capa] PDF original preservation FAILED:", msg);
+              pdfOriginalError = msg.slice(0, 500);
             }
           })()
         : Promise.resolve();
@@ -395,6 +420,7 @@ function ModoUpload({
         : file.type.includes("png")
         ? "png"
         : "jpg";
+      const filenameOriginal = pdfOriginal?.name ?? file.name;
       const registerRes = await fetch("/api/agentes/upload-capa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -409,6 +435,8 @@ function ModoUpload({
           orelha_mm: orelhaMm,
           origem_arquivo: origemArquivo,
           pdf_original_path: pdfOriginalPath,
+          filename_original: filenameOriginal,
+          pdf_original_error: pdfOriginalError,
         }),
       });
       if (!registerRes.ok) {
@@ -541,13 +569,22 @@ function ModoUpload({
           {preview ? (
             <div className="space-y-3">
               <div className="relative w-full max-h-64 overflow-hidden rounded-xl border border-zinc-200 flex items-center justify-center bg-zinc-50">
-                <img src={preview} alt="Preview" className="max-h-64 object-contain" />
+                <img
+                  src={preview}
+                  alt="Preview"
+                  className="max-h-64 object-contain"
+                  key={(dadosSalvos?.gerado_em as string | undefined) ?? preview ?? "empty"}
+                />
               </div>
               <div className="flex items-center gap-3 text-xs text-zinc-500">
                 {/* Metadata do arquivo: só nome. Dimensões em pixels não
                     ajudam o autor a decidir nada — o que importa é o
                     resultado da análise técnica, que aparece abaixo. */}
-                <span className="truncate">{file?.name ?? "capa"}</span>
+                <span className="truncate">
+                  {file?.name
+                    ?? (dadosSalvos?.filename_original as string | undefined)
+                    ?? "capa"}
+                </span>
                 {uploading && (
                   <span className="flex items-center gap-1.5 text-brand-primary shrink-0">
                     <span className="w-3 h-3 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
@@ -923,76 +960,94 @@ function buildRecomendacoes(
   if (!analise) return [];
   const recs: Recomendacao[] = [];
 
-  // Ordem intencional: começamos pelas dimensões porque um arquivo com
-  // dimensão errada é o único problema que impede o fluxo. Sangria vem
-  // logo depois porque afeta impressão diretamente. Colorspace, DPI e
-  // demais avisos são secundários.
+  // Ordem intencional: dimensões/sangria SEMPRE primeiro — é o único
+  // grupo que pode impedir a produção física. Colorspace, DPI, lombada
+  // e orelha vêm depois. Marcas de corte por último (informativo).
 
-  // Sangria (mais crítico depois de dimensões — sem sangria, a impressão
-  // física fica com filete branco na borda)
+  // Dimensões + sangria em um único bloco: sangria só faz sentido lida
+  // junto do tamanho recebido vs esperado. Cobrimos os 4 estados de
+  // `sangria` (incluindo "desconhecido", que antes ficava em silêncio).
+  const dimsDetalhe =
+    `Recebido: ${analise.largura_mm}mm × ${analise.altura_mm}mm. ` +
+    `Esperado: ${analise.largura_esperada_mm}mm × ${analise.altura_esperada_mm}mm.`;
   if (analise.sangria === "presente") {
     recs.push({
       nivel: "ok",
-      titulo: "Sangria de 3mm presente",
-      detalhe: "As bordas da capa têm a margem de segurança que a gráfica precisa para cortar sem deixar filete branco.",
+      titulo: "Capa dentro do esperado",
+      detalhe: `${dimsDetalhe} A sangria de 3mm está presente nas bordas — a gráfica corta sem deixar filete branco.`,
     });
-  } else if (analise.sangria === "ausente" || analise.sangria === "parcial") {
+  } else if (analise.sangria === "ausente") {
     recs.push({
       nivel: "aviso",
-      titulo: analise.sangria === "ausente" ? "Sangria de 3mm ausente" : "Sangria de 3mm parcial",
-      detalhe: "Para eBook e Kindle isso não importa. Para impressão física, sem sangria a gráfica pode deixar um filete branco fino na borda ao cortar — recomendamos redimensionar a arte com +3mm em cada lado.",
+      titulo: "Sangria de 3mm ausente",
+      detalhe: `${dimsDetalhe} As bordas não têm margem de sangria. Para eBook e Kindle não importa; para impressão, a gráfica pode deixar um filete branco fino no corte — redimensione a arte com +3mm em cada lado.`,
+    });
+  } else if (analise.sangria === "parcial") {
+    recs.push({
+      nivel: "aviso",
+      titulo: "Sangria detectada só em um eixo",
+      detalhe: `${dimsDetalhe} Encontramos sangria em uma direção mas não na outra. Para impressão física, revise o layout para garantir 3mm em cada uma das quatro bordas.`,
+    });
+  } else {
+    // "desconhecido" — não foi possível avaliar a sangria a partir da imagem
+    recs.push({
+      nivel: "aviso",
+      titulo: "Dimensões fora do esperado",
+      detalhe: `${dimsDetalhe} As medidas divergem do gabarito do formato, então não conseguimos avaliar a sangria com precisão. Reenvie uma arte com as dimensões corretas para o formato escolhido.`,
     });
   }
 
-  // Colorspace
+  // Colorspace — mensagem depende da fonte da detecção. Quando veio do PDF
+  // cru, temos alta confiança; quando veio só do PNG rasterizado, o CMYK
+  // original pode ter sido perdido na conversão do cliente.
   if (analise.colorspace === "cmyk") {
     recs.push({
       nivel: "ok",
       titulo: "Cores em CMYK",
-      detalhe: "Perfeito para impressão. As cores no papel vão sair exatamente como você vê.",
+      detalhe: analise.colorspace_source === "pdf"
+        ? "Detectamos CMYK no PDF original. Perfeito para impressão — as cores no papel saem como você vê."
+        : "Perfeito para impressão. As cores no papel vão sair exatamente como você vê.",
     });
   } else if (analise.colorspace === "srgb" || analise.colorspace === "rgb16") {
     recs.push({
       nivel: "aviso",
       titulo: "Cores em RGB",
-      detalhe: "A capa está em RGB (padrão de tela). Para eBook e Kindle está pronta. Para impressão física, converteremos automaticamente para CMYK — algumas cores muito saturadas podem ficar levemente diferentes no papel.",
+      detalhe: "A capa está em RGB (padrão de tela). Para eBook e Kindle está pronta. Para impressão física, o ideal é converter para CMYK no seu editor (Photoshop/Illustrator/Affinity) antes de enviar — algumas cores muito saturadas podem ficar visivelmente diferentes no papel se a conversão for feita só na gráfica.",
     });
   }
 
-  // DPI — pula quando o original era PDF. PDF é vetorial: o DPI da imagem
-  // rasterizada no cliente reflete só o parâmetro de conversão (300),
-  // não a qualidade real do arquivo. Reportar isso para PDF confunde o
-  // autor.
-  if (origemArquivo !== "pdf") {
-    if (analise.dpi >= 300) {
-      recs.push({
-        nivel: "ok",
-        titulo: `${analise.dpi} DPI`,
-        detalhe: "Resolução alta o suficiente para impressão profissional sem pixelização.",
-      });
-    } else if (analise.dpi > 0) {
-      recs.push({
-        nivel: "aviso",
-        titulo: `Resolução ${analise.dpi} DPI`,
-        detalhe: `Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados no papel.`,
-      });
-    }
+  // DPI — quando o original era PDF, o formato é vetorial e o DPI da
+  // rasterização feita no cliente (300) não reflete a qualidade real.
+  // Trocamos por uma nota informativa em vez de omitir silenciosamente.
+  if (origemArquivo === "pdf") {
+    recs.push({
+      nivel: "info",
+      titulo: "PDF vetorial",
+      detalhe: "O arquivo original é PDF vetorial: a qualidade não depende de DPI e será nítida em qualquer tamanho de impressão.",
+    });
+  } else if (analise.dpi >= 300) {
+    recs.push({
+      nivel: "ok",
+      titulo: `${analise.dpi} DPI`,
+      detalhe: "Resolução alta o suficiente para impressão profissional sem pixelização.",
+    });
+  } else if (analise.dpi > 0) {
+    recs.push({
+      nivel: "aviso",
+      titulo: `Resolução ${analise.dpi} DPI`,
+      detalhe: `Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados no papel.`,
+    });
   }
 
-  // Lombada deduzida vs esperada
+  // Lombada — só reportamos quando há divergência relevante (>1mm).
+  // O caso "bate certinho" já está implícito nas dimensões acima; não
+  // precisa poluir a lista com uma linha "ok" extra.
   if (
     analise.lombada_deduzida_mm != null &&
     analise.lombada_esperada_mm > 0
   ) {
-    const diff = analise.lombada_deduzida_mm - analise.lombada_esperada_mm;
-    const absDiff = Math.abs(diff);
-    if (absDiff <= 1) {
-      recs.push({
-        nivel: "ok",
-        titulo: `Lombada com ${analise.lombada_deduzida_mm}mm`,
-        detalhe: `Bate com a espessura estimada pelo miolo (${analise.lombada_esperada_mm}mm).`,
-      });
-    } else {
+    const absDiff = Math.abs(analise.lombada_deduzida_mm - analise.lombada_esperada_mm);
+    if (absDiff > 1) {
       recs.push({
         nivel: "aviso",
         titulo: `Lombada diverge em ${absDiff.toFixed(1)}mm`,
@@ -1004,19 +1059,18 @@ function buildRecomendacoes(
   // Orelha deduzida vs esperada
   if (
     analise.orelha_deduzida_mm != null &&
-    analise.orelha_esperada_mm != null
+    analise.orelha_esperada_mm != null &&
+    analise.orelha_deduzida_mm !== analise.orelha_esperada_mm
   ) {
-    if (analise.orelha_deduzida_mm !== analise.orelha_esperada_mm) {
-      recs.push({
-        nivel: "aviso",
-        titulo: analise.orelha_deduzida_mm === 0
-          ? "Sem orelhas detectadas"
-          : `Orelhas de ${analise.orelha_deduzida_mm}mm detectadas`,
-        detalhe: analise.orelha_esperada_mm === 0
-          ? `Você não marcou orelhas, mas a imagem parece incluir espaço para orelhas de ${analise.orelha_deduzida_mm}mm. Marque a caixa "Orelhas" acima para bater com a arte enviada.`
-          : `Você marcou orelhas de ${analise.orelha_esperada_mm}mm, mas a imagem indica ${analise.orelha_deduzida_mm}mm. Ajuste no campo acima ou reenvie a arte.`,
-      });
-    }
+    recs.push({
+      nivel: "aviso",
+      titulo: analise.orelha_deduzida_mm === 0
+        ? "Sem orelhas detectadas"
+        : `Orelhas de ${analise.orelha_deduzida_mm}mm detectadas`,
+      detalhe: analise.orelha_esperada_mm === 0
+        ? `Você não marcou orelhas, mas a imagem parece incluir espaço para orelhas de ${analise.orelha_deduzida_mm}mm. Marque a caixa "Orelhas" acima para bater com a arte enviada.`
+        : `Você marcou orelhas de ${analise.orelha_esperada_mm}mm, mas a imagem indica ${analise.orelha_deduzida_mm}mm. Ajuste no campo acima ou reenvie a arte.`,
+    });
   }
 
   // Marcas de corte (por último — puramente informativo)
