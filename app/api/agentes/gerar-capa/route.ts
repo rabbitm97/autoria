@@ -7,6 +7,7 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import { signedUrlCapas } from "@/lib/capa-signed-url";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -272,9 +273,11 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const { data: { publicUrl } } = storageClient.storage
-        .from("capas")
-        .getPublicUrl(storagePath);
+      const { url: publicUrl, error: signErr } = await signedUrlCapas(storageClient, storagePath);
+      if (signErr || !publicUrl) {
+        console.error(`[gerar-capa] signed URL failed (opção ${i}):`, signErr);
+        continue;
+      }
 
       opcoes.push({ url: publicUrl, storage_path: storagePath });
     } catch (err) {

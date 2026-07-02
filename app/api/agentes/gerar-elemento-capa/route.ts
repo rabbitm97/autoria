@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
+import { signedUrlCapas } from "@/lib/capa-signed-url";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -206,7 +207,11 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const { data: { publicUrl } } = storageClient.storage.from("capas").getPublicUrl(storagePath);
+    const { url: publicUrl, error: signErr } = await signedUrlCapas(storageClient, storagePath);
+    if (signErr || !publicUrl) {
+      console.error(`[gerar-elemento-capa] signed URL failed (${elemento} ${i}):`, signErr);
+      continue;
+    }
     opcoes.push({ url: publicUrl, storage_path: storagePath });
   }
 

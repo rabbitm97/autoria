@@ -7,6 +7,7 @@ import { isDev } from "@/lib/anthropic";
 import sharp from "sharp";
 import { getFormatoDef } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
+import { signedUrlCapas } from "@/lib/capa-signed-url";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -248,7 +249,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Erro no upload: ${uploadError.message}` }, { status: 500 });
   }
 
-  const { data: { publicUrl } } = storageClient.storage.from("capas").getPublicUrl(storagePath);
+  const { url: publicUrl, error: signErr } = await signedUrlCapas(storageClient, storagePath);
+  if (signErr || !publicUrl) {
+    return NextResponse.json({ error: `Falha ao gerar URL da capa composta: ${signErr}` }, { status: 500 });
+  }
 
   const elapsed = Date.now() - t0;
   console.info(

@@ -6,6 +6,7 @@ import { isDev } from "@/lib/anthropic";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { analisarCapa } from "@/lib/capa-analyzer";
 import type { FormatoLivro } from "@/lib/formatos";
+import { signedUrlCapas } from "@/lib/capa-signed-url";
 
 /**
  * POST /api/projects/[id]/capa/analisar
@@ -81,13 +82,31 @@ export async function POST(
   const pdfOriginalPath = (dadosCapa as { pdf_original_path?: string | null }).pdf_original_path;
   let pdfOriginalUrl: string | undefined;
   if (pdfOriginalPath) {
-    const { data: { publicUrl } } = supabase.storage.from("capas").getPublicUrl(pdfOriginalPath);
-    pdfOriginalUrl = publicUrl;
+    const { url: pdfUrl, error: pdfSignErr } = await signedUrlCapas(supabase, pdfOriginalPath);
+    if (pdfSignErr) {
+      console.warn(`[capa/analisar] falha ao gerar signed URL do PDF: ${pdfSignErr}`);
+    } else if (pdfUrl) {
+      pdfOriginalUrl = pdfUrl;
+    }
   }
 
   try {
+    // Regenera signed URL da capa principal caso a persistida tenha
+    // expirado (>7 dias sem uso). Prioriza storage_path se disponível;
+    // fallback para url_principal quando path não está persistido.
+    const storagePath = (dadosCapa as { storage_path?: string | null }).storage_path;
+    let urlAnalise = resolved.url_principal;
+    if (storagePath) {
+      const { url: freshUrl, error: freshErr } = await signedUrlCapas(supabase, storagePath);
+      if (freshErr) {
+        console.warn(`[capa/analisar] falha ao regenerar signed URL: ${freshErr}`);
+      } else if (freshUrl) {
+        urlAnalise = freshUrl;
+      }
+    }
+
     const analise = await analisarCapa({
-      url: resolved.url_principal,
+      url: urlAnalise,
       pdfOriginalUrl,
       formato,
       paginas,

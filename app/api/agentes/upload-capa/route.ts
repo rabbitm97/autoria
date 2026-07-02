@@ -7,6 +7,7 @@ import { isDev } from "@/lib/anthropic";
 import { getFormatoDef, estimarLombadaCapaMm, type FormatoLivro } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import { signedUrlCapas } from "@/lib/capa-signed-url";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -213,9 +214,10 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: { publicUrl } } = storageClient.storage
-    .from("capas")
-    .getPublicUrl(storage_path);
+  const { url: publicUrl, error: signErr } = await signedUrlCapas(storageClient, storage_path);
+  if (signErr || !publicUrl) {
+    return NextResponse.json({ error: `Falha ao gerar URL da capa: ${signErr}` }, { status: 500 });
+  }
 
   // Origem do arquivo: prefere o campo explícito do body; se ausente
   // (clientes legados), inferir do mime_type. PDF vem sempre por

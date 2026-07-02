@@ -661,8 +661,7 @@ function ModoUpload({
               {convertingPdf ? (
                 <>
                   <span className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                  <p className="text-sm font-medium text-zinc-600 mt-2">Convertendo PDF…</p>
-                  <p className="text-xs text-zinc-400 mt-1">Renderizando a primeira página</p>
+                  <p className="text-sm font-medium text-zinc-600 mt-2">Carregando…</p>
                 </>
               ) : (
                 <>
