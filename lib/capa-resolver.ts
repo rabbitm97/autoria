@@ -106,6 +106,22 @@ export interface CapaResolvida {
   orelha_mm: number;
 
   /**
+   * URL da capa sem marcas de corte, quando o autor subiu PDF com BleedBox
+   * declarado e o trim rodou com sucesso no upload. `null` para:
+   *  - Capas sem marcas (Config B/C)
+   *  - Capas do editor (nunca têm marcas na `imagem_url`)
+   *  - Capas de IA (frente pura, sem marcas)
+   *  - Uploads não-PDF (PNG/JPG direto)
+   *  - Uploads pré-14.M.7
+   *
+   * Consumidores devem preferir esta URL sobre `url_principal` para EPUB,
+   * Book3D e extração de frente. O `url_principal` continua sendo o arquivo
+   * original enviado pelo autor — necessário para a análise técnica
+   * detectar Config A via TrimBox/BleedBox.
+   */
+  url_area_util: string | null;
+
+  /**
    * Análise técnica (colorspace, sangria, DPI, marcas de corte). Populada
    * assincronamente por `POST /api/projects/[id]/capa/analisar` após upload
    * ou confirm do editor. `undefined` significa "análise ainda não rodou" —
@@ -154,6 +170,7 @@ function isIACapa(c: DadosCapa): c is Record<string, unknown> & {
 function isUploadCapa(c: DadosCapa): c is Record<string, unknown> & {
   modo: "upload";
   url?: string;
+  url_area_util?: string;
   largura_px?: number;
   altura_px?: number;
   dpi?: number;
@@ -208,6 +225,7 @@ export function resolveCapaCompleta(
       altura_px: null,
       dpi: 300,
       orelha_mm,
+      url_area_util: null,
       analise_tecnica: (dados_capa as { analise_tecnica?: AnaliseTecnica }).analise_tecnica,
     };
   }
@@ -231,6 +249,7 @@ export function resolveCapaCompleta(
       altura_px: null,
       dpi: 300,
       orelha_mm,
+      url_area_util: null,
       analise_tecnica: (dados_capa as { analise_tecnica?: AnaliseTecnica }).analise_tecnica,
     };
   }
@@ -268,6 +287,7 @@ export function resolveCapaCompleta(
       altura_px: typeof dados_capa.altura_px === "number" ? dados_capa.altura_px : null,
       dpi: typeof dados_capa.dpi === "number" ? dados_capa.dpi : 300,
       orelha_mm,
+      url_area_util: typeof dados_capa.url_area_util === "string" ? dados_capa.url_area_util : null,
       analise_tecnica: (dados_capa as { analise_tecnica?: AnaliseTecnica }).analise_tecnica,
     };
   }
@@ -284,5 +304,6 @@ export function resolveCapaCompleta(
     altura_px: null,
     dpi: null,
     orelha_mm: 0,
+    url_area_util: null,
   };
 }

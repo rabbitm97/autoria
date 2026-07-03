@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
     titulo       = ms?.titulo?.trim() || "Sem título";
     subtitulo    = ms?.subtitulo?.trim() ?? "";
     texto        = ms?.texto_revisado ?? ms?.texto ?? "";
-    capaUrl      = capaResolvida.url_principal;
+    capaUrl      = capaResolvida.url_area_util ?? capaResolvida.url_principal;
     palavrasChave = (el?.palavras_chave as string[] | undefined) ?? [];
     autor        = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
   }

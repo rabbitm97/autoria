@@ -65,7 +65,7 @@ function Book3D({ book }: {
 
   if (book.isPanoramic && imgDims) {
     imgVisualW = (imgDims.w / imgDims.h) * bookH;
-    spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
+    spineW = Math.max(1, Math.round(book.lombadaMm * SCALE));
 
     // Desconta orelhas (esq + dir) antes de dividir a área útil entre contracapa e frente.
     orelhaOffsetPx = (book.orelhaRatioW ?? 0) * imgVisualW;
@@ -73,7 +73,7 @@ function Book3D({ book }: {
     bookW = Math.max(100, Math.round((utilImgW - spineW) / 2));
   } else {
     bookW = Math.round(160 * SCALE);
-    spineW = Math.max(12, Math.round(book.lombadaMm * SCALE));
+    spineW = Math.max(1, Math.round(book.lombadaMm * SCALE));
   }
 
   const panoramicBgCommon: React.CSSProperties = book.isPanoramic && book.coverUrl && imgDims
@@ -534,7 +534,7 @@ export default function ProvaPage() {
         const orelhaRatioW = orelhaMm > 0 ? (orelhaMm + SANGRIA_MM) / totalWMm : 0;
 
         setBookData({
-          coverUrl: capaResolvida.url_principal,
+          coverUrl: capaResolvida.url_area_util ?? capaResolvida.url_principal,
           isPanoramic: capaResolvida.is_panoramica,
           fills: capaResolvida.fills,
           titulo: ms?.titulo ?? "Livro sem título",

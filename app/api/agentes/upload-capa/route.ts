@@ -8,6 +8,7 @@ import { getFormatoDef, estimarLombadaCapaMm, type FormatoLivro } from "@/lib/fo
 import { getProjectFormato, lockFormato } from "@/lib/projects";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
+import { trimarMarcasDeCapa } from "@/lib/capa-trim-marcas";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,18 @@ export interface CapaUploadResult {
    * o fluxo principal.
    */
   pdf_original_error: string | null;
+  /**
+   * URL assinada da imagem já com marcas de corte removidas (Config A → B).
+   * Populada quando o autor sobe PDF com BleedBox declarado e o trim rodou
+   * com sucesso. `null` para Config B/C, uploads não-PDF, ou falha no trim.
+   * Consumidores (EPUB, Prova 3D, extractor de frente) devem preferir esta
+   * URL sobre `url`. Ver `lib/capa-trim-marcas.ts`.
+   */
+  url_area_util: string | null;
+  /** Path no bucket `capas` da imagem trimada. `null` quando `url_area_util` é null. */
+  storage_path_area_util: string | null;
+  /** Dimensões físicas da área útil (BleedBox equivalente) em mm. `null` quando não houve trim. */
+  area_util_mm: { largura: number; altura: number } | null;
 }
 
 export interface CapaValidacao {
@@ -172,42 +185,6 @@ export async function POST(req: NextRequest) {
     orelhaMm = usar_orelhas ? getOrelhaDefault(formato as FormatKey) : 0;
   }
 
-  // ── Validate dimensions ───────────────────────────────────────────────────
-  const expected = calcExpectedDims({ formato, paginas, orelha_mm: orelhaMm, dpi });
-  const mm2px = dpi / 25.4;
-  const tolPx = Math.round(2 * mm2px); // ±2mm tolerance
-
-  const recebidaWMm = Math.round((largura_px / mm2px) * 10) / 10;
-  const recebidaHMm = Math.round((altura_px / mm2px) * 10) / 10;
-
-  const wOk = Math.abs(largura_px - expected.wPx) <= tolPx;
-  const hOk = Math.abs(altura_px - expected.hPx) <= tolPx;
-
-  const detalhes: string[] = [];
-  if (!wOk) {
-    detalhes.push(
-      `Largura: recebida ${recebidaWMm}mm (${largura_px}px), esperada ${expected.wMm}mm (${expected.wPx}px) ±2mm`
-    );
-  }
-  if (!hOk) {
-    detalhes.push(
-      `Altura: recebida ${recebidaHMm}mm (${altura_px}px), esperada ${expected.hMm}mm (${expected.hPx}px) ±2mm`
-    );
-  }
-  if (wOk && hOk) {
-    detalhes.push("Dimensões dentro da tolerância ±2mm.");
-  }
-
-  const validacao: CapaValidacao = {
-    ok: wOk && hOk,
-    largura_esperada_mm: expected.wMm,
-    altura_esperada_mm: expected.hMm,
-    largura_recebida_mm: recebidaWMm,
-    altura_recebida_mm: recebidaHMm,
-    tolerancia_mm: 2,
-    detalhes,
-  };
-
   // ── Get public URL for the already-uploaded file ─────────────────────────
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -235,6 +212,104 @@ export async function POST(req: NextRequest) {
       ? rawPdfOriginalPath
       : null;
 
+  // ── Trim marcas de corte (Config A → área útil equivalente a Config B) ──
+  // Quando o autor sobe PDF com BleedBox declarado, extraímos a versão sem
+  // marcas para consumo downstream (EPUB, Prova 3D, extractor de frente).
+  // O arquivo original permanece intacto — necessário para a análise técnica
+  // detectar corretamente Config A via TrimBox/BleedBox. Falhas silenciosas:
+  // trim é otimização, não bloqueia o upload.
+  let urlAreaUtil: string | null = null;
+  let storagePathAreaUtil: string | null = null;
+  let areaUtilMm: { largura: number; altura: number } | null = null;
+  let larguraValidacao_px = largura_px;
+  let alturaValidacao_px = altura_px;
+
+  if (pdfOriginalPath) {
+    try {
+      const [pdfDl, imgDl] = await Promise.all([
+        storageClient.storage.from("capas").download(pdfOriginalPath),
+        storageClient.storage.from("capas").download(storage_path),
+      ]);
+      if (!pdfDl.error && !imgDl.error && pdfDl.data && imgDl.data) {
+        const pdfBuffer = Buffer.from(await pdfDl.data.arrayBuffer());
+        const imageBuffer = Buffer.from(await imgDl.data.arrayBuffer());
+        const trim = await trimarMarcasDeCapa({
+          pdfBuffer,
+          imageBuffer,
+          imageWidthPx: largura_px,
+          imageHeightPx: altura_px,
+          imageDpi: dpi,
+        });
+        if (trim) {
+          const trimmedPath = storage_path.replace(/(\.[^./]+)?$/, "-areautil.jpg");
+          const { error: upErr } = await storageClient.storage
+            .from("capas")
+            .upload(trimmedPath, trim.buffer, {
+              contentType: "image/jpeg",
+              upsert: true,
+            });
+          if (!upErr) {
+            const { url: trimUrl, error: trimSignErr } = await signedUrlCapas(
+              storageClient,
+              trimmedPath,
+            );
+            if (!trimSignErr && trimUrl) {
+              urlAreaUtil = trimUrl;
+              storagePathAreaUtil = trimmedPath;
+              areaUtilMm = { largura: trim.widthMm, altura: trim.heightMm };
+              larguraValidacao_px = trim.widthPx;
+              alturaValidacao_px = trim.heightPx;
+            }
+          } else {
+            console.warn("[upload-capa] upload da area util falhou:", upErr.message);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[upload-capa] trim de marcas falhou: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  // ── Validate dimensions ───────────────────────────────────────────────────
+  // Quando o trim rodou, valida sobre a área útil (BleedBox equivalente).
+  // Caso contrário, valida sobre as dimensões originais do upload.
+  const expected = calcExpectedDims({ formato, paginas, orelha_mm: orelhaMm, dpi });
+  const mm2px = dpi / 25.4;
+  const tolPx = Math.round(2 * mm2px); // ±2mm tolerance
+
+  const recebidaWMm = Math.round((larguraValidacao_px / mm2px) * 10) / 10;
+  const recebidaHMm = Math.round((alturaValidacao_px / mm2px) * 10) / 10;
+
+  const wOk = Math.abs(larguraValidacao_px - expected.wPx) <= tolPx;
+  const hOk = Math.abs(alturaValidacao_px - expected.hPx) <= tolPx;
+
+  const detalhes: string[] = [];
+  if (!wOk) {
+    detalhes.push(
+      `Largura: recebida ${recebidaWMm}mm (${larguraValidacao_px}px), esperada ${expected.wMm}mm (${expected.wPx}px) ±2mm`
+    );
+  }
+  if (!hOk) {
+    detalhes.push(
+      `Altura: recebida ${recebidaHMm}mm (${alturaValidacao_px}px), esperada ${expected.hMm}mm (${expected.hPx}px) ±2mm`
+    );
+  }
+  if (wOk && hOk) {
+    detalhes.push("Dimensões dentro da tolerância ±2mm.");
+  }
+
+  const validacao: CapaValidacao = {
+    ok: wOk && hOk,
+    largura_esperada_mm: expected.wMm,
+    altura_esperada_mm: expected.hMm,
+    largura_recebida_mm: recebidaWMm,
+    altura_recebida_mm: recebidaHMm,
+    tolerancia_mm: 2,
+    detalhes,
+  };
+
   const result: CapaUploadResult = {
     project_id,
     modo: "upload",
@@ -251,6 +326,9 @@ export async function POST(req: NextRequest) {
     pdf_original_path: pdfOriginalPath,
     filename_original: typeof rawFilenameOriginal === "string" ? rawFilenameOriginal : null,
     pdf_original_error: typeof rawPdfOriginalError === "string" ? rawPdfOriginalError : null,
+    url_area_util: urlAreaUtil,
+    storage_path_area_util: storagePathAreaUtil,
+    area_util_mm: areaUtilMm,
   };
 
   // Zera explicitamente qualquer schema residual (editor/IA anterior) para o
