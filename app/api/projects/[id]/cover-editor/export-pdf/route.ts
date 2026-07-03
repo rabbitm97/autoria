@@ -213,16 +213,23 @@ export async function POST(
       .jpeg({ quality: 95 })
       .toBuffer();
 
-    const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, { format, pages, orelhaMm, projectName });
+    const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, {
+      format, pages, orelhaMm, projectName,
+      withCmykGuides: true,
+    });
     pdfBuffer = Buffer.from(pdfBytes);
   } else {
     // versao === "grafica_rgb"
-    // RGB: usa o JPEG da capa sem conversão de cor — gráficas digitais (POD)
+    // RGB: usa o JPEG da capa sem conversão de cor — gráficas digitais (POD).
+    // Sem registration marks e sem color bar (ambos são específicos de offset CMYK).
     const rgbJpegBuffer = await sharp(fullCoverBuffer)
       .jpeg({ quality: 95 })
       .toBuffer();
 
-    const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, { format, pages, orelhaMm, projectName });
+    const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, {
+      format, pages, orelhaMm, projectName,
+      withCmykGuides: false,
+    });
     pdfBuffer = Buffer.from(pdfBytes);
   }
 

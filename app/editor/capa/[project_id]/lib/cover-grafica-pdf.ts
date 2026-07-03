@@ -39,6 +39,19 @@ export interface GraficaMeta {
   pages: number;
   orelhaMm: number;
   projectName: string;
+  /**
+   * Quando `true`, desenha guias exclusivamente CMYK:
+   *  - Registration marks (círculos C/M/Y/K nas 4 bordas)
+   *  - Color bar (faixa de 11 swatches CMYK)
+   *
+   * Deve ser `true` apenas na versão CMYK (impressão offset).
+   * Em RGB (impressão digital POD), esses guias são ruído inútil —
+   * a gráfica digital não usa chapas separadas.
+   *
+   * Crop marks, fold marks e texto técnico são desenhados
+   * independente deste flag.
+   */
+  withCmykGuides: boolean;
 }
 
 export async function buildGraficaPdf(
@@ -120,93 +133,107 @@ export async function buildGraficaPdf(
     drawLine(xG, trimY2 + CROP_GAP, xG, trimY2 + CROP_GAP + CROP_LEN, true);
   }
 
-  // ── Registration marks ───────────────────────────────────────────────────
-  const regPositions: [number, number][] = [
-    [graficaW / 2, MARKS_MM / 2],
-    [graficaW / 2, graficaH - MARKS_MM / 2],
-    [MARKS_MM / 2, graficaH / 2],
-    [graficaW - MARKS_MM / 2, graficaH / 2],
-  ];
-
-  for (const [cx, cy] of regPositions) {
-    const cxPt = mmToPt(cx);
-    const cyPt = yPt(cy, graficaH);
-    const r = mmToPt(REG_R_MM);
-
-    // Pie sectors drawn as SVG arcs in pdf-lib Y-up coordinate space.
-    // Conversion from Y-down SVG: negate Y values, flip arc sweep (1→0).
-    // Each sector: C/M/Y/K placed in SE/SW/NW/NE visual quadrants respectively.
-    const sectors: Array<[string, ReturnType<typeof cmyk>]> = [
-      [`M 0 0 L ${r} 0 A ${r} ${r} 0 0 0 0 ${-r} Z`,   cmyk(1, 0, 0, 0)], // Cyan  (SE)
-      [`M 0 0 L 0 ${-r} A ${r} ${r} 0 0 0 ${-r} 0 Z`,  cmyk(0, 1, 0, 0)], // Magenta (SW)
-      [`M 0 0 L ${-r} 0 A ${r} ${r} 0 0 0 0 ${r} Z`,   cmyk(0, 0, 1, 0)], // Yellow (NW)
-      [`M 0 0 L 0 ${r} A ${r} ${r} 0 0 0 ${r} 0 Z`,    cmyk(0, 0, 0, 1)], // Black (NE)
+  // ── Registration marks (só em versão CMYK) ──────────────────────────────
+  // Círculos C/M/Y/K nas 4 bordas servem para alinhar chapas offset.
+  // Em RGB (POD digital) são ruído — a impressão não usa chapas separadas.
+  if (meta.withCmykGuides) {
+    const regPositions: [number, number][] = [
+      [graficaW / 2, MARKS_MM / 2],
+      [graficaW / 2, graficaH - MARKS_MM / 2],
+      [MARKS_MM / 2, graficaH / 2],
+      [graficaW - MARKS_MM / 2, graficaH / 2],
     ];
 
-    for (const [path, color] of sectors) {
-      page.drawSvgPath(path, { x: cxPt, y: cyPt, color });
+    for (const [cx, cy] of regPositions) {
+      const cxPt = mmToPt(cx);
+      const cyPt = yPt(cy, graficaH);
+      const r = mmToPt(REG_R_MM);
+
+      // Pie sectors drawn as SVG arcs in pdf-lib Y-up coordinate space.
+      // Conversion from Y-down SVG: negate Y values, flip arc sweep (1→0).
+      // Each sector: C/M/Y/K placed in SE/SW/NW/NE visual quadrants respectively.
+      const sectors: Array<[string, ReturnType<typeof cmyk>]> = [
+        [`M 0 0 L ${r} 0 A ${r} ${r} 0 0 0 0 ${-r} Z`,   cmyk(1, 0, 0, 0)], // Cyan  (SE)
+        [`M 0 0 L 0 ${-r} A ${r} ${r} 0 0 0 ${-r} 0 Z`,  cmyk(0, 1, 0, 0)], // Magenta (SW)
+        [`M 0 0 L ${-r} 0 A ${r} ${r} 0 0 0 0 ${r} Z`,   cmyk(0, 0, 1, 0)], // Yellow (NW)
+        [`M 0 0 L 0 ${r} A ${r} ${r} 0 0 0 ${r} 0 Z`,    cmyk(0, 0, 0, 1)], // Black (NE)
+      ];
+
+      for (const [path, color] of sectors) {
+        page.drawSvgPath(path, { x: cxPt, y: cyPt, color });
+      }
+
+      // Circle outline in registration (all plates)
+      page.drawEllipse({
+        x: cxPt,
+        y: cyPt,
+        xScale: r,
+        yScale: r,
+        borderColor: REG,
+        borderWidth: mmToPt(STROKE_MM),
+      });
+
+      // Crosshair in registration
+      const ext = mmToPt(REG_R_MM + 1);
+      page.drawLine({ start: { x: cxPt - ext, y: cyPt }, end: { x: cxPt + ext, y: cyPt }, thickness: mmToPt(STROKE_MM), color: REG });
+      page.drawLine({ start: { x: cxPt, y: cyPt - ext }, end: { x: cxPt, y: cyPt + ext }, thickness: mmToPt(STROKE_MM), color: REG });
     }
-
-    // Circle outline in registration (all plates)
-    page.drawEllipse({
-      x: cxPt,
-      y: cyPt,
-      xScale: r,
-      yScale: r,
-      borderColor: REG,
-      borderWidth: mmToPt(STROKE_MM),
-    });
-
-    // Crosshair in registration
-    const ext = mmToPt(REG_R_MM + 1);
-    page.drawLine({ start: { x: cxPt - ext, y: cyPt }, end: { x: cxPt + ext, y: cyPt }, thickness: mmToPt(STROKE_MM), color: REG });
-    page.drawLine({ start: { x: cxPt, y: cyPt - ext }, end: { x: cxPt, y: cyPt + ext }, thickness: mmToPt(STROKE_MM), color: REG });
   }
 
-  // ── Color bar (CMYK swatches) ────────────────────────────────────────────
+  // Base X e Y para color bar + texto técnico. Y calculado uma vez porque
+  // o texto técnico usa referência mesmo quando color bar não é desenhado.
   const barX = trimX;
   const barY = trimY2 + CROP_GAP + CROP_LEN + 1;
-  const barColors = [
-    cmyk(1, 0, 0, 0),       // C
-    cmyk(0, 1, 0, 0),       // M
-    cmyk(0, 0, 1, 0),       // Y
-    cmyk(0, 0, 0, 1),       // K
-    cmyk(1, 1, 0, 0),       // C+M
-    cmyk(1, 0, 1, 0),       // C+Y
-    cmyk(0, 1, 1, 0),       // M+Y
-    cmyk(1, 1, 1, 1),       // Registration
-    cmyk(0, 0, 0, 0.25),
-    cmyk(0, 0, 0, 0.50),
-    cmyk(0, 0, 0, 0.75),
-  ];
-  const swW = trimW / barColors.length;
 
-  for (let i = 0; i < barColors.length; i++) {
+  // ── Color bar (só em versão CMYK) ───────────────────────────────────────
+  // 11 swatches CMYK servem para calibrar a impressão offset.
+  // Em RGB (POD digital) são ruído — a gráfica digital não usa esta calibração.
+  if (meta.withCmykGuides) {
+    const barColors = [
+      cmyk(1, 0, 0, 0),       // C
+      cmyk(0, 1, 0, 0),       // M
+      cmyk(0, 0, 1, 0),       // Y
+      cmyk(0, 0, 0, 1),       // K
+      cmyk(1, 1, 0, 0),       // C+M
+      cmyk(1, 0, 1, 0),       // C+Y
+      cmyk(0, 1, 1, 0),       // M+Y
+      cmyk(1, 1, 1, 1),       // Registration
+      cmyk(0, 0, 0, 0.25),
+      cmyk(0, 0, 0, 0.50),
+      cmyk(0, 0, 0, 0.75),
+    ];
+    const swW = trimW / barColors.length;
+
+    for (let i = 0; i < barColors.length; i++) {
+      page.drawRectangle({
+        x: mmToPt(barX + i * swW),
+        y: yPt(barY + COLOR_BAR_H_MM, graficaH),
+        width: mmToPt(swW),
+        height: mmToPt(COLOR_BAR_H_MM),
+        color: barColors[i],
+      });
+    }
+
+    // Bar outline
     page.drawRectangle({
-      x: mmToPt(barX + i * swW),
+      x: mmToPt(barX),
       y: yPt(barY + COLOR_BAR_H_MM, graficaH),
-      width: mmToPt(swW),
+      width: mmToPt(trimW),
       height: mmToPt(COLOR_BAR_H_MM),
-      color: barColors[i],
+      borderColor: K,
+      borderWidth: mmToPt(0.15),
     });
   }
 
-  // Bar outline
-  page.drawRectangle({
-    x: mmToPt(barX),
-    y: yPt(barY + COLOR_BAR_H_MM, graficaH),
-    width: mmToPt(trimW),
-    height: mmToPt(COLOR_BAR_H_MM),
-    borderColor: K,
-    borderWidth: mmToPt(0.15),
-  });
-
   // ── Technical text ───────────────────────────────────────────────────────
+  // Mantido em ambas as versões (útil para rastreamento).
+  // Quando color bar é omitido em RGB, o texto ainda aparece logo abaixo
+  // das crop marks — só que sem a faixa colorida acima dele.
   const font = await doc.embedFont(StandardFonts.Courier);
   const date = new Date().toISOString().slice(0, 10);
   // Avoid "·" since Courier may not have it; use ASCII separator instead
   const textContent = `Autoria  ${meta.projectName}  ${trimW.toFixed(1)}x${trimH.toFixed(1)}mm  ${date}`;
-  const textY = barY + COLOR_BAR_H_MM + 1.5;
+  const textY = barY + (meta.withCmykGuides ? COLOR_BAR_H_MM : 0) + 1.5;
   page.drawText(textContent, {
     x: mmToPt(barX),
     y: yPt(textY, graficaH),

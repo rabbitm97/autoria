@@ -223,6 +223,7 @@ export async function POST(req: NextRequest) {
         pages: paginasReais,
         orelhaMm: orelhaMmAtual,
         projectName: "",
+        withCmykGuides: true,
       });
     } catch (buildErr) {
       console.error("[preparar-capa-grafica] falha ao montar PDF do upload:", buildErr);
