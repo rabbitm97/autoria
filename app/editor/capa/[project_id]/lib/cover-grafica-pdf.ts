@@ -86,6 +86,33 @@ export async function buildGraficaPdf(
     height: mmToPt(totalHMm),
   });
 
+  // ── PDF page boxes (semantic PDF for professional print) ─────────────────
+  // Sem essas chamadas, pdf-lib deixa BleedBox/TrimBox/CropBox iguais ao
+  // MediaBox por default. Isso quebra detecção declarativa em qualquer
+  // ferramenta que use as boxes semânticas (nosso próprio `capa-analyzer.ts`,
+  // Adobe Acrobat, softwares de imposição gráfica, RIPs de impressora).
+  //
+  // Convenção pdf-lib: setBleedBox(x, y, width, height) em pontos, origem
+  // bottom-left. Como todo o resto do arquivo raciocina em mm top-left,
+  // a geometria em mm é a mesma dos foldXsMm/crop marks — o Y-flip é
+  // absorvido pelo próprio pdf-lib para essas chamadas.
+  //
+  //   MediaBox  = arquivo inteiro (papel de impressão)         → default
+  //   BleedBox  = área que sai da impressora (com sangria)     → MediaBox − marks
+  //   TrimBox   = área do livro final após corte               → BleedBox − sangria
+  page.setBleedBox(
+    mmToPt(MARKS_MM),
+    mmToPt(MARKS_MM),
+    mmToPt(totalWMm),
+    mmToPt(totalHMm),
+  );
+  page.setTrimBox(
+    mmToPt(MARKS_MM + SANGRIA_MM),
+    mmToPt(MARKS_MM + SANGRIA_MM),
+    mmToPt(totalWMm - 2 * SANGRIA_MM),
+    mmToPt(totalHMm - 2 * SANGRIA_MM),
+  );
+
   // ── Mark helpers ─────────────────────────────────────────────────────────
 
   const K = cmyk(0, 0, 0, 1);

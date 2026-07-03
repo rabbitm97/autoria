@@ -208,32 +208,70 @@ async function detectMarcasFromPdf(pdfUrl: string): Promise<{
     const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
     const page = doc.getPage(0);
 
-    // pdf-lib retorna MediaBox como fallback quando TrimBox não é declarado.
-    // Se ambos são iguais, o PDF não declara TrimBox explicitamente e o
-    // fallback visual deve ser usado.
+    // pdf-lib retorna MediaBox como fallback quando TrimBox/BleedBox não são
+    // declarados. Se TrimBox === MediaBox, o PDF não declara boxes semânticos
+    // e caímos no fallback visual.
     const mediaBox = page.getMediaBox();
     const trimBox = page.getTrimBox();
+    const bleedBox = page.getBleedBox();
 
-    const boxesIguais =
+    const trimIgualMedia =
       Math.abs(mediaBox.width - trimBox.width) < 0.5 &&
       Math.abs(mediaBox.height - trimBox.height) < 0.5;
 
-    if (boxesIguais) {
+    if (trimIgualMedia) {
       // Sem TrimBox declarado — pdf-lib caiu no MediaBox como fallback.
       return null;
     }
 
     const ptToMm = (pt: number) => Math.round((pt * 25.4) / 72 * 10) / 10;
 
-    // Sangria = distância entre TrimBox (área útil pura) e MediaBox (arquivo total)
-    // dividida por 2 (metade em cada lado). Se BleedBox existir e for diferente
-    // de TrimBox, ele bate com nossa estimativa.
-    const sangriaWPt = (mediaBox.width - trimBox.width) / 2;
-    const sangriaHPt = (mediaBox.height - trimBox.height) / 2;
-    const sangria_detectada_mm = ptToMm(Math.min(sangriaWPt, sangriaHPt));
+    // Três boxes distintos possíveis, cada um com significado próprio:
+    //   MediaBox: arquivo total (com marcas de corte se houver)
+    //   BleedBox: área impressa (com sangria, sem marcas)
+    //   TrimBox:  livro final após corte (sem sangria, sem marcas)
+    //
+    // Casos:
+    //  (a) PDF pro completo (nosso `cover-grafica-pdf.ts` pós-14.M.6):
+    //      Media > Bleed > Trim. Marks presentes, sangria presente.
+    //  (b) PDF com sangria mas sem marcas de corte (comum em POD):
+    //      Media = Bleed > Trim. Marks ausentes, sangria presente.
+    //  (c) PDF só com área útil, sem sangria e sem marcas:
+    //      Bleed = Trim (aqui não entramos porque trimIgualMedia teria retornado null).
+
+    // BleedBox pode não estar declarado (pdf-lib cai no MediaBox como fallback).
+    const bleedIgualMedia =
+      Math.abs(mediaBox.width - bleedBox.width) < 0.5 &&
+      Math.abs(mediaBox.height - bleedBox.height) < 0.5;
+    const bleedIgualTrim =
+      Math.abs(bleedBox.width - trimBox.width) < 0.5 &&
+      Math.abs(bleedBox.height - trimBox.height) < 0.5;
+
+    // Sangria: (BleedBox − TrimBox) / 2 quando BleedBox distinto de TrimBox.
+    // Se BleedBox === MediaBox (não declarado), usa (Media − Trim) / 2 como
+    // aproximação — mas nesse caso pode incluir a área das marcas.
+    let sangria_detectada_mm: number;
+    if (!bleedIgualTrim && !bleedIgualMedia) {
+      // Caso (a): temos os 3 boxes distintos, sangria é a diferença bleed−trim.
+      const sangriaWPt = (bleedBox.width - trimBox.width) / 2;
+      const sangriaHPt = (bleedBox.height - trimBox.height) / 2;
+      sangria_detectada_mm = ptToMm(Math.min(sangriaWPt, sangriaHPt));
+    } else {
+      // Caso (b) ou BleedBox=MediaBox: sangria = (media − trim) / 2.
+      const sangriaWPt = (mediaBox.width - trimBox.width) / 2;
+      const sangriaHPt = (mediaBox.height - trimBox.height) / 2;
+      sangria_detectada_mm = ptToMm(Math.min(sangriaWPt, sangriaHPt));
+    }
+
+    // Marcas de corte: só existem se MediaBox > BleedBox (há área extra
+    // além da sangria para acomodar as marcas). Se BleedBox === MediaBox,
+    // marcas ausentes.
+    const marks_mm = !bleedIgualMedia
+      ? ptToMm((mediaBox.width - bleedBox.width) / 2)
+      : 0;
 
     return {
-      marcas: sangria_detectada_mm > 0 ? "detectadas" : "ausentes",
+      marcas: marks_mm > 0 ? "detectadas" : "ausentes",
       sangria_detectada_mm,
       area_util_mm: {
         largura: ptToMm(trimBox.width),
@@ -589,17 +627,30 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
   // Config B: sem marcas mas com sangria (área útil + sangria = arquivo total)
   // Config C: sem marcas, sem sangria (arquivo total = área útil)
   // Desconhecida: dimensões não batem com nenhuma das 3
+  //
+  // ⚠ Config A/B/C é sobre ESTRUTURA do arquivo (com/sem marcas, com/sem
+  // sangria) — não sobre o valor exato da lombada. Autor pode ter exportado
+  // capa com lombada declarada diferente da atual do miolo (ex: mudou páginas
+  // depois de exportar). Isso NÃO invalida a Config; vira aviso separado de
+  // "Lombada divergente".
+  //
+  // Por isso a detecção usa ALTURA (que não depende da lombada) para decidir
+  // se tem sangria. A LARGURA só é usada para deduzir a lombada real depois.
   let configuracao: ConfiguracaoCapa = "desconhecida";
   let area_util_final: { largura: number; altura: number } | null = null;
 
   const SANGRIA_MIN_MM = 3;
-  const areaUtilEsperada_W = panoramica
-    ? 2 * specs.width_mm + lombadaMm + 2 * orelhaMm
-    : specs.width_mm;
-  const areaUtilEsperada_H = specs.height_mm;
+  const TOL_H_MM = 2.0;  // tolerância na altura para decidir sangria (mais generosa que TOL_MM)
+  const alturaEsperadaPura = specs.height_mm;
+  const alturaEsperadaComSangria = specs.height_mm + 2 * SANGRIA_MIN_MM;
+  const alturaBateSemSangria = Math.abs(altura_mm - alturaEsperadaPura) <= TOL_H_MM;
+  const alturaBateComSangria = Math.abs(altura_mm - alturaEsperadaComSangria) <= TOL_H_MM;
 
   if (marcas_corte === "detectadas" && sangria_detectada_mm != null && sangria_detectada_mm >= SANGRIA_MIN_MM) {
-    // Config A: verificar se área útil (dentro das marcas) bate com esperada
+    // Config A: marcas de corte detectadas E sangria ≥ 3mm.
+    // Confia na area_util reportada pela detecção (PDF boxes ou heurística
+    // visual). Não valida contra dimensões esperadas — divergência de
+    // lombada é reportada como aviso separado, não invalida a Config.
     const areaUtilA_W = area_util_mm_detectada
       ? area_util_mm_detectada.largura
       : largura_mm - 2 * sangria_detectada_mm;
@@ -607,52 +658,53 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       ? area_util_mm_detectada.altura
       : altura_mm - 2 * sangria_detectada_mm;
 
-    const larguraOk = Math.abs(areaUtilA_W - areaUtilEsperada_W) <= TOL_MM;
-    const alturaOk = Math.abs(areaUtilA_H - areaUtilEsperada_H) <= TOL_MM;
-
-    if (larguraOk && alturaOk) {
-      configuracao = "A";
-      area_util_final = { largura: areaUtilA_W, altura: areaUtilA_H };
-    }
+    configuracao = "A";
+    area_util_final = { largura: areaUtilA_W, altura: areaUtilA_H };
   } else if (marcas_corte === "ausentes" || marcas_corte === "desconhecido") {
-    // Testa Config B: arquivo total = área útil + 3mm de sangria em cada lado
-    const arquivoComSangria_W = areaUtilEsperada_W + 2 * SANGRIA_MIN_MM;
-    const arquivoComSangria_H = areaUtilEsperada_H + 2 * SANGRIA_MIN_MM;
-    const larguraOkB = Math.abs(largura_mm - arquivoComSangria_W) <= TOL_MM;
-    const alturaOkB = Math.abs(altura_mm - arquivoComSangria_H) <= TOL_MM;
-
-    // Testa Config C: arquivo total = área útil pura
-    const larguraOkC = Math.abs(largura_mm - areaUtilEsperada_W) <= TOL_MM;
-    const alturaOkC = Math.abs(altura_mm - areaUtilEsperada_H) <= TOL_MM;
-
-    if (larguraOkB && alturaOkB) {
+    // Sem marcas detectadas. Usa a ALTURA para decidir se tem sangria (altura
+    // não depende da lombada; só do formato do livro).
+    if (alturaBateComSangria) {
+      // Config B: arquivo = área útil + 3mm de sangria em cada lado
       configuracao = "B";
-      area_util_final = { largura: areaUtilEsperada_W, altura: areaUtilEsperada_H };
       sangria_detectada_mm = SANGRIA_MIN_MM;
-    } else if (larguraOkC && alturaOkC) {
+      area_util_final = {
+        largura: largura_mm - 2 * SANGRIA_MIN_MM,
+        altura: altura_mm - 2 * SANGRIA_MIN_MM,
+      };
+    } else if (alturaBateSemSangria) {
+      // Config C: arquivo = área útil pura
       configuracao = "C";
-      area_util_final = { largura: areaUtilEsperada_W, altura: areaUtilEsperada_H };
       sangria_detectada_mm = 0;
+      area_util_final = {
+        largura: largura_mm,
+        altura: altura_mm,
+      };
     }
+    // Se a altura não bate com nenhuma das duas, mantém "desconhecida"
+    // (formato do livro provavelmente está errado, e não vale a pena
+    // adivinhar a lombada em cima de dimensões inconsistentes).
   }
 
   // ── Dedução de lombada e orelha a partir das dimensões reais ────────────
-  // Dedução de lombada e orelha usa a ÁREA ÚTIL (dentro do corte),
-  // não o arquivo total. Isso considera a configuração detectada:
-  //   - Config A: área útil = arquivo - 2 * sangria_detectada
-  //   - Config B: área útil = arquivo - 6mm (3mm cada lado)
-  //   - Config C: área útil = arquivo total
-  //   - Desconhecida: cai no arquivo total como fallback
+  // Dedução usa a ÁREA ÚTIL DETECTADA (dentro do corte). Nunca usa
+  // `largura_mm` (arquivo total) como fallback — em Config A/B, isso
+  // incluiria marcas + sangria e daria lombada absurda.
+  //
+  // Se configuracao === "desconhecida", pula a dedução (retorna null) em
+  // vez de deduzir errado. Isso força o autor a corrigir o formato do
+  // livro primeiro — deduzir lombada em cima de dimensões inconsistentes
+  // dá números enganosos (bug 14.M.6).
   let lombada_deduzida_mm: number | null = null;
   let orelha_deduzida_mm: number | null = null;
 
-  if (panoramica) {
-    const larguraArea = area_util_final?.largura ?? largura_mm;
-    const larguraDisponivel_mm = larguraArea - 2 * specs.width_mm;
+  if (panoramica && area_util_final != null) {
+    const larguraDisponivel_mm = area_util_final.largura - 2 * specs.width_mm;
     const candidatos = [orelhaMm, 0, 60, 70, 80, 90, 100];
+    // Aceita lombada a partir de 0.1mm (livros e-book digitais podem ter
+    // "lombada virtual" quase zero em exports panorâmicos de layout).
     for (const orelhaCandidato of candidatos) {
       const lombadaCandidata = larguraDisponivel_mm - 2 * orelhaCandidato;
-      if (lombadaCandidata >= 1 && lombadaCandidata <= 100) {
+      if (lombadaCandidata >= 0.1 && lombadaCandidata <= 100) {
         lombada_deduzida_mm = Math.round(lombadaCandidata * 10) / 10;
         orelha_deduzida_mm = orelhaCandidato;
         break;
@@ -685,7 +737,29 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
   if (sangria === "ausente") {
     avisos.push("Capa sem sangria de 3mm. Para gráfica, será adicionada automaticamente.");
   } else if (sangria === "desconhecido") {
-    avisos.push("Dimensões não batem com o formato + orelhas + lombada declarados. Confira se o formato do livro está correto.");
+    // Verifica se o arquivo parece ser uma "frente pura" (só a capa da
+    // frente, sem lombada nem contracapa). Se largura ≈ specs.width_mm
+    // (com ou sem sangria) e altura ≈ specs.height_mm (com ou sem sangria),
+    // é frente pura — provavelmente o autor subiu o `capa-ebook.jpg` em vez
+    // da panorâmica.
+    const larguraFrentePura = specs.width_mm;
+    const larguraFrenteComSangria = specs.width_mm + 2 * SANGRIA_MIN_MM;
+    const eFrentePura = panoramica && (
+      (Math.abs(largura_mm - larguraFrentePura) <= TOL_H_MM && alturaBateSemSangria) ||
+      (Math.abs(largura_mm - larguraFrenteComSangria) <= TOL_H_MM && alturaBateComSangria)
+    );
+    if (eFrentePura) {
+      avisos.push(
+        "Esse arquivo parece ser só a frente da capa (sem lombada nem contracapa). " +
+        "Ele vai direto para o eBook — não precisa passar pela análise técnica aqui. " +
+        "Para essa etapa, envie a capa panorâmica completa (frente + lombada + contracapa).",
+      );
+    } else {
+      avisos.push(
+        "Dimensões não batem com o formato + orelhas declarados. " +
+        "Confira se o formato do livro está correto ou reexporte a capa.",
+      );
+    }
   }
   if (!dpiOk && dpi > 0) {
     avisos.push(`Resolução ${dpi} DPI. Para gráfica, o mínimo recomendado é 300 DPI.`);
