@@ -16,6 +16,8 @@ import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type Form
 
 type Modo = "escolha" | "upload" | "ia";
 
+type AnaliseStatus = "nao_analisada" | "analisando" | "concluida" | "erro";
+
 /**
  * Limite de tamanho para upload (arquivo original, antes de qualquer conversão).
  * Rationale: pipeline serverless da Vercel Hobby tem limite de ~4.5MB no body
@@ -143,11 +145,12 @@ function ModoUpload({
   lombadaReal,
   estimativaPaginas,
   dadosSalvos,
-  pollingTimeout,
+  analiseStatus,
+  analiseErro,
   onSalvo,
   onContinuar,
   onRefazer,
-  onReanalisar,
+  onAnalisar,
   onVoltar,
 }: {
   projectId: string;
@@ -156,11 +159,12 @@ function ModoUpload({
   estimativaPaginas: number | null;
   fonteEstimativa: "miolo_real" | "estimado" | null;
   dadosSalvos: Record<string, unknown> | null;
-  pollingTimeout: boolean;
+  analiseStatus: AnaliseStatus;
+  analiseErro: string | null;
   onSalvo: (result: CapaUploadResult) => void;
   onContinuar: () => void;
   onRefazer: () => void;
-  onReanalisar: () => void;
+  onAnalisar: () => void;
   onVoltar: () => void;
 }) {
   const formato = formatoInicial;
@@ -626,10 +630,39 @@ function ModoUpload({
                 </button>
               </div>
 
-              {/* Recomendações técnicas completas (via polling do CapaPage).
-                  Sem validação client-side de dimensões: a análise técnica
-                  reporta o mesmo (e mais). Duplicar confunde o autor. */}
-              {uploaded && !pollingTimeout && (
+              {/* Estado 1: upload feito, análise pendente — mostra CTA */}
+              {uploaded && analiseStatus === "nao_analisada" && (
+                <div className="rounded-xl p-4 border border-brand-gold/40 bg-brand-gold/5">
+                  <p className="text-sm font-medium text-zinc-800 mb-1">Análise técnica pendente</p>
+                  <p className="text-xs text-zinc-600 mb-3">
+                    Antes de continuar, vamos verificar se sua capa está adequada para eBook
+                    e impressão. Leva alguns segundos.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onAnalisar}
+                    className="px-4 py-2 rounded-lg bg-brand-gold hover:bg-brand-gold-dark text-white font-medium text-sm transition-colors"
+                  >
+                    Analisar capa
+                  </button>
+                </div>
+              )}
+
+              {/* Estado 2: análise rodando — spinner */}
+              {uploaded && analiseStatus === "analisando" && (
+                <div className="rounded-xl p-4 border border-zinc-200 bg-zinc-50">
+                  <div className="flex items-center gap-3">
+                    <span className="w-4 h-4 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+                    <p className="text-sm text-zinc-700">Analisando capa tecnicamente…</p>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-2 ml-7">
+                    Verificando dimensões, marcas de corte, sangria, colorspace e resolução.
+                  </p>
+                </div>
+              )}
+
+              {/* Estado 3: análise concluída — mostra recomendações */}
+              {uploaded && analiseStatus === "concluida" && analise && (
                 <RecomendacoesTecnicas
                   analise={analise}
                   contexto={{
@@ -639,20 +672,21 @@ function ModoUpload({
                     lombadaEstimada: lombada,
                     origemArquivo: origemArquivoSalva,
                   }}
-                  loading={!analise}
+                  loading={false}
                 />
               )}
-              {uploaded && pollingTimeout && !analise && (
-                <div className="rounded-xl p-4 border border-amber-200 bg-amber-50 text-xs text-amber-800">
-                  <p className="font-medium mb-1">Análise demorou mais que o esperado</p>
-                  <p className="mb-3">
-                    A análise técnica ainda não chegou. Isso pode acontecer se o
-                    arquivo é muito grande ou se houve troca de arquivo durante o
-                    processamento.
+
+              {/* Estado 4: análise falhou — mostra erro + CTA de retry */}
+              {uploaded && analiseStatus === "erro" && (
+                <div className="rounded-xl p-4 border border-red-200 bg-red-50">
+                  <p className="text-sm font-medium text-red-800 mb-1">Análise falhou</p>
+                  <p className="text-xs text-red-700 mb-3">
+                    {analiseErro ?? "Erro desconhecido durante a análise."}
                   </p>
                   <button
-                    onClick={onReanalisar}
-                    className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium transition-colors"
+                    type="button"
+                    onClick={onAnalisar}
+                    className="px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-900 font-medium text-xs transition-colors"
                   >
                     Tentar de novo
                   </button>
@@ -698,12 +732,25 @@ function ModoUpload({
         </div>
       </div>
 
-      {/* Botão Continuar (só aparece após upload concluído) */}
+      {/* Botão Continuar — sempre visível após upload, mas desabilitado
+          até a análise ficar concluída. Tooltip explica o porquê. */}
       {podeContinuar && (
         <button
           onClick={onContinuar}
+          disabled={!uploaded || analiseStatus !== "concluida"}
           className="w-full py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
-            hover:bg-brand-gold/90 transition-colors"
+            hover:bg-brand-gold/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title={
+            !uploaded
+              ? "Envie sua capa primeiro"
+              : analiseStatus === "nao_analisada"
+                ? "Clique em Analisar capa antes de continuar"
+                : analiseStatus === "analisando"
+                  ? "Aguarde a análise terminar"
+                  : analiseStatus === "erro"
+                    ? "Análise falhou — tente de novo"
+                    : undefined
+          }
         >
           Continuar para Créditos →
         </button>
@@ -1319,12 +1366,15 @@ export default function CapaPage() {
   // Lombada adjustment
   const [ajusteDisponivel, setAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [ajustando, setAjustando] = useState(false);
-  // Polling timeout (14.M.1.7): quando o polling estoura 60s sem análise,
-  // mostra CTA de reanalisar em vez de deixar spinner infinito.
-  const [pollingTimeout, setPollingTimeout] = useState(false);
-  // Nonce incrementado por handleReanalisar para forçar o effect do polling
-  // a re-executar mesmo quando `dados` não muda entre tentativas.
-  const [reanalisarNonce, setReanalisarNonce] = useState(0);
+  // Status da análise técnica na sessão atual. Só existe em memória —
+  // dados_capa.analise_tecnica no banco é a fonte da verdade persistida.
+  // Estados:
+  //   - "nao_analisada": upload feito mas botão ainda não clicado
+  //   - "analisando": chamada em andamento (spinner)
+  //   - "concluida": análise disponível, botão "Continuar" liberado
+  //   - "erro": chamada falhou, mostra CTA "Tentar de novo"
+  const [analiseStatus, setAnaliseStatus] = useState<AnaliseStatus>("nao_analisada");
+  const [analiseErro, setAnaliseErro] = useState<string | null>(null);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
@@ -1384,71 +1434,54 @@ export default function CapaPage() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
-  // Polling de análise técnica. Dispara quando `dados` está populado mas
-  // ainda não tem `analise_tecnica` (esperando o fire-and-forget do
-  // /analisar terminar). Consulta o banco a cada 3s, para em 60s ou
-  // quando popular.
+  // Ao carregar dados salvos (reload da página, navegação de volta),
+  // sincronizar analiseStatus com o que existe no banco. Fonte da verdade
+  // persistida = dados_capa.analise_tecnica; o status local só reflete.
   useEffect(() => {
     if (!dados) return;
-    if (dados.modo === "skip") return;
     if (dados.analise_tecnica) {
-      setPollingTimeout(false);
-      return;
+      setAnaliseStatus("concluida");
+      setAnaliseErro(null);
+    } else {
+      setAnaliseStatus("nao_analisada");
     }
-    const hasUrl = dados.url || dados.url_escolhida || dados.imagem_url;
-    if (!hasUrl) return;
+  }, [dados]);
 
-    // Novo ciclo de polling: garante que qualquer timeout anterior é limpo
-    // antes de reiniciar. Necessário para o botão "Reanalisar" (via
-    // reanalisarNonce) desligar o CTA de erro assim que o polling retomar.
-    setPollingTimeout(false);
-
-    let cancelled = false;
-    let ticks = 0;
-    const MAX_TICKS = 20; // 20 × 3s = 60s
-    const INTERVAL_MS = 3000;
-
-    const poll = async () => {
-      if (cancelled) return;
-      ticks++;
-      try {
-        const { data: proj } = await supabase
-          .from("projects")
-          .select("dados_capa")
-          .eq("id", id)
-          .single();
-        const capa = proj?.dados_capa as Record<string, unknown> | null;
-        if (capa?.analise_tecnica) {
-          setDados(capa);
-          setPollingTimeout(false);
-          return;
-        }
-      } catch (err) {
-        console.warn("[capa polling] falha:", err);
-      }
-      if (ticks < MAX_TICKS && !cancelled) {
-        setTimeout(poll, INTERVAL_MS);
-      } else if (!cancelled) {
-        // Estourou 60s sem análise: sinaliza timeout para a UI mostrar CTA.
-        setPollingTimeout(true);
-      }
-    };
-
-    const timer = setTimeout(poll, INTERVAL_MS);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [dados, id, reanalisarNonce]);
-
-  // Handler do CTA "Tentar de novo" quando o polling estourou. Dispara
-  // /analisar manualmente e bumpa o nonce para o effect do polling
-  // re-executar (dados não muda entre tentativas, então só o nonce
-  // dispara o retry).
-  async function handleReanalisar() {
-    setPollingTimeout(false);
-    setReanalisarNonce((n) => n + 1);
+  // Handler do CTA "Analisar capa". Chama /analisar síncrono, re-fetcha
+  // dados_capa para renderizar as recomendações e libera o Continuar.
+  async function handleAnalisarCapa() {
+    setAnaliseStatus("analisando");
+    setAnaliseErro(null);
     try {
-      await fetch(`/api/projects/${id}/capa/analisar`, { method: "POST" });
+      const res = await fetch(`/api/projects/${id}/capa/analisar`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+      }
+      const body = await res.json();
+      if (!body?.ok || !body?.analise) {
+        throw new Error("Endpoint retornou resposta sem análise");
+      }
+
+      // Re-fetch dados_capa completo para renderizar. O endpoint /analisar
+      // já persistiu a análise via PATCH — aqui só recarregamos o state.
+      const { data: refreshed } = await supabase
+        .from("projects")
+        .select("dados_capa")
+        .eq("id", id)
+        .single();
+
+      if (refreshed?.dados_capa) {
+        setDados(refreshed.dados_capa as Record<string, unknown>);
+      }
+      setAnaliseStatus("concluida");
     } catch (err) {
-      console.warn("[capa reanalisar] falhou:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[capa analisar] falhou:", msg);
+      setAnaliseErro(msg);
+      setAnaliseStatus("erro");
     }
   }
 
@@ -1519,7 +1552,13 @@ export default function CapaPage() {
   }
 
   function handleSalvoUpload(result: CapaUploadResult) {
+    // Reset explícito da análise ao trocar capa. O backend já zera
+    // analise_tecnica no dados_capa (o payload do upload-capa não inclui
+    // esse campo), então o banco fica limpo. O state local também precisa
+    // resetar para o botão "Analisar capa" reaparecer imediatamente.
     setDados(result as unknown as Record<string, unknown>);
+    setAnaliseStatus("nao_analisada");
+    setAnaliseErro(null);
     // Não muda modo — permanece em "upload" para que o ModoUpload mostre
     // preview + análise inline. Botão "Continuar" fica dentro do próprio
     // ModoUpload (implementado na Passada 2).
@@ -1754,7 +1793,8 @@ export default function CapaPage() {
             estimativaPaginas={estimativaPaginas}
             fonteEstimativa={fonteEstimativa}
             dadosSalvos={dados}
-            pollingTimeout={pollingTimeout}
+            analiseStatus={analiseStatus}
+            analiseErro={analiseErro}
             onSalvo={handleSalvoUpload}
             onContinuar={handleContinuar}
             onRefazer={async () => {
@@ -1766,7 +1806,7 @@ export default function CapaPage() {
               setDados(null);
               setModo("escolha");
             }}
-            onReanalisar={handleReanalisar}
+            onAnalisar={handleAnalisarCapa}
             onVoltar={() => setModo("escolha")}
           />
         ) : modo === "ia" ? (
