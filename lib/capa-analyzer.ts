@@ -108,6 +108,24 @@ export interface AnaliseTecnica {
    * `null` quando "desconhecida".
    */
   area_util_mm: { largura: number; altura: number } | null;
+  /**
+   * `true` quando o arquivo enviado parece ser apenas a frente da capa
+   * (sem lombada, contracapa ou orelhas) — típico de exports do editor
+   * como `capa-ebook.jpg` (só frente com dimensões do formato).
+   *
+   * Detecção: largura ≈ specs.width_mm (com ou sem sangria de 3mm) E
+   * altura ≈ specs.height_mm (com ou sem sangria). Só é `true` quando
+   * `panoramica === true` no input (o autor está no fluxo de upload
+   * panorâmico e subiu o arquivo errado).
+   *
+   * Consumidores devem tratar esse caso especialmente:
+   *  - Book3D (Prova): não renderizar (nada pra girar em 3D — a imagem
+   *    é só a frente)
+   *  - EPUB: usar imagem direto, sem chamar `extractFrontCover`
+   *  - Análise técnica: já mostra aviso amigável direcionando ao fluxo
+   *    correto
+   */
+  is_frente_pura: boolean;
   debug?: {
     darkPixelsTopLeft: number;
     darkPixelsTopRight: number;
@@ -460,6 +478,7 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       deteccao_fonte: "none" as const,
       sangria_detectada_mm: null,
       area_util_mm: null,
+      is_frente_pura: false,
     };
   }
 
@@ -492,6 +511,7 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       deteccao_fonte: "none" as const,
       sangria_detectada_mm: null,
       area_util_mm: null,
+      is_frente_pura: false,
     };
   }
 
@@ -522,6 +542,7 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
       deteccao_fonte: "none" as const,
       sangria_detectada_mm: null,
       area_util_mm: null,
+      is_frente_pura: false,
     };
   }
 
@@ -734,20 +755,24 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
   } else if (colorspace === "other") {
     avisos.push("Espaço de cor desconhecido. Recomendamos exportar como JPG ou PNG padrão.");
   }
+  // Detecta se o arquivo é "frente pura" (só a capa da frente, sem lombada
+  // nem contracapa). Calculado independentemente do status da sangria porque
+  // é exposto no retorno como `is_frente_pura` (consumido pela tela de Prova
+  // para esconder o Book3D e por outros pipelines downstream).
+  //
+  // Regra: largura ≈ specs.width_mm (com ou sem sangria) E altura bate com
+  // sem-sangria/com-sangria correspondente. Só válido quando `panoramica`
+  // (o autor está no fluxo de upload panorâmico e subiu o arquivo errado).
+  const larguraFrentePura = specs.width_mm;
+  const larguraFrenteComSangria = specs.width_mm + 2 * SANGRIA_MIN_MM;
+  const eFrentePura = panoramica && (
+    (Math.abs(largura_mm - larguraFrentePura) <= TOL_H_MM && alturaBateSemSangria) ||
+    (Math.abs(largura_mm - larguraFrenteComSangria) <= TOL_H_MM && alturaBateComSangria)
+  );
+
   if (sangria === "ausente") {
     avisos.push("Capa sem sangria de 3mm. Para gráfica, será adicionada automaticamente.");
   } else if (sangria === "desconhecido") {
-    // Verifica se o arquivo parece ser uma "frente pura" (só a capa da
-    // frente, sem lombada nem contracapa). Se largura ≈ specs.width_mm
-    // (com ou sem sangria) e altura ≈ specs.height_mm (com ou sem sangria),
-    // é frente pura — provavelmente o autor subiu o `capa-ebook.jpg` em vez
-    // da panorâmica.
-    const larguraFrentePura = specs.width_mm;
-    const larguraFrenteComSangria = specs.width_mm + 2 * SANGRIA_MIN_MM;
-    const eFrentePura = panoramica && (
-      (Math.abs(largura_mm - larguraFrentePura) <= TOL_H_MM && alturaBateSemSangria) ||
-      (Math.abs(largura_mm - larguraFrenteComSangria) <= TOL_H_MM && alturaBateComSangria)
-    );
     if (eFrentePura) {
       avisos.push(
         "Esse arquivo parece ser só a frente da capa (sem lombada nem contracapa). " +
@@ -789,6 +814,7 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
     deteccao_fonte,
     sangria_detectada_mm,
     area_util_mm: area_util_final,
+    is_frente_pura: eFrentePura,
     debug: {
       darkPixelsTopLeft: 0,
       darkPixelsTopRight: 0,

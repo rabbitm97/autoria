@@ -263,11 +263,29 @@ function Book3D({ book }: {
 
 // ─── Capa aberta ──────────────────────────────────────────────────────────────
 
-function CapaAberta({ bookData }: { bookData: BookData }) {
+function CapaAberta({ bookData, isFrentePura = false }: { bookData: BookData; isFrentePura?: boolean }) {
   if (!bookData.coverUrl) {
     return (
       <div className="py-16 text-center text-sm text-zinc-400">
         Capa ainda não foi gerada.
+      </div>
+    );
+  }
+
+  // Capa em formato eBook (só frente): renderiza a imagem sozinha com
+  // proporção correta. Book3D não é oferecido pra esse caso (nada pra
+  // girar em 3D — a imagem é literalmente só a frente).
+  if (isFrentePura) {
+    return (
+      <div className="bg-stone-100 py-8 px-4 flex flex-col items-center">
+        <img
+          src={bookData.coverUrl}
+          alt="Capa (frente)"
+          className="max-w-full max-h-[70vh] object-contain shadow-xl"
+        />
+        <p className="mt-4 text-xs text-zinc-500 text-center max-w-md">
+          Esta é a capa em formato eBook — só a frente, pronta pra Amazon KDP, Apple Books e Kobo.
+        </p>
       </div>
     );
   }
@@ -490,6 +508,7 @@ export default function ProvaPage() {
   const [lombadaAvisoDismissed, setLombadaAvisoDismissed] = useState(false);
   const [preparandoCapaGrafica, setPreparandoCapaGrafica] = useState(false);
   const [capaGraficaError, setCapaGraficaError] = useState<string | null>(null);
+  const [isFrentePura, setIsFrentePura] = useState(false);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
@@ -545,6 +564,7 @@ export default function ProvaPage() {
           orelhaMm,
           orelhaRatioW,
         });
+        setIsFrentePura(capaResolvida.analise_tecnica?.is_frente_pura ?? false);
       }
     } finally {
       setLoading(false);
@@ -552,6 +572,15 @@ export default function ProvaPage() {
   }, [id]);
 
   useEffect(() => { loadExisting(); }, [loadExisting]);
+
+  // Se `is_frente_pura` mudou (autor trocou de arquivo) e o activeTab
+  // ficou em uma tab que não existe pra esse contexto, volta pro default.
+  useEffect(() => {
+    if (isFrentePura && activeTab === "capa") {
+      // Frente pura não tem tab "capa" (Livro 3D). Vai pra "capa_aberta".
+      setActiveTab("capa_aberta");
+    }
+  }, [isFrentePura, activeTab]);
 
   async function handleAnalisar() {
     setAnalyzing(true);
@@ -708,16 +737,18 @@ export default function ProvaPage() {
             {bookData && (
               <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
                 <div className="flex border-b border-zinc-100">
-                  <button
-                    onClick={() => setActiveTab("capa")}
-                    className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                      activeTab === "capa"
-                        ? "text-brand-primary border-b-2 border-brand-gold"
-                        : "text-zinc-400 hover:text-zinc-600"
-                    }`}
-                  >
-                    Livro 3D
-                  </button>
+                  {!isFrentePura && (
+                    <button
+                      onClick={() => setActiveTab("capa")}
+                      className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                        activeTab === "capa"
+                          ? "text-brand-primary border-b-2 border-brand-gold"
+                          : "text-zinc-400 hover:text-zinc-600"
+                      }`}
+                    >
+                      Livro 3D
+                    </button>
+                  )}
                   <button
                     onClick={() => setActiveTab("capa_aberta")}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${
@@ -740,12 +771,12 @@ export default function ProvaPage() {
                   </button>
                 </div>
 
-                {activeTab === "capa" ? (
+                {activeTab === "capa" && !isFrentePura ? (
                   <div className="p-8">
                     <Book3D book={bookData} />
                   </div>
                 ) : activeTab === "capa_aberta" ? (
-                  <CapaAberta bookData={bookData} />
+                  <CapaAberta bookData={bookData} isFrentePura={isFrentePura} />
                 ) : pdfPronto ? (
                   <PdfFolheador projectId={projectIdStr} />
                 ) : (
