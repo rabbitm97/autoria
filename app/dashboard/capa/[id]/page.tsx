@@ -1062,17 +1062,17 @@ function buildRecomendacoes(
     });
   } else if (analise.configuracao === "B") {
     recs.push({
-      nivel: "aviso",
+      nivel: "info",
       titulo: "Capa com sangria, sem marcas de corte",
       detalhe: `Sua capa tem sangria de ${sangriaMm}mm mas não tem marcas de corte. Para eBook, Kindle e impressão sob demanda está pronta. Para gráfica offset, ideal ter marcas de corte para orientar o operador — não é bloqueador, mas alguns fluxos exigem.`,
     });
   } else if (analise.configuracao === "C") {
     recs.push({
-      nivel: "aviso",
+      nivel: "info",
       titulo: "Capa no formato de eBook",
       detalhe: `Sua capa está no formato correto da área útil${
         areaUtil ? ` (${areaUtil.largura}mm × ${areaUtil.altura}mm)` : ""
-      }. Para eBook e Kindle está pronta. Para impressão física, falta a sangria de 3mm (evita filete branco na borda) e as marcas de corte (orientam o corte da gráfica).`,
+      }. Para eBook e Kindle está pronta. Para impressão física é necessário enviar a capa completa (frente, lombada, verso e orelhas se houver), com sangria de 3mm (evita filete branco na borda) e marcas de corte (orientam o corte da gráfica).`,
     });
   } else {
     recs.push({
@@ -1095,7 +1095,7 @@ function buildRecomendacoes(
     });
   } else if (analise.colorspace === "srgb" || analise.colorspace === "rgb16") {
     recs.push({
-      nivel: "aviso",
+      nivel: "info",
       titulo: "Cores em RGB",
       detalhe: "Sua capa está em RGB (padrão de tela). Para eBook, Kindle e impressão sob demanda, está pronta. Para tiragens grandes em gráfica offset, algumas cores muito saturadas podem sair levemente diferentes no papel.",
     });
@@ -1211,7 +1211,10 @@ function RecomendacoesTecnicas({
   const styles = {
     ok:    { border: "border-emerald-200", bg: "bg-emerald-50", text: "text-emerald-900", dot: "bg-emerald-500" },
     aviso: { border: "border-amber-200",   bg: "bg-amber-50",   text: "text-amber-900",   dot: "bg-amber-500" },
-    info:  { border: "border-blue-200",    bg: "bg-blue-50",    text: "text-blue-900",    dot: "bg-blue-500" },
+    // `info`: neutro / cinza. Comunica "está pronto pro seu contexto, atenção
+    // para outros contextos" — distinto do `aviso` (amarelo, desvio real que
+    // exige ação) e do `ok` (verde, ideal para qualquer contexto).
+    info:  { border: "border-zinc-200",    bg: "bg-zinc-50",    text: "text-zinc-800",    dot: "bg-zinc-500" },
   } as const;
 
   return (
