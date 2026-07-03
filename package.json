@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs"
+    "postinstall": "node scripts/sync-pdf-worker.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -34,7 +34,7 @@
     "next": "16.2.1",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "1.1.1",
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "5.4.296",
     "puppeteer-core": "^25.2.1",
     "react": "19.2.4",
     "react-colorful": "^5.7.0",
