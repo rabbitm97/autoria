@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useEditorStore } from "./editor-store";
-import { captureStageAsDataUrl, captureStageAsJpegDataUrl, dataUrlToBlob } from "./png-export";
+import { captureStageAsJpegDataUrl, captureFrontAsJpegDataUrl, dataUrlToBlob } from "./png-export";
 import { serializeEditorState } from "./editor-serializer";
 
-export type ExportItemKey = "png" | "pdf-digital" | "pdf-grafica" | "pdf-grafica-rgb";
+export type ExportItemKey = "jpeg-ebook" | "jpeg-completa" | "pdf-grafica-cmyk" | "pdf-grafica-rgb";
 type ItemState =
   | { status: "idle" }
   | { status: "busy" }
@@ -31,11 +31,15 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadDataUrl(dataUrl: string, filename: string) {
+  downloadBlob(dataUrlToBlob(dataUrl), filename);
+}
+
 export function useCoverExport(projectId: string) {
   const [states, setStates] = useState<Record<ExportItemKey, ItemState>>({
-    "png": IDLE,
-    "pdf-digital": IDLE,
-    "pdf-grafica": IDLE,
+    "jpeg-ebook": IDLE,
+    "jpeg-completa": IDLE,
+    "pdf-grafica-cmyk": IDLE,
     "pdf-grafica-rgb": IDLE,
   });
 
@@ -60,32 +64,43 @@ export function useCoverExport(projectId: string) {
     return null;
   }
 
-  async function exportPng() {
+  async function exportJpegCompleta() {
     const warning = validate();
     if (warning) { alert(warning); return; }
 
     const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
     if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
 
-    setItem("png", { status: "busy" });
+    setItem("jpeg-completa", { status: "busy" });
     try {
-      const dataUrl = await captureStageAsDataUrl(stageInstance, format, pages, orelhaMm);
-      // Nome fixo `capa-300dpi.png`. Browser adiciona ` (1)`, ` (2)` etc.
-      // automaticamente quando o autor baixa múltiplas capas na mesma pasta.
-      // Elimina o bug do "capa-capa-" que aparecia quando projectTitle era
-      // vazio ou literalmente "capa" (fallback do slugify).
-      downloadBlob(dataUrlToBlob(dataUrl), "capa-300dpi.png");
-      setItem("png", IDLE);
+      const dataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm);
+      downloadDataUrl(dataUrl, "capa-completa-300dpi.jpg");
+      setItem("jpeg-completa", IDLE);
     } catch (err) {
-      setItem("png", { status: "error", message: String(err) });
+      setItem("jpeg-completa", { status: "error", message: String(err) });
     }
   }
 
-  async function runExportPdf(versao: "digital" | "grafica" | "grafica_rgb") {
-    const key: ExportItemKey =
-      versao === "grafica" ? "pdf-grafica" :
-      versao === "grafica_rgb" ? "pdf-grafica-rgb" :
-      "pdf-digital";
+  async function exportJpegEbook() {
+    const warning = validate();
+    if (warning) { alert(warning); return; }
+
+    const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
+    if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
+
+    setItem("jpeg-ebook", { status: "busy" });
+    try {
+      // Extração 100% client-side da região da frente. Nenhuma chamada de rede.
+      const dataUrl = await captureFrontAsJpegDataUrl(stageInstance, format, pages, orelhaMm);
+      downloadDataUrl(dataUrl, "capa-ebook.jpg");
+      setItem("jpeg-ebook", IDLE);
+    } catch (err) {
+      setItem("jpeg-ebook", { status: "error", message: String(err) });
+    }
+  }
+
+  async function runExportPdf(versao: "grafica" | "grafica_rgb") {
+    const key: ExportItemKey = versao === "grafica" ? "pdf-grafica-cmyk" : "pdf-grafica-rgb";
     setItem(key, { status: "busy" });
 
     const controller = new AbortController();
@@ -134,13 +149,13 @@ export function useCoverExport(projectId: string) {
       clearTimeout(timeout);
       const e = err as { name?: string; message?: string };
       const message = e.name === "AbortError"
-        ? "PDF demorou demais (>55s). Tente exportar PNG 300dpi."
+        ? "PDF demorou demais (>55s). Tente exportar JPEG capa completa."
         : String(e.message ?? err);
       setItem(key, { status: "error", message });
     }
   }
 
-  async function exportPdf(versao: "digital" | "grafica" | "grafica_rgb") {
+  async function exportPdf(versao: "grafica" | "grafica_rgb") {
     const warning = validate();
     if (warning) { alert(warning); return; }
 
@@ -155,7 +170,7 @@ export function useCoverExport(projectId: string) {
       return;
     }
 
-    // "digital" e "grafica_rgb" vão direto, sem disclaimer
+    // "grafica_rgb" vai direto, sem disclaimer
     runExportPdf(versao);
   }
 
@@ -185,7 +200,8 @@ export function useCoverExport(projectId: string) {
   return {
     states,
     isBusy,
-    exportPng,
+    exportJpegCompleta,
+    exportJpegEbook,
     exportPdf,
     clearErrors,
     cmykDisclaimer,

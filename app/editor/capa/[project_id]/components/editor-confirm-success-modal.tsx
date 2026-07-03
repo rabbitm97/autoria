@@ -16,7 +16,7 @@ export function EditorConfirmSuccessModal({
   confirmedAt,
 }: EditorConfirmSuccessModalProps) {
   const router = useRouter();
-  const { states, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
+  const { states, exportJpegCompleta, exportJpegEbook, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
 
   const formattedTime = new Date(confirmedAt).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -28,10 +28,10 @@ export function EditorConfirmSuccessModal({
 
   const downloadItems = [
     {
-      key: "png" as const,
-      label: "Baixar PNG",
-      desc: "Imagem da capa em alta resolução",
-      onClick: exportPng,
+      key: "jpeg-ebook" as const,
+      label: "Baixar JPEG capa eBook",
+      desc: "Só frente · Amazon KDP, Apple Books, Kobo",
+      onClick: exportJpegEbook,
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#c9a84c]">
           <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
@@ -39,20 +39,20 @@ export function EditorConfirmSuccessModal({
       ),
     },
     {
-      key: "pdf-digital" as const,
-      label: "Baixar PDF eBook",
-      desc: "Para publicar nas lojas (Amazon KDP, Apple, Kobo)",
-      onClick: () => exportPdf("digital"),
+      key: "jpeg-completa" as const,
+      label: "Baixar JPEG capa completa 300dpi",
+      desc: "Panorâmica · marketing, redes sociais, referência",
+      onClick: exportJpegCompleta,
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#c9a84c]">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+          <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
         </svg>
       ),
     },
     {
-      key: "pdf-grafica" as const,
-      label: "Baixar PDF gráfica",
-      desc: "Com marcas de corte, para enviar à gráfica",
+      key: "pdf-grafica-cmyk" as const,
+      label: "Baixar PDF gráfica CMYK",
+      desc: "Com marcas de corte, para gráfica offset (FOGRA39)",
       onClick: () => exportPdf("grafica"),
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#c9a84c]">

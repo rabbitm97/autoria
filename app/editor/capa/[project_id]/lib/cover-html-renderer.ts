@@ -121,19 +121,18 @@ ${techText}
 }
 
 /**
- * Build a minimal HTML page wrapping a pre-rendered cover image.
+ * Build a minimal HTML page wrapping a pre-rendered cover image for the
+ * "gráfica" pipeline (CMYK / RGB). coverImageSrc is the full image (sangria
+ * included). @page = paper + marks band; image positioned at (MARKS_MM,
+ * MARKS_MM); vector marks composited on top.
  *
- * Digital: coverImageSrc is the trimmed image (sangria already removed by Sharp).
- *   @page = trim dimensions; image fills 100%.
- *
- * Gráfica: coverImageSrc is the full image (sangria included).
- *   @page = paper + marks band; image positioned at (MARKS_MM, MARKS_MM);
- *   vector marks composited on top.
+ * A versão "digital" (eBook panorâmico) foi descontinuada no 14.M.5 —
+ * o download de eBook agora sai como JPEG da frente extraído client-side
+ * pelo Konva (ver `captureFrontAsJpegDataUrl` em `png-export.ts`).
  */
 export function renderCoverFromImage(
   coverImageSrc: string,
   meta: CoverImageMeta,
-  versao: "digital" | "grafica",
 ): string {
   const f = FORMATS[meta.format];
   const lombadaMm = calcularLombada(meta.pages);
@@ -143,27 +142,6 @@ export function renderCoverFromImage(
 
   const printCss = `* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }`;
 
-  if (versao === "digital") {
-    const trimWMm = totalWMm - SANGRIA_MM * 2;
-    const trimHMm = totalHMm - SANGRIA_MM * 2;
-    return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  ${printCss}
-  @page { size: ${trimWMm}mm ${trimHMm}mm; margin: 0; }
-  html, body { margin: 0; padding: 0; width: ${trimWMm}mm; height: ${trimHMm}mm; overflow: hidden; }
-  img { display: block; width: 100%; height: 100%; object-fit: fill; }
-</style>
-</head>
-<body>
-<img src="${coverImageSrc}" alt="">
-</body>
-</html>`;
-  }
-
-  // grafica — full image (with sangria) + vector marks
   const graficaWMm = totalWMm + MARKS_MM * 2;
   const graficaHMm = totalHMm + MARKS_MM * 2;
   const marksSvg = buildMarksSvg(

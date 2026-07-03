@@ -4,10 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
-import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
 import sharp from "sharp";
-import { renderCoverFromImage } from "@/app/editor/capa/[project_id]/lib/cover-html-renderer";
 import {
   buildGraficaPdf,
   ICC_PROFILE_PATH,
@@ -16,42 +13,35 @@ import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-seria
 import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib/elements";
 import {
   FORMATS,
-  SANGRIA_MM,
-  calcularLombada,
   clampOrelhaMm,
   getOrelhaDefault,
   type FormatKey,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
-const MARKS_MM = 10;
-const SANGRIA_PX = Math.round(SANGRIA_MM * 300 / 25.4); // ≈ 35px at 300 DPI
-
 /**
  * Nome-base dos arquivos exportados por versão. Usado tanto no filename
  * do download quanto no storage path. Padrão semântico + ordenável:
- *   - "capa-ebook-<ts>.pdf"          — eBook sem sangria
  *   - "capa-CMYK-grafica-<ts>.pdf"   — versão CMYK para gráfica offset
  *   - "capa-RGB-grafica-<ts>.pdf"    — versão RGB para gráfica digital
+ *
+ * A versão eBook (antigo "digital") foi descontinuada no 14.M.5 — o
+ * download agora sai como JPEG só-frente extraído client-side pelo Konva
+ * (ver `captureFrontAsJpegDataUrl` em `png-export.ts`).
  */
-function getFilenameBase(versao: "digital" | "grafica" | "grafica_rgb"): string {
-  if (versao === "digital") return "capa-ebook";
+function getFilenameBase(versao: "grafica" | "grafica_rgb"): string {
   if (versao === "grafica_rgb") return "capa-RGB-grafica";
   return "capa-CMYK-grafica";
 }
 
 /**
- * Limpa PDFs anteriores da mesma versão. Considera tanto os nomes
- * novos (pós-14.M.3) quanto os antigos, garantindo transição sem
- * arquivos órfãos ocupando espaço no bucket.
+ * Limpa PDFs CMYK anteriores. Considera nomes novos (pós-14.M.3) e antigos,
+ * garantindo transição sem arquivos órfãos ocupando espaço no bucket.
+ * Nunca deleta arquivos RGB (ver filtro abaixo).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteOldPdfs(storageClient: any, userId: string, projectId: string, versao: "digital" | "grafica") {
-  const prefixesNovos = versao === "grafica"
-    ? ["capa-CMYK-grafica-"]
-    : ["capa-ebook-"];
-  const prefixesAntigos = versao === "grafica"
-    ? ["capa-grafica-"]      // ⚠ bate com capa-grafica-rgb-, filtramos abaixo
-    : ["capa-digital-"];
+async function deleteOldPdfs(storageClient: any, userId: string, projectId: string) {
+  const prefixesNovos = ["capa-CMYK-grafica-"];
+  const prefixesAntigos = ["capa-grafica-"];      // ⚠ bate com capa-grafica-rgb-, filtramos abaixo
   const allPrefixes = [...prefixesNovos, ...prefixesAntigos];
 
   const { data: allFiles } = await storageClient.storage
@@ -61,7 +51,7 @@ async function deleteOldPdfs(storageClient: any, userId: string, projectId: stri
 
   const filesToDelete = allFiles.filter((f: { name: string }) => {
     // Nunca deletar arquivos RGB quando estamos limpando CMYK
-    if (versao === "grafica" && (f.name.startsWith("capa-RGB-grafica-") || f.name.startsWith("capa-grafica-rgb-"))) {
+    if (f.name.startsWith("capa-RGB-grafica-") || f.name.startsWith("capa-grafica-rgb-")) {
       return false;
     }
     return allPrefixes.some((p) => f.name.startsWith(p));
@@ -127,10 +117,17 @@ export async function POST(
     pages?: number;
   };
 
-  const versao: "digital" | "grafica" | "grafica_rgb" =
-    body.versao === "grafica" ? "grafica" :
-    body.versao === "grafica_rgb" ? "grafica_rgb" :
-    "digital";
+  let versao: "grafica" | "grafica_rgb";
+  if (body.versao === "grafica") {
+    versao = "grafica";
+  } else if (body.versao === "grafica_rgb") {
+    versao = "grafica_rgb";
+  } else {
+    return NextResponse.json(
+      { error: "versao inválida. Aceitos: 'grafica' | 'grafica_rgb'. O PDF eBook foi descontinuado — use exportJpegEbook() client-side." },
+      { status: 400 },
+    );
+  }
 
   const editorData = body.editorData ?? null;
   if (!editorData || editorData.version !== 1) {
@@ -218,7 +215,8 @@ export async function POST(
 
     const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, { format, pages, orelhaMm, projectName });
     pdfBuffer = Buffer.from(pdfBytes);
-  } else if (versao === "grafica_rgb") {
+  } else {
+    // versao === "grafica_rgb"
     // RGB: usa o JPEG da capa sem conversão de cor — gráficas digitais (POD)
     const rgbJpegBuffer = await sharp(fullCoverBuffer)
       .jpeg({ quality: 95 })
@@ -226,55 +224,6 @@ export async function POST(
 
     const pdfBytes = await buildGraficaPdf(rgbJpegBuffer, { format, pages, orelhaMm, projectName });
     pdfBuffer = Buffer.from(pdfBytes);
-  } else {
-    // Digital: eBook não tem orelhas. Cortar sangria de todos os 4 lados E orelhas (esquerda e direita).
-    const imgMeta = await sharp(fullCoverBuffer).metadata();
-    const imgW = imgMeta.width ?? 0;
-    const imgH = imgMeta.height ?? 0;
-
-    const orelhaPxParaCortar = orelhaMm > 0 ? Math.round(orelhaMm * 300 / 25.4) : 0;
-    const leftOffset = SANGRIA_PX + orelhaPxParaCortar;
-
-    const trimmedBuffer = await sharp(fullCoverBuffer)
-      .extract({
-        left: leftOffset,
-        top: SANGRIA_PX,
-        width: Math.max(1, imgW - leftOffset * 2),
-        height: Math.max(1, imgH - SANGRIA_PX * 2),
-      })
-      .jpeg({ quality: 92 })
-      .toBuffer();
-
-    const coverImageSrc = `data:image/jpeg;base64,${trimmedBuffer.toString("base64")}`;
-    // orelhaMm: 0 — digital nunca renderiza orelhas no HTML
-    const html = renderCoverFromImage(coverImageSrc, { format, pages, orelhaMm: 0, projectName }, "digital");
-
-    const f = FORMATS[format];
-    const lombadaMm = calcularLombada(pages);
-    // PDF digital: largura = contracapa + lombada + frente (sem orelhas, sem sangria)
-    const docWMm = f.width_mm * 2 + lombadaMm;
-    const docHMm = f.height_mm;
-
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    });
-
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "load" });
-      pdfBuffer = Buffer.from(
-        await page.pdf({
-          width: `${docWMm}mm`,
-          height: `${docHMm}mm`,
-          printBackground: true,
-          margin: { top: 0, right: 0, bottom: 0, left: 0 },
-        }),
-      );
-    } finally {
-      await browser.close();
-    }
   }
 
   const timestamp = Date.now();
@@ -282,7 +231,7 @@ export async function POST(
   if (versao === "grafica_rgb") {
     await deleteOldRgbPdfs(storageClient, userId, id);
   } else {
-    await deleteOldPdfs(storageClient, userId, id, versao);
+    await deleteOldPdfs(storageClient, userId, id);
   }
 
   const filenameBase = getFilenameBase(versao);
