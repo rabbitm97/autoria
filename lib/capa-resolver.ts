@@ -177,6 +177,7 @@ function isUploadCapa(c: DadosCapa): c is Record<string, unknown> & {
   lombada_mm_na_validacao?: number;
   orelha_mm?: number;
   usar_orelhas?: boolean;
+  is_frente_pura?: boolean;
 } {
   return !!c && (c as Record<string, unknown>).modo === "upload";
 }
@@ -255,14 +256,14 @@ export function resolveCapaCompleta(
   }
 
   // Schema 3: Upload
-  // O upload é sempre uma capa panorâmica completa por design — o validador
-  // em `app/api/agentes/upload-capa/route.ts` calcula
-  // totalWMm = sangria + orelhas + contracapa + lombada + frente + orelhas + sangria
-  // e rejeita arquivos que não baterem com essa geometria. Portanto
-  // `is_panoramica` é sempre `true`. Sem isso, o Book3D em
-  // `app/dashboard/prova/[id]/page.tsx` trata o PNG inteiro como se fosse
-  // apenas a frente — e a lombada/contracapa aparecem pintadas na frente
-  // do livro 3D.
+  // O upload aceita dois formatos (detectados via dimensões no upload-capa):
+  //  - Panorâmico (padrão): frente + lombada + contracapa + orelhas + sangria.
+  //    `is_frente_pura === false` no dados_capa → `is_panoramica: true`.
+  //  - eBook (só frente): dimensões batem com formato.width_mm × height_mm
+  //    (com ou sem sangria). `is_frente_pura === true` → `is_panoramica: false`.
+  // O Book3D em `app/dashboard/prova/[id]/page.tsx` só renderiza quando
+  // `is_panoramica === true` — se tratasse frente pura como panorâmica,
+  // faces de lombada/contracapa mostrariam fragmentos aleatórios da frente.
   if (isUploadCapa(dados_capa)) {
     const url = typeof dados_capa.url === "string" ? dados_capa.url : null;
     // Fallback para editor_data.orelhaMm: cobre dois casos:
@@ -276,11 +277,18 @@ export function resolveCapaCompleta(
       dados_capa.usar_orelhas,
       formato,
     );
+    // `is_panoramica` derivado do flag do upload:
+    //  - Se autor subiu capa panorâmica (padrão): `is_frente_pura === false` → true
+    //  - Se autor subiu capa eBook (só frente): `is_frente_pura === true` → false
+    //
+    // Uploads pré-14.M.7.2 não têm o campo → cai no default `!== true` = true,
+    // preservando o comportamento antigo (panorâmica assumida).
+    const isFrentePura = dados_capa.is_frente_pura === true;
     return {
       pronta: !!(urlCompleta ?? url),
       origem: "upload",
       url_principal: urlCompleta ?? url,
-      is_panoramica: true,
+      is_panoramica: !isFrentePura,
       fills: null,
       lombada_mm: typeof dados_capa.lombada_mm_na_validacao === "number" ? dados_capa.lombada_mm_na_validacao : null,
       largura_px: typeof dados_capa.largura_px === "number" ? dados_capa.largura_px : null,

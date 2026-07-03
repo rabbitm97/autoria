@@ -59,6 +59,17 @@ export interface CapaUploadResult {
   storage_path_area_util: string | null;
   /** Dimensões físicas da área útil (BleedBox equivalente) em mm. `null` quando não houve trim. */
   area_util_mm: { largura: number; altura: number } | null;
+  /**
+   * `true` quando o upload é uma capa em formato eBook — só a frente do
+   * livro, sem lombada nem contracapa. Detectado por comparação direta
+   * das dimensões contra `formato.width_mm × formato.height_mm` (com ou
+   * sem sangria de 3mm), independentemente da análise técnica ter rodado.
+   *
+   * Propagado pelo `capa-resolver` como `is_panoramica: !is_frente_pura`.
+   * Consumidores devem preferir esse campo canônico sobre o `is_frente_pura`
+   * do analyzer (que é fallback pra casos legacy).
+   */
+  is_frente_pura: boolean;
 }
 
 export interface CapaValidacao {
@@ -279,31 +290,76 @@ export async function POST(req: NextRequest) {
   const mm2px = dpi / 25.4;
   const tolPx = Math.round(2 * mm2px); // ±2mm tolerance
 
+  // ── Detecção de frente pura (formato eBook) ─────────────────────────────
+  // Se dimensões batem com `specs.width_mm × specs.height_mm` (com ou sem
+  // sangria de 3mm), o autor subiu uma capa eBook — só a frente, sem
+  // lombada nem contracapa. Válido: autor pode preferir usar upload em
+  // vez do dropdown do editor. Não é erro.
+  //
+  // A detecção via dimensões é robusta: capa panorâmica de qualquer formato
+  // é MUITO mais larga que frente pura (mín ~280mm vs 140mm no menor
+  // formato). Sem ambiguidade.
+  const specs = getFormatoDef(formato).specs;
+  const frentePura_wPx = Math.round(specs.width_mm * mm2px);
+  const frentePura_wComSangria_px = Math.round((specs.width_mm + 2 * specs.bleed_mm) * mm2px);
+  const frentePura_hPx = Math.round(specs.height_mm * mm2px);
+  const frentePura_hComSangria_px = Math.round((specs.height_mm + 2 * specs.bleed_mm) * mm2px);
+
+  const bateFrentePuraSemSangria =
+    Math.abs(largura_px - frentePura_wPx) <= tolPx &&
+    Math.abs(altura_px - frentePura_hPx) <= tolPx;
+  const bateFrentePuraComSangria =
+    Math.abs(largura_px - frentePura_wComSangria_px) <= tolPx &&
+    Math.abs(altura_px - frentePura_hComSangria_px) <= tolPx;
+
+  const isFrentePura = bateFrentePuraSemSangria || bateFrentePuraComSangria;
+
+  // Dimensões esperadas para a validação: se frente pura, valida contra
+  // o próprio formato; senão contra a panorâmica calculada em `expected`.
+  const validacao_wPx = isFrentePura
+    ? (bateFrentePuraComSangria ? frentePura_wComSangria_px : frentePura_wPx)
+    : expected.wPx;
+  const validacao_hPx = isFrentePura
+    ? (bateFrentePuraComSangria ? frentePura_hComSangria_px : frentePura_hPx)
+    : expected.hPx;
+  const validacao_wMm = isFrentePura
+    ? (bateFrentePuraComSangria ? specs.width_mm + 2 * specs.bleed_mm : specs.width_mm)
+    : expected.wMm;
+  const validacao_hMm = isFrentePura
+    ? (bateFrentePuraComSangria ? specs.height_mm + 2 * specs.bleed_mm : specs.height_mm)
+    : expected.hMm;
+
   const recebidaWMm = Math.round((larguraValidacao_px / mm2px) * 10) / 10;
   const recebidaHMm = Math.round((alturaValidacao_px / mm2px) * 10) / 10;
 
-  const wOk = Math.abs(larguraValidacao_px - expected.wPx) <= tolPx;
-  const hOk = Math.abs(alturaValidacao_px - expected.hPx) <= tolPx;
+  const wOk = Math.abs(larguraValidacao_px - validacao_wPx) <= tolPx;
+  const hOk = Math.abs(alturaValidacao_px - validacao_hPx) <= tolPx;
 
   const detalhes: string[] = [];
   if (!wOk) {
     detalhes.push(
-      `Largura: recebida ${recebidaWMm}mm (${larguraValidacao_px}px), esperada ${expected.wMm}mm (${expected.wPx}px) ±2mm`
+      `Largura: recebida ${recebidaWMm}mm (${larguraValidacao_px}px), esperada ${validacao_wMm}mm (${validacao_wPx}px) ±2mm`
     );
   }
   if (!hOk) {
     detalhes.push(
-      `Altura: recebida ${recebidaHMm}mm (${alturaValidacao_px}px), esperada ${expected.hMm}mm (${expected.hPx}px) ±2mm`
+      `Altura: recebida ${recebidaHMm}mm (${alturaValidacao_px}px), esperada ${validacao_hMm}mm (${validacao_hPx}px) ±2mm`
     );
   }
   if (wOk && hOk) {
-    detalhes.push("Dimensões dentro da tolerância ±2mm.");
+    if (isFrentePura) {
+      detalhes.push("Capa em formato eBook detectada — pronta para publicação digital (Amazon KDP, Apple Books, Kobo).");
+    } else if (areaUtilMm) {
+      detalhes.push("Dimensões da área útil dentro da tolerância ±2mm (marcas de corte detectadas e trimadas).");
+    } else {
+      detalhes.push("Dimensões dentro da tolerância ±2mm.");
+    }
   }
 
   const validacao: CapaValidacao = {
     ok: wOk && hOk,
-    largura_esperada_mm: expected.wMm,
-    altura_esperada_mm: expected.hMm,
+    largura_esperada_mm: validacao_wMm,
+    altura_esperada_mm: validacao_hMm,
     largura_recebida_mm: recebidaWMm,
     altura_recebida_mm: recebidaHMm,
     tolerancia_mm: 2,
@@ -329,6 +385,7 @@ export async function POST(req: NextRequest) {
     url_area_util: urlAreaUtil,
     storage_path_area_util: storagePathAreaUtil,
     area_util_mm: areaUtilMm,
+    is_frente_pura: isFrentePura,
   };
 
   // Zera explicitamente qualquer schema residual (editor/IA anterior) para o
