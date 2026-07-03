@@ -6,13 +6,12 @@ import { CmykDisclaimerModal } from "./cmyk-disclaimer-modal";
 
 interface ExportDropdownProps {
   projectId: string;
-  projectTitle: string;
 }
 
-export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps) {
+export function ExportDropdown({ projectId }: ExportDropdownProps) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { states, isBusy, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId, projectTitle);
+  const { states, isBusy, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
 
   useEffect(() => {
     if (!open) return;
@@ -28,7 +27,7 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
   // Derive a single label for the busy button (whichever item is exporting)
   const busyLabel =
     states["png"].status === "busy" ? "Exportando PNG…" :
-    states["pdf-digital"].status === "busy" ? "Gerando PDF digital…" :
+    states["pdf-digital"].status === "busy" ? "Gerando PDF eBook…" :
     states["pdf-grafica"].status === "busy" ? "Gerando PDF gráfica…" :
     states["pdf-grafica-rgb"].status === "busy" ? "Gerando PDF gráfica RGB…" :
     "Exportando…";
@@ -86,8 +85,8 @@ export function ExportDropdown({ projectId, projectTitle }: ExportDropdownProps)
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
             </svg>
             <div>
-              <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF digital</p>
-              <p className="text-[10px] text-zinc-400">Sem sangria · eBook / prévia</p>
+              <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF eBook</p>
+              <p className="text-[10px] text-zinc-400">Sem sangria · Amazon KDP no-bleed, Apple, Kobo</p>
             </div>
           </button>
 

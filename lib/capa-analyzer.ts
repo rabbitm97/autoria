@@ -515,14 +515,20 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
 
   // ── DPI ─────────────────────────────────────────────────────────────────
   // Prioridade:
-  //   1. metadata.density (arquivo declara — mais confiável)
+  //   1. metadata.density (arquivo declara — quando confiável)
   //   2. Testa se widthPx bate esperado panorâmico @ 300 DPI
   //   3. Testa se widthPx bate esperado só-frente @ 300 DPI (autor pode
   //      ter subido só a frente por engano — vamos reportar sangria/
   //      dimensão errada, mas evitamos falso DPI baixo)
   //   4. Inferência final: assume 300 DPI e deixa dimensões falarem
+  //
+  // ⚠ Sharp retorna density=72 como default web quando o PNG não tem
+  // chunk pHYs (comum em Konva/Canvas export). Isso é indistinguível de
+  // um PNG realmente em 72 DPI. Como capa impressa nunca é 72 DPI de fato,
+  // ignoramos density abaixo de 150 e caímos no fallback dimensional.
+  const DENSITY_MIN_TRUSTED = 150;
   let dpi = 0;
-  if (typeof meta.density === "number" && meta.density > 0) {
+  if (typeof meta.density === "number" && meta.density >= DENSITY_MIN_TRUSTED) {
     dpi = Math.round(meta.density);
   } else {
     const esperadoPx300Panoramica = largura_esperada_mm * MM_TO_PX;

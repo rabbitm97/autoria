@@ -20,10 +20,6 @@ export interface CmykDisclaimerState {
   pending: (() => void) | null;
 }
 
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").slice(0, 40) || "capa";
-}
-
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -35,7 +31,7 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function useCoverExport(projectId: string, projectTitle: string) {
+export function useCoverExport(projectId: string) {
   const [states, setStates] = useState<Record<ExportItemKey, ItemState>>({
     "png": IDLE,
     "pdf-digital": IDLE,
@@ -74,7 +70,11 @@ export function useCoverExport(projectId: string, projectTitle: string) {
     setItem("png", { status: "busy" });
     try {
       const dataUrl = await captureStageAsDataUrl(stageInstance, format, pages, orelhaMm);
-      downloadBlob(dataUrlToBlob(dataUrl), `${slugify(projectTitle)}-capa-300dpi.png`);
+      // Nome fixo `capa-300dpi.png`. Browser adiciona ` (1)`, ` (2)` etc.
+      // automaticamente quando o autor baixa múltiplas capas na mesma pasta.
+      // Elimina o bug do "capa-capa-" que aparecia quando projectTitle era
+      // vazio ou literalmente "capa" (fallback do slugify).
+      downloadBlob(dataUrlToBlob(dataUrl), "capa-300dpi.png");
       setItem("png", IDLE);
     } catch (err) {
       setItem("png", { status: "error", message: String(err) });

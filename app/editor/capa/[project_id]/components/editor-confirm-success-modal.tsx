@@ -7,18 +7,16 @@ import { CmykDisclaimerModal } from "./cmyk-disclaimer-modal";
 interface EditorConfirmSuccessModalProps {
   onClose: () => void;
   projectId: string;
-  projectTitle: string;
   confirmedAt: string;
 }
 
 export function EditorConfirmSuccessModal({
   onClose,
   projectId,
-  projectTitle,
   confirmedAt,
 }: EditorConfirmSuccessModalProps) {
   const router = useRouter();
-  const { states, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId, projectTitle);
+  const { states, exportPng, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
 
   const formattedTime = new Date(confirmedAt).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -42,8 +40,8 @@ export function EditorConfirmSuccessModal({
     },
     {
       key: "pdf-digital" as const,
-      label: "Baixar PDF digital",
-      desc: "Para eBook nas lojas (Amazon, Apple, Kobo)",
+      label: "Baixar PDF eBook",
+      desc: "Para publicar nas lojas (Amazon KDP, Apple, Kobo)",
       onClick: () => exportPdf("digital"),
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#c9a84c]">

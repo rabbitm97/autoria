@@ -26,23 +26,66 @@ import {
 const MARKS_MM = 10;
 const SANGRIA_PX = Math.round(SANGRIA_MM * 300 / 25.4); // ≈ 35px at 300 DPI
 
+/**
+ * Nome-base dos arquivos exportados por versão. Usado tanto no filename
+ * do download quanto no storage path. Padrão semântico + ordenável:
+ *   - "capa-ebook-<ts>.pdf"          — eBook sem sangria
+ *   - "capa-CMYK-grafica-<ts>.pdf"   — versão CMYK para gráfica offset
+ *   - "capa-RGB-grafica-<ts>.pdf"    — versão RGB para gráfica digital
+ */
+function getFilenameBase(versao: "digital" | "grafica" | "grafica_rgb"): string {
+  if (versao === "digital") return "capa-ebook";
+  if (versao === "grafica_rgb") return "capa-RGB-grafica";
+  return "capa-CMYK-grafica";
+}
+
+/**
+ * Limpa PDFs anteriores da mesma versão. Considera tanto os nomes
+ * novos (pós-14.M.3) quanto os antigos, garantindo transição sem
+ * arquivos órfãos ocupando espaço no bucket.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function deleteOldPdfs(storageClient: any, userId: string, projectId: string, versao: "digital" | "grafica") {
-  const { data: files } = await storageClient.storage
+  const prefixesNovos = versao === "grafica"
+    ? ["capa-CMYK-grafica-"]
+    : ["capa-ebook-"];
+  const prefixesAntigos = versao === "grafica"
+    ? ["capa-grafica-"]      // ⚠ bate com capa-grafica-rgb-, filtramos abaixo
+    : ["capa-digital-"];
+  const allPrefixes = [...prefixesNovos, ...prefixesAntigos];
+
+  const { data: allFiles } = await storageClient.storage
     .from("editor-assets")
-    .list(`${userId}/${projectId}/exports`, { search: `capa-${versao}-` });
-  if (!files?.length) return;
-  const paths = files.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
+    .list(`${userId}/${projectId}/exports`);
+  if (!allFiles?.length) return;
+
+  const filesToDelete = allFiles.filter((f: { name: string }) => {
+    // Nunca deletar arquivos RGB quando estamos limpando CMYK
+    if (versao === "grafica" && (f.name.startsWith("capa-RGB-grafica-") || f.name.startsWith("capa-grafica-rgb-"))) {
+      return false;
+    }
+    return allPrefixes.some((p) => f.name.startsWith(p));
+  });
+  if (!filesToDelete.length) return;
+
+  const paths = filesToDelete.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
   await storageClient.storage.from("editor-assets").remove(paths);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function deleteOldRgbPdfs(storageClient: any, userId: string, projectId: string) {
-  const { data: files } = await storageClient.storage
+  const prefixes = ["capa-RGB-grafica-", "capa-grafica-rgb-"];
+  const { data: allFiles } = await storageClient.storage
     .from("editor-assets")
-    .list(`${userId}/${projectId}/exports`, { search: `capa-grafica-rgb-` });
-  if (!files?.length) return;
-  const paths = files.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
+    .list(`${userId}/${projectId}/exports`);
+  if (!allFiles?.length) return;
+
+  const filesToDelete = allFiles.filter((f: { name: string }) =>
+    prefixes.some((p) => f.name.startsWith(p)),
+  );
+  if (!filesToDelete.length) return;
+
+  const paths = filesToDelete.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
   await storageClient.storage.from("editor-assets").remove(paths);
 }
 
@@ -242,9 +285,8 @@ export async function POST(
     await deleteOldPdfs(storageClient, userId, id, versao);
   }
 
-  const storagePath = versao === "grafica_rgb"
-    ? `${userId}/${id}/exports/capa-grafica-rgb-${timestamp}.pdf`
-    : `${userId}/${id}/exports/capa-${versao}-${timestamp}.pdf`;
+  const filenameBase = getFilenameBase(versao);
+  const storagePath = `${userId}/${id}/exports/${filenameBase}-${timestamp}.pdf`;
 
   const { error: uploadErr } = await storageClient.storage
     .from("editor-assets")
@@ -264,9 +306,7 @@ export async function POST(
     .from("editor-assets")
     .createSignedUrl(storagePath, 365 * 24 * 3600);
 
-  const filename = versao === "grafica_rgb"
-    ? `capa-grafica-rgb-${timestamp}.pdf`
-    : `capa-${versao}-${timestamp}.pdf`;
+  const filename = `${filenameBase}-${timestamp}.pdf`;
 
   return NextResponse.json({
     url: pdfSigned?.signedUrl ?? null,

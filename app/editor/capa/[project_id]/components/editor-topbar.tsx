@@ -140,14 +140,13 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
           onConfirmed={(confirmedAt) => setSuccessModal({ open: true, confirmedAt })}
         />
 
-        <ExportDropdown projectId={projectData.projectId} projectTitle={projectData.title} />
+        <ExportDropdown projectId={projectData.projectId} />
       </div>
 
       {successModal.open && (
         <EditorConfirmSuccessModal
           onClose={() => setSuccessModal((s) => ({ ...s, open: false }))}
           projectId={projectData.projectId}
-          projectTitle={projectData.title || ""}
           confirmedAt={successModal.confirmedAt}
         />
       )}
