@@ -451,37 +451,119 @@ function PdfFolheador({ projectId }: { projectId: string }) {
   );
 }
 
-// ─── Pendencia card ──────────────────────────────────────────────────────────
+// ─── Trilha card ─────────────────────────────────────────────────────────────
 
-function PendenciaCard({ item, onNavigate }: {
-  item: ProvaItem;
+function TrilhaCard({
+  icone,
+  titulo,
+  subtitulo,
+  aprovado,
+  pendencias,
+  avisos,
+  onNavigate,
+  ctaLabel,
+  ctaBusy,
+  ctaError,
+  onCta,
+}: {
+  icone: "tablet" | "livro";
+  titulo: string;
+  subtitulo: string;
+  aprovado: boolean;
+  pendencias: ProvaItem[];
+  avisos: ProvaItem[];
   onNavigate: (etapa: string) => void;
+  ctaLabel: string | null;
+  ctaBusy: boolean;
+  ctaError: string | null;
+  onCta?: () => void;
 }) {
-  const isErro = item.status === "erro";
+  const status: "pronto" | "atencao" | "pendente" =
+    aprovado && avisos.length === 0 ? "pronto"
+    : aprovado ? "atencao"
+    : "pendente";
+
+  const statusStyle =
+    status === "pronto" ? "bg-emerald-50 text-emerald-700"
+    : status === "atencao" ? "bg-amber-50 text-amber-700"
+    : "bg-zinc-100 text-zinc-500";
+  const statusLabel =
+    status === "pronto" ? "Pronto"
+    : status === "atencao" ? "Atenção"
+    : "Pendente";
+
   return (
-    <div className={`rounded-xl border p-4 flex items-start gap-4 ${
-      isErro ? "bg-red-50 border-red-100" : "bg-amber-50 border-amber-100"
-    }`}>
-      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-        isErro ? "bg-red-500" : "bg-amber-400"
-      }`} />
-      <div className="flex-1">
-        <p className={`text-sm ${isErro ? "text-red-700" : "text-amber-700"}`}>
-          {item.mensagem}
-        </p>
-        {item.acao && (
-          <button
-            onClick={() => onNavigate(item.acao!.etapa)}
-            className={`mt-3 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-              isErro
-                ? "bg-red-100 hover:bg-red-200 text-red-700"
-                : "bg-amber-100 hover:bg-amber-200 text-amber-700"
-            }`}
-          >
-            {item.acao.label} →
-          </button>
+    <div className="bg-white rounded-2xl border border-zinc-100 p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {icone === "tablet" ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+            </svg>
+          )}
+          <p className="font-medium text-sm text-brand-primary">{titulo}</p>
+        </div>
+        <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusStyle}`}>
+          {statusLabel}
+        </span>
+      </div>
+      <p className="text-xs text-zinc-500 mb-3">{subtitulo}</p>
+
+      <div className="flex-1 space-y-1.5 mb-3">
+        {aprovado && avisos.length === 0 ? (
+          <div className="flex items-center gap-2 text-xs text-emerald-700">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Tudo pronto para {titulo === "Publicação digital" ? "publicação" : "envio à gráfica"}.
+          </div>
+        ) : (
+          <>
+            {pendencias.map((item, i) => (
+              <div key={`p-${i}`} className="flex items-start gap-2 text-xs text-zinc-600">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" strokeWidth="2" className="shrink-0 mt-0.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" strokeDasharray="4 4"/>
+                </svg>
+                <div className="flex-1">
+                  <span>{item.mensagem}</span>
+                  {item.acao && item.acao.etapa !== "__preparar_capa_grafica__" && (
+                    <button
+                      onClick={() => onNavigate(item.acao!.etapa)}
+                      className="ml-2 text-brand-gold underline hover:text-brand-gold/80"
+                    >
+                      {item.acao.label} →
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {avisos.map((item, i) => (
+              <div key={`a-${i}`} className="flex items-start gap-2 text-xs text-amber-700">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span className="flex-1">{item.mensagem}</span>
+              </div>
+            ))}
+          </>
         )}
       </div>
+
+      {ctaLabel && onCta && (
+        <button
+          onClick={onCta}
+          disabled={ctaBusy}
+          className="w-full text-xs font-medium py-2 px-3 rounded-lg border border-zinc-200 hover:border-brand-gold/40 hover:bg-zinc-50 transition-colors disabled:opacity-50"
+        >
+          {ctaBusy ? "Preparando…" : ctaLabel}
+        </button>
+      )}
+      {ctaError && <p className="mt-2 text-xs text-red-600">{ctaError}</p>}
     </div>
   );
 }
@@ -500,12 +582,10 @@ export default function ProvaPage() {
   const [error, setError] = useState<string | null>(null);
   const [bookData, setBookData] = useState<BookData | null>(null);
   const [activeTab, setActiveTab] = useState<"capa" | "capa_aberta" | "miolo">("capa");
-  const [modelApproved, setModelApproved] = useState(false);
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const [lombadaAvisoDismissed, setLombadaAvisoDismissed] = useState(false);
   const [preparandoCapaGrafica, setPreparandoCapaGrafica] = useState(false);
   const [capaGraficaError, setCapaGraficaError] = useState<string | null>(null);
   const [isFrentePura, setIsFrentePura] = useState(false);
@@ -573,11 +653,8 @@ export default function ProvaPage() {
 
   useEffect(() => { loadExisting(); }, [loadExisting]);
 
-  // Se `is_frente_pura` mudou (autor trocou de arquivo) e o activeTab
-  // ficou em uma tab que não existe pra esse contexto, volta pro default.
   useEffect(() => {
     if (isFrentePura && activeTab === "capa") {
-      // Frente pura não tem tab "capa" (Livro 3D). Vai pra "capa_aberta".
       setActiveTab("capa_aberta");
     }
   }, [isFrentePura, activeTab]);
@@ -602,17 +679,11 @@ export default function ProvaPage() {
   }
 
   async function handleGerarPdfDigital() {
-    if (!projectIdStr) {
-      setPdfError("ID do projeto inválido. Recarregue a página.");
-      return;
-    }
-
+    if (!projectIdStr) return;
     setGerandoPdf(true);
     setPdfError(null);
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 75_000);
-
     try {
       const res = await fetch("/api/agentes/gerar-pdf-digital", {
         method: "POST",
@@ -621,23 +692,18 @@ export default function ProvaPage() {
         signal: controller.signal,
       });
       clearTimeout(timeout);
-
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? `Erro do servidor (HTTP ${res.status})`);
       }
-
       await handleAnalisar();
     } catch (e) {
       clearTimeout(timeout);
       const isAbort = e instanceof Error && e.name === "AbortError";
       const msg = isAbort
         ? "A geração demorou demais (>75s). Tente novamente, ou volte à etapa Diagramação e gere o PDF por lá."
-        : e instanceof Error
-        ? e.message
-        : "Erro ao gerar PDF.";
+        : e instanceof Error ? e.message : "Erro ao gerar PDF.";
       setPdfError(msg);
-      console.error("[Prova] handleGerarPdfDigital error:", e);
     } finally {
       setGerandoPdf(false);
     }
@@ -669,8 +735,8 @@ export default function ProvaPage() {
     }
   }
 
-  async function handlePublicar() {
-    if (!digitalAprovado || !modelApproved) return;
+  async function handleAprovarEPublicar() {
+    if (!digitalAprovado) return;
     setApprovingPub(true);
     await supabase
       .from("projects")
@@ -688,21 +754,11 @@ export default function ProvaPage() {
   // ── Derived state ──────────────────────────────────────────────────────────
   const digitalAprovado = result?.digital?.aprovado ?? false;
   const digitalPendencias = result?.digital?.pendencias ?? [];
-  const digitalAvisos = (result?.digital?.avisos ?? []).filter(
-    a => a.id !== "capa_grafica_lombada_divergente",
-  );
-  const graficaPendencias = (result?.grafica?.pendencias ?? []).filter(
-    i => i.categoria === "capa_grafica",
-  );
-  const graficaPreparada = result?.grafica?.preparado ?? false;
-  const avisosLombada = result?.grafica?.avisos?.filter(
-    i => i.id === "capa_grafica_lombada_divergente",
-  ) ?? [];
-  const canPublish = digitalAprovado && modelApproved;
+  const impressaAprovado = result?.grafica?.aprovado ?? false;
+  const impressaPreparada = result?.grafica?.preparado ?? false;
+  const impressaPendencias = result?.grafica?.pendencias ?? [];
+  const impressaAvisos = result?.grafica?.avisos ?? [];
   const capaOrigem = bookData?.capaTemEditorData ? "editor" : "ia_ou_upload";
-
-  const pdfPendente = result?.itens.find(i => i.categoria === "pdf") ?? null;
-  const pdfPronto = result !== null && pdfPendente === null;
 
   return (
     <div>
@@ -713,11 +769,9 @@ export default function ProvaPage() {
           <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
             Etapa final
           </p>
-          <h1 className="font-heading text-3xl text-brand-primary">
-            Prova
-          </h1>
+          <h1 className="font-heading text-3xl text-brand-primary">Prova</h1>
           <p className="text-zinc-500 mt-2 text-sm leading-relaxed max-w-xl">
-            Veja seu livro como ele será publicado. Quando estiver satisfeito, aprove para enviar à distribuição.
+            Confira o livro pronto para publicação. Ao aprovar, você assina a versão final e libera a distribuição.
           </p>
         </div>
 
@@ -733,7 +787,7 @@ export default function ProvaPage() {
               </div>
             )}
 
-            {/* Book preview com abas Capa 3D / Miolo */}
+            {/* Bloco de visualização — INTOCADO */}
             {bookData && (
               <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
                 <div className="flex border-b border-zinc-100">
@@ -772,268 +826,77 @@ export default function ProvaPage() {
                 </div>
 
                 {activeTab === "capa" && !isFrentePura ? (
-                  <div className="p-8">
-                    <Book3D book={bookData} />
-                  </div>
+                  <div className="p-8"><Book3D book={bookData} /></div>
                 ) : activeTab === "capa_aberta" ? (
                   <CapaAberta bookData={bookData} isFrentePura={isFrentePura} />
-                ) : pdfPronto ? (
+                ) : (
                   <PdfFolheador projectId={projectIdStr} />
-                ) : (
-                  <div className="p-12 text-center bg-stone-50">
-                    {pdfPendente && (
-                      <div className="text-zinc-400 text-sm mb-4">
-                        {pdfPendente.mensagem}
-                      </div>
-                    )}
-                    <button
-                      onClick={handleGerarPdfDigital}
-                      disabled={gerandoPdf}
-                      className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-6 py-2.5 rounded-xl font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
-                    >
-                      {gerandoPdf ? (
-                        <>
-                          <span className="w-4 h-4 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                          Gerando versão final… (até 60s)
-                        </>
-                      ) : (
-                        pdfPendente?.acao?.label ?? "Gerar PDF digital"
-                      )}
-                    </button>
-
-                    {pdfError && (
-                      <div className="mt-4 text-xs text-red-600 max-w-md mx-auto">
-                        {pdfError}
-                      </div>
-                    )}
-
-                    {gerandoPdf && (
-                      <p className="mt-3 text-xs text-zinc-400">
-                        A geração pode demorar até um minuto. Não feche esta página.
-                      </p>
-                    )}
-                  </div>
                 )}
               </div>
             )}
 
-            {/* Bloco de aprovação do modelo — visível em qualquer aba */}
-            {bookData && (
-              <div className="flex items-center justify-center py-2">
-                {!modelApproved ? (
+            {/* Trilhas de prontidão */}
+            {result && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TrilhaCard
+                  icone="tablet"
+                  titulo="Publicação digital"
+                  subtitulo="EPUB para Amazon, Apple, Kobo, Google Play"
+                  aprovado={digitalAprovado}
+                  pendencias={digitalPendencias}
+                  avisos={[]}
+                  onNavigate={handleNavigateToEtapa}
+                  ctaLabel={null}
+                  ctaBusy={false}
+                  ctaError={pdfError}
+                />
+                <TrilhaCard
+                  icone="livro"
+                  titulo="Publicação impressa"
+                  subtitulo="PDF com sangria e marcas de corte para gráfica"
+                  aprovado={impressaAprovado}
+                  pendencias={impressaPendencias}
+                  avisos={impressaAvisos}
+                  onNavigate={handleNavigateToEtapa}
+                  ctaLabel={
+                    !impressaPreparada
+                      ? (capaOrigem === "editor" ? "Preparar PDF da gráfica" : "Abrir Editor de Capa →")
+                      : null
+                  }
+                  ctaBusy={preparandoCapaGrafica}
+                  ctaError={capaGraficaError}
+                  onCta={
+                    capaOrigem === "editor"
+                      ? handlePrepararCapaGrafica
+                      : () => router.push(`/editor/capa/${projectIdStr}`)
+                  }
+                />
+              </div>
+            )}
+
+            {/* Card de aprovação */}
+            {result && (
+              <div className="bg-white rounded-2xl border-2 border-brand-gold/40 p-6">
+                <div className="flex items-start gap-3 mb-3">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                    <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/>
+                    <path d="m9 15 2 2 4-4"/>
+                  </svg>
+                  <div>
+                    <p className="font-medium text-brand-primary text-base">Aprovar e publicar</p>
+                    <p className="text-sm text-zinc-500 mt-1 leading-relaxed">
+                      Ao aprovar, você confirma que o livro está pronto para publicação e segue para enviar às plataformas de distribuição.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
                   <button
-                    onClick={() => setModelApproved(true)}
-                    className="px-8 py-3 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm"
+                    onClick={handleAprovarEPublicar}
+                    disabled={!digitalAprovado || approvingPub}
+                    className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-semibold text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Aprovar modelo final
+                    {approvingPub ? "Aprovando…" : "Aprovar e publicar →"}
                   </button>
-                ) : (
-                  <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                      <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                    Modelo aprovado
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Status */}
-            {result ? (
-              <div className="space-y-4">
-
-                {/* Banner: lombada divergente */}
-                {avisosLombada.length > 0 && !lombadaAvisoDismissed && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-amber-800">Lombada desatualizada</p>
-                      <p className="text-xs text-amber-700 mt-1 leading-relaxed">{avisosLombada[0].mensagem}</p>
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          onClick={handlePrepararCapaGrafica}
-                          disabled={preparandoCapaGrafica}
-                          className="text-xs font-medium px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 transition-colors disabled:opacity-50"
-                        >
-                          {preparandoCapaGrafica ? "Preparando…" : "Atualizar PDF da capa →"}
-                        </button>
-                        <button
-                          onClick={() => setLombadaAvisoDismissed(true)}
-                          className="text-xs text-amber-600 hover:text-amber-800 transition-colors"
-                        >
-                          Ignorar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Card: publicação digital */}
-                <div className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-zinc-50 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-brand-primary text-sm">Publicação digital</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">Capa · Miolo · Créditos · PDF digital</p>
-                    </div>
-                    {digitalAprovado ? (
-                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        Aprovado
-                      </span>
-                    ) : (
-                      <span className="text-xs text-red-500 font-medium">
-                        {digitalPendencias.length} pendência{digitalPendencias.length !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {digitalAprovado ? (
-                      <div className="py-3 text-center">
-                        <p className="text-sm text-emerald-600 font-medium">Tudo certo para publicação digital!</p>
-                        <p className="text-xs text-zinc-400 mt-1">
-                          Conferido em {new Date(result.analisado_em).toLocaleString("pt-BR")}
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        {digitalPendencias.map((item, i) => (
-                          <PendenciaCard key={i} item={item} onNavigate={handleNavigateToEtapa} />
-                        ))}
-                        {digitalAvisos.map((item, i) => (
-                          <PendenciaCard key={`av-${i}`} item={item} onNavigate={handleNavigateToEtapa} />
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Card: envio para gráfica */}
-                <div className={`bg-white rounded-2xl border overflow-hidden transition-opacity ${
-                  !digitalAprovado ? "opacity-50 border-zinc-100" : "border-zinc-100"
-                }`}>
-                  <div className="px-6 py-4 border-b border-zinc-50 flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-brand-primary text-sm">Envio para gráfica</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">PDF da capa com marcas de corte e sangria</p>
-                    </div>
-                    {!digitalAprovado ? (
-                      <span className="text-xs text-zinc-400">Disponível após digital</span>
-                    ) : graficaPreparada && graficaPendencias.length === 0 ? (
-                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        Preparado
-                      </span>
-                    ) : graficaPreparada ? (
-                      <span className="text-xs text-red-500 font-medium">Requer atenção</span>
-                    ) : (
-                      <span className="text-xs text-zinc-400 font-medium">Não preparado</span>
-                    )}
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {!digitalAprovado ? (
-                      <p className="text-sm text-zinc-400 text-center py-3">
-                        Conclua a trilha digital antes de preparar o envio para gráfica.
-                      </p>
-                    ) : !graficaPreparada ? (
-                      <div className="text-center py-3">
-                        <p className="text-sm text-zinc-600 mb-4">
-                          {capaOrigem === "editor"
-                            ? "Gere o PDF da capa com marcas de corte para envio à gráfica."
-                            : "A capa precisa passar pelo Editor de Capa para gerar o PDF para gráfica."}
-                        </p>
-                        <button
-                          onClick={capaOrigem === "editor"
-                            ? handlePrepararCapaGrafica
-                            : () => router.push(`/editor/capa/${projectIdStr}`)}
-                          disabled={preparandoCapaGrafica}
-                          className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
-                        >
-                          {preparandoCapaGrafica ? (
-                            <>
-                              <span className="w-4 h-4 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                              Preparando…
-                            </>
-                          ) : capaOrigem === "editor"
-                            ? "Preparar PDF para gráfica"
-                            : "Abrir Editor de Capa →"}
-                        </button>
-                        {capaGraficaError && (
-                          <p className="mt-3 text-xs text-red-600">{capaGraficaError}</p>
-                        )}
-                      </div>
-                    ) : graficaPendencias.length > 0 ? (
-                      <>
-                        {graficaPendencias.map((item, i) => (
-                          <PendenciaCard key={i} item={item} onNavigate={handleNavigateToEtapa} />
-                        ))}
-                        <div className="pt-1">
-                          <button
-                            onClick={handlePrepararCapaGrafica}
-                            disabled={preparandoCapaGrafica}
-                            className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-5 py-2 rounded-xl text-xs font-medium hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
-                          >
-                            {preparandoCapaGrafica ? (
-                              <>
-                                <span className="w-3 h-3 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                                Preparando…
-                              </>
-                            ) : "Preparar novamente"}
-                          </button>
-                          {capaGraficaError && (
-                            <p className="mt-2 text-xs text-red-600">{capaGraficaError}</p>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="py-3 text-center">
-                        <p className="text-sm text-emerald-600 font-medium">PDF da capa pronto para gráfica!</p>
-                        <button
-                          onClick={handlePrepararCapaGrafica}
-                          disabled={preparandoCapaGrafica}
-                          className="mt-3 text-xs text-zinc-400 underline hover:text-zinc-600 disabled:opacity-50 transition-colors"
-                        >
-                          {preparandoCapaGrafica ? "Atualizando…" : "Atualizar PDF da capa"}
-                        </button>
-                        {capaGraficaError && (
-                          <p className="mt-2 text-xs text-red-600">{capaGraficaError}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Detalhes da obra (colapsável) */}
-                <details
-                  className="bg-white rounded-2xl border border-zinc-100"
-                  open={detailsOpen}
-                  onToggle={(e) => setDetailsOpen((e.target as HTMLDetailsElement).open)}
-                >
-                  <summary className="cursor-pointer px-6 py-4 text-sm font-medium text-zinc-600 hover:text-zinc-800 transition-colors flex items-center justify-between">
-                    Detalhes da obra
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${detailsOpen ? "rotate-180" : ""}`}>
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </summary>
-                  {bookData && (
-                    <div className="px-6 pb-5 pt-1 text-sm space-y-2 text-zinc-600 border-t border-zinc-50">
-                      <p><span className="text-zinc-400">Título:</span> {bookData.titulo}</p>
-                      <p><span className="text-zinc-400">Autor:</span> {bookData.autor}</p>
-                      <p><span className="text-zinc-400">Páginas:</span> {bookData.paginas}</p>
-                      <p><span className="text-zinc-400">Lombada:</span> {bookData.lombadaMm}mm</p>
-                    </div>
-                  )}
-                </details>
-
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     onClick={handleAnalisar}
                     disabled={analyzing}
@@ -1041,33 +904,21 @@ export default function ProvaPage() {
                   >
                     {analyzing ? "Reanalisando…" : "Reanalisar"}
                   </button>
-
-                  {canPublish ? (
-                    <button
-                      onClick={handlePublicar}
-                      disabled={approvingPub}
-                      className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-semibold text-sm hover:bg-brand-gold/90 transition-colors disabled:opacity-50"
-                    >
-                      {approvingPub ? "Aguarde…" : "Publicar →"}
-                    </button>
-                  ) : digitalAprovado && !modelApproved ? (
-                    <div className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-500 text-sm text-center">
-                      Aprove o modelo 3D acima para publicar
-                    </div>
-                  ) : (
-                    <div className="flex-1 py-3 rounded-xl bg-zinc-100 text-zinc-500 text-sm text-center">
-                      Resolva as pendências da trilha digital para publicar
-                    </div>
-                  )}
                 </div>
+                {!digitalAprovado && (
+                  <p className="mt-3 text-xs text-zinc-400">
+                    Resolva as pendências da trilha digital para aprovar. A trilha impressa é opcional — você pode preparar depois.
+                  </p>
+                )}
               </div>
-            ) : (
+            )}
+
+            {/* Estado inicial: sem análise ainda */}
+            {!result && !loading && (
               <div className="bg-white rounded-2xl border border-zinc-100 p-8 text-center">
-                <h3 className="font-heading text-xl text-brand-primary mb-2">
-                  Conferir o livro
-                </h3>
+                <h3 className="font-heading text-xl text-brand-primary mb-2">Conferir o livro</h3>
                 <p className="text-zinc-400 text-sm mb-6 max-w-sm mx-auto">
-                  Vamos verificar capa, miolo, créditos e PDF, e mostrar o livro pronto para sua aprovação.
+                  Vamos verificar o que está pronto para publicação e o que ainda falta.
                 </p>
                 <button
                   onClick={handleAnalisar}
@@ -1083,6 +934,31 @@ export default function ProvaPage() {
                 </button>
               </div>
             )}
+
+            {/* Detalhes técnicos — colapsável */}
+            {result && bookData && (
+              <details
+                className="bg-white rounded-2xl border border-zinc-100"
+                open={detailsOpen}
+                onToggle={(e) => setDetailsOpen((e.target as HTMLDetailsElement).open)}
+              >
+                <summary className="cursor-pointer px-6 py-4 text-sm font-medium text-zinc-600 hover:text-zinc-800 transition-colors flex items-center justify-between">
+                  Detalhes técnicos da obra
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${detailsOpen ? "rotate-180" : ""}`}>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </summary>
+                <div className="px-6 pb-5 pt-1 text-sm text-zinc-600 border-t border-zinc-50 grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div><span className="text-zinc-400">Título:</span> {bookData.titulo}</div>
+                  <div><span className="text-zinc-400">Autor:</span> {bookData.autor}</div>
+                  <div><span className="text-zinc-400">Formato:</span> {result.detalhes.formato ?? "—"}</div>
+                  <div><span className="text-zinc-400">Páginas:</span> {result.detalhes.paginas ?? "—"}</div>
+                  <div><span className="text-zinc-400">Lombada capa:</span> {result.detalhes.lombada_capa_mm?.toFixed(1) ?? "—"} mm</div>
+                  <div><span className="text-zinc-400">Lombada miolo:</span> {result.detalhes.lombada_miolo_mm?.toFixed(1) ?? "—"} mm</div>
+                </div>
+              </details>
+            )}
+
           </div>
         )}
       </main>

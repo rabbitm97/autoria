@@ -1,171 +1,13 @@
-export const maxDuration = 30;
+export const maxDuration = 10;
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
-import { createClient } from "@supabase/supabase-js";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
-import { PDFDocument } from "pdf-lib";
-import {
-  FORMATS,
-  SANGRIA_MM,
-  calcularLombada,
-  clampOrelhaMm,
-  getOrelhaDefault,
-  type FormatKey,
-} from "@/app/editor/capa/[project_id]/lib/dimensions";
-import type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
-export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult };
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const MARKS_MM = 10;
-const PDF_DIMENSAO_TOLERANCIA_MM = 0.5;
-
-// ─── Análise de capa gráfica ─────────────────────────────────────────────────
-
-async function analisarCapaGrafica(params: {
-  pdf_grafica: {
-    storage_path: string;
-    gerado_em: string;
-    formato: string;
-    paginas_no_momento: number;
-    orelha_mm?: number;
-    com_orelhas?: boolean;
-  };
-  paginas_atuais: number;
-  formato_atual: string;
-  orelha_mm_atual: number;
-}): Promise<ProvaItem[]> {
-  const itens: ProvaItem[] = [];
-  const { pdf_grafica, paginas_atuais, formato_atual, orelha_mm_atual } = params;
-
-  const storageClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
-  // 1. Assinar URL para download
-  const { data: signed, error: signErr } = await storageClient.storage
-    .from("editor-assets")
-    .createSignedUrl(pdf_grafica.storage_path, 300);
-
-  if (signErr || !signed?.signedUrl) {
-    itens.push({
-      id: "capa_grafica_inacessivel",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: "PDF da capa para gráfica não está acessível. Prepare novamente.",
-      etapa: "__preparar_capa_grafica__",
-    });
-    return itens;
-  }
-
-  // 2. Baixar o PDF
-  let buffer: Buffer;
-  try {
-    const res = await fetch(signed.signedUrl);
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    buffer = Buffer.from(await res.arrayBuffer());
-  } catch (err) {
-    console.error("[prova:capa_grafica] falha ao baixar PDF:", err);
-    itens.push({
-      id: "capa_grafica_download_falhou",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: "Falha ao baixar o PDF da capa. Prepare novamente.",
-      etapa: "__preparar_capa_grafica__",
-    });
-    return itens;
-  }
-
-  // 3. Medir MediaBox via pdf-lib
-  let widthMm: number;
-  let heightMm: number;
-  try {
-    const pdfDoc = await PDFDocument.load(buffer);
-    if (pdfDoc.getPageCount() < 1) throw new Error("PDF sem páginas");
-    const page = pdfDoc.getPage(0);
-    const { width, height } = page.getSize(); // pontos (72 pt/in)
-    widthMm  = (width  / 72) * 25.4;
-    heightMm = (height / 72) * 25.4;
-  } catch (err) {
-    console.error("[prova:capa_grafica] PDF inválido:", err);
-    itens.push({
-      id: "capa_grafica_pdf_invalido",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: "PDF da capa está corrompido ou inválido. Prepare novamente.",
-      etapa: "__preparar_capa_grafica__",
-    });
-    return itens;
-  }
-
-  // 4. Calcular dimensões esperadas (mesma fórmula do exportar-pdf)
-  const f = FORMATS[formato_atual as keyof typeof FORMATS];
-  if (!f) {
-    itens.push({
-      id: "capa_grafica_formato_invalido",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: `Formato '${formato_atual}' não reconhecido.`,
-      etapa: null,
-    });
-    return itens;
-  }
-
-  const lombadaMmEsperada = calcularLombada(paginas_atuais);
-  const totalWMm = f.width_mm * 2 + lombadaMmEsperada + orelha_mm_atual * 2 + SANGRIA_MM * 2;
-  const totalHMm = f.height_mm + SANGRIA_MM * 2;
-  const expectedW = totalWMm + MARKS_MM * 2;
-  const expectedH = totalHMm + MARKS_MM * 2;
-
-  const diffW = Math.abs(widthMm - expectedW);
-  const diffH = Math.abs(heightMm - expectedH);
-  const dimensoesBatem = diffW <= PDF_DIMENSAO_TOLERANCIA_MM && diffH <= PDF_DIMENSAO_TOLERANCIA_MM;
-
-  // 5. Check: zona de marcas (a MediaBox deve ser >= área útil + 2×MARKS_MM)
-  const totalWNoPdf = widthMm - MARKS_MM * 2;
-  const totalHNoPdf = heightMm - MARKS_MM * 2;
-  const temZonaDeMarcas =
-    (widthMm  - totalWNoPdf) >= MARKS_MM * 2 - PDF_DIMENSAO_TOLERANCIA_MM &&
-    (heightMm - totalHNoPdf) >= MARKS_MM * 2 - PDF_DIMENSAO_TOLERANCIA_MM;
-
-  if (!temZonaDeMarcas) {
-    itens.push({
-      id: "capa_grafica_sem_marcas",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: "PDF da capa não tem marcas de corte — não pode ir para gráfica. Prepare novamente.",
-      etapa: "__preparar_capa_grafica__",
-    });
-  }
-
-  if (!dimensoesBatem) {
-    itens.push({
-      id: "capa_grafica_dimensoes_divergentes",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: `Dimensões do PDF (${widthMm.toFixed(1)}×${heightMm.toFixed(1)}mm) não correspondem ao esperado (${expectedW.toFixed(1)}×${expectedH.toFixed(1)}mm). Prepare novamente.`,
-      etapa: "__preparar_capa_grafica__",
-    });
-  }
-
-  // 6. Aviso de lombada divergente — páginas quando gerou vs páginas atuais
-  if (pdf_grafica.paginas_no_momento !== paginas_atuais) {
-    const lombadaQuandoGerou = calcularLombada(pdf_grafica.paginas_no_momento);
-    itens.push({
-      id: "capa_grafica_lombada_divergente",
-      categoria: "consistencia",
-      status: "aviso",
-      mensagem: `Lombada do PDF foi calculada para ${pdf_grafica.paginas_no_momento} páginas (${lombadaQuandoGerou.toFixed(1)}mm), mas o miolo atual tem ${paginas_atuais} páginas (${lombadaMmEsperada.toFixed(1)}mm). Prepare o PDF da capa novamente para corrigir.`,
-      etapa: "__preparar_capa_grafica__",
-    });
-  }
-
-  return itens;
-}
+import { type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import type { ProvaItem, ProvaResult } from "./types";
+export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
 
 // ─── POST /api/agentes/prova ─────────────────────────────────────────────────
 
@@ -195,200 +37,146 @@ export async function POST(req: NextRequest) {
   // ── Load project ──────────────────────────────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf_digital, formato")
+    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf, dados_pdf_digital, formato")
     .eq("id", project_id)
     .eq("user_id", userId)
     .maybeSingle();
 
   if (projErr) {
     console.error("[prova] erro na query do projeto:", {
-      project_id,
-      userId,
-      code: projErr.code,
-      message: projErr.message,
-      details: projErr.details,
-      hint: projErr.hint,
+      project_id, userId, code: projErr.code, message: projErr.message,
     });
     return NextResponse.json(
-      { error: "Erro ao consultar o projeto.", detail: projErr.message, code: projErr.code },
+      { error: "Erro ao consultar o projeto.", detail: projErr.message },
       { status: 500 },
     );
   }
 
   if (!project) {
-    console.warn("[prova] projeto não encontrado (resultado vazio)", { project_id, userId });
     return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
   }
 
-  // ── Pendency list ─────────────────────────────────────────────────────────
-  const itens: ProvaItem[] = [];
-
   const capa = project.dados_capa as Record<string, unknown> | null;
-
-  // 1. Capa digital (imagem confirmada)
-  const capaResolvida = resolveCapaCompleta(
-    capa,
-    (project.formato ?? "padrao_br") as FormatKey,
-  );
-  if (!capaResolvida.pronta) {
-    itens.push({
-      categoria: "capa",
-      status: "erro",
-      mensagem: "A capa ainda não foi gerada e confirmada.",
-      acao: { label: "Voltar para Capa", etapa: "capa" },
-    });
-  }
-
-  // 2. Miolo
   const miolo = project.dados_miolo as {
     html_storage_path?: string;
     lombada_mm?: number;
     paginas_reais?: number;
-    gerado_em?: string;
+    paginas_estimadas?: number;
   } | null;
+  const creditos = project.dados_creditos as { html_storage_path?: string } | null;
+  const pdfEbook = project.dados_pdf_digital as { storage_path?: string } | null;
+  const pdfMioloGrafica = project.dados_pdf as { storage_path?: string } | null;
+  const formatoKey = (project.formato ?? "padrao_br") as FormatKey;
+
+  const capaResolvida = resolveCapaCompleta(capa, formatoKey);
+  const pdfCapaGrafica = capa?.pdf_grafica as { storage_path?: string } | undefined;
+
+  // ── Trilha digital ────────────────────────────────────────────────────────
+  const itensDigital: ProvaItem[] = [];
+
+  if (!capaResolvida.pronta) {
+    itensDigital.push({
+      categoria: "capa",
+      status: "erro",
+      mensagem: "A capa ainda não foi confirmada.",
+      acao: { label: "Voltar para Capa", etapa: "capa" },
+    });
+  }
   if (!miolo?.html_storage_path) {
-    itens.push({
+    itensDigital.push({
       categoria: "miolo",
       status: "erro",
-      mensagem: "O miolo do livro ainda não foi diagramado.",
+      mensagem: "O miolo ainda não foi diagramado.",
       acao: { label: "Voltar para Diagramação", etapa: "miolo" },
     });
   }
-
-  // 3. Créditos
-  const creditos = project.dados_creditos as { html_storage_path?: string } | null;
   if (!creditos?.html_storage_path) {
-    itens.push({
+    itensDigital.push({
       categoria: "creditos",
       status: "erro",
       mensagem: "A página de créditos ainda não foi aprovada.",
       acao: { label: "Voltar para Créditos", etapa: "creditos" },
     });
   }
-
-  // 4. PDF digital
-  const pdfDigital = project.dados_pdf_digital as {
-    storage_path?: string;
-    gerado_em?: string;
-  } | null;
-
-  if (!pdfDigital?.storage_path) {
-    itens.push({
-      categoria: "pdf",
+  if (!pdfEbook?.storage_path) {
+    itensDigital.push({
+      categoria: "pdf_ebook",
       status: "erro",
-      mensagem: "O PDF digital ainda não foi gerado.",
-      acao: { label: "Gerar PDF digital", etapa: "__gerar_pdf_digital__" },
-    });
-  } else if (miolo?.gerado_em && pdfDigital.gerado_em && pdfDigital.gerado_em < miolo.gerado_em) {
-    itens.push({
-      categoria: "pdf",
-      status: "aviso",
-      mensagem: "O miolo foi alterado após o PDF. Regere o PDF para garantir a versão atualizada.",
-      acao: { label: "Regenerar PDF", etapa: "__gerar_pdf_digital__" },
+      mensagem: "O PDF eBook ainda não foi gerado.",
+      acao: { label: "Gerar PDF eBook", etapa: "__gerar_pdf_digital__" },
     });
   }
 
-  // 5. Consistência: lombada da capa vs miolo
-  if (capaResolvida.pronta && capaResolvida.lombada_mm !== null && miolo?.lombada_mm) {
+  // ── Trilha impressa ───────────────────────────────────────────────────────
+  const itensImpressa: ProvaItem[] = [];
+
+  if (!pdfMioloGrafica?.storage_path) {
+    itensImpressa.push({
+      categoria: "pdf_miolo_grafica",
+      status: "erro",
+      mensagem: "O PDF do miolo com sangria ainda não foi gerado.",
+      acao: { label: "Voltar para Diagramação", etapa: "miolo" },
+    });
+  }
+  if (!pdfCapaGrafica?.storage_path) {
+    itensImpressa.push({
+      categoria: "pdf_capa_grafica",
+      status: "erro",
+      mensagem: "O PDF da capa para gráfica ainda não foi preparado.",
+      acao: { label: "Preparar PDF da gráfica", etapa: "__preparar_capa_grafica__" },
+    });
+  }
+
+  // Checagem crítica: lombada da capa vs lombada real do miolo.
+  // Se divergir acima da tolerância, o PDF da gráfica precisa ser regerado
+  // com a lombada correta — se o autor mandar como está, a capa vai
+  // desalinhada da lombada real do livro impresso.
+  if (
+    capaResolvida.pronta &&
+    capaResolvida.lombada_mm !== null &&
+    miolo?.lombada_mm &&
+    pdfCapaGrafica?.storage_path
+  ) {
     const diff = Math.abs(capaResolvida.lombada_mm - miolo.lombada_mm);
     if (diff > LIMITE_DIVERGENCIA_LOMBADA_MM) {
-      itens.push({
-        categoria: "consistencia",
+      itensImpressa.push({
+        categoria: "lombada",
         status: "aviso",
-        mensagem: `A lombada da capa (${capaResolvida.lombada_mm}mm) está ${diff.toFixed(1)}mm diferente da lombada real do miolo (${miolo.lombada_mm}mm).`,
-        acao: { label: "Ajustar lombada", etapa: "capa" },
+        mensagem: `Lombada da capa (${capaResolvida.lombada_mm.toFixed(1)}mm) diverge da lombada real do miolo (${miolo.lombada_mm.toFixed(1)}mm). Prepare o PDF da gráfica novamente.`,
+        acao: { label: "Preparar novamente", etapa: "__preparar_capa_grafica__" },
       });
     }
   }
 
-  // ── Análise de capa gráfica (Prompt 4A) ──────────────────────────────────
-  const paginasReais = miolo?.paginas_reais ?? 0;
-
-  const pdfGrafica = capa?.pdf_grafica as
-    | {
-        storage_path: string;
-        gerado_em: string;
-        formato: string;
-        paginas_no_momento: number;
-        orelha_mm?: number;
-        com_orelhas?: boolean;
-      }
-    | undefined;
-
-  const editorData = capa?.editor_data as
-    | { version?: number; orelhaMm?: number; comOrelhas?: boolean }
-    | undefined;
-  const formatoAtual = (project.formato ?? "padrao_br") as FormatKey;
-  const orelhaMmAtual =
-    typeof editorData?.orelhaMm === "number"
-      ? clampOrelhaMm(formatoAtual, editorData.orelhaMm)
-      : editorData?.comOrelhas
-        ? getOrelhaDefault(formatoAtual)
-        : 0;
-
-  const itensCapaGrafica: ProvaItem[] = [];
-
-  if (!pdfGrafica) {
-    itensCapaGrafica.push({
-      id: "capa_grafica_nao_preparada",
-      categoria: "capa_grafica",
-      status: "erro",
-      mensagem: "PDF da capa para gráfica ainda não foi preparado.",
-      etapa: "__preparar_capa_grafica__",
-    });
-  } else if (paginasReais > 0 && project.formato) {
-    const analiseItens = await analisarCapaGrafica({
-      pdf_grafica: pdfGrafica,
-      paginas_atuais: paginasReais,
-      formato_atual: project.formato as string,
-      orelha_mm_atual: orelhaMmAtual,
-    });
-    itensCapaGrafica.push(...analiseItens);
-  }
-
-  // Agrega itens da gráfica (mantém compatibilidade com itens[])
-  itens.push(...itensCapaGrafica);
-
-  // ── Trilhas ───────────────────────────────────────────────────────────────
-  const itensDigital = itens.filter(i => i.categoria !== "capa_grafica");
-  const itensGrafica = itens;
-
+  // ── Consolidar ────────────────────────────────────────────────────────────
   const digital = {
     aprovado: itensDigital.every(i => i.status !== "erro"),
     pendencias: itensDigital.filter(i => i.status === "erro"),
     avisos: itensDigital.filter(i => i.status === "aviso"),
   };
-
   const grafica = {
-    aprovado: itensGrafica.every(i => i.status !== "erro"),
-    preparado: Boolean(pdfGrafica),
-    pendencias: itensGrafica.filter(i => i.status === "erro"),
-    avisos: itensGrafica.filter(i => i.status === "aviso"),
+    aprovado: itensImpressa.every(i => i.status !== "erro"),
+    preparado: Boolean(pdfCapaGrafica?.storage_path),
+    pendencias: itensImpressa.filter(i => i.status === "erro"),
+    avisos: itensImpressa.filter(i => i.status === "aviso"),
   };
-
-  // ── Score / legado ────────────────────────────────────────────────────────
-  const erros  = itens.filter(i => i.status === "erro").length;
-  const avisos = itens.filter(i => i.status === "aviso").length;
-  const score  = Math.max(0, 100 - erros * 30 - avisos * 10);
-  const aprovado = erros === 0 && avisos === 0;
 
   const result: ProvaResult = {
     project_id,
-    score,
-    aprovado,
-    itens,
     digital,
     grafica,
     detalhes: {
       formato: project.formato as string | undefined,
-      paginas: paginasReais || undefined,
+      paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? undefined,
+      lombada_capa_mm: capaResolvida.lombada_mm ?? undefined,
+      lombada_miolo_mm: miolo?.lombada_mm ?? undefined,
     },
     analisado_em: new Date().toISOString(),
   };
 
   await supabase
     .from("projects")
-    .update({ dados_qa: result, etapa_atual: aprovado ? "qa" : "diagramacao" })
+    .update({ dados_qa: result })
     .eq("id", project_id)
     .eq("user_id", userId);
 
