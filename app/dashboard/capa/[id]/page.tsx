@@ -310,7 +310,11 @@ function ModoUpload({
         canvas.height = Math.floor(viewport.height);
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("Não foi possível criar contexto 2D.");
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        // pdfjs 5.x tornou `canvas` obrigatório no tipo RenderParameters mantendo
+        // `canvasContext` opcional. Como no runtime deste projeto convivem duas
+        // resoluções de tipo (top-level e nested via react-pdf), passamos AMBAS as
+        // propriedades para satisfazer os dois shapes de RenderParameters.
+        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
         const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
         if (!blob) throw new Error("Falha ao converter PDF em imagem.");
         const pngName = f.name.replace(/\.pdf$/i, "") + ".png";
