@@ -77,6 +77,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Bloqueio: capa em formato eBook (frente pura) ─────────────────────────
+  // Se a capa atual é só a frente do livro (140×210mm), não é possível gerar
+  // PDF panorâmico para gráfica sem inventar contracapa/lombada. O client
+  // deve exibir CTA "Alterar capa" na trilha impressa e enviar o autor de
+  // volta ao editor (se veio do editor) ou para /dashboard/capa (se veio
+  // de upload/IA). Aqui é a defesa em profundidade — protege contra
+  // chamada direta via curl/URL.
+  if (capa.is_frente_pura === true) {
+    return NextResponse.json(
+      {
+        error: "A capa atual é somente para eBook (frente pura). Para publicação impressa, envie uma capa panorâmica ou refaça no editor.",
+        action: capa.source === "editor" ? "ir_para_editor" : "ir_para_capa",
+      },
+      { status: 422 },
+    );
+  }
+
   const formatoAtual = (project.formato ?? "padrao_br") as FormatKey;
 
   const editorData = capa.editor_data as

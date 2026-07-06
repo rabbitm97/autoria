@@ -575,37 +575,53 @@ async function gerarArtefato(
   projectId: string,
   timeoutMs = 75_000,
 ): Promise<{ ok: boolean; error?: string }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_id: projectId }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      return { ok: false, error: (data as { error?: string } | null)?.error ?? `Erro do servidor (HTTP ${res.status})` };
+  // Retry silencioso: 2 tentativas com backoff (2s, 5s). Se falhar tudo,
+  // o client mostra mensagem única genérica ("Estamos finalizando…") sem
+  // culpar o autor. Não reintenta 422 (erro lógico do server, ex: capa
+  // frente pura bloqueada) — apenas 5xx e timeouts.
+  const backoffs = [2000, 5000];
+  const maxAttempts = 2;
+  let lastError = "Falha ao preparar arquivo";
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, backoffs[attempt - 1]));
     }
-    return { ok: true };
-  } catch (e) {
-    clearTimeout(timeout);
-    const isAbort = e instanceof Error && e.name === "AbortError";
-    return {
-      ok: false,
-      error: isAbort ? "Geração demorou demais (>75s)" : e instanceof Error ? e.message : "Erro desconhecido",
-    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) return { ok: true };
+
+      const data = await res.json().catch(() => null);
+      const errorMsg = (data as { error?: string } | null)?.error ?? `Erro do servidor (HTTP ${res.status})`;
+
+      // 422 = erro lógico (ex: is_frente_pura). Não vale reintentar.
+      if (res.status === 422) return { ok: false, error: errorMsg };
+      lastError = errorMsg;
+    } catch (e) {
+      clearTimeout(timeout);
+      const isAbort = e instanceof Error && e.name === "AbortError";
+      lastError = isAbort ? "Geração demorou demais (>75s)" : e instanceof Error ? e.message : "Erro desconhecido";
+    }
   }
+  return { ok: false, error: lastError };
 }
 
-// PDF da capa gráfica só é auto-gerado quando a capa veio do editor visual
-// (temos os dados canvas pra chamar preparar-capa-grafica). Capa por IA/upload
-// exige o botão manual "Abrir Editor de Capa" — o autor precisa mover-se pra lá.
+// PDF da capa gráfica só é auto-gerado quando a capa veio do editor visual E
+// é panorâmica. Capa não-panorâmica (frente pura, ex: só-eBook) vira item
+// "Alterar capa" com sentinel __alterar_capa__ — o autor decide entre editor
+// ou upload, e o server bloqueia a rota com 422 se for chamada mesmo assim.
 function detectarArtefatosAusentes(
   prova: ProvaResult,
   capaOrigem: "editor" | "ia_ou_upload",
+  isPanoramic: boolean,
 ): Array<{ tipo: string; endpoint: string }> {
   const missing: Array<{ tipo: string; endpoint: string }> = [];
   const seen = new Set<string>();
@@ -616,8 +632,13 @@ function detectarArtefatosAusentes(
     if (p.categoria === "pdf_ebook") {
       missing.push({ tipo: "pdf_ebook", endpoint: "/api/agentes/gerar-pdf-digital" });
     } else if (p.categoria === "pdf_miolo_grafica") {
+      // PDF do miolo com sangria é gerável sempre — útil mesmo em livro
+      // só eBook (se autor eventualmente trocar a capa, já está pronto).
       missing.push({ tipo: "pdf_miolo_grafica", endpoint: "/api/agentes/gerar-pdf" });
-    } else if (p.categoria === "pdf_capa_grafica" && capaOrigem === "editor") {
+    } else if (p.categoria === "pdf_capa_grafica" && capaOrigem === "editor" && isPanoramic) {
+      // Só tenta gerar PDF da capa quando: veio do editor E é panorâmica.
+      // Se não é panorâmica, o item vem com etapa "__alterar_capa__" e
+      // exige decisão do autor.
       missing.push({ tipo: "pdf_capa_grafica", endpoint: "/api/agentes/prova/preparar-capa-grafica" });
     }
   }
@@ -641,7 +662,6 @@ export default function ProvaPage() {
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [preparandoArtefatos, setPreparandoArtefatos] = useState(false);
-  const [errosPreparacao, setErrosPreparacao] = useState<string[]>([]);
   const [preparandoCapaGrafica, setPreparandoCapaGrafica] = useState(false);
   const [capaGraficaError, setCapaGraficaError] = useState<string | null>(null);
   const [isFrentePura, setIsFrentePura] = useState(false);
@@ -650,6 +670,7 @@ export default function ProvaPage() {
     setLoading(true);
     let prova: ProvaResult | null = null;
     let capaOrigemLocal: "editor" | "ia_ou_upload" = "ia_ou_upload";
+    let isPanoramicLocal = true; // default seguro para casos onde a capa não carregou
     try {
       const { data: project } = await supabase
         .from("projects")
@@ -677,6 +698,7 @@ export default function ProvaPage() {
         const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
         const capaTemEditorData = editorDataRaw?.version === 1;
         capaOrigemLocal = capaTemEditorData ? "editor" : "ia_ou_upload";
+        isPanoramicLocal = capaResolvida.is_panoramica;
 
         const paginasReais = miolo?.paginas_reais ?? 0;
         const f = FORMATS[formatoKey] ?? FORMATS.padrao_br;
@@ -718,21 +740,14 @@ export default function ProvaPage() {
     // O autor vê "Preparando arquivos finais…" enquanto rodamos os PDFs.
     // Idempotente — se rodar de novo, só pega o que ainda falta.
     if (!prova) return;
-    const missing = detectarArtefatosAusentes(prova, capaOrigemLocal);
+    const missing = detectarArtefatosAusentes(prova, capaOrigemLocal, isPanoramicLocal);
     if (missing.length === 0) return;
 
     setPreparandoArtefatos(true);
-    setErrosPreparacao([]);
     try {
-      const results = await Promise.allSettled(
+      await Promise.allSettled(
         missing.map(m => gerarArtefato(m.endpoint, id as string)),
       );
-      const errs: string[] = [];
-      results.forEach((r, i) => {
-        if (r.status === "rejected") errs.push(`${missing[i].tipo}: ${String(r.reason)}`);
-        else if (!r.value.ok) errs.push(`${missing[i].tipo}: ${r.value.error}`);
-      });
-      setErrosPreparacao(errs);
 
       const reAnalyze = await fetch("/api/agentes/prova", {
         method: "POST",
@@ -772,15 +787,14 @@ export default function ProvaPage() {
     }
   }
 
-  // Retry manual dispara o mesmo mecanismo do auto-gen: chama o endpoint,
-  // coleta erro e re-analisa. Usado pelos botões "Tentar novamente" das pendências.
+  // Retry manual dispara o mesmo mecanismo do auto-gen: chama o endpoint
+  // (com retry silencioso interno) e re-analisa. Erros são absorvidos —
+  // o card "Estamos finalizando…" aparece se a pendência derivada persistir.
   async function retryArtefato(endpoint: string) {
     if (!projectIdStr) return;
     setPreparandoArtefatos(true);
-    setErrosPreparacao([]);
     try {
-      const r = await gerarArtefato(endpoint, projectIdStr);
-      if (!r.ok && r.error) setErrosPreparacao([r.error]);
+      await gerarArtefato(endpoint, projectIdStr);
       const res = await fetch("/api/agentes/prova", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -834,16 +848,42 @@ export default function ProvaPage() {
     // Capa gráfica tem branch de action=ir_para_editor_capa que redireciona pro editor,
     // então usa handler dedicado ao invés do retryArtefato genérico.
     if (etapa === "__preparar_capa_grafica__") { handlePrepararCapaGrafica(); return; }
+    // Capa incompatível: destino depende da origem (editor vs upload/IA).
+    if (etapa === "__alterar_capa__") {
+      if (capaOrigem === "editor") router.push(`/editor/capa/${projectIdStr}`);
+      else router.push(`/dashboard/capa/${projectIdStr}`);
+      return;
+    }
     router.push(`/dashboard/${etapa}/${id}`);
   }
 
   // ── Derived state ──────────────────────────────────────────────────────────
-  const digitalAprovado = result?.digital?.aprovado ?? false;
-  const digitalPendencias = result?.digital?.pendencias ?? [];
-  const impressaAprovado = result?.grafica?.aprovado ?? false;
-  const impressaPreparada = result?.grafica?.preparado ?? false;
-  const impressaPendencias = result?.grafica?.pendencias ?? [];
+  // Filtra pendências derivadas (artefatos que a plataforma gera sozinha) das
+  // que exigem decisão do autor. Autor nunca vê "PDF eBook não pôde ser gerado"
+  // — vê apenas o que ele pode acionar. Exceção: pdf_capa_grafica com sentinel
+  // "__alterar_capa__" É acionável (autor decide entre editor ou upload).
+  const isPendenciaDerivada = (p: ProvaItem) =>
+    p.categoria === "pdf_ebook" ||
+    p.categoria === "pdf_miolo_grafica" ||
+    (p.categoria === "pdf_capa_grafica" && p.acao?.etapa !== "__alterar_capa__");
+
+  const digitalPendenciasRaw = result?.digital?.pendencias ?? [];
+  const impressaPendenciasRaw = result?.grafica?.pendencias ?? [];
+  const digitalPendencias = digitalPendenciasRaw.filter(p => !isPendenciaDerivada(p));
+  const impressaPendencias = impressaPendenciasRaw.filter(p => !isPendenciaDerivada(p));
   const impressaAvisos = result?.grafica?.avisos ?? [];
+
+  const digitalAprovado = digitalPendencias.length === 0;
+  const impressaAprovado = impressaPendencias.length === 0;
+
+  // Se ainda existem pendências derivadas no result mas o auto-gen não está
+  // rodando, significa que estamos entre ciclos — a UI mostra "Estamos
+  // finalizando…" ao invés de expor o erro cru ao autor.
+  const artefatosPendentes =
+    digitalPendenciasRaw.some(isPendenciaDerivada) ||
+    impressaPendenciasRaw.some(isPendenciaDerivada);
+  const finalizandoArtefatos = artefatosPendentes && !preparandoArtefatos;
+
   const capaOrigem = bookData?.capaTemEditorData ? "editor" : "ia_ou_upload";
 
   return (
@@ -934,16 +974,16 @@ export default function ProvaPage() {
               </div>
             )}
 
-            {/* Erros consolidados da auto-geração */}
-            {errosPreparacao.length > 0 && !preparandoArtefatos && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <p className="text-sm text-amber-800 font-medium mb-1">Não conseguimos preparar todos os arquivos:</p>
-                <ul className="text-xs text-amber-800 space-y-0.5 list-disc pl-5">
-                  {errosPreparacao.map((e, i) => <li key={i}>{e}</li>)}
-                </ul>
-                <p className="text-xs text-amber-700 mt-2">
-                  Você pode tentar novamente pelos botões nas trilhas abaixo.
-                </p>
+            {/* Estado silencioso: artefato derivado ainda ausente entre ciclos.
+                Autor não vê erro nem CTA — só a mensagem calma de que a
+                plataforma está finalizando por ele. */}
+            {finalizandoArtefatos && (
+              <div className="bg-brand-gold/5 border border-brand-gold/20 rounded-xl p-4 flex items-center gap-3">
+                <span className="w-5 h-5 rounded-full border-2 border-brand-gold border-t-transparent animate-spin shrink-0" />
+                <div>
+                  <p className="text-sm text-brand-primary font-medium">Estamos finalizando os arquivos, aguarde…</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Se demorar mais que alguns minutos, recarregue a página.</p>
+                </div>
               </div>
             )}
 
@@ -970,18 +1010,9 @@ export default function ProvaPage() {
                   pendencias={impressaPendencias}
                   avisos={impressaAvisos}
                   onNavigate={handleNavigateToEtapa}
-                  ctaLabel={
-                    !impressaPreparada && capaOrigem !== "editor"
-                      ? "Abrir Editor de Capa →"
-                      : null
-                  }
-                  ctaBusy={preparandoCapaGrafica}
-                  ctaError={capaGraficaError}
-                  onCta={
-                    capaOrigem !== "editor"
-                      ? () => router.push(`/editor/capa/${projectIdStr}`)
-                      : undefined
-                  }
+                  ctaLabel={null}
+                  ctaBusy={false}
+                  ctaError={null}
                 />
               </div>
             )}
@@ -1004,14 +1035,18 @@ export default function ProvaPage() {
                 <div className="flex flex-col sm:flex-row gap-2 mt-4">
                   <button
                     onClick={handleAprovarEPublicar}
-                    disabled={!digitalAprovado || approvingPub || preparandoArtefatos}
+                    disabled={!digitalAprovado || approvingPub || preparandoArtefatos || finalizandoArtefatos}
                     className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-semibold text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {approvingPub ? "Aprovando…" : "Aprovar e publicar →"}
+                    {approvingPub
+                      ? "Aprovando…"
+                      : finalizandoArtefatos
+                        ? "Aguarde…"
+                        : "Aprovar e publicar →"}
                   </button>
                   <button
                     onClick={handleAnalisar}
-                    disabled={analyzing || preparandoArtefatos}
+                    disabled={analyzing || preparandoArtefatos || finalizandoArtefatos}
                     className="px-6 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-brand-gold/30 transition-colors disabled:opacity-50"
                   >
                     {analyzing ? "Reanalisando…" : "Reanalisar"}

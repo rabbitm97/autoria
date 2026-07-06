@@ -118,7 +118,20 @@ export async function POST(req: NextRequest) {
       acao: { label: "Tentar novamente", etapa: "__gerar_pdf_miolo__" },
     });
   }
-  if (!pdfCapaGrafica?.storage_path) {
+  // Capa não apta para gráfica (frente pura, ou IA sem montar-capa
+  // rodado): sinaliza claramente ao autor que a decisão dele — "Alterar
+  // capa" — é o que destrava. O client resolve o destino via a origem
+  // (editor vs upload/ia).
+  if (!capaResolvida.is_panoramica) {
+    itensImpressa.push({
+      categoria: "pdf_capa_grafica",
+      status: "erro",
+      mensagem: "A capa atual não está pronta para publicação impressa. Envie uma capa panorâmica ou volte para o editor.",
+      acao: { label: "Alterar capa", etapa: "__alterar_capa__" },
+    });
+  } else if (!pdfCapaGrafica?.storage_path) {
+    // Capa é panorâmica mas PDF gráfica ainda não foi preparado.
+    // Este item é gerado silenciosamente pelo client (auto-preparação).
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
@@ -128,11 +141,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Checagem crítica: lombada da capa vs lombada real do miolo.
-  // Se divergir acima da tolerância, o PDF da gráfica precisa ser regerado
-  // com a lombada correta — se o autor mandar como está, a capa vai
-  // desalinhada da lombada real do livro impresso.
+  // Só faz sentido comparar quando a capa é panorâmica — capa frente-pura
+  // não tem lombada, e é bloqueada acima com item "Alterar capa".
   if (
     capaResolvida.pronta &&
+    capaResolvida.is_panoramica &&
     capaResolvida.lombada_mm !== null &&
     miolo?.lombada_mm &&
     pdfCapaGrafica?.storage_path
