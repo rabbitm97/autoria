@@ -530,7 +530,7 @@ function TrilhaCard({
                 </svg>
                 <div className="flex-1">
                   <span>{item.mensagem}</span>
-                  {item.acao && item.acao.etapa !== "__preparar_capa_grafica__" && (
+                  {item.acao && (
                     <button
                       onClick={() => onNavigate(item.acao!.etapa)}
                       className="ml-2 text-brand-gold underline hover:text-brand-gold/80"
@@ -568,6 +568,62 @@ function TrilhaCard({
   );
 }
 
+// ─── Helpers de auto-geração de artefatos ────────────────────────────────────
+
+async function gerarArtefato(
+  endpoint: string,
+  projectId: string,
+  timeoutMs = 75_000,
+): Promise<{ ok: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: projectId }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      return { ok: false, error: (data as { error?: string } | null)?.error ?? `Erro do servidor (HTTP ${res.status})` };
+    }
+    return { ok: true };
+  } catch (e) {
+    clearTimeout(timeout);
+    const isAbort = e instanceof Error && e.name === "AbortError";
+    return {
+      ok: false,
+      error: isAbort ? "Geração demorou demais (>75s)" : e instanceof Error ? e.message : "Erro desconhecido",
+    };
+  }
+}
+
+// PDF da capa gráfica só é auto-gerado quando a capa veio do editor visual
+// (temos os dados canvas pra chamar preparar-capa-grafica). Capa por IA/upload
+// exige o botão manual "Abrir Editor de Capa" — o autor precisa mover-se pra lá.
+function detectarArtefatosAusentes(
+  prova: ProvaResult,
+  capaOrigem: "editor" | "ia_ou_upload",
+): Array<{ tipo: string; endpoint: string }> {
+  const missing: Array<{ tipo: string; endpoint: string }> = [];
+  const seen = new Set<string>();
+  const all = [...prova.digital.pendencias, ...prova.grafica.pendencias];
+  for (const p of all) {
+    if (seen.has(p.categoria)) continue;
+    seen.add(p.categoria);
+    if (p.categoria === "pdf_ebook") {
+      missing.push({ tipo: "pdf_ebook", endpoint: "/api/agentes/gerar-pdf-digital" });
+    } else if (p.categoria === "pdf_miolo_grafica") {
+      missing.push({ tipo: "pdf_miolo_grafica", endpoint: "/api/agentes/gerar-pdf" });
+    } else if (p.categoria === "pdf_capa_grafica" && capaOrigem === "editor") {
+      missing.push({ tipo: "pdf_capa_grafica", endpoint: "/api/agentes/prova/preparar-capa-grafica" });
+    }
+  }
+  return missing;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProvaPage() {
@@ -584,21 +640,17 @@ export default function ProvaPage() {
   const [activeTab, setActiveTab] = useState<"capa" | "capa_aberta" | "miolo">("capa");
   const [approvingPub, setApprovingPub] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [gerandoPdf, setGerandoPdf] = useState(false);
-  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [preparandoArtefatos, setPreparandoArtefatos] = useState(false);
+  const [errosPreparacao, setErrosPreparacao] = useState<string[]>([]);
   const [preparandoCapaGrafica, setPreparandoCapaGrafica] = useState(false);
   const [capaGraficaError, setCapaGraficaError] = useState<string | null>(null);
   const [isFrentePura, setIsFrentePura] = useState(false);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
+    let prova: ProvaResult | null = null;
+    let capaOrigemLocal: "editor" | "ia_ou_upload" = "ia_ou_upload";
     try {
-      const res = await fetch(`/api/agentes/prova?project_id=${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data) setResult(data as ProvaResult);
-      }
-
       const { data: project } = await supabase
         .from("projects")
         .select("formato, dados_capa, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
@@ -624,6 +676,7 @@ export default function ProvaPage() {
         const capaResolvida = resolveCapaCompleta(dadosCapa, formatoKey);
         const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
         const capaTemEditorData = editorDataRaw?.version === 1;
+        capaOrigemLocal = capaTemEditorData ? "editor" : "ia_ou_upload";
 
         const paginasReais = miolo?.paginas_reais ?? 0;
         const f = FORMATS[formatoKey] ?? FORMATS.padrao_br;
@@ -646,8 +699,49 @@ export default function ProvaPage() {
         });
         setIsFrentePura(capaResolvida.analise_tecnica?.is_frente_pura ?? false);
       }
+
+      // Primeira análise — sempre POST pra garantir shape novo em dados_qa.
+      const analyzeRes = await fetch("/api/agentes/prova", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: id }),
+      });
+      if (analyzeRes.ok) {
+        prova = await analyzeRes.json() as ProvaResult;
+        setResult(prova);
+      }
     } finally {
       setLoading(false);
+    }
+
+    // Fase 2 (visível): auto-gerar artefatos derivados em paralelo.
+    // O autor vê "Preparando arquivos finais…" enquanto rodamos os PDFs.
+    // Idempotente — se rodar de novo, só pega o que ainda falta.
+    if (!prova) return;
+    const missing = detectarArtefatosAusentes(prova, capaOrigemLocal);
+    if (missing.length === 0) return;
+
+    setPreparandoArtefatos(true);
+    setErrosPreparacao([]);
+    try {
+      const results = await Promise.allSettled(
+        missing.map(m => gerarArtefato(m.endpoint, id as string)),
+      );
+      const errs: string[] = [];
+      results.forEach((r, i) => {
+        if (r.status === "rejected") errs.push(`${missing[i].tipo}: ${String(r.reason)}`);
+        else if (!r.value.ok) errs.push(`${missing[i].tipo}: ${r.value.error}`);
+      });
+      setErrosPreparacao(errs);
+
+      const reAnalyze = await fetch("/api/agentes/prova", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: id }),
+      });
+      if (reAnalyze.ok) setResult(await reAnalyze.json() as ProvaResult);
+    } finally {
+      setPreparandoArtefatos(false);
     }
   }, [id]);
 
@@ -678,34 +772,23 @@ export default function ProvaPage() {
     }
   }
 
-  async function handleGerarPdfDigital() {
+  // Retry manual dispara o mesmo mecanismo do auto-gen: chama o endpoint,
+  // coleta erro e re-analisa. Usado pelos botões "Tentar novamente" das pendências.
+  async function retryArtefato(endpoint: string) {
     if (!projectIdStr) return;
-    setGerandoPdf(true);
-    setPdfError(null);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 75_000);
+    setPreparandoArtefatos(true);
+    setErrosPreparacao([]);
     try {
-      const res = await fetch("/api/agentes/gerar-pdf-digital", {
+      const r = await gerarArtefato(endpoint, projectIdStr);
+      if (!r.ok && r.error) setErrosPreparacao([r.error]);
+      const res = await fetch("/api/agentes/prova", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectIdStr }),
-        signal: controller.signal,
       });
-      clearTimeout(timeout);
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? `Erro do servidor (HTTP ${res.status})`);
-      }
-      await handleAnalisar();
-    } catch (e) {
-      clearTimeout(timeout);
-      const isAbort = e instanceof Error && e.name === "AbortError";
-      const msg = isAbort
-        ? "A geração demorou demais (>75s). Tente novamente, ou volte à etapa Diagramação e gere o PDF por lá."
-        : e instanceof Error ? e.message : "Erro ao gerar PDF.";
-      setPdfError(msg);
+      if (res.ok) setResult(await res.json() as ProvaResult);
     } finally {
-      setGerandoPdf(false);
+      setPreparandoArtefatos(false);
     }
   }
 
@@ -746,7 +829,10 @@ export default function ProvaPage() {
   }
 
   function handleNavigateToEtapa(etapa: string) {
-    if (etapa === "__gerar_pdf_digital__") { handleGerarPdfDigital(); return; }
+    if (etapa === "__gerar_pdf_digital__") { retryArtefato("/api/agentes/gerar-pdf-digital"); return; }
+    if (etapa === "__gerar_pdf_miolo__") { retryArtefato("/api/agentes/gerar-pdf"); return; }
+    // Capa gráfica tem branch de action=ir_para_editor_capa que redireciona pro editor,
+    // então usa handler dedicado ao invés do retryArtefato genérico.
     if (etapa === "__preparar_capa_grafica__") { handlePrepararCapaGrafica(); return; }
     router.push(`/dashboard/${etapa}/${id}`);
   }
@@ -835,6 +921,32 @@ export default function ProvaPage() {
               </div>
             )}
 
+            {/* Preparando artefatos derivados em background */}
+            {preparandoArtefatos && (
+              <div className="bg-brand-gold/5 border border-brand-gold/20 rounded-xl p-4 flex items-center gap-3">
+                <span className="w-5 h-5 rounded-full border-2 border-brand-gold border-t-transparent animate-spin shrink-0" />
+                <div>
+                  <p className="text-sm text-brand-primary font-medium">Preparando arquivos finais…</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Estamos gerando os PDFs de publicação. Pode levar até um minuto.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Erros consolidados da auto-geração */}
+            {errosPreparacao.length > 0 && !preparandoArtefatos && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <p className="text-sm text-amber-800 font-medium mb-1">Não conseguimos preparar todos os arquivos:</p>
+                <ul className="text-xs text-amber-800 space-y-0.5 list-disc pl-5">
+                  {errosPreparacao.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+                <p className="text-xs text-amber-700 mt-2">
+                  Você pode tentar novamente pelos botões nas trilhas abaixo.
+                </p>
+              </div>
+            )}
+
             {/* Trilhas de prontidão */}
             {result && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -848,7 +960,7 @@ export default function ProvaPage() {
                   onNavigate={handleNavigateToEtapa}
                   ctaLabel={null}
                   ctaBusy={false}
-                  ctaError={pdfError}
+                  ctaError={null}
                 />
                 <TrilhaCard
                   icone="livro"
@@ -859,16 +971,16 @@ export default function ProvaPage() {
                   avisos={impressaAvisos}
                   onNavigate={handleNavigateToEtapa}
                   ctaLabel={
-                    !impressaPreparada
-                      ? (capaOrigem === "editor" ? "Preparar PDF da gráfica" : "Abrir Editor de Capa →")
+                    !impressaPreparada && capaOrigem !== "editor"
+                      ? "Abrir Editor de Capa →"
                       : null
                   }
                   ctaBusy={preparandoCapaGrafica}
                   ctaError={capaGraficaError}
                   onCta={
-                    capaOrigem === "editor"
-                      ? handlePrepararCapaGrafica
-                      : () => router.push(`/editor/capa/${projectIdStr}`)
+                    capaOrigem !== "editor"
+                      ? () => router.push(`/editor/capa/${projectIdStr}`)
+                      : undefined
                   }
                 />
               </div>
@@ -892,14 +1004,14 @@ export default function ProvaPage() {
                 <div className="flex flex-col sm:flex-row gap-2 mt-4">
                   <button
                     onClick={handleAprovarEPublicar}
-                    disabled={!digitalAprovado || approvingPub}
+                    disabled={!digitalAprovado || approvingPub || preparandoArtefatos}
                     className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-semibold text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {approvingPub ? "Aprovando…" : "Aprovar e publicar →"}
                   </button>
                   <button
                     onClick={handleAnalisar}
-                    disabled={analyzing}
+                    disabled={analyzing || preparandoArtefatos}
                     className="px-6 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-brand-gold/30 transition-colors disabled:opacity-50"
                   >
                     {analyzing ? "Reanalisando…" : "Reanalisar"}

@@ -102,8 +102,8 @@ export async function POST(req: NextRequest) {
     itensDigital.push({
       categoria: "pdf_ebook",
       status: "erro",
-      mensagem: "O PDF eBook ainda não foi gerado.",
-      acao: { label: "Gerar PDF eBook", etapa: "__gerar_pdf_digital__" },
+      mensagem: "Não foi possível preparar o PDF eBook.",
+      acao: { label: "Tentar novamente", etapa: "__gerar_pdf_digital__" },
     });
   }
 
@@ -114,16 +114,16 @@ export async function POST(req: NextRequest) {
     itensImpressa.push({
       categoria: "pdf_miolo_grafica",
       status: "erro",
-      mensagem: "O PDF do miolo com sangria ainda não foi gerado.",
-      acao: { label: "Voltar para Diagramação", etapa: "miolo" },
+      mensagem: "Não foi possível preparar o PDF do miolo para a gráfica.",
+      acao: { label: "Tentar novamente", etapa: "__gerar_pdf_miolo__" },
     });
   }
   if (!pdfCapaGrafica?.storage_path) {
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
-      mensagem: "O PDF da capa para gráfica ainda não foi preparado.",
-      acao: { label: "Preparar PDF da gráfica", etapa: "__preparar_capa_grafica__" },
+      mensagem: "Não foi possível preparar o PDF da capa para a gráfica.",
+      acao: { label: "Tentar novamente", etapa: "__preparar_capa_grafica__" },
     });
   }
 

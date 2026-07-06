@@ -160,6 +160,12 @@ export default function MioloPage() {
   const [lombadaUploadAvisoAtivo, setLombadaUploadAvisoAtivo] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [ajustando, setAjustando] = useState(false);
 
+  // ── PDF sync state (auto-chain após gerar miolo) ────────────────────────────
+  // Sincroniza dados_pdf.storage_path silenciosamente após diagramação, para
+  // que a etapa Prova encontre o PDF gráfico pronto sem precisar gerá-lo lá.
+  const [syncingPdf, setSyncingPdf] = useState(false);
+  const [syncPdfError, setSyncPdfError] = useState<string | null>(null);
+
   // ── Load ─────────────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
@@ -332,11 +338,35 @@ export default function MioloPage() {
       }
       setCurrentCapIdx(0);
       setTimeout(() => setStep("preview"), 400);
+      void syncPdfMiolo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido.");
       setStep("config");
     } finally {
       clearInterval(interval);
+    }
+  }
+
+  // Chama /api/agentes/gerar-pdf sem bloquear o autor. Garante que quando
+  // ele chegar na Prova, dados_pdf.storage_path já esteja populado — evita
+  // que a Prova precise gerar o PDF gráfico ela mesma.
+  async function syncPdfMiolo() {
+    setSyncingPdf(true);
+    setSyncPdfError(null);
+    try {
+      const res = await fetch("/api/agentes/gerar-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      setSyncPdfError(e instanceof Error ? e.message : "Falha ao sincronizar PDF.");
+    } finally {
+      setSyncingPdf(false);
     }
   }
 
@@ -1209,8 +1239,25 @@ export default function MioloPage() {
           )}
 
           {/* Bottom CTA bar — apenas avançar para próxima etapa */}
-          <div className="bg-white border-t border-zinc-100 px-6 py-4 flex items-center justify-end">
-            <p className="text-zinc-400 text-xs hidden sm:block mr-4">Próxima etapa: Prova final.</p>
+          <div className="bg-white border-t border-zinc-100 px-6 py-4 flex items-center justify-end gap-4 flex-wrap">
+            {syncingPdf ? (
+              <p className="text-zinc-400 text-xs hidden sm:flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full border-2 border-zinc-300 border-t-transparent animate-spin" />
+                Preparando PDF gráfico em background…
+              </p>
+            ) : syncPdfError ? (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-amber-700">PDF gráfico não sincronizou.</span>
+                <button
+                  onClick={syncPdfMiolo}
+                  className="text-brand-gold underline hover:text-brand-gold/80"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            ) : (
+              <p className="text-zinc-400 text-xs hidden sm:block">Próxima etapa: Prova final.</p>
+            )}
             <button
               onClick={async () => {
                 await supabase.from("projects").update({ etapa_atual: "preview" }).eq("id", projectId);
