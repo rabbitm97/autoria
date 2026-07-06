@@ -13,6 +13,7 @@ import {
   getOrelhaDefault,
   type FormatKey,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 
 /**
  * Extrai o storage path de uma URL signed do Supabase.
@@ -88,6 +89,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: "A capa atual é somente para eBook (frente pura). Para publicação impressa, envie uma capa panorâmica ou refaça no editor.",
+        action: capa.source === "editor" ? "ir_para_editor" : "ir_para_capa",
+      },
+      { status: 422 },
+    );
+  }
+
+  // ── Bloqueio: capa não passou no analyzer ─────────────────────────────────
+  // Defesa em profundidade para os outros cenários que o capa-analyzer
+  // marca como inapta: Config B/C (sem marcas de corte ou sem sangria),
+  // configuração "desconhecida" (dimensões atípicas), DPI abaixo de 300
+  // em imagens rasterizadas, colorspace inválido. A Prova já filtra esses
+  // casos no client — este check protege contra chamada direta via
+  // curl/URL ou race condition.
+  const analiseTec = capa.analise_tecnica as AnaliseTecnica | undefined;
+  if (analiseTec && analiseTec.ok_grafica === false) {
+    return NextResponse.json(
+      {
+        error: "A capa atual não está apta para publicação impressa. Envie uma capa panorâmica em CMYK, com sangria de 3mm e marcas de corte.",
         action: capa.source === "editor" ? "ir_para_editor" : "ir_para_capa",
       },
       { status: 422 },

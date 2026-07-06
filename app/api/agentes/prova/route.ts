@@ -4,10 +4,60 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
+import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { ProvaItem, ProvaResult } from "./types";
 export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
+
+/**
+ * Constrói a mensagem contextual do item "Alterar capa" na trilha impressa,
+ * baseada nos campos que o `capa-analyzer` reporta. As mensagens reutilizam
+ * a linguagem já usada em `/dashboard/capa/[id]` (ver ResultadoCard e as
+ * seções por `configuracao`) para consistência entre telas.
+ *
+ * Ordem de precedência dos casos, mais específico primeiro:
+ *  1. Capa é frente pura (só eBook)
+ *  2. Config C (só área útil, formato eBook completo)
+ *  3. Config B (sangria mas sem marcas de corte)
+ *  4. Config "desconhecida" (dimensões atípicas)
+ *  5. DPI abaixo de 300 em imagem rasterizada
+ *  6. Fallback quando análise não rodou ainda (backwards compat P.4)
+ */
+function montarMensagemCapaInaptaGrafica(
+  analise: AnaliseTecnica | undefined,
+): string {
+  if (!analise) {
+    // Backwards compat: quando análise técnica ainda não rodou, cai no
+    // fallback do P.4 (mensagem genérica). Raro no fluxo normal — o
+    // analyzer roda logo após upload/confirm.
+    return "A capa atual não está pronta para publicação impressa. Envie uma capa panorâmica ou volte para o editor.";
+  }
+
+  if (analise.is_frente_pura) {
+    return "A capa atual é só a frente do livro (formato eBook). Para publicação impressa, envie uma capa panorâmica completa (frente + lombada + contracapa) com sangria de 3mm.";
+  }
+
+  if (analise.configuracao === "C") {
+    return "A capa atual está no formato de eBook, sem sangria nem marcas de corte. Para publicação impressa, envie uma capa panorâmica com sangria de 3mm e marcas de corte.";
+  }
+
+  if (analise.configuracao === "B") {
+    return "A capa atual tem sangria mas está sem marcas de corte. Para publicação em gráfica offset, envie uma versão com marcas de corte.";
+  }
+
+  if (analise.configuracao === "desconhecida") {
+    return `As dimensões da capa (${analise.largura_mm}mm × ${analise.altura_mm}mm) não batem com o formato do livro (esperado ${analise.largura_esperada_mm}mm × ${analise.altura_esperada_mm}mm). Confira o formato ou reexporte a capa panorâmica.`;
+  }
+
+  if (analise.dpi > 0 && analise.dpi < 300 && analise.colorspace_source === "png") {
+    return `A resolução da capa (${analise.dpi} DPI) está abaixo dos 300 DPI exigidos para gráfica. Envie uma versão em resolução maior.`;
+  }
+
+  // Config A mas ok_grafica false por colorspace `other` ou mistura de
+  // problemas menores. Mensagem genérica cobre.
+  return "A capa atual não está apta para publicação impressa. Envie uma capa panorâmica em CMYK, com sangria de 3mm e marcas de corte.";
+}
 
 // ─── POST /api/agentes/prova ─────────────────────────────────────────────────
 
@@ -118,20 +168,27 @@ export async function POST(req: NextRequest) {
       acao: { label: "Tentar novamente", etapa: "__gerar_pdf_miolo__" },
     });
   }
-  // Capa não apta para gráfica (frente pura, ou IA sem montar-capa
-  // rodado): sinaliza claramente ao autor que a decisão dele — "Alterar
-  // capa" — é o que destrava. O client resolve o destino via a origem
-  // (editor vs upload/ia).
-  if (!capaResolvida.is_panoramica) {
+  // Verdict de aptidão para gráfica. Prioridade:
+  //  (1) analise_tecnica.ok_grafica quando o analyzer rodou (fonte da
+  //      verdade — consolida is_frente_pura, configuração A/B/C, DPI e
+  //      colorspace)
+  //  (2) Fallback P.4: !is_panoramica (backwards compat quando análise
+  //      técnica ainda não rodou; raro em fluxo normal)
+  const analiseTec = capaResolvida.analise_tecnica;
+  const capaAptaGrafica = analiseTec !== undefined
+    ? analiseTec.ok_grafica
+    : capaResolvida.is_panoramica;
+
+  if (!capaAptaGrafica) {
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
-      mensagem: "A capa atual não está pronta para publicação impressa. Envie uma capa panorâmica ou volte para o editor.",
+      mensagem: montarMensagemCapaInaptaGrafica(analiseTec),
       acao: { label: "Alterar capa", etapa: "__alterar_capa__" },
     });
   } else if (!pdfCapaGrafica?.storage_path) {
-    // Capa é panorâmica mas PDF gráfica ainda não foi preparado.
-    // Este item é gerado silenciosamente pelo client (auto-preparação).
+    // Capa apta mas PDF gráfica ainda não foi preparado. Item de
+    // auto-preparação silenciosa (client dispara sem expor ao autor).
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
@@ -141,11 +198,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Checagem crítica: lombada da capa vs lombada real do miolo.
-  // Só faz sentido comparar quando a capa é panorâmica — capa frente-pura
-  // não tem lombada, e é bloqueada acima com item "Alterar capa".
+  // Só faz sentido comparar quando a capa está apta para gráfica — se
+  // ok_grafica === false, o autor vai alterar a capa antes de ir para
+  // gráfica e a comparação de lombada nesse momento é ruído.
   if (
     capaResolvida.pronta &&
-    capaResolvida.is_panoramica &&
+    capaAptaGrafica &&
     capaResolvida.lombada_mm !== null &&
     miolo?.lombada_mm &&
     pdfCapaGrafica?.storage_path
