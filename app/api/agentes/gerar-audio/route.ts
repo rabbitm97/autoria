@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_audio, dados_elementos, manuscript:manuscript_id(texto, nome)")
+      .select("dados_audio, dados_elementos, manuscript:manuscript_id(texto, nome, titulo)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
@@ -104,9 +104,13 @@ export async function POST(req: NextRequest) {
     if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
     const el = project.dados_elementos as Record<string, unknown> | null;
-    const ms = project.manuscript as { texto?: string; nome?: string } | null;
+    const ms = project.manuscript as { texto?: string; nome?: string; titulo?: string } | null;
 
-    titulo = (el?.titulo_escolhido as string) ?? ms?.nome ?? "Sem título";
+    // Cascata: escolha em Elementos > titulo original > nome do arquivo
+    // > fallback. Antes caía direto de titulo_escolhido para ms.nome,
+    // que é o nome do arquivo (ex: "meu-livro.docx") e o audiolivro
+    // anunciava o nome do arquivo em vez do título literário.
+    titulo = (el?.titulo_escolhido as string) ?? ms?.titulo ?? ms?.nome ?? "Sem título";
     texto  = ms?.texto ?? "";
     dadosAudioAtual = (project.dados_audio as AudioResult | null);
   }
@@ -197,15 +201,16 @@ export async function GET(req: NextRequest) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("dados_audio, dados_elementos, manuscript:manuscript_id(texto, nome)")
+    .select("dados_audio, dados_elementos, manuscript:manuscript_id(texto, nome, titulo)")
     .eq("id", project_id)
     .single();
 
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
   const el = project.dados_elementos as Record<string, unknown> | null;
-  const ms = project.manuscript as { texto?: string; nome?: string } | null;
-  const titulo = (el?.titulo_escolhido as string) ?? ms?.nome ?? "Sem título";
+  const ms = project.manuscript as { texto?: string; nome?: string; titulo?: string } | null;
+  // Cascata correta (ver comentário na primeira ocorrência acima).
+  const titulo = (el?.titulo_escolhido as string) ?? ms?.titulo ?? ms?.nome ?? "Sem título";
   const texto  = ms?.texto ?? "";
   const chapters = parseChapters(texto, titulo);
 

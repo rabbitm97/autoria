@@ -260,8 +260,13 @@ export async function POST(req: NextRequest) {
     );
     dadosMiolo = project.dados_miolo as { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null;
 
-    titulo       = ms?.titulo?.trim() || "Sem título";
-    subtitulo    = ms?.subtitulo?.trim() ?? "";
+    // Cascata: escolha em Elementos > original. O <dc:title> no OPF é
+    // o que Amazon/Apple/Kobo mostram como título do eBook para o
+    // leitor. Bug permanente se sair errado.
+    const titEsc = (el as { titulo_escolhido?: string })?.titulo_escolhido?.trim();
+    const subEsc = (el as { subtitulo?: string })?.subtitulo?.trim();
+    titulo       = titEsc || ms?.titulo?.trim() || "Sem título";
+    subtitulo    = subEsc ?? ms?.subtitulo?.trim() ?? "";
     texto        = ms?.texto_revisado ?? ms?.texto ?? "";
     capaUrl      = capaResolvida.url_area_util ?? capaResolvida.url_principal;
     palavrasChave = (el?.palavras_chave as string[] | undefined) ?? [];
