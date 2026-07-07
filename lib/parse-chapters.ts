@@ -54,6 +54,16 @@ const CHAPTER_RE = /^(cap[íi]tulo\s+\d+[.:–—\s].*|chapter\s+\d+[.:–—\s]
  */
 export function isChapterHeading(line: string): boolean {
   if (!line) return false;
+  // Guard: a linha precisa conter pelo menos uma letra alfabética.
+  // Sem isso, a segunda condição (line === line.toUpperCase())
+  // aceita separadores compostos apenas de símbolos como "cabeçalhos":
+  //   "────────────" (U+2500 box drawing)
+  //   "═══════════" (U+2550)
+  //   "* * * * *"
+  //   "12345"
+  // Todos passariam porque uppercase de string sem letras é ela mesma.
+  // Manuscritos usam separadores desses entre seções — bug clássico.
+  if (!/[a-záàãâéêíóôõúçA-ZÁÀÃÂÉÊÍÓÔÕÚÇ]/.test(line)) return false;
   return CHAPTER_RE.test(line) ||
     (line.length < 60 && line === line.toUpperCase() && line.length > 3);
 }
