@@ -11,52 +11,36 @@ import type { ProvaItem, ProvaResult } from "./types";
 export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
 
 /**
- * Constrói a mensagem contextual do item "Alterar capa" na trilha impressa,
- * baseada nos campos que o `capa-analyzer` reporta. As mensagens reutilizam
- * a linguagem já usada em `/dashboard/capa/[id]` (ver ResultadoCard e as
- * seções por `configuracao`) para consistência entre telas.
+ * Constrói mensagem contextual quando a capa não está estruturalmente
+ * apta para gráfica. Não trata lombada divergente (essa vai em item
+ * separado, com mensagem própria contendo os valores).
  *
- * Ordem de precedência dos casos, mais específico primeiro:
- *  1. Capa é frente pura (só eBook)
- *  2. Config C (só área útil, formato eBook completo)
- *  3. Config B (sangria mas sem marcas de corte)
- *  4. Config "desconhecida" (dimensões atípicas)
- *  5. DPI abaixo de 300 em imagem rasterizada
- *  6. Fallback quando análise não rodou ainda (backwards compat P.4)
+ * Critério de bloqueio estrutural (alinhado com o pipeline real da
+ * Autoria):
+ *  - `is_frente_pura === true` → capa só eBook
+ *  - `configuracao === "C"` → sem sangria (filete branco na impressão)
+ *  - `configuracao === "desconhecida"` → dimensões atípicas
+ *
+ * Não bloqueia por RGB (Sharp converte para CMYK via FOGRA39 no
+ * `preparar-capa-grafica`), por Config B (sangria presente = aceitável
+ * para POD), nem por DPI baixo (Sharp reamostra na composição).
  */
-function montarMensagemCapaInaptaGrafica(
+function montarMensagemCapaEstrutural(
   analise: AnaliseTecnica | undefined,
 ): string {
   if (!analise) {
-    // Backwards compat: quando análise técnica ainda não rodou, cai no
-    // fallback do P.4 (mensagem genérica). Raro no fluxo normal — o
-    // analyzer roda logo após upload/confirm.
     return "A capa atual não está pronta para publicação impressa. Envie uma capa panorâmica ou volte para o editor.";
   }
-
   if (analise.is_frente_pura) {
     return "A capa atual é só a frente do livro (formato eBook). Para publicação impressa, envie uma capa panorâmica completa (frente + lombada + contracapa) com sangria de 3mm.";
   }
-
   if (analise.configuracao === "C") {
     return "A capa atual está no formato de eBook, sem sangria nem marcas de corte. Para publicação impressa, envie uma capa panorâmica com sangria de 3mm e marcas de corte.";
   }
-
-  if (analise.configuracao === "B") {
-    return "A capa atual tem sangria mas está sem marcas de corte. Para publicação em gráfica offset, envie uma versão com marcas de corte.";
-  }
-
   if (analise.configuracao === "desconhecida") {
     return `As dimensões da capa (${analise.largura_mm}mm × ${analise.altura_mm}mm) não batem com o formato do livro (esperado ${analise.largura_esperada_mm}mm × ${analise.altura_esperada_mm}mm). Confira o formato ou reexporte a capa panorâmica.`;
   }
-
-  if (analise.dpi > 0 && analise.dpi < 300 && analise.colorspace_source === "png") {
-    return `A resolução da capa (${analise.dpi} DPI) está abaixo dos 300 DPI exigidos para gráfica. Envie uma versão em resolução maior.`;
-  }
-
-  // Config A mas ok_grafica false por colorspace `other` ou mistura de
-  // problemas menores. Mensagem genérica cobre.
-  return "A capa atual não está apta para publicação impressa. Envie uma capa panorâmica em CMYK, com sangria de 3mm e marcas de corte.";
+  return "A capa atual não está apta para publicação impressa. Envie uma capa panorâmica com sangria de 3mm e marcas de corte.";
 }
 
 // ─── POST /api/agentes/prova ─────────────────────────────────────────────────
@@ -168,55 +152,67 @@ export async function POST(req: NextRequest) {
       acao: { label: "Tentar novamente", etapa: "__gerar_pdf_miolo__" },
     });
   }
-  // Verdict de aptidão para gráfica. Prioridade:
-  //  (1) analise_tecnica.ok_grafica quando o analyzer rodou (fonte da
-  //      verdade — consolida is_frente_pura, configuração A/B/C, DPI e
-  //      colorspace)
-  //  (2) Fallback P.4: !is_panoramica (backwards compat quando análise
-  //      técnica ainda não rodou; raro em fluxo normal)
+  // Critério customizado alinhado com o pipeline real da Autoria (não
+  // usa analiseTec.ok_grafica diretamente porque ele bloqueia RGB e o
+  // preparar-capa-grafica já converte RGB → CMYK via Sharp + FOGRA39).
+  //
+  // Prioridade em cascata:
+  //  1. Bloqueio estrutural (frente pura, sem sangria, dimensões atípicas)
+  //  2. Bloqueio de lombada (capa diverge do miolo real)
+  //  3. Auto-preparação silenciosa (capa apta mas PDF gráfica ainda não gerado)
   const analiseTec = capaResolvida.analise_tecnica;
-  const capaAptaGrafica = analiseTec !== undefined
-    ? analiseTec.ok_grafica
+
+  const capaAptaEstrutural = analiseTec !== undefined
+    ? !analiseTec.is_frente_pura &&
+      analiseTec.configuracao !== "C" &&
+      analiseTec.configuracao !== "desconhecida"
     : capaResolvida.is_panoramica;
 
-  if (!capaAptaGrafica) {
+  // Lombada divergente: só faz sentido comparar quando a capa é
+  // estruturalmente apta E o analyzer conseguiu deduzir a lombada da capa
+  // (lombada_deduzida_mm) E o miolo já rodou gerar-pdf (lombada_mm real).
+  let lombadaDivergente: { capa: number; miolo: number; diff: number } | null = null;
+  if (
+    capaAptaEstrutural &&
+    analiseTec !== undefined &&
+    analiseTec.lombada_deduzida_mm !== null &&
+    miolo?.lombada_mm !== undefined
+  ) {
+    const diff = Math.abs(analiseTec.lombada_deduzida_mm - miolo.lombada_mm);
+    if (diff > LIMITE_DIVERGENCIA_LOMBADA_MM) {
+      lombadaDivergente = {
+        capa: analiseTec.lombada_deduzida_mm,
+        miolo: miolo.lombada_mm,
+        diff,
+      };
+    }
+  }
+
+  if (!capaAptaEstrutural) {
+    // Bloqueio estrutural (frente pura, Config C, dimensões atípicas).
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
-      mensagem: montarMensagemCapaInaptaGrafica(analiseTec),
+      mensagem: montarMensagemCapaEstrutural(analiseTec),
+      acao: { label: "Alterar capa", etapa: "__alterar_capa__" },
+    });
+  } else if (lombadaDivergente !== null) {
+    // Bloqueio por lombada — capa vai sair torta na gráfica.
+    itensImpressa.push({
+      categoria: "pdf_capa_grafica",
+      status: "erro",
+      mensagem: `A lombada da capa (${lombadaDivergente.capa.toFixed(1)}mm) diverge da lombada real do miolo (${lombadaDivergente.miolo.toFixed(1)}mm). Para publicação impressa, envie uma capa com a lombada correta.`,
       acao: { label: "Alterar capa", etapa: "__alterar_capa__" },
     });
   } else if (!pdfCapaGrafica?.storage_path) {
-    // Capa apta mas PDF gráfica ainda não foi preparado. Item de
-    // auto-preparação silenciosa (client dispara sem expor ao autor).
+    // Capa apta mas PDF gráfica ainda não foi preparado.
+    // Item de auto-preparação silenciosa (client dispara sem expor ao autor).
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
       mensagem: "Não foi possível preparar o PDF da capa para a gráfica.",
       acao: { label: "Tentar novamente", etapa: "__preparar_capa_grafica__" },
     });
-  }
-
-  // Checagem crítica: lombada da capa vs lombada real do miolo.
-  // Só faz sentido comparar quando a capa está apta para gráfica — se
-  // ok_grafica === false, o autor vai alterar a capa antes de ir para
-  // gráfica e a comparação de lombada nesse momento é ruído.
-  if (
-    capaResolvida.pronta &&
-    capaAptaGrafica &&
-    capaResolvida.lombada_mm !== null &&
-    miolo?.lombada_mm &&
-    pdfCapaGrafica?.storage_path
-  ) {
-    const diff = Math.abs(capaResolvida.lombada_mm - miolo.lombada_mm);
-    if (diff > LIMITE_DIVERGENCIA_LOMBADA_MM) {
-      itensImpressa.push({
-        categoria: "lombada",
-        status: "aviso",
-        mensagem: `Lombada da capa (${capaResolvida.lombada_mm.toFixed(1)}mm) diverge da lombada real do miolo (${miolo.lombada_mm.toFixed(1)}mm). Prepare o PDF da gráfica novamente.`,
-        acao: { label: "Preparar novamente", etapa: "__preparar_capa_grafica__" },
-      });
-    }
   }
 
   // ── Consolidar ────────────────────────────────────────────────────────────

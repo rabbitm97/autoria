@@ -14,6 +14,7 @@ import {
   type FormatKey,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
+import { LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 
 /**
  * Extrai o storage path de uma URL signed do Supabase.
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   const capa = (project.dados_capa ?? null) as Record<string, unknown> | null;
-  const miolo = (project.dados_miolo ?? null) as { paginas_reais?: number } | null;
+  const miolo = (project.dados_miolo ?? null) as { paginas_reais?: number; lombada_mm?: number } | null;
 
   if (!capa) {
     return NextResponse.json(
@@ -95,18 +96,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Bloqueio: capa não passou no analyzer ─────────────────────────────────
-  // Defesa em profundidade para os outros cenários que o capa-analyzer
-  // marca como inapta: Config B/C (sem marcas de corte ou sem sangria),
-  // configuração "desconhecida" (dimensões atípicas), DPI abaixo de 300
-  // em imagens rasterizadas, colorspace inválido. A Prova já filtra esses
-  // casos no client — este check protege contra chamada direta via
-  // curl/URL ou race condition.
+  // ── Bloqueio: capa estruturalmente incompatível ────────────────────────
+  // Defesa em profundidade para cenários que a Prova já filtra no client
+  // (Config C sem sangria, dimensões atípicas). Não bloqueia por RGB (o
+  // branch upload deste próprio arquivo converte via Sharp + FOGRA39) nem
+  // por Config B (sangria presente = POD aceita).
   const analiseTec = capa.analise_tecnica as AnaliseTecnica | undefined;
-  if (analiseTec && analiseTec.ok_grafica === false) {
+  if (
+    analiseTec &&
+    (analiseTec.configuracao === "C" || analiseTec.configuracao === "desconhecida")
+  ) {
     return NextResponse.json(
       {
-        error: "A capa atual não está apta para publicação impressa. Envie uma capa panorâmica em CMYK, com sangria de 3mm e marcas de corte.",
+        error: "A capa atual não está apta para publicação impressa. Envie uma capa panorâmica com sangria de 3mm e marcas de corte.",
+        action: capa.source === "editor" ? "ir_para_editor" : "ir_para_capa",
+      },
+      { status: 422 },
+    );
+  }
+
+  // ── Bloqueio: lombada divergente ──────────────────────────────────────
+  // A lombada da capa (deduzida das dimensões) precisa bater com a lombada
+  // real do miolo (calculada com páginas reais). Se divergir acima da
+  // tolerância, a capa vai sair torta na gráfica — não é algo que a
+  // plataforma resolve, é decisão do autor alterar a capa.
+  if (
+    analiseTec &&
+    analiseTec.lombada_deduzida_mm !== null &&
+    miolo?.lombada_mm !== undefined &&
+    Math.abs(analiseTec.lombada_deduzida_mm - miolo.lombada_mm) > LIMITE_DIVERGENCIA_LOMBADA_MM
+  ) {
+    return NextResponse.json(
+      {
+        error: `A lombada da capa (${analiseTec.lombada_deduzida_mm.toFixed(1)}mm) diverge da lombada real do miolo (${miolo.lombada_mm.toFixed(1)}mm). Envie uma capa com a lombada correta.`,
         action: capa.source === "editor" ? "ir_para_editor" : "ir_para_capa",
       },
       { status: 422 },
