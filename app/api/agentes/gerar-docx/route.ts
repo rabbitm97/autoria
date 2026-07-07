@@ -3,9 +3,11 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
+import { createHash } from "crypto";
 import { buildBookDocx } from "@/lib/docx-builder";
 import type { MioloConfig } from "@/lib/miolo-builder";
 import type { CreditosResult } from "@/app/api/agentes/creditos/route";
+import type { CapituloAprovado } from "@/lib/parse-chapters";
 
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select(
-      "dados_miolo, dados_capa, dados_creditos, dados_elementos, manuscript:manuscript_id(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, capitulos_detectados, texto_revisado, texto)"
+      "dados_miolo, dados_capa, dados_creditos, dados_elementos, manuscript:manuscript_id(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash, texto_revisado, texto)"
     )
     .eq("id", project_id)
     .eq("user_id", userId)
@@ -51,20 +53,24 @@ export async function POST(req: NextRequest) {
     subtitulo?: string;
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
-    capitulos_detectados?: { titulo: string; pos: number }[];
+    capitulos_aprovados?: CapituloAprovado[] | null;
+    capitulos_aprovados_texto_hash?: string | null;
     texto_revisado?: string | null;
     texto?: string;
   } | null;
 
-  const el = project.dados_elementos as { titulo_escolhido?: string } | null;
+  const el = project.dados_elementos as {
+    titulo_escolhido?: string;
+    subtitulo?: string;
+  } | null;
   const mioloData = project.dados_miolo as { config?: MioloConfig } | null;
   const creditosData = project.dados_creditos as CreditosResult | null;
 
   const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "Sem título";
-  const subtitulo = ms?.subtitulo ?? "";
+  // Cascata do Q.4: escolha em Elementos > original do manuscrito.
+  const subtitulo = el?.subtitulo ?? ms?.subtitulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
   const texto = ms?.texto_revisado ?? ms?.texto ?? "";
-  const capitulos = ms?.capitulos_detectados ?? [];
 
   if (!texto.trim()) {
     return NextResponse.json({ error: "Manuscrito sem texto. Execute o parse primeiro." }, { status: 422 });
@@ -74,6 +80,44 @@ export async function POST(req: NextRequest) {
   if (!config?.template) {
     return NextResponse.json({ error: "Configuração de miolo não encontrada. Gere o miolo primeiro." }, { status: 422 });
   }
+
+  // G.1: capítulos vêm de manuscripts.capitulos_aprovados (mesma fonte que
+  // miolo, EPUB e áudio). Zero heurística no artefato final.
+  const capitulosAprovados = isDev()
+    ? []
+    : (ms?.capitulos_aprovados ?? null);
+  const hashSalvo = isDev() ? null : (ms?.capitulos_aprovados_texto_hash ?? null);
+
+  if (!isDev()) {
+    if (capitulosAprovados == null) {
+      return NextResponse.json(
+        {
+          error: "Aprove os capítulos do livro antes de gerar o DOCX.",
+          action: "approve_chapters",
+          reason: "no_approval",
+        },
+        { status: 422 },
+      );
+    }
+    const hashAtual = createHash("md5").update(texto).digest("hex");
+    if (hashSalvo !== hashAtual) {
+      console.log("[gerar-docx] hash do texto mudou desde a aprovação", {
+        project_id,
+        hashSalvo: hashSalvo?.slice(0, 8),
+        hashAtual: hashAtual.slice(0, 8),
+      });
+      return NextResponse.json(
+        {
+          error: "O texto mudou desde a última aprovação de capítulos. Reaprove os capítulos.",
+          action: "approve_chapters",
+          reason: "text_changed",
+        },
+        { status: 422 },
+      );
+    }
+  }
+
+  const capitulos = capitulosAprovados ?? [];
 
   // ── Generate DOCX ─────────────────────────────────────────────────────────
   let buffer: Buffer;
