@@ -9,6 +9,8 @@ import { useEditorStore } from "./lib/editor-store";
 import { serializeEditorState } from "./lib/editor-serializer";
 import { isEditableTarget } from "./lib/keyboard-utils";
 import { hashElements, hashFills } from "./lib/state-hash";
+import { createSmartFieldElement, type SmartFieldContentMap } from "./lib/smart-field-layout";
+import type { AnyElement } from "./lib/elements";
 import type { ProjectData } from "./types";
 
 const EditorCanvas = dynamic(
@@ -87,10 +89,55 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         isbn: projectData.initialEditorData.isbn,
         backgroundUrl: projectData.initialEditorData.backgroundUrl,
       });
-    } else if (projectData.backgroundUrl) {
-      // Sem editor_data prévio (autor abrindo editor em cima de upload puro):
-      // popular só o backgroundUrl para renderizar o PNG travado.
-      useEditorStore.getState().setBackgroundUrl(projectData.backgroundUrl);
+    } else {
+      // Primeira vez abrindo o editor para este projeto (sem editor_data
+      // prévio no banco). Popular o backgroundUrl (se veio de upload) e
+      // pre-popular smart fields de título/subtítulo com o que o autor já
+      // definiu em Elementos Editoriais. Autor pode mover, editar ou
+      // deletar livremente — se voltar depois, o autosave terá persistido
+      // a decisão dele e caímos no ramo `if` acima (que não recria nada).
+      if (projectData.backgroundUrl) {
+        useEditorStore.getState().setBackgroundUrl(projectData.backgroundUrl);
+      }
+
+      // Só cria smart field quando manuscripts.titulo/subtitulo tem conteúdo.
+      // Se autor pulou Elementos Editoriais ou deixou campos vazios, deixa
+      // o canvas limpo — evita TextElement órfão com content = "".
+      const contentMap: SmartFieldContentMap = {
+        titulo: projectData.title,
+        subtitulo: projectData.subtitle,
+      };
+      const elementosIniciais: AnyElement[] = [];
+      if (projectData.title.trim()) {
+        elementosIniciais.push(
+          createSmartFieldElement(
+            "titulo",
+            projectData.format,
+            projectData.pages,
+            0, // orelhaMm default no primeiro load (store inicia com 0)
+            {}, // fills vazios: contraste com fundo branco padrão
+            contentMap,
+            elementosIniciais.length,
+          ),
+        );
+      }
+      if (projectData.subtitle.trim()) {
+        elementosIniciais.push(
+          createSmartFieldElement(
+            "subtitulo",
+            projectData.format,
+            projectData.pages,
+            0,
+            {},
+            contentMap,
+            elementosIniciais.length,
+          ),
+        );
+      }
+      // addElement do store cuida de reatribuir zIndex sequencial.
+      elementosIniciais.forEach((el) => {
+        useEditorStore.getState().addElement(el);
+      });
     }
     // Hydrate confirmed snapshot: the loaded editor_data IS the confirmed baseline
     if (projectData.confirmedAt) {
