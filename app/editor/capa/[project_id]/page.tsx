@@ -100,13 +100,24 @@ export default async function EditorCapaPage({
     format,
   );
 
-  // Background do editor: se já há editor_data com backgroundUrl salvo, ele
-  // vem no `initialEditorData`. Caso contrário — autor abrindo o editor pela
-  // primeira vez em cima de um upload puro — pegamos o `url` do modo upload.
-  // IA fica sempre sem background (retorna só a frente, não uma panorâmica).
-  const uploadUrl =
-    capa?.modo === "upload" && typeof capa?.url === "string" ? (capa.url as string) : null;
-  const backgroundUrl = initialEditorData?.backgroundUrl ?? uploadUrl;
+  // Background do editor: reflete a regra dos 3 modos.
+  //  - Upload: NUNCA herda como background. O arquivo do autor é final,
+  //    não vai ser editado dentro da plataforma. O card "Editor
+  //    interativo" na tela /dashboard/capa/[id] chama reset antes de
+  //    navegar, então quando autor entra vindo daí o dados_capa está
+  //    limpo e nada é herdado.
+  //  - IA: HERDA como background quando o autor entra via botão "Editar
+  //    no editor" do ResultadoCard. O editor abre com a arte da IA como
+  //    camada travada zIndex 0, e o autor adiciona elementos por cima.
+  //  - Editor puro: sem background. Autor começa do zero.
+  //
+  // Retrocompat: initialEditorData?.backgroundUrl (design 14.I legado)
+  // ainda é respeitado. Projetos novos com upload não gravam isso mais.
+  const iaUrl =
+    capa?.modo === "ia" && typeof capa?.url_escolhida === "string"
+      ? (capa.url_escolhida as string)
+      : null;
+  const backgroundUrl = initialEditorData?.backgroundUrl ?? iaUrl;
 
   const projectData: ProjectData = {
     projectId: project_id,

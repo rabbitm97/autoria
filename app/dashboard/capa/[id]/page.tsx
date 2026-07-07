@@ -1615,6 +1615,35 @@ export default function CapaPage() {
     // ModoUpload (implementado na Passada 2).
   }
 
+  // Zera dados_capa quando o autor está trocando de modo. Garante que
+  // "sempre a última escolha vale" — sem estados híbridos entre
+  // Upload / IA / Editor.
+  //
+  // Nota: não é chamado no botão "Editar no editor" do ResultadoCard
+  // (esse botão é caminho intencional de IA → Editor, mantendo a IA
+  // como background). Só é chamado nos cliques dos 3 cards da tela de
+  // ESCOLHA, quando o autor está trocando de modo.
+  async function resetIfDifferentMode(
+    intendedMode: "upload" | "ia" | "editor",
+  ): Promise<void> {
+    if (!dados) return;
+    const currentMode =
+      dados.source === "editor"
+        ? "editor"
+        : dados.modo === "upload"
+          ? "upload"
+          : dados.modo === "ia"
+            ? "ia"
+            : null;
+    if (!currentMode || currentMode === intendedMode) return;
+    try {
+      await fetch(`/api/projects/${id}/capa/reset`, { method: "POST" });
+      setDados(null);
+    } catch (err) {
+      console.error("[capa] falha ao resetar dados_capa (não-fatal):", err);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1728,21 +1757,35 @@ export default function CapaPage() {
               const editorConfirmed = dados?.source === "editor" && dados?.confirmed_at;
               const editorThumbnail = editorConfirmed ? (dados?.imagem_url as string | undefined) : null;
               const editorConfirmedAt = editorConfirmed ? (dados?.confirmed_at as string) : null;
+              // hasCurrentCapa = true quando existe qualquer capa salva
+              // no banco (upload, IA ou editor). Usado para exibir aviso
+              // "Substituirá a capa atual" nos cards que representam um
+              // modo diferente do atual.
+              const hasCurrentCapa =
+                Boolean(editorConfirmed) ||
+                dados?.modo === "upload" ||
+                dados?.modo === "ia";
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <ModoCard
                     icon={<UploadIcon />}
                     title="Upload de capa pronta"
                     desc="Você já tem o arquivo final. Vamos verificar se as dimensões estão corretas para o formato e número de páginas."
-                    warning={editorConfirmed ? "Substituirá a capa atual feita no editor." : undefined}
-                    onClick={() => setModo("upload")}
+                    warning={hasCurrentCapa ? "Substituirá a capa atual." : undefined}
+                    onClick={async () => {
+                      await resetIfDifferentMode("upload");
+                      setModo("upload");
+                    }}
                   />
                   <ModoCard
                     icon={<SparklesIcon />}
                     title="Gerar com IA"
                     desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
-                    warning={editorConfirmed ? "Substituirá a capa atual feita no editor." : undefined}
-                    onClick={() => setModo("ia")}
+                    warning={hasCurrentCapa ? "Substituirá a capa atual." : undefined}
+                    onClick={async () => {
+                      await resetIfDifferentMode("ia");
+                      setModo("ia");
+                    }}
                   />
                   {editorConfirmed ? (
                     <div className="flex flex-col p-6 bg-white rounded-2xl border border-emerald-200 text-left">
@@ -1808,7 +1851,10 @@ export default function CapaPage() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => router.push(`/editor/capa/${id}`)}
+                      onClick={async () => {
+                        await resetIfDifferentMode("editor");
+                        router.push(`/editor/capa/${id}`);
+                      }}
                       className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
                         hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
                     >
@@ -1821,6 +1867,11 @@ export default function CapaPage() {
                         <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
                           Crie sua capa do zero com texto, imagens e elementos da marca em um editor visual fullscreen.
                         </p>
+                        {hasCurrentCapa && (
+                          <p className="text-xs text-amber-700 mt-2 leading-relaxed">
+                            Substituirá a capa atual.
+                          </p>
+                        )}
                       </div>
                       <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
                     </button>
