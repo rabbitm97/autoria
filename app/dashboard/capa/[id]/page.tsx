@@ -1426,6 +1426,56 @@ export default function CapaPage() {
           setAjusteDisponivel(null);
         }
       }
+
+      // ── Auto-reanálise quando análise técnica está desatualizada ─────
+      // Cenário: autor sobe capa → análise roda com paginas_reais X →
+      // autor rediagrama → paginas_reais vira Y → autor volta para essa
+      // tela. A análise persistida ainda reflete o X — precisa disparar
+      // nova análise para atualizar `lombada_esperada_mm` e a UI ficar
+      // coerente com o miolo atual.
+      //
+      // Guarda: só dispara quando (a) já existe análise técnica salva
+      // e (b) o miolo tem paginas_reais definido e (c) o valor esperado
+      // salvo diverge do valor esperado atual. Fire-and-forget para não
+      // bloquear a renderização inicial da UI (mostra dados antigos, e
+      // troca silenciosamente quando a reanálise termina).
+      const capaCarregada = data?.dados_capa as {
+        analise_tecnica?: { lombada_esperada_mm?: number };
+      } | null;
+      const analiseSalva = capaCarregada?.analise_tecnica;
+      if (analiseSalva && miolo?.paginas_reais) {
+        const lombadaEsperadaAtual = estimarLombadaCapaMm(miolo.paginas_reais);
+        const lombadaEsperadaSalva = analiseSalva.lombada_esperada_mm ?? 0;
+        const stale = Math.abs(lombadaEsperadaAtual - lombadaEsperadaSalva) > 0.05;
+        if (stale) {
+          console.log(
+            "[capa/loadProject] análise técnica desatualizada — disparando reanálise silenciosa",
+            { lombadaEsperadaSalva, lombadaEsperadaAtual },
+          );
+          setAnaliseStatus("analisando");
+          void fetch(`/api/projects/${id}/capa/analisar`, { method: "POST" })
+            .then(async (res) => {
+              if (!res.ok) {
+                console.error("[capa/loadProject] reanálise falhou:", res.status);
+                setAnaliseStatus("concluida"); // volta ao estado anterior
+                return;
+              }
+              const { data: refreshed } = await supabase
+                .from("projects")
+                .select("dados_capa")
+                .eq("id", id)
+                .single();
+              if (refreshed?.dados_capa) {
+                setDados(refreshed.dados_capa as Record<string, unknown>);
+              }
+              setAnaliseStatus("concluida");
+            })
+            .catch((err) => {
+              console.error("[capa/loadProject] reanálise falhou:", err);
+              setAnaliseStatus("concluida");
+            });
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -1498,15 +1548,17 @@ export default function CapaPage() {
 
   async function handleContinuar() {
     // Se a análise técnica marcou !ok_grafica, alerta o autor antes de
-    // avançar. Os itens listados NÃO bloqueiam publicação em eBook/Kindle,
-    // mas afetam impressão física. window.confirm é intencional: dialog
-    // custom aqui seria overkill para um gate opcional.
+    // avançar. Os itens listados NÃO bloqueiam publicação em eBook/Kindle
+    // e POD digital, mas afetam impressão offset (tiragens grandes).
+    // window.confirm é intencional: dialog custom aqui seria overkill
+    // para um gate opcional.
+    //
+    // RGB não é problema no fluxo padrão (POD aceita nativamente), então
+    // não entra na lista de "problemas". Conversão CMYK só ocorre em
+    // offset e é comunicada no fluxo específico.
     const analise = dados?.analise_tecnica as AnaliseTecnica | undefined;
     if (analise && !analise.ok_grafica) {
       const problemas: string[] = [];
-      if (analise.colorspace !== "cmyk") {
-        problemas.push("• Capa em RGB (converteremos para CMYK ao imprimir)");
-      }
       if (analise.sangria !== "presente") {
         problemas.push("• Sangria de 3mm ausente ou incompleta");
       }

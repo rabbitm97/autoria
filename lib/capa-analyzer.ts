@@ -751,7 +751,10 @@ export async function analisarCapa(input: AnalisarInput): Promise<AnaliseTecnica
   // ── Avisos amigáveis ──────────────────────────────────────────────────
   const avisos: string[] = [];
   if (colorspace === "srgb" || colorspace === "rgb16") {
-    avisos.push("Capa em RGB. Para gráfica, será convertida automaticamente para CMYK com perfil FOGRA39.");
+    // POD digital (padrão da esteira B2C) aceita RGB nativamente.
+    // Conversão para CMYK só ocorre em impressão offset (tiragens acima de
+    // 300 exemplares), fluxo separado com aviso explícito ao autor.
+    avisos.push("Capa em RGB — padrão aceito para POD digital.");
   } else if (colorspace === "other") {
     avisos.push("Espaço de cor desconhecido. Recomendamos exportar como JPG ou PNG padrão.");
   }

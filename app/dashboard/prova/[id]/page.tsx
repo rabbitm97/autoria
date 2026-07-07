@@ -713,7 +713,11 @@ export default function ProvaPage() {
           fills: capaResolvida.fills,
           titulo: ms?.titulo ?? "Livro sem título",
           autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
-          lombadaMm: capaResolvida.lombada_mm ?? miolo?.lombada_mm ?? 10,
+          // Prioridade: lombada REAL do miolo (atualizada via P.3 no
+          // auto-chain gerar-pdf após diagramação). Fallback para a
+          // lombada salva na capa apenas quando o miolo ainda não gerou
+          // PDF — cenário residual.
+          lombadaMm: miolo?.lombada_mm ?? capaResolvida.lombada_mm ?? 10,
           paginas: paginasReais || (miolo?.paginas_estimadas ?? 0),
           capaTemEditorData,
           orelhaMm,
