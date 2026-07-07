@@ -358,8 +358,10 @@ export async function buildBookDocx(params: {
   creditosConfig?: unknown | null;
   ficha?: unknown | null;
   projectId: string;
+  /** Palavras-chave SEO geradas em Elementos Editoriais. Opcional. */
+  palavras_chave?: string[];
 }): Promise<Buffer> {
-  const { titulo, subtitulo, autor, texto, capitulos, config, creditosConfig, ficha, projectId } = params;
+  const { titulo, subtitulo, autor, texto, capitulos, config, creditosConfig, ficha, projectId, palavras_chave } = params;
 
   const font = FONT_MAP[config.template];
   const st = TEMPLATE_STYLES[config.template];
@@ -664,7 +666,17 @@ export async function buildBookDocx(params: {
     capitulos: segments.map(s => ({ titulo: s.titulo })),
   });
 
+  // Metadata Open XML core (docProps/core.xml). Sem isso, Word/Explorer
+  // mostram "Un-named" no autor e Propriedades vazias.
+  const keywordsCsv = (palavras_chave ?? []).filter(Boolean).join(", ");
+
   const doc = new Document({
+    title:            titulo,
+    subject:          subtitulo || titulo,
+    creator:          autor,
+    lastModifiedBy:   autor,
+    description:      subtitulo || titulo,
+    ...(keywordsCsv ? { keywords: keywordsCsv } : {}),
     evenAndOddHeaderAndFooters: true,
     sections: docSections,
     customProperties: [

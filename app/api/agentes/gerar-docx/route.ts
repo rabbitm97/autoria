@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
   const el = project.dados_elementos as {
     titulo_escolhido?: string;
     subtitulo?: string;
+    palavras_chave?: string[];
   } | null;
   const mioloData = project.dados_miolo as { config?: MioloConfig } | null;
   const creditosData = project.dados_creditos as CreditosResult | null;
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest) {
       creditosConfig: creditosData?.config ?? null,
       ficha: creditosData?.ficha_catalografica ?? null,
       projectId: project_id,
+      palavras_chave: el?.palavras_chave,
     });
   } catch (e) {
     console.error("[gerar-docx] Erro ao gerar DOCX:", e);
