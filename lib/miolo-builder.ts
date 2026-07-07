@@ -1,4 +1,16 @@
 import { type FormatoLivro, type FormatoSpecs, cppEfetivo, getFormatoDef } from "./formatos";
+import {
+  EB_GARAMOND_400, EB_GARAMOND_400_ITALIC, EB_GARAMOND_600,
+  SPECTRAL_400, SPECTRAL_400_ITALIC, SPECTRAL_500, SPECTRAL_600,
+  SOURCE_SERIF_4_300, SOURCE_SERIF_4_400, SOURCE_SERIF_4_400_ITALIC,
+  SOURCE_SERIF_4_500, SOURCE_SERIF_4_600,
+  CRIMSON_PRO_400, CRIMSON_PRO_400_ITALIC, CRIMSON_PRO_500, CRIMSON_PRO_600,
+  TINOS_400, TINOS_400_ITALIC, TINOS_700,
+  CRIMSON_TEXT_400, CRIMSON_TEXT_400_ITALIC, CRIMSON_TEXT_600,
+  ANDIKA_400, ANDIKA_400_ITALIC, ANDIKA_700,
+  LORA_400, LORA_400_ITALIC, LORA_500, LORA_600,
+  GENTIUM_BOOK_PLUS_400, GENTIUM_BOOK_PLUS_400_ITALIC, GENTIUM_BOOK_PLUS_700,
+} from "./fonts-embedded";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -410,13 +422,95 @@ body {
 `;
 }
 
+// ─── @font-face embedded ─────────────────────────────────────────────────────
+// Chromium serverless (@sparticuz/chromium) não processa `@import` do
+// Google Fonts. Sem embed as fontes editoriais caem em OpenSans (fontsCount:
+// 0 em produção). Aqui inlinamos como base64 apenas a fonte do template
+// escolhido — os arquivos vêm de @fontsource/* via lib/fonts-embedded.ts.
+
+function ff(family: string, weight: number, style: "normal" | "italic", b64: string): string {
+  return `@font-face{font-family:'${family}';font-style:${style};font-weight:${weight};font-display:block;src:url(data:font/woff2;base64,${b64}) format('woff2');}`;
+}
+
+function buildFontFaceCss(template: TemplateId): string {
+  switch (template) {
+    case "literario":
+      return [
+        ff("EB Garamond", 400, "normal", EB_GARAMOND_400),
+        ff("EB Garamond", 400, "italic", EB_GARAMOND_400_ITALIC),
+        ff("EB Garamond", 600, "normal", EB_GARAMOND_600),
+      ].join("");
+    case "literario_moderno":
+      return [
+        ff("Spectral", 400, "normal", SPECTRAL_400),
+        ff("Spectral", 400, "italic", SPECTRAL_400_ITALIC),
+        ff("Spectral", 500, "normal", SPECTRAL_500),
+        ff("Spectral", 600, "normal", SPECTRAL_600),
+      ].join("");
+    case "memorial":
+      return [
+        ff("Source Serif 4", 300, "normal", SOURCE_SERIF_4_300),
+        ff("Source Serif 4", 400, "normal", SOURCE_SERIF_4_400),
+        ff("Source Serif 4", 400, "italic", SOURCE_SERIF_4_400_ITALIC),
+        ff("Source Serif 4", 500, "normal", SOURCE_SERIF_4_500),
+      ].join("");
+    case "nao_ficcao":
+      return [
+        ff("Source Serif 4", 300, "normal", SOURCE_SERIF_4_300),
+        ff("Source Serif 4", 400, "normal", SOURCE_SERIF_4_400),
+        ff("Source Serif 4", 400, "italic", SOURCE_SERIF_4_400_ITALIC),
+        ff("Source Serif 4", 600, "normal", SOURCE_SERIF_4_600),
+      ].join("");
+    case "academico":
+      return [
+        ff("Crimson Pro", 400, "normal", CRIMSON_PRO_400),
+        ff("Crimson Pro", 400, "italic", CRIMSON_PRO_400_ITALIC),
+        ff("Crimson Pro", 500, "normal", CRIMSON_PRO_500),
+        ff("Crimson Pro", 600, "normal", CRIMSON_PRO_600),
+      ].join("");
+    case "abnt":
+      // Tinos é metricamente compatível com Times New Roman (mesma métrica,
+      // mesmo x-height, mesmo espaçamento). Atende ABNT NBR 14724.
+      return [
+        ff("Times New Roman", 400, "normal", TINOS_400),
+        ff("Times New Roman", 400, "italic", TINOS_400_ITALIC),
+        ff("Times New Roman", 700, "normal", TINOS_700),
+      ].join("");
+    case "poesia":
+    case "teatro":
+      return [
+        ff("Crimson Text", 400, "normal", CRIMSON_TEXT_400),
+        ff("Crimson Text", 400, "italic", CRIMSON_TEXT_400_ITALIC),
+        ff("Crimson Text", 600, "normal", CRIMSON_TEXT_600),
+      ].join("");
+    case "infantil":
+      return [
+        ff("Andika", 400, "normal", ANDIKA_400),
+        ff("Andika", 400, "italic", ANDIKA_400_ITALIC),
+        ff("Andika", 700, "normal", ANDIKA_700),
+      ].join("");
+    case "juvenil":
+      return [
+        ff("Lora", 400, "normal", LORA_400),
+        ff("Lora", 400, "italic", LORA_400_ITALIC),
+        ff("Lora", 500, "normal", LORA_500),
+        ff("Lora", 600, "normal", LORA_600),
+      ].join("");
+    case "religioso":
+      return [
+        ff("Gentium Book Plus", 400, "normal", GENTIUM_BOOK_PLUS_400),
+        ff("Gentium Book Plus", 400, "italic", GENTIUM_BOOK_PLUS_400_ITALIC),
+        ff("Gentium Book Plus", 700, "normal", GENTIUM_BOOK_PLUS_700),
+      ].join("");
+  }
+}
+
 // ─── CSS específico de cada template ─────────────────────────────────────────
 
 const TEMPLATE_SPECIFIC_CSS: Record<TemplateId, string> = {
 
   // ─── 1. Literário Clássico ─────────────────────────────────────────────────
   literario: `
-@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
 body {
   font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
   line-height: 1.65;
@@ -456,7 +550,6 @@ body {
 
   // ─── 2. Literário Contemporâneo ────────────────────────────────────────────
   literario_moderno: `
-@import url('https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 body {
   font-family: 'Spectral', Georgia, serif;
   line-height: 1.55;
@@ -482,7 +575,6 @@ body {
 
   // ─── 3. Memórias e Biografia ───────────────────────────────────────────────
   memorial: `
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,500;1,400&display=swap');
 body {
   font-family: 'Source Serif 4', Georgia, serif;
   line-height: 1.6;
@@ -524,7 +616,6 @@ body {
 
   // ─── 4. Não-Ficção Moderna ─────────────────────────────────────────────────
   nao_ficcao: `
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');
 body {
   font-family: 'Source Serif 4', Georgia, serif;
   line-height: 1.6;
@@ -558,7 +649,6 @@ body {
 
   // ─── 5. Acadêmico Humanidades ──────────────────────────────────────────────
   academico: `
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 body {
   font-family: 'Crimson Pro', Georgia, serif;
   line-height: 1.55;
@@ -613,7 +703,6 @@ body {
 
   // ─── 7. Poesia ─────────────────────────────────────────────────────────────
   poesia: `
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 body {
   font-family: 'Crimson Text', Georgia, serif;
   line-height: 1.7;
@@ -651,7 +740,6 @@ body {
 
   // ─── 8. Teatro / Dramaturgia ───────────────────────────────────────────────
   teatro: `
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 body {
   font-family: 'Crimson Text', Georgia, serif;
   line-height: 1.55;
@@ -696,7 +784,6 @@ body {
 
   // ─── 9. Infantil Ilustrado ─────────────────────────────────────────────────
   infantil: `
-@import url('https://fonts.googleapis.com/css2?family=Andika:ital,wght@0,400;0,700;1,400&display=swap');
 body {
   font-family: 'Andika', 'Lora', Georgia, sans-serif;
   line-height: 1.85;
@@ -732,7 +819,6 @@ body {
 
   // ─── 10. Juvenil / Young Adult ─────────────────────────────────────────────
   juvenil: `
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 body {
   font-family: 'Lora', Georgia, serif;
   line-height: 1.7;
@@ -757,7 +843,6 @@ body {
 
   // ─── 11. Religioso Devocional ──────────────────────────────────────────────
   religioso: `
-@import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&display=swap');
 body {
   font-family: 'Gentium Book Plus', Georgia, serif;
   line-height: 1.6;
@@ -1070,6 +1155,7 @@ export function buildBookHtml(params: {
   const css =
     buildPageCss(spec, true) +
     buildBaseCss(corpoPt) +
+    buildFontFaceCss(config.template) +
     TEMPLATE_SPECIFIC_CSS[config.template];
 
   console.log("[buildBookHtml] template:", config.template, "formato:", config.formato);

@@ -7,11 +7,21 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "node scripts/sync-pdf-worker.mjs"
+    "postinstall": "node scripts/sync-pdf-worker.mjs",
+    "embed-fonts": "tsx scripts/embed-fonts.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@base-ui/react": "^1.3.0",
+    "@fontsource/andika": "^5.2.10",
+    "@fontsource/crimson-pro": "^5.2.8",
+    "@fontsource/crimson-text": "^5.2.7",
+    "@fontsource/eb-garamond": "^5.2.7",
+    "@fontsource/gentium-book-plus": "^5.2.7",
+    "@fontsource/lora": "^5.2.8",
+    "@fontsource/source-serif-4": "^5.2.9",
+    "@fontsource/spectral": "^5.2.8",
+    "@fontsource/tinos": "^5.2.7",
     "@google/genai": "^1.47.0",
     "@react-pdf/renderer": "^4.5.1",
     "@sparticuz/chromium": "^149.0.0",
@@ -57,6 +67,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   }
 }
