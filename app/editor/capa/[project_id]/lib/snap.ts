@@ -35,19 +35,34 @@ export function getStructuralGuides(
   const xFrenteEnd = xLombadaEnd + frontePx;
   const xLombadaCenter = (xContraEnd + xLombadaEnd) / 2;
 
+  // Centros de cada zona — permitem centralizar elementos dentro da
+  // contracapa, frente e (quando há) orelhas. Sem esses, o autor só
+  // conseguia centralizar em relação à lombada ou ao total, o que
+  // raramente é o que se quer ao alinhar título/logo/etc dentro de
+  // uma zona específica.
+  const xContraCenter = (xOrelhaVersoEnd + xContraEnd) / 2;
+  const xFrenteCenter = (xLombadaEnd + xFrenteEnd) / 2;
+
   const xs: number[] = [
     sangriaPx,
     totalWPx - sangriaPx,
     xOrelhaVersoEnd,
+    xContraCenter,
     xContraEnd,
     xLombadaCenter,
     xLombadaEnd,
+    xFrenteCenter,
     xFrenteEnd,
     totalWPx / 2,
   ];
 
   if (temOrelhas) {
-    xs.push(xFrenteEnd + orelhaPx);
+    // Fim da orelha frontal (borda direita interna, antes da sangria)
+    const xOrelhaFrenteEnd = xFrenteEnd + orelhaPx;
+    // Centros das orelhas — mesma lógica das zonas principais.
+    const xOrelhaVersoCenter = (sangriaPx + xOrelhaVersoEnd) / 2;
+    const xOrelhaFrenteCenter = (xFrenteEnd + xOrelhaFrenteEnd) / 2;
+    xs.push(xOrelhaFrenteEnd, xOrelhaVersoCenter, xOrelhaFrenteCenter);
   }
 
   const ys: number[] = [
