@@ -30,7 +30,7 @@ export default async function EditorCapaPage({
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "formato, dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome)",
+      "formato, dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo)",
     )
     .eq("id", project_id)
     .single();
@@ -49,6 +49,8 @@ export default async function EditorCapaPage({
   const manuscript = project.manuscripts as {
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
+    titulo?: string;
+    subtitulo?: string;
   } | null;
 
   // Fonte única: projects.formato. Default temporário "padrao_br" só para o
@@ -59,9 +61,18 @@ export default async function EditorCapaPage({
     rawFormat && rawFormat in FORMATS ? (rawFormat as FormatKey) : "padrao_br";
 
   const pages = miolo?.paginas_reais ?? 200;
+  // Ordem de precedência:
+  //  1. titulo_escolhido: última decisão consciente do autor em Elementos
+  //  2. opcoes_titulo[0]: primeira sugestão da IA (autor passou por Elementos
+  //     mas não escolheu explicitamente)
+  //  3. manuscripts.titulo: título original do manuscrito (fallback quando o
+  //     autor pulou Elementos Editoriais — segundo a memória do projeto,
+  //     manuscripts.titulo é single source of truth imutável)
+  //  4. "": edge case (projeto sem título em nenhum lugar)
   const title =
     (elementos?.titulo_escolhido as string) ??
     (elementos?.opcoes_titulo as string[])?.[0] ??
+    manuscript?.titulo ??
     "";
   const authorName = [
     manuscript?.autor_primeiro_nome,
@@ -71,7 +82,11 @@ export default async function EditorCapaPage({
     .join(" ");
   const synopsisShort = (elementos?.sinopse_curta as string) ?? "";
   const synopsisLong = (elementos?.sinopse_longa as string) ?? "";
-  const subtitle = (elementos?.subtitulo as string) ?? "";
+  // Mesma cascata do title, mas subtítulo é opcional em muitos manuscritos.
+  const subtitle =
+    (elementos?.subtitulo as string) ??
+    manuscript?.subtitulo ??
+    "";
   const isbn = (capa?.isbn as string) ?? null;
 
   const confirmedAt = (capa?.confirmed_at as string) ?? null;
