@@ -5,10 +5,10 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { extractFrontCover, type FormatoCapa } from "@/lib/capa-frente-extractor";
-import { isChapterHeading } from "@/lib/parse-chapters";
+import { segmentByCapitulosAprovados, type CapituloAprovado } from "@/lib/parse-chapters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,43 +20,23 @@ export interface EpubResult {
   gerado_em: string;
 }
 
-// ─── Text → Chapters ─────────────────────────────────────────────────────────
-// Parser local com preservação de parágrafos (linhas em branco no manuscrito
-// viram quebras de parágrafo no EPUB). Reusa isChapterHeading da lib para
-// manter a heurística de detecção de capítulo unificada.
+// ─── Chapters → Paragraphs ───────────────────────────────────────────────────
+// Q.6: capítulos vêm de manuscripts.capitulos_aprovados (mesma fonte que o
+// miolo). A segmentação por posições acontece em segmentByCapitulosAprovados
+// (lib/parse-chapters.ts). Aqui apenas quebramos cada segmento em parágrafos
+// por linhas em branco — comportamento visual do EPUB.
 
-interface Chapter {
+interface ChapterLocal {
   title: string;
   paragraphs: string[];
 }
 
-function parseChaptersWithParagraphs(texto: string, bookTitle: string): Chapter[] {
-  const lines = texto.replace(/\r\n/g, "\n").split("\n");
-  const chapters: Chapter[] = [];
-  let current: Chapter = { title: bookTitle, paragraphs: [] };
-  let paraBuffer = "";
-
-  const flushPara = () => {
-    const t = paraBuffer.trim();
-    if (t) current.paragraphs.push(t);
-    paraBuffer = "";
-  };
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) { flushPara(); continue; }
-
-    if (isChapterHeading(line)) {
-      flushPara();
-      if (current.paragraphs.length > 0) chapters.push(current);
-      current = { title: line, paragraphs: [] };
-    } else {
-      paraBuffer += (paraBuffer ? " " : "") + line;
-    }
-  }
-  flushPara();
-  if (current.paragraphs.length > 0 || chapters.length === 0) chapters.push(current);
-  return chapters;
+function chapterToParagraphs(chapter: { title: string; text: string }): ChapterLocal {
+  const paragraphs = chapter.text
+    .split(/\n\s*\n+/)
+    .map(p => p.replace(/\n/g, " ").trim())
+    .filter(Boolean);
+  return { title: chapter.title, paragraphs };
 }
 
 // ─── HTML helpers ─────────────────────────────────────────────────────────────
@@ -65,7 +45,7 @@ function esc(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function chapterXhtml(chapter: Chapter, _idx: number): string {
+function chapterXhtml(chapter: ChapterLocal, _idx: number): string {
   const paras = chapter.paragraphs
     .map((p, i) => `    <p class="${i === 0 ? "first" : "body"}">${esc(p)}</p>`)
     .join("\n");
@@ -94,7 +74,7 @@ p.first { text-indent: 0; margin-top: 0; }
 p.body { text-indent: 1.5em; margin: 0; }
 `;
 
-function navXhtml(chapters: Chapter[], bookTitle: string): string {
+function navXhtml(chapters: ChapterLocal[], bookTitle: string): string {
   const items = chapters
     .map((c, i) => `    <li><a href="chapters/chapter-${String(i + 1).padStart(3, "0")}.xhtml">${esc(c.title)}</a></li>`)
     .join("\n");
@@ -113,7 +93,7 @@ ${items}
 </html>`;
 }
 
-function ncxXml(chapters: Chapter[], bookTitle: string, autor: string, uid: string): string {
+function ncxXml(chapters: ChapterLocal[], bookTitle: string, autor: string, uid: string): string {
   const navPoints = chapters
     .map((c, i) => `  <navPoint id="np-${i + 1}" playOrder="${i + 1}">
     <navLabel><text>${esc(c.title)}</text></navLabel>
@@ -137,7 +117,7 @@ ${navPoints}
 }
 
 function opfXml(
-  chapters: Chapter[],
+  chapters: ChapterLocal[],
   bookTitle: string,
   subtitulo: string,
   autor: string,
@@ -222,6 +202,8 @@ export async function POST(req: NextRequest) {
   let dadosMiolo: { paginas_reais?: number; config?: { paginas_estimadas?: number } } | null = null;
   let projectFormato: FormatoCapa | null = null;
   let capaResolvida: ReturnType<typeof resolveCapaCompleta> | null = null;
+  let capitulosAprovados: CapituloAprovado[] | null = null;
+  let hashSalvo: string | null = null;
 
   if (isDev()) {
     titulo    = "O Último Manuscrito";
@@ -236,7 +218,7 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project, error: projErr } = await supabase
       .from("projects")
-      .select("dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome)")
+      .select("dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
@@ -252,6 +234,8 @@ export async function POST(req: NextRequest) {
       nome?: string;
       autor_primeiro_nome?: string;
       autor_sobrenome?: string;
+      capitulos_aprovados?: CapituloAprovado[] | null;
+      capitulos_aprovados_texto_hash?: string | null;
     } | null;
     projectFormato = project.formato as FormatoCapa | null;
     capaResolvida = resolveCapaCompleta(
@@ -271,10 +255,44 @@ export async function POST(req: NextRequest) {
     capaUrl      = capaResolvida.url_area_util ?? capaResolvida.url_principal;
     palavrasChave = (el?.palavras_chave as string[] | undefined) ?? [];
     autor        = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
+    capitulosAprovados = ms?.capitulos_aprovados ?? null;
+    hashSalvo = ms?.capitulos_aprovados_texto_hash ?? null;
   }
 
   if (!texto.trim()) {
     return NextResponse.json({ error: "Manuscrito sem texto. Execute o parse primeiro." }, { status: 422 });
+  }
+
+  // ── Validate approved chapters ────────────────────────────────────────────
+  // Q.6: EPUB usa a mesma fonte que o miolo — capitulos_aprovados +
+  // validação de hash. Zero heurística no artefato final.
+  if (!isDev()) {
+    if (capitulosAprovados == null) {
+      return NextResponse.json(
+        {
+          error: "Aprove os capítulos do livro antes de gerar o EPUB.",
+          action: "approve_chapters",
+          reason: "no_approval",
+        },
+        { status: 422 },
+      );
+    }
+    const hashAtual = createHash("md5").update(texto).digest("hex");
+    if (hashSalvo !== hashAtual) {
+      console.log("[gerar-epub] hash do texto mudou desde a aprovação", {
+        project_id,
+        hashSalvo: hashSalvo?.slice(0, 8),
+        hashAtual: hashAtual.slice(0, 8),
+      });
+      return NextResponse.json(
+        {
+          error: "O texto mudou desde a última aprovação de capítulos. Reaprove os capítulos.",
+          action: "approve_chapters",
+          reason: "text_changed",
+        },
+        { status: 422 },
+      );
+    }
   }
 
   // ── Fetch cover image (optional) ─────────────────────────────────────────
@@ -342,7 +360,15 @@ export async function POST(req: NextRequest) {
 
   // ── Build EPUB ────────────────────────────────────────────────────────────
   const uid = `urn:uuid:${randomUUID()}`;
-  const chapters = parseChaptersWithParagraphs(texto, titulo);
+  // Segmentar via posições aprovadas → converter cada Chapter em ChapterLocal
+  // (com parágrafos derivados de linhas em branco). Em dev mode não temos
+  // capitulos_aprovados → cai em [] (capítulo único).
+  const segmentedChapters = segmentByCapitulosAprovados(
+    texto,
+    capitulosAprovados ?? [],
+    titulo,
+  );
+  const chapters = segmentedChapters.map(chapterToParagraphs);
 
   const zip = new JSZip();
 

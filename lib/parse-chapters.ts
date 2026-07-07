@@ -18,6 +18,16 @@ export interface Chapter {
   text: string;
 }
 
+/**
+ * Um capítulo aprovado pelo autor via /api/agentes/miolo/aprovar-capitulos.
+ * `titulo` é a linha exata do texto que serve como cabeçalho.
+ * `pos` é a posição em caracteres onde o capítulo começa no texto.
+ */
+export interface CapituloAprovado {
+  titulo: string;
+  pos: number;
+}
+
 export interface FragmentoDiagnostico {
   idx: number;
   titulo: string;
@@ -100,6 +110,58 @@ export function parseChapters(texto: string, bookTitle: string): Chapter[] {
   }
   if (current.text.trim()) chapters.push(current);
   if (chapters.length === 0) chapters.push({ title: bookTitle, text: texto });
+  return chapters;
+}
+
+// ─── segmentByCapitulosAprovados ─────────────────────────────────────────────
+
+/**
+ * Segmenta o texto em capítulos usando a lista aprovada manualmente pelo
+ * autor (via /api/agentes/miolo/aprovar-capitulos).
+ *
+ * Fonte única de verdade compartilhada com o `miolo` — garante que
+ * EPUB, audiolivro e PDF impresso usem exatamente os mesmos capítulos.
+ *
+ * Semântica dos 3 estados:
+ *   - null/undefined → chamador deve retornar 422 antes de chamar aqui
+ *   - []             → livro sem capítulos: retorna 1 chapter com o texto todo
+ *   - [items]        → segmenta pelas posições
+ *
+ * Lógica de segmentação idêntica a `lib/miolo-builder.ts` linhas 1085-1098.
+ * Normaliza \r\n → \n e recalcula posições no texto normalizado (defensivo
+ * contra shifts causados por conversão de line-endings).
+ *
+ * Remove a primeira linha de cada segmento (que contém o próprio título),
+ * para não duplicar o cabeçalho quando o consumidor renderiza `chapter.title`
+ * separadamente.
+ */
+export function segmentByCapitulosAprovados(
+  texto: string,
+  capitulosAprovados: CapituloAprovado[],
+  bookTitle: string,
+): Chapter[] {
+  const textoNormalizado = texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  if (capitulosAprovados.length === 0) {
+    return [{ title: bookTitle, text: textoNormalizado }];
+  }
+
+  const capitulosNorm = capitulosAprovados.map(c => {
+    const novaPos = textoNormalizado.indexOf(c.titulo);
+    return { ...c, pos: novaPos >= 0 ? novaPos : c.pos };
+  }).sort((a, b) => a.pos - b.pos);
+
+  const chapters: Chapter[] = [];
+  for (let i = 0; i < capitulosNorm.length; i++) {
+    const start = capitulosNorm[i].pos;
+    const end = i < capitulosNorm.length - 1
+      ? capitulosNorm[i + 1].pos
+      : textoNormalizado.length;
+    let segText = textoNormalizado.slice(start, end).trim();
+    const markerEnd = segText.indexOf("\n");
+    segText = markerEnd > -1 ? segText.slice(markerEnd).trim() : "";
+    chapters.push({ title: capitulosNorm[i].titulo, text: segText });
+  }
   return chapters;
 }
 
