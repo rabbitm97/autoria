@@ -205,13 +205,6 @@ function ModoUpload({
   const [uploaded, setUploaded] = useState(!!dadosSalvos && dadosSalvos.modo === "upload");
   const [error, setError] = useState<string | null>(null);
 
-  // Origem do arquivo já persistido (para renderizar recomendações sem
-  // avisar sobre DPI quando a origem era PDF).
-  const origemArquivoSalva = (dadosSalvos?.origem_arquivo ?? undefined) as
-    | "pdf"
-    | "png"
-    | "jpg"
-    | undefined;
 
   // Se veio com dados salvos (autor recarregou a página com upload já feito),
   // popula preview a partir da URL do banco.
@@ -669,13 +662,6 @@ function ModoUpload({
               {uploaded && analiseStatus === "concluida" && analise && (
                 <RecomendacoesTecnicas
                   analise={analise}
-                  contexto={{
-                    paginas,
-                    formato,
-                    orelhaDeclarada: orelhaMm,
-                    lombadaEstimada: lombada,
-                    origemArquivo: origemArquivoSalva,
-                  }}
                   loading={false}
                 />
               )}
@@ -1044,7 +1030,6 @@ type Recomendacao = {
 
 function buildRecomendacoes(
   analise: AnaliseTecnica | undefined,
-  origemArquivo?: "pdf" | "png" | "jpg",
 ): Recomendacao[] {
   if (!analise) return [];
   const recs: Recomendacao[] = [];
@@ -1058,11 +1043,11 @@ function buildRecomendacoes(
 
   if (analise.configuracao === "A") {
     recs.push({
-      nivel: "ok",
-      titulo: "Capa pronta para gráfica",
+      nivel: "info",
+      titulo: "Arquivo em formato correto",
       detalhe: `Marcas de corte, sangria de ${sangriaMm}mm e dimensões corretas${
         areaUtil ? ` (${areaUtil.largura}mm × ${areaUtil.altura}mm dentro do corte)` : ""
-      }. Formato ideal para impressão profissional.`,
+      }. O verdict "Pronta para gráfica" só aparece quando lombada e orelhas também conferem com o miolo.`,
     });
   } else if (analise.configuracao === "B") {
     recs.push({
@@ -1112,17 +1097,13 @@ function buildRecomendacoes(
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // 3. DPI — pulamos quando o original era PDF
+  // 3. DPI — avalia sempre, independente da extensão original
+  //    (PDFs podem conter raster embutido; a análise no PNG rasterizado
+  //    reflete o DPI real que a gráfica vai receber)
   // ──────────────────────────────────────────────────────────────────
-  if (origemArquivo === "pdf") {
+  if (analise.dpi >= 300) {
     recs.push({
-      nivel: "ok",
-      titulo: "PDF vetorial",
-      detalhe: "O arquivo original é PDF vetorial — o formato ideal para impressão. A qualidade não depende de DPI e será nítida em qualquer tamanho.",
-    });
-  } else if (analise.dpi >= 300) {
-    recs.push({
-      nivel: "ok",
+      nivel: "info",
       titulo: `${analise.dpi} DPI`,
       detalhe: "Resolução alta o suficiente para impressão profissional sem pixelização.",
     });
@@ -1130,9 +1111,12 @@ function buildRecomendacoes(
     recs.push({
       nivel: "aviso",
       titulo: `Resolução ${analise.dpi} DPI`,
-      detalhe: "Abaixo dos 300 DPI recomendados para impressão. Para eBook e Kindle está ótimo. Para impressão física, elementos finos (texto pequeno, linhas) podem sair levemente serrilhados.",
+      detalhe: "Abaixo dos 300 DPI recomendados para impressão profissional. Para eBook e POD digital funciona; para tiragens grandes em offset, elementos finos podem sair serrilhados.",
     });
   }
+  // DPI = 0 significa que não foi possível medir (comum em PDFs
+  // puramente vetoriais). Nesse caso não adicionamos rec — a ausência
+  // de aviso já comunica "sem problema detectado".
 
   // ──────────────────────────────────────────────────────────────────
   // 4. Lombada deduzida vs esperada
@@ -1171,27 +1155,45 @@ function buildRecomendacoes(
     });
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // 6. Verdict agregado "Pronta para gráfica" (verde)
+  //
+  // Único rec verde da tela. Aparece só quando TUDO conflui:
+  //  - Configuração A (marcas + sangria + dimensões batendo)
+  //  - Lombada deduzida da capa bate com a lombada esperada do miolo
+  //    (dentro da tolerância de 1mm)
+  //  - Orelha deduzida bate com a orelha esperada
+  //
+  // Se qualquer aviso amarelo estiver presente acima, este verdict
+  // não aparece — eliminando a contradição de dizer "pronta" com
+  // divergência ativa.
+  // ──────────────────────────────────────────────────────────────────
+  const isConfigA = analise.configuracao === "A";
+  const lombadaBate =
+    analise.lombada_deduzida_mm == null ||
+    analise.lombada_esperada_mm === 0 ||
+    Math.abs(analise.lombada_deduzida_mm - analise.lombada_esperada_mm) <= 1;
+  const orelhaBate =
+    analise.orelha_deduzida_mm == null ||
+    analise.orelha_esperada_mm == null ||
+    analise.orelha_deduzida_mm === analise.orelha_esperada_mm;
+
+  if (isConfigA && lombadaBate && orelhaBate) {
+    recs.push({
+      nivel: "ok",
+      titulo: "Pronta para gráfica",
+      detalhe: "Formato, lombada e dimensões conferem com o miolo. Arquivo pronto para impressão profissional.",
+    });
+  }
+
   return recs;
 }
 
 function RecomendacoesTecnicas({
   analise,
-  contexto,
   loading,
 }: {
   analise: AnaliseTecnica | undefined;
-  contexto?: {
-    paginas?: number;
-    formato?: FormatoLivro;
-    orelhaDeclarada?: number;
-    lombadaEstimada?: number;
-    /**
-     * Tipo do arquivo original enviado pelo autor. Quando "pdf", omitimos
-     * a recomendação de DPI (a rasterização em 300 no cliente não reflete
-     * a qualidade real do PDF).
-     */
-    origemArquivo?: "pdf" | "png" | "jpg";
-  };
   loading?: boolean;
 }) {
   if (loading || !analise) {
@@ -1203,7 +1205,7 @@ function RecomendacoesTecnicas({
     );
   }
 
-  const recs = buildRecomendacoes(analise, contexto?.origemArquivo);
+  const recs = buildRecomendacoes(analise);
   if (recs.length === 0) {
     return (
       <div className="mt-4 text-xs text-zinc-500">
@@ -1240,11 +1242,6 @@ function RecomendacoesTecnicas({
           );
         })}
       </div>
-      {!analise.ok_grafica && (
-        <p className="text-xs text-zinc-500 pt-1">
-          Para eBook e Kindle, a capa já está pronta. Ajustes acima só afetam impressão física.
-        </p>
-      )}
     </div>
   );
 }
@@ -1313,12 +1310,7 @@ function ResultadoCard({
           </div>
         )}
 
-        <RecomendacoesTecnicas
-          analise={analise}
-          contexto={{
-            origemArquivo: dados.origem_arquivo as "pdf" | "png" | "jpg" | undefined,
-          }}
-        />
+        <RecomendacoesTecnicas analise={analise} />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
