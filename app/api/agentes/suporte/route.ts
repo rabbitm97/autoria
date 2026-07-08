@@ -41,7 +41,7 @@ Upload do manuscrito → Diagnóstico → Revisão → Elementos editoriais → 
 - Audiolivro por capítulo (ElevenLabs): 10–30 segundos
 
 ## Planos disponíveis
-- Essencial (R$197): revisão com IA + 3 sinopses + ficha catalográfica + capa por IA (3 opções) + diagramação EPUB + publicação em 15+ plataformas + painel de royalties.
+- Essencial (R$197): revisão com IA + 3 sinopses + sugestão de ficha catalográfica + capa por IA (3 opções) + diagramação EPUB + publicação em 15+ plataformas + painel de royalties.
 - Completo (R$397) — MAIS POPULAR: tudo do Essencial + PDF para impressão + capa completa (frente, contracapa, lombada e orelhas) + audiolivro com voz neural + ISBN + POD no Brasil.
 - Pro (R$697): tudo do Completo + clonagem de voz do autor + tradução para 1 idioma + marketing kit IA + suporte prioritário com SLA de 4h úteis.
 
@@ -70,7 +70,14 @@ Cada plano B2C inclui o livro completo sem cobrança extra de créditos. Crédit
 - "PDF com formatação incorreta": verifique se o manuscrito usa marcações claras de capítulo (ex: "CAPÍTULO 1" em maiúsculas).
 
 ## ISBN e ficha catalográfica
-A Autoria gera uma ficha catalográfica sugerida, mas o ISBN oficial deve ser obtido junto à Biblioteca Nacional (www.bn.gov.br) — gratuito para autores brasileiros.
+
+**ISBN:** desde março de 2020, o ISBN no Brasil é emitido exclusivamente pela CBL (Câmara Brasileira do Livro), não mais pela Biblioteca Nacional. Solicite em cblservicos.org.br/isbn. É obrigatório para venda em livrarias (Lei 10.753/2003).
+
+**Ficha catalográfica:** a Autoria gera uma SUGESTÃO com base nos dados do manuscrito. A elaboração da ficha catalográfica oficial é atividade privativa de bibliotecário com CRB ativo (Resolução CFB 184/2017). Para valer legalmente em bibliotecas, editais e prêmios, a ficha precisa ser revisada e assinada por bibliotecário. Solicite a ficha oficial na CBL (cblservicos.org.br/catalogacao) ou com qualquer bibliotecário CRB — custo aproximado R$60-100.
+
+**Depósito legal:** após publicar, envie 1 exemplar impresso à Biblioteca Nacional no Rio de Janeiro (Lei 10.994/2004). Sem taxa. Detalhes em gov.br/bn.
+
+**Registro de direitos autorais:** opcional, feito na Biblioteca Nacional (gov.br/bn). Estabelece presunção de anterioridade em caso de plágio.
 
 ## Contato humano
 Para questões não resolvidas: oi@autoria.app. SLA: 24h úteis (plano Pro: 4h úteis).

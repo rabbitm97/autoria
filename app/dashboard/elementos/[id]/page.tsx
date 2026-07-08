@@ -148,7 +148,7 @@ export default function ElementosPage() {
             </h1>
             <p className="text-zinc-500 leading-relaxed mb-8">
               A IA irá gerar sinopses, palavras-chave para Amazon KDP
-              e ficha catalográfica no padrão CBL — tudo editável.
+              e sugestão de ficha catalográfica — tudo editável.
             </p>
             {error && (
               <div className="mb-6 bg-red-50 border border-red-100 rounded-xl p-4 text-red-700 text-sm">
@@ -289,13 +289,13 @@ export default function ElementosPage() {
                 </div>
               </div>
 
-              {/* Ficha catalográfica — gerada na etapa de Créditos (ABNT NBR 6029, CIP-BRASIL) */}
+              {/* Sugestão de ficha catalográfica — gerada na etapa de Créditos (ABNT NBR 6029) */}
               <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 flex items-start gap-3">
                 <span className="text-lg mt-0.5">📑</span>
                 <div>
-                  <p className="text-sm font-medium text-zinc-700">Ficha catalográfica</p>
+                  <p className="text-sm font-medium text-zinc-700">Sugestão de ficha catalográfica</p>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Gerada na etapa <strong>Créditos</strong> no padrão ABNT NBR 6029 com ficha CIP-BRASIL completa.
+                    Gerada na etapa <strong>Créditos</strong> na estrutura ABNT NBR 6029, como sugestão editável.
                   </p>
                 </div>
               </div>

@@ -29,7 +29,7 @@ const STEPS = [
       },
       {
         icon: "user",
-        text: "Gera automaticamente sinopse, palavras-chave e ficha catalográfica no padrão CBL.",
+        text: "Gera automaticamente sinopse, palavras-chave e sugestão de ficha catalográfica editável.",
       },
     ],
     visual: <RevisaoVisual />,

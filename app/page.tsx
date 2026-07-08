@@ -48,7 +48,7 @@ const PLANS = [
     items: [
       "Diagnóstico editorial com IA",
       "Revisão gramatical e de estilo",
-      "Sinopse + ficha catalográfica",
+      "Sinopse + sugestão de ficha catalográfica",
       "3 opções de capa geradas por IA",
       "Diagramação EPUB 3.0",
       "Publicação em 15+ plataformas digitais",
@@ -461,7 +461,7 @@ function FeatureEditorial() {
                 "Análise de coesão, coerência e estilo",
                 "Sugestões de ritmo e fluidez narrativa",
                 "Geração de sinopse em 3 formatos (curta, média, longa)",
-                "Ficha catalográfica no padrão CBL",
+                "Sugestão de ficha catalográfica editável",
                 "Palavras-chave otimizadas para SEO editorial",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-white/70 text-base">

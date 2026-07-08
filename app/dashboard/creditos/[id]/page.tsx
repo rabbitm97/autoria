@@ -15,7 +15,7 @@ type Step = "config" | "processing" | "preview";
 const PROCESSING_MSGS = [
   "Verificando normas ABNT NBR 6029…",
   "Estruturando equipe técnica…",
-  "Gerando ficha catalográfica (CIP-BRASIL)…",
+  "Gerando sugestão de ficha catalográfica…",
   "Montando página de créditos…",
   "Finalizando visualização…",
 ];
@@ -375,7 +375,7 @@ export default function CreditosPage() {
             <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Página de Créditos</p>
             <h1 className="font-heading text-3xl text-brand-primary">Verso da folha de rosto</h1>
             <p className="text-zinc-500 text-sm mt-2 max-w-xl">
-              A segunda página do livro — copyright, equipe técnica, ficha catalográfica (CIP-BRASIL)
+              A segunda página do livro — copyright, equipe técnica, sugestão de ficha catalográfica
               e dados da editora. Posição obrigatória conforme <strong>ABNT NBR 6029</strong>.
             </p>
           </div>
@@ -466,7 +466,7 @@ export default function CreditosPage() {
 
           {/* Ficha catalográfica */}
           <SectionToggle
-            title="Ficha catalográfica (CIP-BRASIL)"
+            title="Sugestão de ficha catalográfica"
             hint="Gerada automaticamente pela IA seguindo normas AACR2/RDA"
             open={secFicha}
             onToggle={() => setSecFicha(v => !v)}
@@ -479,13 +479,21 @@ export default function CreditosPage() {
               >
                 <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${incluirFicha ? "translate-x-4" : "translate-x-0"}`} />
               </div>
-              <span className="text-sm text-zinc-600">Incluir ficha catalográfica no verso da folha de rosto</span>
+              <span className="text-sm text-zinc-600">Incluir sugestão de ficha catalográfica no verso da folha de rosto</span>
             </label>
 
             {incluirFicha && (
               <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">
-                  A IA gerará uma ficha catalográfica aproximada com base nos dados do manuscrito. Para publicação formal, solicite ao SNEL (Sindicato Nacional dos Editores de Livros) ou a um bibliotecário credenciado.
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 leading-relaxed">
+                  A IA gera uma <strong>sugestão de ficha catalográfica</strong> a partir dos dados do manuscrito. Para valer legalmente em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em{" "}
+                  <a
+                    href="https://www.cblservicos.org.br/catalogacao/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    cblservicos.org.br
+                  </a>.
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="ISBN" value={isbn} onChange={setIsbn} placeholder="978-65-XXXXX-XX-X" />
@@ -514,7 +522,7 @@ export default function CreditosPage() {
             Gerar página de créditos →
           </button>
           <p className="text-center text-xs text-zinc-400 mt-3">
-            {incluirFicha ? "30–45 segundos (ficha catalográfica gerada por IA)" : "Apenas alguns segundos"}
+            {incluirFicha ? "30–45 segundos (sugestão de ficha gerada por IA)" : "Apenas alguns segundos"}
           </p>
         </main>
 

@@ -160,7 +160,7 @@ export const POSTS: Post[] = [
       },
       {
         type: "p",
-        text: "Além da revisão, o modelo gera automaticamente sinopse, palavras-chave e ficha catalográfica no padrão CBL — documentos que levariam horas para escrever manualmente.",
+        text: "Além da revisão, o modelo gera automaticamente sinopse, palavras-chave e uma sugestão de ficha catalográfica editável — documentos que levariam horas para escrever manualmente.",
       },
     ],
   },

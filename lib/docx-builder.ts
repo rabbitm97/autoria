@@ -272,8 +272,8 @@ function buildCreditosParagraphs(
     const cdu = creditosConfig.cdu?.trim() || f?.cdu || "";
 
     const fichaLines: string[] = [
-      "CIP-BRASIL. CATALOGAÇÃO-NA-FONTE",
-      "SINDICATO NACIONAL DOS EDITORES DE LIVROS, RJ",
+      "SUGESTÃO DE FICHA CATALOGRÁFICA",
+      "Gerada automaticamente — não substitui bibliotecário CRB",
       "",
     ];
 
@@ -298,6 +298,34 @@ function buildCreditosParagraphs(
     }
 
     const border = { style: BorderStyle.SINGLE, size: 4, color: "555555" };
+    const disclaimerText =
+      "Sugestão gerada por inteligência artificial com base nos dados fornecidos pelo autor. Para validade em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em cblservicos.org.br.";
+
+    const fichaParagraphs: Paragraph[] = [
+      new Paragraph({
+        children: [trun(fichaLines[0], { font, size: hp(9), bold: true })],
+        alignment: "center",
+        spacing: { before: 0, after: 0 },
+      }),
+      new Paragraph({
+        children: [trun(fichaLines[1], { font, size: hp(6.5), italics: true, color: "666666" })],
+        alignment: "center",
+        spacing: { before: 0, after: 0 },
+      }),
+      ...fichaLines.slice(2).map(line =>
+        new Paragraph({
+          children: [trun(line, { font, size: hp(8) })],
+          spacing: { before: 0, after: 0 },
+        })
+      ),
+      new Paragraph({
+        children: [trun(disclaimerText, { font, size: hp(6.5), italics: true, color: "777777" })],
+        alignment: "both",
+        spacing: { before: mm(2), after: 0 },
+        border: { top: { style: BorderStyle.DOTTED, size: 4, color: "999999", space: 2 } },
+      }),
+    ];
+
     children.push(new Table({
       layout: TableLayoutType.FIXED,
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -305,12 +333,7 @@ function buildCreditosParagraphs(
         children: [new TableCell({
           borders: { top: border, bottom: border, left: border, right: border },
           margins: { top: mm(7), bottom: mm(7), left: mm(9), right: mm(9) },
-          children: fichaLines.map(line =>
-            new Paragraph({
-              children: [trun(line, { font, size: hp(8) })],
-              spacing: { before: 0, after: 0 },
-            })
-          ),
+          children: fichaParagraphs,
         })],
       })],
     }));

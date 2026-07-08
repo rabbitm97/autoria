@@ -276,8 +276,8 @@ export default function CreditosFerramenta() {
         <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-1">Ferramentas / IA</p>
         <h1 className="font-heading text-3xl text-brand-primary mb-2">Página de Créditos</h1>
         <p className="text-zinc-500 text-sm max-w-xl">
-          Gere o verso da folha de rosto com copyright, equipe técnica e ficha catalográfica
-          CIP-BRASIL — seguindo a norma <strong>ABNT NBR 6029</strong>.
+          Gere o verso da folha de rosto com copyright, equipe técnica e sugestão de ficha catalográfica
+          — seguindo a estrutura <strong>ABNT NBR 6029</strong>.
         </p>
       </div>
 
@@ -380,7 +380,7 @@ export default function CreditosFerramenta() {
             className="w-full flex items-center justify-between px-6 py-4 hover:bg-zinc-50 transition-colors text-left"
           >
             <div>
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Ficha catalográfica (CIP-BRASIL)</span>
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Sugestão de ficha catalográfica</span>
               {incluirFicha && <p className="text-xs text-brand-gold font-normal mt-0.5 normal-case">Gerada automaticamente pela IA</p>}
             </div>
             <span className="text-zinc-400 text-sm shrink-0 ml-4">{openFicha ? "▲" : "▼"}</span>
@@ -388,15 +388,26 @@ export default function CreditosFerramenta() {
           {openFicha && (
             <div className="px-6 pb-6 border-t border-zinc-100 pt-5 space-y-4">
               <Toggle
-                label="Incluir ficha catalográfica"
+                label="Incluir sugestão de ficha catalográfica"
                 hint="Posição obrigatória no verso da folha de rosto (ABNT NBR 6029)"
                 value={incluirFicha}
                 onChange={setIncluirFicha}
               />
               {incluirFicha && (
                 <div className="space-y-4">
-                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700">
-                    A IA gera uma ficha aproximada. Para publicação formal, valide com o SNEL ou um bibliotecário credenciado.
+                  <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 leading-relaxed">
+                    <strong>Aviso legal:</strong> a IA gera uma sugestão a partir dos dados
+                    fornecidos. Para validade legal (Lei 10.753/2003, Resolução CFB 184/2017),
+                    a ficha deve ser revisada e assinada por bibliotecário com CRB ativo.
+                    Solicite a ficha oficial em{" "}
+                    <a
+                      href="https://www.cblservicos.org.br/catalogacao/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      cblservicos.org.br
+                    </a>.
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Field label="ISBN" value={isbn} onChange={setIsbn} placeholder="978-65-XXXXX-XX-X" />
@@ -431,7 +442,7 @@ export default function CreditosFerramenta() {
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              {incluirFicha ? "Gerando ficha catalográfica pela IA…" : "Montando página de créditos…"}
+              {incluirFicha ? "Gerando sugestão de ficha pela IA…" : "Montando página de créditos…"}
             </span>
           ) : "Gerar página de créditos →"}
         </button>

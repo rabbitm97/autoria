@@ -112,8 +112,8 @@ export async function POST(request: NextRequest) {
     const cdu = config.cdu?.trim() || ficha?.cdu || "";
 
     const fichaLines: string[] = [
-      "CIP-BRASIL. CATALOGAÇÃO-NA-FONTE",
-      "SINDICATO NACIONAL DOS EDITORES DE LIVROS, RJ",
+      "SUGESTÃO DE FICHA CATALOGRÁFICA",
+      "Gerada automaticamente — não substitui bibliotecário CRB",
       "",
     ];
 
@@ -138,6 +138,24 @@ export async function POST(request: NextRequest) {
     }
 
     const border = { style: BorderStyle.SINGLE, size: 4, color: "555555" };
+    const disclaimerText =
+      "Sugestão gerada por inteligência artificial com base nos dados fornecidos pelo autor. Para validade em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em cblservicos.org.br.";
+    const fichaParagraphs: Paragraph[] = [
+      ...fichaLines.map(line =>
+        new Paragraph({
+          children: [new TextRun({ text: line, font: "Times New Roman", size: hp(8) })],
+          spacing: { before: 0, after: 0 },
+        })
+      ),
+      new Paragraph({
+        children: [new TextRun({ text: "", font: "Times New Roman", size: hp(6) })],
+        spacing: { before: 0, after: 0 },
+      }),
+      new Paragraph({
+        children: [new TextRun({ text: disclaimerText, font: "Times New Roman", size: hp(6.5), italics: true, color: "777777" })],
+        spacing: { before: mm(2), after: 0 },
+      }),
+    ];
     children.push(new Table({
       layout: TableLayoutType.FIXED,
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -145,12 +163,7 @@ export async function POST(request: NextRequest) {
         children: [new TableCell({
           borders: { top: border, bottom: border, left: border, right: border },
           margins: { top: mm(7), bottom: mm(7), left: mm(9), right: mm(9) },
-          children: fichaLines.map(line =>
-            new Paragraph({
-              children: [new TextRun({ text: line, font: "Times New Roman", size: hp(8) })],
-              spacing: { before: 0, after: 0 },
-            })
-          ),
+          children: fichaParagraphs,
         })],
       })],
     }));

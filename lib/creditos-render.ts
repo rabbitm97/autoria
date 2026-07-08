@@ -43,6 +43,8 @@ export function buildCreditosContentHtml(params: {
     fichaWrap: "margin-top:1.2cm;margin-bottom:1.2cm;",
     ficha: "border:0.75pt solid #555;padding:0.7cm 0.9cm;font-size:8pt;line-height:1.6;width:100%;",
     fichaHeader: "text-align:center;font-size:7.5pt;text-transform:uppercase;letter-spacing:0.02em;margin-bottom:0.7em;line-height:1.4;",
+    fichaSubheader: "display:block;font-size:6.5pt;text-transform:none;letter-spacing:0;font-style:italic;color:#666;margin-top:0.3em;",
+    fichaFooter: "margin-top:0.7em;padding-top:0.5em;border-top:0.5pt dotted #999;font-size:6.5pt;color:#777;font-style:italic;text-align:justify;line-height:1.5;",
     fichaP: "margin:0;",
     fichaCdd: "margin:0;text-align:right;",
     publisher: "font-size:8pt;line-height:1.7;padding-top:1cm;",
@@ -115,11 +117,14 @@ export function buildCreditosContentHtml(params: {
     fichaHtml = `<div style="${S.fichaWrap}">
     <div style="${S.ficha}">
       <div style="${S.fichaHeader}">
-        CIP-BRASIL. CATALOGAÇÃO-NA-FONTE<br>
-        SINDICATO NACIONAL DOS EDITORES DE LIVROS, RJ
+        SUGESTÃO DE FICHA CATALOGRÁFICA<br>
+        <span style="${S.fichaSubheader}">Gerada automaticamente — não substitui bibliotecário CRB</span>
       </div>
       <div>
         ${fichaInner}
+      </div>
+      <div style="${S.fichaFooter}">
+        Sugestão gerada por inteligência artificial com base nos dados fornecidos pelo autor. Para validade em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em cblservicos.org.br.
       </div>
     </div>
   </div>`;

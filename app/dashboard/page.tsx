@@ -101,7 +101,7 @@ const TOOLS = [
     href: "/dashboard/ferramentas/creditos",
     icon: "📑",
     label: "Página de créditos",
-    desc: "Gere o verso da folha de rosto com ficha catalográfica CIP-BRASIL",
+    desc: "Gere o verso da folha de rosto com sugestão de ficha catalográfica",
     highlight: false,
   },
   {

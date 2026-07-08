@@ -45,7 +45,7 @@ export interface CreditosConfig {
   site_editora?: string;
   email_editora?: string;
 
-  // Ficha catalográfica (CIP-BRASIL)
+  // Sugestão de ficha catalográfica
   incluir_ficha: boolean;
   isbn?: string;
   assuntos_livres?: string;       // ex: "1. Romance brasileiro. 2. Ficção."
