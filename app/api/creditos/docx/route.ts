@@ -5,20 +5,7 @@ import {
   BorderStyle, WidthType, TableLayoutType,
   convertMillimetersToTwip,
 } from "docx";
-import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface FichaCatalografica {
-  numero_chamada?: string;
-  entrada_autor?: string;
-  descricao_bibliografica?: string;
-  extensao?: string;
-  isbn_formatado?: string;
-  assuntos?: string[];
-  cdd?: string;
-  cdu?: string;
-}
+import type { CreditosConfig, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,9 +42,8 @@ function para(children: TextRun[], afterMm = 0): Paragraph {
 export async function POST(request: NextRequest) {
   let body: {
     config: CreditosConfig;
-    ficha?: FichaCatalografica | null;
+    fichaOficial?: FichaOficialCRB | null;
     titulo?: string;
-    autor?: string;
   };
 
   try {
@@ -66,7 +52,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body inválido." }, { status: 400 });
   }
 
-  const { config, ficha, titulo = "Sem título", autor = config?.titular_direitos ?? "Autor" } = body;
+  const { config, fichaOficial, titulo = "Sem título" } = body;
 
   if (!config?.titular_direitos) {
     return NextResponse.json({ error: "Config inválida." }, { status: 400 });
@@ -100,46 +86,31 @@ export async function POST(request: NextRequest) {
     children.push(para([run(line)]));
   });
 
-  // ── Ficha catalográfica ───────────────────────────────────────────────────────
-  if (config.incluir_ficha) {
+  // ── Ficha oficial CRB (só quando fornecida) ─────────────────────────────────
+  if (fichaOficial?.numero_chamada) {
     children.push(para([], 8)); // spacer
 
-    const isbn = config.isbn?.trim() || ficha?.isbn_formatado || "";
-    const assuntos = config.assuntos_livres?.trim()
-      ? config.assuntos_livres.split("\n").filter(l => l.trim())
-      : (ficha?.assuntos ?? []);
-    const cdd = config.cdd?.trim() || ficha?.cdd || "";
-    const cdu = config.cdu?.trim() || ficha?.cdu || "";
+    const isbnOficial = config.isbn?.trim() || "";
+    const assuntosLinhas = fichaOficial.assuntos
+      .split("\n")
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
 
     const fichaLines: string[] = [
-      "SUGESTÃO DE FICHA CATALOGRÁFICA",
-      "Gerada automaticamente — não substitui bibliotecário CRB",
+      "CATALOGAÇÃO NA PUBLICAÇÃO",
       "",
+      fichaOficial.numero_chamada,
+      fichaOficial.entrada_autor,
+      fichaOficial.descricao_bibliografica,
     ];
-
-    if (ficha?.numero_chamada) {
-      fichaLines.push(ficha.numero_chamada);
-      if (ficha.entrada_autor)          fichaLines.push(ficha.entrada_autor);
-      if (ficha.descricao_bibliografica) fichaLines.push(ficha.descricao_bibliografica);
-      if (ficha.extensao)               fichaLines.push(ficha.extensao);
-      if (isbn)                         { fichaLines.push(""); fichaLines.push(isbn); }
-      if (assuntos.length)              { fichaLines.push(""); assuntos.forEach(a => fichaLines.push(a)); }
-      if (cdd || cdu)                   { fichaLines.push(""); if (cdd) fichaLines.push(`CDD: ${cdd}`); if (cdu) fichaLines.push(`CDU: ${cdu}`); }
-    } else {
-      fichaLines.push(autor);
-      fichaLines.push(
-        `${titulo}. – ${config.numero_edicao ? config.numero_edicao + " – " : ""}` +
-        `${config.local_edicao || "São Paulo"} : ${config.nome_editora || "Autoria"}, ${config.ano_edicao || config.ano_copyright}.`
-      );
-      if (isbn) fichaLines.push(isbn);
-      assuntos.forEach(a => fichaLines.push(a));
-      if (cdd) fichaLines.push(`CDD: ${cdd}`);
-      if (cdu) fichaLines.push(`CDU: ${cdu}`);
-    }
+    if (fichaOficial.notas_gerais) fichaLines.push(fichaOficial.notas_gerais);
+    if (isbnOficial) { fichaLines.push(""); fichaLines.push(`ISBN ${isbnOficial}`); }
+    if (assuntosLinhas.length) { fichaLines.push(""); assuntosLinhas.forEach(a => fichaLines.push(a)); }
+    fichaLines.push("");
+    fichaLines.push(`CDD: ${fichaOficial.cdd}`);
+    fichaLines.push(`CDU: ${fichaOficial.cdu}`);
 
     const border = { style: BorderStyle.SINGLE, size: 4, color: "555555" };
-    const disclaimerText =
-      "Sugestão gerada por inteligência artificial com base nos dados fornecidos pelo autor. Para validade em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em cblservicos.org.br.";
     const fichaParagraphs: Paragraph[] = [
       ...fichaLines.map(line =>
         new Paragraph({
@@ -152,7 +123,15 @@ export async function POST(request: NextRequest) {
         spacing: { before: 0, after: 0 },
       }),
       new Paragraph({
-        children: [new TextRun({ text: disclaimerText, font: "Times New Roman", size: hp(6.5), italics: true, color: "777777" })],
+        children: [
+          new TextRun({
+            text: `Ficha catalográfica elaborada por ${fichaOficial.bibliotecario_nome} — ${fichaOficial.bibliotecario_crb}`,
+            font: "Times New Roman",
+            size: hp(7.5),
+            italics: true,
+            color: "555555",
+          }),
+        ],
         spacing: { before: mm(2), after: 0 },
       }),
     ];
@@ -212,7 +191,7 @@ export async function POST(request: NextRequest) {
   });
 
   const buffer = await Packer.toBuffer(doc);
-  const safeName = titulo.replace(/[^a-zA-Z0-9\u00C0-\u017F\s]/g, "").replace(/\s+/g, "_").slice(0, 40);
+  const safeName = titulo.replace(/[^a-zA-Z0-9À-ſ\s]/g, "").replace(/\s+/g, "_").slice(0, 40);
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

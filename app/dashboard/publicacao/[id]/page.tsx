@@ -7,6 +7,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
 import type { PdfResult } from "@/app/api/agentes/gerar-pdf/route";
 import type { EpubResult } from "@/app/api/agentes/gerar-epub/route";
+import type { PropositoPublicacao } from "@/app/api/agentes/creditos/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ interface ProjectData {
   pdf: PdfResult | null;
   epub: EpubResult | null;
   mioloPreviewUrl: string | null;
-  tipoFicha: "sugestao_ia" | "oficial_crb";
+  proposito: PropositoPublicacao;
 }
 
 // ─── Platform guide cards ─────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ export default function PublicacaoPage() {
       const el = proj?.dados_elementos as Record<string, unknown> | null;
       const capa = proj?.dados_capa as { url_escolhida?: string; url?: string } | null;
       const miolo = proj?.dados_miolo as { lombada_mm?: number; paginas_reais?: number; paginas_estimadas?: number } | null;
-      const creditos = proj?.dados_creditos as { config?: { tipo_ficha?: "sugestao_ia" | "oficial_crb" } } | null;
+      const creditos = proj?.dados_creditos as { config?: { proposito?: PropositoPublicacao } } | null;
 
       setProject({
         titulo: (el?.titulo_escolhido as string) ?? ms?.titulo ?? "Sem título",
@@ -102,7 +103,7 @@ export default function PublicacaoPage() {
         pdf,
         epub,
         mioloPreviewUrl: mioloData?.preview_url ?? null,
-        tipoFicha: creditos?.config?.tipo_ficha ?? "sugestao_ia",
+        proposito: creditos?.config?.proposito ?? "digital",
       });
     } finally {
       setLoading(false);
@@ -221,8 +222,39 @@ export default function PublicacaoPage() {
               </p>
             </div>
 
-            {/* Aviso pré-publicação se ficha não é oficial CRB (Bloco 1e) */}
-            {project.tipoFicha !== "oficial_crb" && (
+            {/* Aviso conforme propósito escolhido (Bloco 1f) */}
+            {project.proposito === "pessoal" && (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center shrink-0">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[11px] font-semibold text-zinc-700 uppercase tracking-wide mb-1">Modo pessoal</p>
+                    <p className="text-sm text-zinc-700 leading-relaxed mb-3">
+                      Este livro foi gerado <strong>sem folha de rosto, verso ou créditos</strong> —
+                      apropriado para uso pessoal, presente ou distribuição gratuita.
+                    </p>
+                    <p className="text-sm text-zinc-700 leading-relaxed mb-3">
+                      Para vender em livrarias, participar de editais ou entrar em bibliotecas você
+                      precisará voltar aos Créditos, escolher o propósito <em>Livrarias</em> e anexar
+                      a ficha CRB oficial.
+                    </p>
+                    <Link
+                      href={`/dashboard/creditos/${id}`}
+                      className="inline-flex items-center gap-1.5 bg-zinc-800 text-white font-medium px-4 py-2 rounded-lg hover:bg-zinc-900 transition-colors text-xs"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                      Voltar aos Créditos
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {project.proposito === "digital" && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
@@ -233,16 +265,16 @@ export default function PublicacaoPage() {
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-[11px] font-semibold text-amber-900 uppercase tracking-wide mb-1">Antes de publicar — importante</p>
+                    <p className="text-[11px] font-semibold text-amber-900 uppercase tracking-wide mb-1">Modo digital — antes de publicar</p>
                     <p className="text-sm text-amber-900 leading-relaxed mb-3">
-                      Seu livro está com <strong>sugestão de ficha catalográfica</strong> gerada por IA. Isso funciona para:
+                      Seu livro foi gerado <strong>sem ficha catalográfica CRB</strong>. Isso funciona para:
                     </p>
                     <ul className="text-sm text-amber-900 leading-relaxed mb-3 space-y-1 pl-1">
-                      <li>✓ Downloads dos arquivos para uso pessoal ou distribuição gratuita</li>
-                      <li>✓ Publicação em Amazon KDP, Apple Books, Kobo, Kiwify e similares</li>
+                      <li>✓ Amazon KDP, Apple Books, Kobo, Kiwify e similares</li>
+                      <li>✓ Uso pessoal ou distribuição gratuita</li>
                     </ul>
                     <p className="text-sm text-amber-900 leading-relaxed mb-3">
-                      <strong>Mas não é aceito em:</strong> livrarias físicas, bibliotecas, editais governamentais e prêmios como o Jabuti. Para esses, você precisa da <strong>ficha CRB oficial</strong> (Lei 10.753/2003 e Resolução CFB 184/2017).
+                      <strong>Não é aceito em:</strong> livrarias físicas, bibliotecas, editais governamentais e prêmios como o Jabuti. Para esses, você precisa da <strong>ficha CRB oficial</strong> (Lei 10.753/2003 e Res. CFB 184/2017) — solicite em <a href="https://www.cblservicos.org.br/catalogacao/" target="_blank" rel="noopener noreferrer" className="underline">cblservicos.org.br</a> e volte aos Créditos para anexá-la.
                     </p>
                     <div className="flex flex-wrap gap-3">
                       <Link

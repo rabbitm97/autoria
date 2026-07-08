@@ -219,15 +219,20 @@ function bodyPara(
 
 function buildCreditosParagraphs(
   creditosConfig: CreditosConfig,
-  ficha: unknown,
-  titulo: string,
-  autor: string,
+  fichaOficial: unknown,
   font: string,
 ): (Paragraph | Table)[] {
-  const f = ficha as {
-    numero_chamada?: string; entrada_autor?: string; descricao_bibliografica?: string;
-    extensao?: string; isbn_formatado?: string; assuntos?: string[]; cdd?: string; cdu?: string;
-  } | null;
+  const fo = fichaOficial as {
+    numero_chamada?: string;
+    entrada_autor?: string;
+    descricao_bibliografica?: string;
+    notas_gerais?: string;
+    assuntos?: string;
+    cdd?: string;
+    cdu?: string;
+    bibliotecario_nome?: string;
+    bibliotecario_crb?: string;
+  } | null | undefined;
 
   const size_hp = hp(9);
   const run = (text: string, bold?: boolean, italic?: boolean) =>
@@ -262,44 +267,29 @@ function buildCreditosParagraphs(
     children.push(para([run(line)]));
   });
 
-  if (creditosConfig.incluir_ficha) {
+  // Ficha oficial CRB — só renderiza quando presente (modo livrarias).
+  // Bloco 1f: sem sugestão IA, sem fallback de "ficha genérica".
+  if (fo?.numero_chamada) {
     children.push(para([], 8));
-    const isbn = creditosConfig.isbn?.trim() || f?.isbn_formatado || "";
-    const assuntos = creditosConfig.assuntos_livres?.trim()
-      ? creditosConfig.assuntos_livres.split("\n").filter(l => l.trim())
-      : (f?.assuntos ?? []);
-    const cdd = creditosConfig.cdd?.trim() || f?.cdd || "";
-    const cdu = creditosConfig.cdu?.trim() || f?.cdu || "";
+    const isbnOficial = creditosConfig.isbn?.trim() || "";
+    const assuntosLinhas = (fo.assuntos ?? "")
+      .split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
-    const fichaLines: string[] = [
-      "SUGESTÃO DE FICHA CATALOGRÁFICA",
-      "Gerada automaticamente — não substitui bibliotecário CRB",
-      "",
-    ];
-
-    if (f?.numero_chamada) {
-      fichaLines.push(f.numero_chamada);
-      if (f.entrada_autor) fichaLines.push(f.entrada_autor);
-      if (f.descricao_bibliografica) fichaLines.push(f.descricao_bibliografica);
-      if (f.extensao) fichaLines.push(f.extensao);
-      if (isbn) { fichaLines.push(""); fichaLines.push(isbn); }
-      if (assuntos.length) { fichaLines.push(""); assuntos.forEach(a => fichaLines.push(a)); }
-      if (cdd || cdu) { fichaLines.push(""); if (cdd) fichaLines.push(`CDD: ${cdd}`); if (cdu) fichaLines.push(`CDU: ${cdu}`); }
-    } else {
-      fichaLines.push(autor);
-      fichaLines.push(
-        `${titulo}. – ${creditosConfig.numero_edicao ? creditosConfig.numero_edicao + " – " : ""}` +
-        `${creditosConfig.local_edicao || "São Paulo"} : ${creditosConfig.nome_editora || "Autoria"}, ${creditosConfig.ano_edicao || creditosConfig.ano_copyright}.`
-      );
-      if (isbn) fichaLines.push(isbn);
-      assuntos.forEach(a => fichaLines.push(a));
-      if (cdd) fichaLines.push(`CDD: ${cdd}`);
-      if (cdu) fichaLines.push(`CDU: ${cdu}`);
-    }
+    const fichaLines: string[] = ["CATALOGAÇÃO NA PUBLICAÇÃO", ""];
+    fichaLines.push(fo.numero_chamada);
+    if (fo.entrada_autor)           fichaLines.push(fo.entrada_autor);
+    if (fo.descricao_bibliografica) fichaLines.push(fo.descricao_bibliografica);
+    if (fo.notas_gerais)            fichaLines.push(fo.notas_gerais);
+    if (isbnOficial)                { fichaLines.push(""); fichaLines.push(`ISBN ${isbnOficial}`); }
+    if (assuntosLinhas.length)      { fichaLines.push(""); assuntosLinhas.forEach(a => fichaLines.push(a)); }
+    fichaLines.push("");
+    if (fo.cdd) fichaLines.push(`CDD: ${fo.cdd}`);
+    if (fo.cdu) fichaLines.push(`CDU: ${fo.cdu}`);
 
     const border = { style: BorderStyle.SINGLE, size: 4, color: "555555" };
-    const disclaimerText =
-      "Sugestão gerada por inteligência artificial com base nos dados fornecidos pelo autor. Para validade em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em cblservicos.org.br.";
+    const bibliotecarioLine = fo.bibliotecario_nome && fo.bibliotecario_crb
+      ? `Ficha catalográfica elaborada por ${fo.bibliotecario_nome} — ${fo.bibliotecario_crb}`
+      : "";
 
     const fichaParagraphs: Paragraph[] = [
       new Paragraph({
@@ -307,23 +297,18 @@ function buildCreditosParagraphs(
         alignment: "center",
         spacing: { before: 0, after: 0 },
       }),
-      new Paragraph({
-        children: [trun(fichaLines[1], { font, size: hp(6.5), italics: true, color: "666666" })],
-        alignment: "center",
-        spacing: { before: 0, after: 0 },
-      }),
-      ...fichaLines.slice(2).map(line =>
+      ...fichaLines.slice(1).map(line =>
         new Paragraph({
           children: [trun(line, { font, size: hp(8) })],
           spacing: { before: 0, after: 0 },
         })
       ),
-      new Paragraph({
-        children: [trun(disclaimerText, { font, size: hp(6.5), italics: true, color: "777777" })],
-        alignment: "both",
+      ...(bibliotecarioLine ? [new Paragraph({
+        children: [trun(bibliotecarioLine, { font, size: hp(7.5), color: "333333" })],
+        alignment: "right",
         spacing: { before: mm(2), after: 0 },
-        border: { top: { style: BorderStyle.DOTTED, size: 4, color: "999999", space: 2 } },
-      }),
+        border: { top: { style: BorderStyle.SINGLE, size: 4, color: "333333", space: 2 } },
+      })] : []),
     ];
 
     children.push(new Table({
@@ -379,12 +364,14 @@ export async function buildBookDocx(params: {
   capitulos: { titulo: string; pos: number }[];
   config: MioloConfig;
   creditosConfig?: unknown | null;
-  ficha?: unknown | null;
+  /** Ficha oficial CRB (modo livrarias). null/undefined nos demais casos. */
+  fichaOficial?: unknown | null;
   projectId: string;
   /** Palavras-chave SEO geradas em Elementos Editoriais. Opcional. */
   palavras_chave?: string[];
 }): Promise<Buffer> {
-  const { titulo, subtitulo, autor, texto, capitulos, config, creditosConfig, ficha, projectId, palavras_chave } = params;
+  const { titulo, subtitulo, autor, texto, capitulos, config, creditosConfig, fichaOficial, projectId, palavras_chave } = params;
+  const isPessoal = config.proposito === "pessoal";
 
   const font = FONT_MAP[config.template];
   const st = TEMPLATE_STYLES[config.template];
@@ -462,77 +449,77 @@ export async function buildBookDocx(params: {
     children,
   });
 
-  // ── 1. Half-title ─────────────────────────────────────────────────────────
+  // Front-matter institucional (half-title, verso, folha de rosto, créditos).
+  // Bloco 1f: pulado inteiramente no modo pessoal.
+  if (!isPessoal) {
+    // ── 1. Half-title ───────────────────────────────────────────────────────
+    const htId = nextBmkId();
+    docSections.push(frontSection([
+      emptyPara(), emptyPara(), emptyPara(), emptyPara(),
+      new Paragraph({
+        alignment: "center",
+        children: [
+          new BookmarkStart("autoria_half_title", htId),
+          trun(titulo, { font, size: hp(corpo_pt * 1.7), allCaps: true }),
+          new BookmarkEnd(htId),
+        ],
+      }),
+      ...(subtitulo ? [new Paragraph({
+        alignment: "center",
+        children: [trun(subtitulo, { font, size: hp(corpo_pt), italics: true, color: "555555" })],
+      })] : []),
+    ]));
 
-  const htId = nextBmkId();
-  docSections.push(frontSection([
-    emptyPara(), emptyPara(), emptyPara(), emptyPara(),
-    new Paragraph({
-      alignment: "center",
-      children: [
-        new BookmarkStart("autoria_half_title", htId),
-        trun(titulo, { font, size: hp(corpo_pt * 1.7), allCaps: true }),
-        new BookmarkEnd(htId),
-      ],
-    }),
-    ...(subtitulo ? [new Paragraph({
-      alignment: "center",
-      children: [trun(subtitulo, { font, size: hp(corpo_pt), italics: true, color: "555555" })],
-    })] : []),
-  ]));
+    // ── 2. Blank verso ──────────────────────────────────────────────────────
+    docSections.push(frontSection([emptyPara()]));
 
-  // ── 2. Blank verso ────────────────────────────────────────────────────────
-
-  docSections.push(frontSection([emptyPara()]));
-
-  // ── 3. Title page ─────────────────────────────────────────────────────────
-
-  const tpId = nextBmkId();
-  docSections.push(frontSection([
-    emptyPara(), emptyPara(), emptyPara(),
-    new Paragraph({
-      alignment: "center",
-      children: [
-        new BookmarkStart("autoria_title_page", tpId),
-        trun(titulo, { font, size: hp(corpo_pt * 2), allCaps: true }),
-        new BookmarkEnd(tpId),
-      ],
-    }),
-    ...(subtitulo ? [new Paragraph({
-      alignment: "center",
-      spacing: { before: mm(3) },
-      children: [trun(subtitulo, { font, size: hp(corpo_pt * 1.15), italics: true, color: "555555" })],
-    })] : []),
-    new Paragraph({
-      alignment: "center",
-      spacing: { before: mm(28) },
-      children: [trun(autor, { font, size: hp(corpo_pt * 1.25), color: "444444" })],
-    }),
-  ]));
-
-  // ── 4. Credits ────────────────────────────────────────────────────────────
-
-  const crId = nextBmkId();
-  let creditosChildren: (Paragraph | Table)[];
-
-  if (creditosConfig) {
-    creditosChildren = buildCreditosParagraphs(
-      creditosConfig as CreditosConfig, ficha, titulo, autor, font,
-    );
-    creditosChildren.unshift(new Paragraph({
-      children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)],
-    }));
-  } else {
-    creditosChildren = [
-      new Paragraph({ children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)] }),
+    // ── 3. Title page ───────────────────────────────────────────────────────
+    const tpId = nextBmkId();
+    docSections.push(frontSection([
       emptyPara(), emptyPara(), emptyPara(),
-      new Paragraph({ children: [trun(`© ${new Date().getFullYear()} ${autor}`, { font, size: hp(9) })] }),
-      new Paragraph({ children: [trun("Todos os direitos reservados.", { font, size: hp(9) })] }),
-      new Paragraph({ children: [trun("Publicado pela plataforma Autoria.", { font, size: hp(9) })] }),
-    ];
-  }
+      new Paragraph({
+        alignment: "center",
+        children: [
+          new BookmarkStart("autoria_title_page", tpId),
+          trun(titulo, { font, size: hp(corpo_pt * 2), allCaps: true }),
+          new BookmarkEnd(tpId),
+        ],
+      }),
+      ...(subtitulo ? [new Paragraph({
+        alignment: "center",
+        spacing: { before: mm(3) },
+        children: [trun(subtitulo, { font, size: hp(corpo_pt * 1.15), italics: true, color: "555555" })],
+      })] : []),
+      new Paragraph({
+        alignment: "center",
+        spacing: { before: mm(28) },
+        children: [trun(autor, { font, size: hp(corpo_pt * 1.25), color: "444444" })],
+      }),
+    ]));
 
-  docSections.push(frontSection(creditosChildren));
+    // ── 4. Credits ──────────────────────────────────────────────────────────
+    const crId = nextBmkId();
+    let creditosChildren: (Paragraph | Table)[];
+
+    if (creditosConfig) {
+      creditosChildren = buildCreditosParagraphs(
+        creditosConfig as CreditosConfig, fichaOficial, font,
+      );
+      creditosChildren.unshift(new Paragraph({
+        children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)],
+      }));
+    } else {
+      creditosChildren = [
+        new Paragraph({ children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)] }),
+        emptyPara(), emptyPara(), emptyPara(),
+        new Paragraph({ children: [trun(`© ${new Date().getFullYear()} ${autor}`, { font, size: hp(9) })] }),
+        new Paragraph({ children: [trun("Todos os direitos reservados.", { font, size: hp(9) })] }),
+        new Paragraph({ children: [trun("Publicado pela plataforma Autoria.", { font, size: hp(9) })] }),
+      ];
+    }
+
+    docSections.push(frontSection(creditosChildren));
+  }
 
   // ── 5. Dedicatória ────────────────────────────────────────────────────────
 

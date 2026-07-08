@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       capitulos,
       config,
       creditosConfig: creditosData?.config ?? null,
-      ficha: creditosData?.ficha_catalografica ?? null,
+      fichaOficial: creditosData?.ficha_oficial ?? null,
       projectId: project_id,
       palavras_chave: el?.palavras_chave,
     });

@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import type { FormatoLivro } from "./formatos";
+import type { PropositoPublicacao } from "@/app/api/agentes/creditos/route";
 
 export interface CreditosHashInputs {
   titulo: string;
@@ -8,10 +9,10 @@ export interface CreditosHashInputs {
   genero: string;
   paginas: number;
   formato: FormatoLivro;
+  proposito: PropositoPublicacao;
   ano_copyright: number;
   ano_edicao: number | null;
   isbn: string;
-  incluir_ficha: boolean;
   titular_direitos: string;
   nome_editora: string;
 }
@@ -24,10 +25,10 @@ export function calcularCreditosInputHash(inputs: CreditosHashInputs): string {
     genero: inputs.genero.trim().toLowerCase(),
     paginas: inputs.paginas,
     formato: inputs.formato,
+    proposito: inputs.proposito,
     ano_copyright: inputs.ano_copyright,
     ano_edicao: inputs.ano_edicao,
     isbn: inputs.isbn.trim(),
-    incluir_ficha: inputs.incluir_ficha,
     titular_direitos: inputs.titular_direitos.trim().toLowerCase(),
     nome_editora: inputs.nome_editora.trim().toLowerCase(),
   };

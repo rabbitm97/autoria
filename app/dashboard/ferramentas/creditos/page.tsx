@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CreditosConfig, CreditosFormato } from "@/app/api/ferramentas/creditos/route";
+import type { FichaOficialCRB, PropositoPublicacao } from "@/app/api/agentes/creditos/route";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,11 @@ const FORMATOS: { id: CreditosFormato; label: string; dim: string }[] = [
   { id: "padrao_br", label: "Padrão BR", dim: "16×23 cm"   },
   { id: "quadrado",  label: "Quadrado",  dim: "20×20 cm"   },
   { id: "a4",        label: "A4",        dim: "21×29,7 cm" },
+];
+
+const PROPOSITOS: { id: PropositoPublicacao; label: string }[] = [
+  { id: "digital",   label: "Digital (KDP/Apple/Kobo)" },
+  { id: "livrarias", label: "Livrarias (exige ficha CRB)" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -68,17 +74,16 @@ export default function CreditosFerramenta() {
   const [error, setError]       = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string>("");
-  const [fichaGerada, setFichaGerada] = useState<Record<string, unknown> | null>(null);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
 
-  // ── Obra info (for ficha) ────────────────────────────────────────────────
+  // ── Obra info ────────────────────────────────────────────────────────────
   const [titulo, setTitulo]   = useState("");
+  const [subtitulo, setSubtitulo] = useState("");
   const [autorNome, setAutorNome] = useState("");
-  const [genero, setGenero]   = useState("");
-  const [paginas, setPaginas] = useState("200");
 
-  // ── Formato ──────────────────────────────────────────────────────────────
+  // ── Formato + propósito ──────────────────────────────────────────────────
   const [formato, setFormato] = useState<CreditosFormato>("padrao_br");
+  const [proposito, setProposito] = useState<PropositoPublicacao>("digital");
 
   // ── Direitos ─────────────────────────────────────────────────────────────
   const [anoCopyright,    setAnoCopyright]    = useState(new Date().getFullYear().toString());
@@ -108,30 +113,30 @@ export default function CreditosFerramenta() {
   const [siteEditora,     setSiteEditora]     = useState("");
   const [emailEditora,    setEmailEditora]    = useState("");
 
-  // ── Ficha ─────────────────────────────────────────────────────────────────
-  const [incluirFicha,   setIncluirFicha]   = useState(true);
-  const [isbn,           setIsbn]           = useState("");
-  const [assuntosLivres, setAssuntosLivres] = useState("");
-  const [cdd,            setCdd]            = useState("");
-  const [cdu,            setCdu]            = useState("");
+  // ── ISBN (opcional) ──────────────────────────────────────────────────────
+  const [isbn, setIsbn] = useState("");
+
+  // ── Ficha oficial CRB (opcional, para preview) ───────────────────────────
+  const [incluirFicha,        setIncluirFicha]        = useState(false);
+  const [foNumeroChamada,     setFoNumeroChamada]     = useState("");
+  const [foEntradaAutor,      setFoEntradaAutor]      = useState("");
+  const [foDescricao,         setFoDescricao]         = useState("");
+  const [foNotasGerais,       setFoNotasGerais]       = useState("");
+  const [foAssuntos,          setFoAssuntos]          = useState("");
+  const [foCdd,               setFoCdd]               = useState("");
+  const [foCdu,               setFoCdu]               = useState("");
+  const [foBibliotecarioNome, setFoBibliotecarioNome] = useState("");
+  const [foBibliotecarioCrb,  setFoBibliotecarioCrb]  = useState("");
 
   // ── Open sections ─────────────────────────────────────────────────────────
   const [openEquipe,  setOpenEquipe]  = useState(true);
   const [openEditora, setOpenEditora] = useState(false);
-  const [openFicha,   setOpenFicha]   = useState(true);
+  const [openFicha,   setOpenFicha]   = useState(false);
 
-  // ─────────────────────────────────────────────────────────────────────────
-
-  async function handleGerar(e: React.FormEvent) {
-    e.preventDefault();
-    if (!titularDireitos.trim()) { setError("Informe o titular dos direitos autorais."); return; }
-    setLoading(true);
-    setError(null);
-    setPreviewUrl(null);
-    setFichaGerada(null);
-
-    const config: CreditosConfig = {
+  function buildConfig(): CreditosConfig {
+    return {
       formato,
+      proposito,
       ano_copyright:   parseInt(anoCopyright) || new Date().getFullYear(),
       titular_direitos: titularDireitos.trim(),
       numero_edicao:   numeroEdicao.trim()   || undefined,
@@ -140,11 +145,11 @@ export default function CreditosFerramenta() {
       idioma_original: idiomaOriginal.trim() || undefined,
       traducao:         traducao.trim()         || undefined,
       revisao_tecnica:  revisaoTecnica.trim()   || undefined,
-      revisao:          revisao.trim()           || undefined,
-      preparacao:       preparacao.trim()        || undefined,
-      diagramacao:      diagramacao.trim()       || undefined,
-      projeto_capa:     projetoCapa.trim()       || undefined,
-      ilustracao_capa:  ilustracaoCapa.trim()    || undefined,
+      revisao:          revisao.trim()          || undefined,
+      preparacao:       preparacao.trim()       || undefined,
+      diagramacao:      diagramacao.trim()      || undefined,
+      projeto_capa:     projetoCapa.trim()      || undefined,
+      ilustracao_capa:  ilustracaoCapa.trim()   || undefined,
       producao_editorial: producaoEditorial.trim() || undefined,
       outros_creditos:  outrosCreditos.trim()    || undefined,
       nome_editora:     nomeEditora.trim()       || undefined,
@@ -154,12 +159,37 @@ export default function CreditosFerramenta() {
       cep:              cep.trim()               || undefined,
       site_editora:     siteEditora.trim()       || undefined,
       email_editora:    emailEditora.trim()      || undefined,
-      incluir_ficha: incluirFicha,
-      isbn:           isbn.trim()          || undefined,
-      assuntos_livres: assuntosLivres.trim() || undefined,
-      cdd:            cdd.trim()           || undefined,
-      cdu:            cdu.trim()           || undefined,
+      isbn:             isbn.trim()              || undefined,
     };
+  }
+
+  function buildFichaOficial(): FichaOficialCRB | undefined {
+    if (!incluirFicha) return undefined;
+    if (!foNumeroChamada.trim()) return undefined;
+    return {
+      numero_chamada:          foNumeroChamada.trim(),
+      entrada_autor:           foEntradaAutor.trim(),
+      descricao_bibliografica: foDescricao.trim(),
+      notas_gerais:            foNotasGerais.trim() || undefined,
+      assuntos:                foAssuntos.trim(),
+      cdd:                     foCdd.trim(),
+      cdu:                     foCdu.trim(),
+      bibliotecario_nome:      foBibliotecarioNome.trim(),
+      bibliotecario_crb:       foBibliotecarioCrb.trim(),
+      declaracao_aceita_em:    new Date().toISOString(),
+      declaracao_ip:           "dev-tool",
+    };
+  }
+
+  async function handleGerar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!titularDireitos.trim()) { setError("Informe o titular dos direitos autorais."); return; }
+    setLoading(true);
+    setError(null);
+    setPreviewUrl(null);
+
+    const config = buildConfig();
+    const fichaOficial = buildFichaOficial();
 
     try {
       const res = await fetch("/api/ferramentas/creditos", {
@@ -167,20 +197,18 @@ export default function CreditosFerramenta() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config,
-          titulo: titulo.trim() || "Meu Livro",
-          autor:  autorNome.trim() || titularDireitos.trim(),
-          genero: genero.trim() || "Literatura",
-          paginas: parseInt(paginas) || 200,
+          fichaOficial,
+          titulo:    titulo.trim() || "Meu Livro",
+          subtitulo: subtitulo.trim() || "",
+          autor:     autorNome.trim() || titularDireitos.trim(),
         }),
       });
-      const data = await res.json() as { ok?: boolean; html?: string; ficha?: Record<string, unknown>; error?: string };
+      const data = await res.json() as { ok?: boolean; html?: string; error?: string };
       if (!res.ok || !data.html) throw new Error(data.error ?? "Erro ao gerar créditos.");
 
-      // Create blob URL for iframe
       const blob = new Blob([data.html], { type: "text/html;charset=utf-8" });
       setPreviewUrl(URL.createObjectURL(blob));
       setHtmlContent(data.html);
-      if (data.ficha) setFichaGerada(data.ficha);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
     } finally {
@@ -218,39 +246,9 @@ export default function CreditosFerramenta() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          config: {
-            formato,
-            ano_copyright: parseInt(anoCopyright) || new Date().getFullYear(),
-            titular_direitos: titularDireitos.trim(),
-            numero_edicao: numeroEdicao.trim() || undefined,
-            ano_edicao: anoEdicao ? parseInt(anoEdicao) : undefined,
-            titulo_original: tituloOriginal.trim() || undefined,
-            idioma_original: idiomaOriginal.trim() || undefined,
-            traducao: traducao.trim() || undefined,
-            revisao_tecnica: revisaoTecnica.trim() || undefined,
-            revisao: revisao.trim() || undefined,
-            preparacao: preparacao.trim() || undefined,
-            diagramacao: diagramacao.trim() || undefined,
-            projeto_capa: projetoCapa.trim() || undefined,
-            ilustracao_capa: ilustracaoCapa.trim() || undefined,
-            producao_editorial: producaoEditorial.trim() || undefined,
-            outros_creditos: outrosCreditos.trim() || undefined,
-            nome_editora: nomeEditora.trim() || undefined,
-            local_edicao: localEdicao.trim() || undefined,
-            endereco_editora: enderecoEditora.trim() || undefined,
-            cidade_estado: cidadeEstado.trim() || undefined,
-            cep: cep.trim() || undefined,
-            site_editora: siteEditora.trim() || undefined,
-            email_editora: emailEditora.trim() || undefined,
-            incluir_ficha: incluirFicha,
-            isbn: isbn.trim() || undefined,
-            assuntos_livres: assuntosLivres.trim() || undefined,
-            cdd: cdd.trim() || undefined,
-            cdu: cdu.trim() || undefined,
-          },
-          ficha: fichaGerada ?? null,
+          config: buildConfig(),
+          fichaOficial: buildFichaOficial() ?? null,
           titulo: titulo.trim() || "Meu Livro",
-          autor: autorNome.trim() || titularDireitos.trim(),
         }),
       });
       if (!res.ok) { setError("Erro ao gerar DOCX."); return; }
@@ -273,42 +271,59 @@ export default function CreditosFerramenta() {
     <div className="max-w-4xl mx-auto px-6 py-10">
 
       <div className="mb-8">
-        <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-1">Ferramentas / IA</p>
+        <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-1">Ferramentas</p>
         <h1 className="font-heading text-3xl text-brand-primary mb-2">Página de Créditos</h1>
         <p className="text-zinc-500 text-sm max-w-xl">
-          Gere o verso da folha de rosto com copyright, equipe técnica e sugestão de ficha catalográfica
-          — seguindo a estrutura <strong>ABNT NBR 6029</strong>.
+          Preview do verso da folha de rosto com copyright, equipe técnica e (opcionalmente)
+          ficha catalográfica oficial CRB — seguindo <strong>ABNT NBR 6029</strong>.
         </p>
       </div>
 
       <form onSubmit={handleGerar} className="space-y-4">
 
-        {/* Obra (para ficha) */}
+        {/* Obra */}
         <section className="bg-white rounded-2xl border border-zinc-100 p-6">
           <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">Dados da obra</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Título do livro" value={titulo} onChange={setTitulo} placeholder="O Título do Livro" />
+            <Field label="Subtítulo" value={subtitulo} onChange={setSubtitulo} placeholder="(opcional)" />
             <Field label="Autor(a)" value={autorNome} onChange={setAutorNome} placeholder="Nome Sobrenome" />
-            <Field label="Gênero / assunto" value={genero} onChange={setGenero} placeholder="Romance contemporâneo" />
-            <Field label="Páginas estimadas" value={paginas} onChange={setPaginas} placeholder="200" />
           </div>
         </section>
 
-        {/* Formato */}
-        <section className="bg-white rounded-2xl border border-zinc-100 p-6">
-          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">Formato do livro</h2>
-          <div className="flex flex-wrap gap-2">
-            {FORMATOS.map(f => (
-              <button key={f.id} type="button" onClick={() => setFormato(f.id)}
-                className={`px-4 py-2 rounded-xl border-2 text-sm transition-all ${
-                  formato === f.id
-                    ? "border-brand-gold bg-brand-gold/5 text-brand-primary font-semibold"
-                    : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
-                }`}
-              >
-                {f.label} <span className="text-xs font-normal text-zinc-400">{f.dim}</span>
-              </button>
-            ))}
+        {/* Formato + propósito */}
+        <section className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-5">
+          <div>
+            <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Formato do livro</h2>
+            <div className="flex flex-wrap gap-2">
+              {FORMATOS.map(f => (
+                <button key={f.id} type="button" onClick={() => setFormato(f.id)}
+                  className={`px-4 py-2 rounded-xl border-2 text-sm transition-all ${
+                    formato === f.id
+                      ? "border-brand-gold bg-brand-gold/5 text-brand-primary font-semibold"
+                      : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                  }`}
+                >
+                  {f.label} <span className="text-xs font-normal text-zinc-400">{f.dim}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Propósito</h2>
+            <div className="flex flex-wrap gap-2">
+              {PROPOSITOS.map(p => (
+                <button key={p.id} type="button" onClick={() => setProposito(p.id)}
+                  className={`px-4 py-2 rounded-xl border-2 text-sm transition-all ${
+                    proposito === p.id
+                      ? "border-brand-gold bg-brand-gold/5 text-brand-primary font-semibold"
+                      : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -322,6 +337,7 @@ export default function CreditosFerramenta() {
             <Field label="Ano da edição" value={anoEdicao} onChange={setAnoEdicao} placeholder="2024" />
             <Field label="Título original" hint="Apenas para traduções" value={tituloOriginal} onChange={setTituloOriginal} placeholder="El título original" />
             <Field label="Idioma original" value={idiomaOriginal} onChange={setIdiomaOriginal} placeholder="Espanhol" />
+            <Field label="ISBN" value={isbn} onChange={setIsbn} placeholder="978-65-XXXXX-XX-X" />
           </div>
         </section>
 
@@ -374,56 +390,42 @@ export default function CreditosFerramenta() {
           )}
         </section>
 
-        {/* Ficha */}
+        {/* Ficha oficial CRB */}
         <section className="bg-white rounded-2xl border border-zinc-100 overflow-hidden">
           <button type="button" onClick={() => setOpenFicha(v => !v)}
             className="w-full flex items-center justify-between px-6 py-4 hover:bg-zinc-50 transition-colors text-left"
           >
-            <div>
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Sugestão de ficha catalográfica</span>
-              {incluirFicha && <p className="text-xs text-brand-gold font-normal mt-0.5 normal-case">Gerada automaticamente pela IA</p>}
-            </div>
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Ficha catalográfica oficial (CRB)</span>
             <span className="text-zinc-400 text-sm shrink-0 ml-4">{openFicha ? "▲" : "▼"}</span>
           </button>
           {openFicha && (
             <div className="px-6 pb-6 border-t border-zinc-100 pt-5 space-y-4">
               <Toggle
-                label="Incluir sugestão de ficha catalográfica"
-                hint="Posição obrigatória no verso da folha de rosto (ABNT NBR 6029)"
+                label="Incluir ficha catalográfica oficial no preview"
+                hint="Preencha manualmente com os dados fornecidos pelo bibliotecário CRB."
                 value={incluirFicha}
                 onChange={setIncluirFicha}
               />
               {incluirFicha && (
-                <div className="space-y-4">
-                  <div className="mt-3 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900 leading-relaxed">
-                    <strong>Aviso legal:</strong> a IA gera uma sugestão a partir dos dados
-                    fornecidos. Para validade legal (Lei 10.753/2003, Resolução CFB 184/2017),
-                    a ficha deve ser revisada e assinada por bibliotecário com CRB ativo.
-                    Solicite a ficha oficial em{" "}
-                    <a
-                      href="https://www.cblservicos.org.br/catalogacao/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline"
-                    >
-                      cblservicos.org.br
-                    </a>.
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Número de chamada" value={foNumeroChamada} onChange={setFoNumeroChamada} placeholder="M854i" />
+                  <Field label="Entrada de autor" value={foEntradaAutor} onChange={setFoEntradaAutor} placeholder="SOBRENOME, Nome, 1980-" />
+                  <div className="sm:col-span-2">
+                    <Field label="Descrição bibliográfica" value={foDescricao} onChange={setFoDescricao}
+                      placeholder="Título / Autor. – 1. ed. – São Paulo : Editora, 2024. – 200p." multiline />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label="ISBN" value={isbn} onChange={setIsbn} placeholder="978-65-XXXXX-XX-X" />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="CDD" value={cdd} onChange={setCdd} placeholder="869.3" />
-                      <Field label="CDU" value={cdu} onChange={setCdu} placeholder="821.134.3-3" />
-                    </div>
+                  <div className="sm:col-span-2">
+                    <Field label="Notas gerais (opcional)" value={foNotasGerais} onChange={setFoNotasGerais}
+                      placeholder="Inclui bibliografia." />
                   </div>
-                  <Field
-                    label="Assuntos (opcional)"
-                    hint="Deixe em branco para IA sugerir. Um assunto por linha."
-                    value={assuntosLivres}
-                    onChange={setAssuntosLivres}
-                    placeholder={"1. Romance brasileiro. I. Título.\n2. Ficção."}
-                    multiline
-                  />
+                  <div className="sm:col-span-2">
+                    <Field label="Assuntos" hint="Um por linha" value={foAssuntos} onChange={setFoAssuntos}
+                      placeholder={"1. Romance brasileiro. I. Título.\n2. Ficção."} multiline />
+                  </div>
+                  <Field label="CDD" value={foCdd} onChange={setFoCdd} placeholder="869.3" />
+                  <Field label="CDU" value={foCdu} onChange={setFoCdu} placeholder="821.134.3-3" />
+                  <Field label="Bibliotecário — nome" value={foBibliotecarioNome} onChange={setFoBibliotecarioNome} placeholder="Nome do bibliotecário" />
+                  <Field label="CRB" value={foBibliotecarioCrb} onChange={setFoBibliotecarioCrb} placeholder="CRB-8/12345" />
                 </div>
               )}
             </div>
@@ -442,7 +444,7 @@ export default function CreditosFerramenta() {
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              {incluirFicha ? "Gerando sugestão de ficha pela IA…" : "Montando página de créditos…"}
+              Montando página de créditos…
             </span>
           ) : "Gerar página de créditos →"}
         </button>
@@ -480,14 +482,6 @@ export default function CreditosFerramenta() {
             </button>
           </div>
         </div>
-
-          {fichaGerada && (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-4 text-xs text-emerald-800">
-              <p className="font-semibold mb-1">Ficha catalográfica gerada pela IA</p>
-              <p>CDD: {String(fichaGerada.cdd ?? "—")} &nbsp;·&nbsp; CDU: {String(fichaGerada.cdu ?? "—")}</p>
-              <p className="text-emerald-600 mt-1">Valide com bibliotecário credenciado antes da publicação formal.</p>
-            </div>
-          )}
 
           <div className="bg-zinc-200 rounded-2xl p-6 flex justify-center">
             <div className="bg-white shadow-2xl" style={{ width: "100%", maxWidth: "640px" }}>

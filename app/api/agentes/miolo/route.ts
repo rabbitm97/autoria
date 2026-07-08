@@ -8,7 +8,7 @@ import type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 import { buildBookHtml, clampCorpoPt } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas, estimarLombadaMm } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
-import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
+import { buildCreditosContentHtml } from "@/lib/creditos-render";
 import type { CreditosConfig, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -176,15 +176,17 @@ export async function POST(request: NextRequest) {
 
   // Créditos aprovados são obrigatórios — sem fallback.
   const dadosCreditos = project.dados_creditos as {
-    html_storage_path?: string;
+    html_storage_path?: string | null;
     input_hash?: string;
     paginas_usadas?: number;
     config?: CreditosConfig;
-    ficha_catalografica?: FichaCatalografica;
     ficha_oficial?: FichaOficialCRB;
   } | null;
 
-  if (!dadosCreditos?.html_storage_path || !dadosCreditos?.input_hash) {
+  // Sem etapa de créditos concluída: exige o step antes de gerar miolo.
+  // Nota: modo pessoal também passa pela etapa (input_hash é gravado) —
+  // o que muda é apenas que `html_storage_path` fica null.
+  if (!dadosCreditos?.input_hash || !dadosCreditos?.config) {
     return NextResponse.json(
       {
         error: "Gere e aprove a página de créditos antes de gerar o miolo final.",
@@ -195,6 +197,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const propositoCreditos = dadosCreditos.config.proposito;
+  const isPessoal = propositoCreditos === "pessoal";
+
   // Verificar drift de dados — hash usa as mesmas páginas que o créditos usou,
   // evitando deadlock na primeira passagem quando dados_miolo ainda não existe.
   const hashAtualCreditos = calcularCreditosInputHash({
@@ -204,12 +209,12 @@ export async function POST(request: NextRequest) {
     genero: ms?.genero_principal ?? "Literatura",
     paginas: dadosCreditos.paginas_usadas ?? 0,
     formato: config.formato,
-    ano_copyright: dadosCreditos.config?.ano_copyright ?? 0,
-    ano_edicao: dadosCreditos.config?.ano_edicao ?? null,
-    isbn: dadosCreditos.config?.isbn ?? "",
-    incluir_ficha: dadosCreditos.config?.incluir_ficha ?? false,
-    titular_direitos: dadosCreditos.config?.titular_direitos ?? "",
-    nome_editora: dadosCreditos.config?.nome_editora ?? "",
+    proposito: propositoCreditos ?? "digital",
+    ano_copyright: dadosCreditos.config.ano_copyright ?? 0,
+    ano_edicao: dadosCreditos.config.ano_edicao ?? null,
+    isbn: dadosCreditos.config.isbn ?? "",
+    titular_direitos: dadosCreditos.config.titular_direitos ?? "",
+    nome_editora: dadosCreditos.config.nome_editora ?? "",
   });
 
   if (hashAtualCreditos !== dadosCreditos.input_hash) {
@@ -228,35 +233,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!dadosCreditos.config) {
-    return NextResponse.json(
-      {
-        error: "Página de créditos em formato antigo ou incompleta. Reaprove a página de créditos.",
-        action: "generate_creditos",
-        reason: "config_missing",
-      },
-      { status: 422 }
-    );
-  }
+  // Render dos créditos em runtime — fonte única da verdade.
+  // Modo pessoal: nem gera; o builder pula folha de rosto/verso/créditos.
+  const creditosInnerHtml = isPessoal
+    ? ""
+    : buildCreditosContentHtml({
+        config: dadosCreditos.config,
+        fichaOficial: dadosCreditos.ficha_oficial,
+        titulo,
+        subtitulo,
+        autor,
+      });
 
-  // Render em runtime a partir dos dados aprovados — fonte única da verdade.
-  // Sem I/O de Storage, sem regex de <body>, sem perda de CSS.
-  const creditosInnerHtml = buildCreditosContentHtml({
-    config: dadosCreditos.config,
-    ficha: dadosCreditos.ficha_catalografica ?? null,
-    fichaOficial: dadosCreditos.ficha_oficial,
-    titulo,
-    subtitulo,
-    autor,
-  });
+  // Propaga o propósito para o builder — habilita o bypass do front-matter
+  // institucional em modo pessoal.
+  const configComProposito: MioloConfig = { ...config, proposito: propositoCreditos ?? "digital" };
 
   // Build HTML — two passes when sumário is on so TOC shows real page numbers.
   // Pass 1 (no TOC): get chapterStartPages from actual page counter.
   // Pass 2: rebuild with those real numbers injected into the TOC.
-  const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml };
-  const pass1 = buildBookHtml({ ...buildArgs, config: { ...config, sumario: false } });
+  const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config: configComProposito, creditosInnerHtml };
+  const pass1 = buildBookHtml({ ...buildArgs, config: { ...configComProposito, sumario: false } });
   const { html, capitulosInfo, paginasReais } =
-    config.sumario && pass1.capitulosInfo.length > 1
+    configComProposito.sumario && pass1.capitulosInfo.length > 1
       ? buildBookHtml({ ...buildArgs, chapterStartPagesOverride: pass1.chapterStartPages })
       : pass1;
 

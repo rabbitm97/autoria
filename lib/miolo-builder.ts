@@ -43,6 +43,13 @@ export interface MioloConfig {
    * Default implícito: `true` (compatibilidade retroativa com configs antigas).
    */
   tem_capitulos?: boolean;
+  /**
+   * Propósito da publicação (Bloco 1f). Quando "pessoal", o builder pula
+   * half-title, verso branco, folha de rosto e página de créditos —
+   * o livro entra direto no conteúdo. Default: "digital" (comportamento
+   * padrão com folha de rosto e créditos).
+   */
+  proposito?: "digital" | "livrarias" | "pessoal";
   sumario: boolean;
   dedicatoria: string;
   epigrafe_texto: string;
@@ -1230,30 +1237,36 @@ export function buildBookHtml(params: {
   const subtituloClean = cleanFrontMatterText(subtitulo);
   const autorClean     = cleanFrontMatterText(autor);
 
-  // ── 1. Half-title (recto) ──────────────────────────────────────────────────
-  sections.push(`<section class="front-page half-title">
+  // ── Front-matter institucional (half-title, verso, folha de rosto, créditos)
+  // Pulado inteiramente no modo pessoal: o autor recebe um miolo enxuto,
+  // sem páginas editoriais que só fazem sentido para publicação formal.
+  const isPessoal = config.proposito === "pessoal";
+  if (!isPessoal) {
+    // ── 1. Half-title (recto) ────────────────────────────────────────────────
+    sections.push(`<section class="front-page half-title">
   <h1>${escHtml(tituloClean)}</h1>
 ${subtituloClean ? `  <p class="subtitle" style="font-size:1em;margin-top:0.8em">${escHtml(subtituloClean)}</p>\n` : ""}</section>`);
 
-  // ── 2. Verso branco ────────────────────────────────────────────────────────
-  sections.push(`<section class="blank-page"></section>`);
+    // ── 2. Verso branco ──────────────────────────────────────────────────────
+    sections.push(`<section class="blank-page"></section>`);
 
-  // ── 3. Folha de rosto (recto) ──────────────────────────────────────────────
-  sections.push(`<section class="front-page title-page">
+    // ── 3. Folha de rosto (recto) ────────────────────────────────────────────
+    sections.push(`<section class="front-page title-page">
   <h1>${escHtml(tituloClean)}</h1>
 ${subtituloClean ? `  <p class="subtitle">${escHtml(subtituloClean)}</p>\n` : ""}  <p class="author">${escHtml(autorClean)}</p>
 </section>`);
 
-  // ── 4. Créditos + ficha catalográfica ──────────────────────────────────────
-  if (!creditosInnerHtml || !creditosInnerHtml.trim()) {
-    throw new Error(
-      "[miolo-builder] creditosInnerHtml ausente. " +
-      "A página de créditos aprovada é obrigatória — não existe fallback."
-    );
-  }
-  sections.push(`<section class="front-page">
+    // ── 4. Créditos + ficha catalográfica ────────────────────────────────────
+    if (!creditosInnerHtml || !creditosInnerHtml.trim()) {
+      throw new Error(
+        "[miolo-builder] creditosInnerHtml ausente. " +
+        "A página de créditos aprovada é obrigatória fora do modo pessoal."
+      );
+    }
+    sections.push(`<section class="front-page">
 ${creditosInnerHtml}
 </section>`);
+  }
 
   // ── 5. Dedicatória (opcional) ──────────────────────────────────────────────
   if (config.dedicatoria?.trim()) {
