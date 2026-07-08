@@ -15,8 +15,8 @@ const FORMATOS: { id: CreditosFormato; label: string; dim: string }[] = [
 ];
 
 const PROPOSITOS: { id: PropositoPublicacao; label: string }[] = [
-  { id: "digital",   label: "Digital (KDP/Apple/Kobo)" },
-  { id: "livrarias", label: "Livrarias (exige ficha CRB)" },
+  { id: "digital",  label: "Digital (KDP/Apple/Kobo)" },
+  { id: "completa", label: "Publicação completa (exige ficha CRB)" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

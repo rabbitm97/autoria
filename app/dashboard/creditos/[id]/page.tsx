@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Smartphone, Library } from "lucide-react";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { CreditosConfig, CreditosResult, PropositoPublicacao } from "@/app/api/agentes/creditos/route";
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
@@ -105,11 +106,12 @@ export default function CreditosPage() {
   const [secEditora, setSecEditora] = useState(false);
   const [secFicha, setSecFicha] = useState(false);
 
-  // ── Propósito da publicação (Bloco 1f) ──────────────────────────────────────
+  // ── Propósito da publicação (Bloco 1h) ──────────────────────────────────────
   const [proposito, setProposito] = useState<PropositoPublicacao>("digital");
 
-  // ── Folha de rosto: default por propósito, overridable em digital/pessoal ──
-  const [incluirFolhaRosto, setIncluirFolhaRosto] = useState<boolean>(true);
+  // ── Incluir página de créditos (Bloco 1h): só relevante em digital.
+  // Em completa é sempre true (créditos + ficha CRB obrigatórios). ─────────────
+  const [incluirCreditos, setIncluirCreditos] = useState<boolean>(true);
 
   // ── Config form — Direitos ──────────────────────────────────────────────────
   const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
@@ -140,10 +142,10 @@ export default function CreditosPage() {
   const [siteEditora, setSiteEditora] = useState("");
   const [emailEditora, setEmailEditora] = useState("");
 
-  // ── ISBN (opcional em digital, obrigatório em livrarias) ────────────────────
+  // ── ISBN (opcional em digital, obrigatório em completa) ─────────────────────
   const [isbn, setIsbn] = useState("");
 
-  // ── Ficha oficial CRB (Bloco 1f — só usada no modo livrarias) ───────────────
+  // ── Ficha oficial CRB (Bloco 1h — só usada no modo completa) ────────────────
   const [foNumeroChamada, setFoNumeroChamada] = useState("");
   const [foEntradaAutor, setFoEntradaAutor] = useState("");
   const [foDescricao, setFoDescricao] = useState("");
@@ -168,8 +170,9 @@ export default function CreditosPage() {
     crbValido &&
     declaracaoAceita;
 
-  const isPessoal   = proposito === "pessoal";
-  const isLivrarias = proposito === "livrarias";
+  const isCompleta = proposito === "completa";
+  // Créditos são gerados sempre em completa; em digital só se o toggle estiver ligado.
+  const geraCreditos = isCompleta || incluirCreditos;
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
@@ -214,8 +217,8 @@ export default function CreditosPage() {
           setDeclaracaoAceita(true);
         }
 
-        // Modo pessoal: nada foi gerado, mantém a tela de config aberta.
-        if (existing.config.proposito !== "pessoal") {
+        // Sem créditos gerados: mantém a tela de config aberta.
+        if (existing.html_storage_path) {
           const res = await fetch(`/api/agentes/creditos?project_id=${projectId}`);
           if (res.ok) {
             const data = await res.json() as { creditos: CreditosResult; preview_url: string | null; html?: string };
@@ -238,21 +241,31 @@ export default function CreditosPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Ficha catalográfica é o item central em modo livrarias — abrir por default
-  // para o autor ver os campos sem precisar clicar. Em digital/pessoal fica
-  // recolhida (nunca é usada).
+  // Ficha catalográfica é o item central em modo completa — abrir por default
+  // para o autor ver os campos sem precisar clicar. Em digital fica recolhida
+  // (nunca é usada).
   useEffect(() => {
-    if (proposito === "livrarias") setSecFicha(true);
+    if (proposito === "completa") setSecFicha(true);
   }, [proposito]);
 
   function restoreConfig(c: CreditosConfig) {
-    const prop = c.proposito ?? "digital";
-    setProposito(prop);
-    // Folha de rosto: usa o valor salvo, ou o default do propósito
-    // (livrarias=true, digital=true, pessoal=false).
-    setIncluirFolhaRosto(
-      c.incluir_folha_rosto ?? (prop === "livrarias" ? true : prop === "digital" ? true : false)
-    );
+    // Bloco 1h: migração silenciosa de valores legados.
+    //   "pessoal"   → "digital" + incluir_creditos: false
+    //   "livrarias" → "completa"
+    const propositoRaw = c.proposito as string;
+    if (propositoRaw === "pessoal") {
+      setProposito("digital");
+      setIncluirCreditos(false);
+    } else if (propositoRaw === "livrarias") {
+      setProposito("completa");
+      setIncluirCreditos(true);
+    } else if (propositoRaw === "completa") {
+      setProposito("completa");
+      setIncluirCreditos(true);
+    } else {
+      setProposito("digital");
+      setIncluirCreditos(c.incluir_creditos !== false);
+    }
     setFormato(c.formato);
     if (typeof c.ano_copyright === "number") setAnoCopyright(c.ano_copyright.toString());
     if (c.titular_direitos) setTitularDireitos(c.titular_direitos);
@@ -282,11 +295,11 @@ export default function CreditosPage() {
   // ── Generate ─────────────────────────────────────────────────────────────────
 
   async function handleGerar() {
-    if (!isPessoal && !titularDireitos.trim()) {
+    if (geraCreditos && !titularDireitos.trim()) {
       setError("Informe o titular dos direitos autorais.");
       return;
     }
-    if (isLivrarias && !modoOficialValido) {
+    if (isCompleta && !modoOficialValido) {
       setError("Preencha todos os campos da ficha oficial, o CRB no formato CRB-X/YYYY e aceite a declaração.");
       return;
     }
@@ -327,9 +340,9 @@ export default function CreditosPage() {
       site_editora:     siteEditora.trim()       || undefined,
       email_editora:    emailEditora.trim()      || undefined,
       isbn:             isbn.trim()              || undefined,
-      // Livrarias força true (pré-textuais mínimos ABNT). Digital/pessoal
-      // respeitam a escolha do autor.
-      incluir_folha_rosto: isLivrarias ? true : incluirFolhaRosto,
+      // Bloco 1h: completa força true (ficha CRB + créditos obrigatórios).
+      // Em digital respeita a escolha do autor.
+      incluir_creditos: isCompleta ? true : incluirCreditos,
     };
 
     try {
@@ -339,7 +352,7 @@ export default function CreditosPage() {
         body: JSON.stringify({
           project_id: projectId,
           config,
-          ...(isLivrarias ? {
+          ...(isCompleta ? {
             ficha_oficial_input: {
               numero_chamada:          foNumeroChamada.trim(),
               entrada_autor:           foEntradaAutor.trim(),
@@ -360,8 +373,8 @@ export default function CreditosPage() {
       setProcessingPct(100);
       setCreditos(data.creditos!);
 
-      // Modo pessoal: nada foi gerado — vai direto para diagramação.
-      if (isPessoal) {
+      // Sem créditos: nada foi gerado — vai direto para diagramação.
+      if (!geraCreditos) {
         setTimeout(async () => {
           await supabase.from("projects").update({ etapa_atual: "diagramacao" }).eq("id", projectId);
           router.push(`/dashboard/miolo/${projectId}`);
@@ -460,100 +473,107 @@ export default function CreditosPage() {
             <h1 className="font-heading text-3xl text-brand-primary">Verso da folha de rosto</h1>
             <p className="text-zinc-500 text-sm mt-2 max-w-xl">
               A segunda página do livro — copyright, equipe técnica e (se aplicável) ficha catalográfica CRB.
-              O que aparece aqui depende de para onde o livro vai.
+              O que aparece aqui depende do uso planejado para o livro.
             </p>
           </div>
 
-          {/* Propósito da publicação — Bloco 1f */}
+          {/* Uso do livro — Bloco 1h */}
           <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-4">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Para onde vai este livro?</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Uso do livro</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => { setProposito("digital"); setIncluirFolhaRosto(true); }}
+                onClick={() => setProposito("digital")}
                 className={`text-left rounded-xl border-2 p-4 transition-all ${
                   proposito === "digital"
                     ? "border-brand-primary bg-brand-primary/5"
                     : "border-zinc-200 hover:border-zinc-300"
                 }`}
               >
-                <p className="text-sm font-semibold text-brand-primary mb-1">Plataformas digitais</p>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Amazon KDP, Apple Books, Kobo, Kiwify. Ficha CRB não é exigida por essas plataformas.
-                </p>
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-brand-primary/10 flex items-center justify-center shrink-0">
+                    <Smartphone className="w-5 h-5 text-brand-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-brand-primary mb-1">Publicação digital</p>
+                    <p className="text-xs text-zinc-500 leading-relaxed">
+                      Plataformas digitais (Amazon KDP, Apple Books, Kobo, Kiwify) e distribuição gratuita.
+                      Ficha CRB não é exigida.
+                    </p>
+                  </div>
+                </div>
               </button>
               <button
                 type="button"
-                onClick={() => { setProposito("livrarias"); setIncluirFolhaRosto(true); }}
+                onClick={() => setProposito("completa")}
                 className={`text-left rounded-xl border-2 p-4 transition-all ${
-                  proposito === "livrarias"
+                  proposito === "completa"
                     ? "border-brand-primary bg-brand-primary/5"
                     : "border-zinc-200 hover:border-zinc-300"
                 }`}
               >
-                <p className="text-sm font-semibold text-brand-primary mb-1">Livrarias, editais e prêmios</p>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Bibliotecas, Jabuti, concursos. Ficha CRB oficial obrigatória (Lei 10.753).
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setProposito("pessoal"); setIncluirFolhaRosto(false); }}
-                className={`text-left rounded-xl border-2 p-4 transition-all ${
-                  proposito === "pessoal"
-                    ? "border-brand-primary bg-brand-primary/5"
-                    : "border-zinc-200 hover:border-zinc-300"
-                }`}
-              >
-                <p className="text-sm font-semibold text-brand-primary mb-1">Uso pessoal</p>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Arquivo próprio, presente ou distribuição gratuita. Miolo enxuto.
-                </p>
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-brand-primary/10 flex items-center justify-center shrink-0">
+                    <Library className="w-5 h-5 text-brand-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-brand-primary mb-1">Publicação completa</p>
+                    <p className="text-xs text-zinc-500 leading-relaxed">
+                      Plataformas digitais + livrarias, bibliotecas, editais e prêmios.
+                      Exige ficha CRB oficial (Lei 10.753).
+                    </p>
+                  </div>
+                </div>
               </button>
             </div>
 
-            {/* Toggle de folha de rosto — só em digital e pessoal.
-                Em livrarias é forçado true (pré-textuais mínimos ABNT). */}
-            {proposito !== "livrarias" && (
-              <label className="flex items-start gap-3 mt-5 pt-5 border-t border-zinc-100 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={incluirFolhaRosto}
-                  onChange={e => setIncluirFolhaRosto(e.target.checked)}
-                  className="mt-0.5"
-                />
+            {/* Toggle de inclusão de créditos — só em digital.
+                Em completa é sempre true (créditos + ficha CRB obrigatórios). */}
+            {proposito === "digital" && (
+              <label className="flex items-center justify-between gap-3 mt-5 pt-5 border-t border-zinc-100 cursor-pointer">
                 <span className="text-sm text-zinc-700 leading-relaxed">
-                  <span className="font-medium">Incluir folha de rosto</span>
+                  <span className="font-medium">Incluir página de créditos</span>
                   <span className="block text-xs text-zinc-500 mt-0.5">
-                    Página inicial com título, subtítulo e autor. Padrão editorial em publicações formais.
+                    Verso da folha de rosto com copyright, equipe técnica e dados da editora.
+                    Half-title e folha de rosto permanecem no livro.
                   </span>
+                </span>
+                <span className="relative inline-block shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={incluirCreditos}
+                    onChange={e => setIncluirCreditos(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <span className="block w-11 h-6 bg-zinc-300 rounded-full peer-checked:bg-brand-primary transition-colors" />
+                  <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5" />
                 </span>
               </label>
             )}
           </section>
 
-          {isPessoal ? (
-            /* ── Modo pessoal: nada é gerado ─────────────────────────────── */
+          {!geraCreditos ? (
+            /* ── Sem créditos: nada é gerado no verso ─────────────────────── */
             <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-4">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center shrink-0">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <path d="M14 2v6h6"/>
                   </svg>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-brand-primary mb-1">
-                    {incluirFolhaRosto
-                      ? "Com folha de rosto, sem créditos"
-                      : "Miolo enxuto, sem páginas iniciais"}
+                    Sem página de créditos
                   </p>
                   <p className="text-sm text-zinc-600 leading-relaxed">
-                    {incluirFolhaRosto
-                      ? "O miolo tem folha de rosto (título + autor) mas pula a página de créditos. Sem copyright, equipe ou ficha catalográfica."
-                      : "O miolo pula folha de rosto e créditos e começa direto no conteúdo. Ideal para arquivos pessoais e presentes."}
+                    O livro continua com half-title, folha de rosto e dedicatória.
+                    Apenas o verso da folha de rosto fica em branco — sem copyright,
+                    equipe técnica ou dados da editora.
                   </p>
                   <p className="text-xs text-zinc-400 mt-3">
-                    Se depois quiser vender em livraria ou concorrer a prêmio, volte aqui e escolha outro propósito.
+                    Se depois quiser publicar em livraria ou concorrer a prêmio, volte aqui,
+                    escolha &ldquo;Publicação completa&rdquo; e preencha os dados.
                   </p>
                 </div>
               </div>
@@ -623,9 +643,9 @@ export default function CreditosPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-zinc-100">
                   <Field
-                    label={isLivrarias ? "ISBN *" : "ISBN"}
-                    hint={isLivrarias
-                      ? "Obrigatório para livrarias. Registre em cblservicos.org.br"
+                    label={isCompleta ? "ISBN *" : "ISBN"}
+                    hint={isCompleta
+                      ? "Obrigatório em publicação completa. Registre em cblservicos.org.br"
                       : "Opcional. Se preenchido, aparece na página de créditos."}
                     value={isbn}
                     onChange={setIsbn}
@@ -720,8 +740,8 @@ export default function CreditosPage() {
                 </div>
               </SectionToggle>
 
-              {/* Ficha oficial CRB — só aparece em modo livrarias */}
-              {isLivrarias && (
+              {/* Ficha oficial CRB — só aparece em publicação completa */}
+              {isCompleta && (
                 <SectionToggle
                   title="Ficha catalográfica oficial (CRB)"
                   hint="Cole os campos exatamente como recebidos do bibliotecário"
@@ -729,17 +749,17 @@ export default function CreditosPage() {
                   onToggle={() => setSecFicha(v => !v)}
                 >
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 leading-relaxed">
-                    Caso já possua a ficha oficial, preencha os dados abaixo. Caso não possua, você pode
-                    solicitar diretamente pela CBL em{" "}
+                    Caso já possua a ficha oficial elaborada por bibliotecário CRB, preencha os
+                    dados abaixo. Caso ainda não possua,{" "}
                     <a
                       href="https://www.cblservicos.org.br/catalogacao/"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline font-medium"
                     >
-                      cblservicos.org.br
-                    </a>{" "}
-                    ou aguardar o nosso serviço de mediação (em breve).
+                      solicite pela CBL
+                    </a>
+                    {" "}ou entre em contato conosco para mais informações sobre nosso serviço de catalogação.
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -831,15 +851,15 @@ export default function CreditosPage() {
           <button
             type="button"
             onClick={handleGerar}
-            disabled={isLivrarias && !modoOficialValido}
+            disabled={isCompleta && !modoOficialValido}
             className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed"
           >
-            {isPessoal
+            {!geraCreditos
               ? "Continuar sem página de créditos →"
               : "Gerar página de créditos →"}
           </button>
           <p className="text-center text-xs text-zinc-400 mt-3">
-            {isPessoal ? "Vai direto para a diagramação do miolo." : "Apenas alguns segundos."}
+            {!geraCreditos ? "Vai direto para a diagramação do miolo." : "Apenas alguns segundos."}
           </p>
         </main>
 

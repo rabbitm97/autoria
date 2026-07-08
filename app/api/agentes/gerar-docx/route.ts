@@ -130,7 +130,9 @@ export async function POST(req: NextRequest) {
       texto,
       capitulos,
       config,
-      creditosConfig: creditosData?.config ?? null,
+      // Bloco 1h: se o autor optou por não incluir créditos, html_storage_path
+      // fica null e a config não deve ser propagada — o docx emite verso branco.
+      creditosConfig: creditosData?.html_storage_path ? creditosData.config : null,
       fichaOficial: creditosData?.ficha_oficial ?? null,
       projectId: project_id,
       palavras_chave: el?.palavras_chave,

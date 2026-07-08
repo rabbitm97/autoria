@@ -21,6 +21,8 @@ interface ProjectData {
   epub: EpubResult | null;
   mioloPreviewUrl: string | null;
   proposito: PropositoPublicacao;
+  /** Bloco 1h: false quando autor optou por não incluir página de créditos. */
+  hasCreditos: boolean;
 }
 
 // ─── Platform guide cards ─────────────────────────────────────────────────────
@@ -92,7 +94,19 @@ export default function PublicacaoPage() {
       const el = proj?.dados_elementos as Record<string, unknown> | null;
       const capa = proj?.dados_capa as { url_escolhida?: string; url?: string } | null;
       const miolo = proj?.dados_miolo as { lombada_mm?: number; paginas_reais?: number; paginas_estimadas?: number } | null;
-      const creditos = proj?.dados_creditos as { config?: { proposito?: PropositoPublicacao } } | null;
+      const creditos = proj?.dados_creditos as {
+        config?: { proposito?: string };
+        html_storage_path?: string | null;
+      } | null;
+
+      // Bloco 1h: normaliza propósito legado ("livrarias"→"completa",
+      // "pessoal"→"digital"). `hasCreditos` distingue digital com/sem créditos.
+      const propRaw = creditos?.config?.proposito;
+      const proposito: PropositoPublicacao =
+        propRaw === "livrarias" || propRaw === "completa" ? "completa" : "digital";
+      const hasCreditos = proposito === "completa"
+        ? true
+        : creditos?.html_storage_path != null;
 
       setProject({
         titulo: (el?.titulo_escolhido as string) ?? ms?.titulo ?? "Sem título",
@@ -103,7 +117,8 @@ export default function PublicacaoPage() {
         pdf,
         epub,
         mioloPreviewUrl: mioloData?.preview_url ?? null,
-        proposito: creditos?.config?.proposito ?? "digital",
+        proposito,
+        hasCreditos,
       });
     } finally {
       setLoading(false);
@@ -222,24 +237,26 @@ export default function PublicacaoPage() {
               </p>
             </div>
 
-            {/* Aviso conforme propósito escolhido (Bloco 1f) */}
-            {project.proposito === "pessoal" && (
+            {/* Aviso conforme escolha do autor (Bloco 1h) */}
+            {project.proposito === "digital" && !project.hasCreditos && (
               <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center shrink-0">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <path d="M14 2v6h6"/>
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <p className="text-[11px] font-semibold text-zinc-700 uppercase tracking-wide mb-1">Modo pessoal</p>
+                    <p className="text-[11px] font-semibold text-zinc-700 uppercase tracking-wide mb-1">Sem página de créditos</p>
                     <p className="text-sm text-zinc-700 leading-relaxed mb-3">
-                      Este livro foi gerado <strong>sem folha de rosto, verso ou créditos</strong> —
-                      apropriado para uso pessoal, presente ou distribuição gratuita.
+                      Este livro foi gerado com half-title e folha de rosto, mas <strong>sem página
+                      de créditos</strong> (verso em branco). Copyright, equipe técnica e dados da
+                      editora não aparecem no miolo.
                     </p>
                     <p className="text-sm text-zinc-700 leading-relaxed mb-3">
                       Para vender em livrarias, participar de editais ou entrar em bibliotecas você
-                      precisará voltar aos Créditos, escolher o propósito <em>Livrarias</em> e anexar
+                      precisará voltar aos Créditos, escolher <em>Publicação completa</em> e anexar
                       a ficha CRB oficial.
                     </p>
                     <Link
@@ -254,7 +271,7 @@ export default function PublicacaoPage() {
               </div>
             )}
 
-            {project.proposito === "digital" && (
+            {project.proposito === "digital" && project.hasCreditos && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">

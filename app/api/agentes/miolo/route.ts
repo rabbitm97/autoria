@@ -184,8 +184,8 @@ export async function POST(request: NextRequest) {
   } | null;
 
   // Sem etapa de créditos concluída: exige o step antes de gerar miolo.
-  // Nota: modo pessoal também passa pela etapa (input_hash é gravado) —
-  // o que muda é apenas que `html_storage_path` fica null.
+  // Nota: bypass "sem créditos" também passa pela etapa (input_hash é gravado)
+  // — o que muda é apenas que `html_storage_path` fica null.
   if (!dadosCreditos?.input_hash || !dadosCreditos?.config) {
     return NextResponse.json(
       {
@@ -197,8 +197,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const propositoCreditos = dadosCreditos.config.proposito;
-  const isPessoal = propositoCreditos === "pessoal";
+  // Bloco 1h: normaliza propósito legado antes de propagar para o builder.
+  const propositoRaw = dadosCreditos.config.proposito as string | undefined;
+  const propositoCreditos: "digital" | "completa" =
+    propositoRaw === "livrarias" ? "completa"
+    : propositoRaw === "pessoal" || propositoRaw === "digital" ? "digital"
+    : propositoRaw === "completa" ? "completa"
+    : "digital";
+  // Bypass "sem créditos": marcado pela ausência de html persistido.
+  const semCreditos = dadosCreditos.html_storage_path === null;
 
   // Verificar drift de dados — hash usa as mesmas páginas que o créditos usou,
   // evitando deadlock na primeira passagem quando dados_miolo ainda não existe.
@@ -209,7 +216,7 @@ export async function POST(request: NextRequest) {
     genero: ms?.genero_principal ?? "Literatura",
     paginas: dadosCreditos.paginas_usadas ?? 0,
     formato: config.formato,
-    proposito: propositoCreditos ?? "digital",
+    proposito: propositoCreditos,
     ano_copyright: dadosCreditos.config.ano_copyright ?? 0,
     ano_edicao: dadosCreditos.config.ano_edicao ?? null,
     isbn: dadosCreditos.config.isbn ?? "",
@@ -234,8 +241,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Render dos créditos em runtime — fonte única da verdade.
-  // Modo pessoal: nem gera; o builder pula folha de rosto/verso/créditos.
-  const creditosInnerHtml = isPessoal
+  // Bloco 1h: se o autor optou por não incluir créditos, passa string vazia;
+  // o builder insere verso branco no lugar (paridade recto/verso preservada).
+  const creditosInnerHtml = semCreditos
     ? ""
     : buildCreditosContentHtml({
         config: dadosCreditos.config,
@@ -245,12 +253,11 @@ export async function POST(request: NextRequest) {
         autor,
       });
 
-  // Propaga o propósito e a decisão de folha de rosto para o builder — habilita
-  // o bypass parcial do front-matter (créditos + folha de rosto independentes).
+  // Bloco 1h: propaga apenas o propósito. Half-title e folha de rosto são
+  // sempre emitidos pelo builder.
   const configComProposito: MioloConfig = {
     ...config,
-    proposito: propositoCreditos ?? "digital",
-    incluir_folha_rosto: dadosCreditos.config.incluir_folha_rosto,
+    proposito: propositoCreditos,
   };
 
   // Build HTML — two passes when sumário is on so TOC shows real page numbers.

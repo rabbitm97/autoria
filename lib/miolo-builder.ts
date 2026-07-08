@@ -44,21 +44,17 @@ export interface MioloConfig {
    */
   tem_capitulos?: boolean;
   /**
-   * Propósito da publicação (Bloco 1f). Determina o que entra no front-matter:
-   *   - "digital":   folha de rosto + créditos (ISBN opcional).
-   *   - "livrarias": folha de rosto + créditos + ficha CRB obrigatórios.
-   *   - "pessoal":   sem créditos; folha de rosto opcional (via
-   *                  `incluir_folha_rosto`).
+   * Propósito da publicação (Bloco 1h). Half-title e folha de rosto são
+   * SEMPRE renderizados. O propósito afeta apenas o comportamento da rota
+   * de créditos, que decide se `creditosInnerHtml` chega vazio ou preenchido.
+   *   - "digital":   ficha CRB não exigida; página de créditos é opcional
+   *                  (autor escolhe via toggle `incluir_creditos`). Quando
+   *                  optar por não incluir, o miolo insere verso branco no
+   *                  lugar para preservar paridade recto/verso.
+   *   - "completa":  página de créditos + ficha CRB sempre incluídas.
    * Default: "digital".
    */
-  proposito?: "digital" | "livrarias" | "pessoal";
-  /**
-   * Controla se half-title + verso branco + folha de rosto entram no miolo.
-   * Só é consultado em digital e pessoal. Em livrarias é forçado true.
-   * Default por propósito quando ausente:
-   *   digital → true, livrarias → true, pessoal → false.
-   */
-  incluir_folha_rosto?: boolean;
+  proposito?: "digital" | "completa";
   sumario: boolean;
   dedicatoria: string;
   epigrafe_texto: string;
@@ -1246,45 +1242,33 @@ export function buildBookHtml(params: {
   const subtituloClean = cleanFrontMatterText(subtitulo);
   const autorClean     = cleanFrontMatterText(autor);
 
-  // ── Front-matter institucional (half-title, verso, folha de rosto, créditos)
-  // Duas decisões independentes:
-  //   incluirFolhaRosto → controla half-title + verso + folha de rosto (1-3)
-  //   !isPessoal        → controla página de créditos (4)
-  // Em livrarias a folha de rosto é forçada true (pré-textuais mínimos ABNT).
-  // Em digital e pessoal o autor escolhe via config.incluir_folha_rosto.
-  const isPessoal   = config.proposito === "pessoal";
-  const isLivrarias = config.proposito === "livrarias";
-  const incluirFolhaRosto = isLivrarias
-    ? true
-    : (config.incluir_folha_rosto ?? !isPessoal);
+  // ── Front-matter institucional (Bloco 1h) ───────────────────────────────
+  // Half-title, verso, folha de rosto: SEMPRE presentes. Créditos: presença
+  // decidida por creditosInnerHtml — se vier vazio (autor optou por não
+  // incluir em digital), rendemos verso branco para manter paridade
+  // recto/verso (dedicatória continua a cair em página ímpar).
 
-  if (incluirFolhaRosto) {
-    // ── 1. Half-title (recto) ────────────────────────────────────────────────
-    sections.push(`<section class="front-page half-title">
+  // ── 1. Half-title (recto) ──────────────────────────────────────────────────
+  sections.push(`<section class="front-page half-title">
   <h1>${escHtml(tituloClean)}</h1>
 ${subtituloClean ? `  <p class="subtitle" style="font-size:1em;margin-top:0.8em">${escHtml(subtituloClean)}</p>\n` : ""}</section>`);
 
-    // ── 2. Verso branco ──────────────────────────────────────────────────────
-    sections.push(`<section class="blank-page"></section>`);
+  // ── 2. Verso branco ────────────────────────────────────────────────────────
+  sections.push(`<section class="blank-page"></section>`);
 
-    // ── 3. Folha de rosto (recto) ────────────────────────────────────────────
-    sections.push(`<section class="front-page title-page">
+  // ── 3. Folha de rosto (recto) ──────────────────────────────────────────────
+  sections.push(`<section class="front-page title-page">
   <h1>${escHtml(tituloClean)}</h1>
 ${subtituloClean ? `  <p class="subtitle">${escHtml(subtituloClean)}</p>\n` : ""}  <p class="author">${escHtml(autorClean)}</p>
 </section>`);
-  }
 
-  if (!isPessoal) {
-    // ── 4. Créditos + ficha catalográfica ────────────────────────────────────
-    if (!creditosInnerHtml || !creditosInnerHtml.trim()) {
-      throw new Error(
-        "[miolo-builder] creditosInnerHtml ausente. " +
-        "A página de créditos aprovada é obrigatória fora do modo pessoal."
-      );
-    }
+  // ── 4. Créditos (verso da folha de rosto) ou verso branco ─────────────────
+  if (creditosInnerHtml && creditosInnerHtml.trim()) {
     sections.push(`<section class="front-page">
 ${creditosInnerHtml}
 </section>`);
+  } else {
+    sections.push(`<section class="blank-page"></section>`);
   }
 
   // ── 5. Dedicatória (opcional) ──────────────────────────────────────────────

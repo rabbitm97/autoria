@@ -267,7 +267,7 @@ function buildCreditosParagraphs(
     children.push(para([run(line)]));
   });
 
-  // Ficha oficial CRB — só renderiza quando presente (modo livrarias).
+  // Ficha oficial CRB — só renderiza quando presente (publicação completa).
   // Bloco 1f: sem sugestão IA, sem fallback de "ficha genérica".
   if (fo?.numero_chamada) {
     children.push(para([], 8));
@@ -364,14 +364,13 @@ export async function buildBookDocx(params: {
   capitulos: { titulo: string; pos: number }[];
   config: MioloConfig;
   creditosConfig?: unknown | null;
-  /** Ficha oficial CRB (modo livrarias). null/undefined nos demais casos. */
+  /** Ficha oficial CRB (publicação completa). null/undefined nos demais casos. */
   fichaOficial?: unknown | null;
   projectId: string;
   /** Palavras-chave SEO geradas em Elementos Editoriais. Opcional. */
   palavras_chave?: string[];
 }): Promise<Buffer> {
   const { titulo, subtitulo, autor, texto, capitulos, config, creditosConfig, fichaOficial, projectId, palavras_chave } = params;
-  const isPessoal = config.proposito === "pessoal";
 
   const font = FONT_MAP[config.template];
   const st = TEMPLATE_STYLES[config.template];
@@ -449,76 +448,67 @@ export async function buildBookDocx(params: {
     children,
   });
 
-  // Front-matter institucional (half-title, verso, folha de rosto, créditos).
-  // Bloco 1f: pulado inteiramente no modo pessoal.
-  if (!isPessoal) {
-    // ── 1. Half-title ───────────────────────────────────────────────────────
-    const htId = nextBmkId();
-    docSections.push(frontSection([
-      emptyPara(), emptyPara(), emptyPara(), emptyPara(),
-      new Paragraph({
-        alignment: "center",
-        children: [
-          new BookmarkStart("autoria_half_title", htId),
-          trun(titulo, { font, size: hp(corpo_pt * 1.7), allCaps: true }),
-          new BookmarkEnd(htId),
-        ],
-      }),
-      ...(subtitulo ? [new Paragraph({
-        alignment: "center",
-        children: [trun(subtitulo, { font, size: hp(corpo_pt), italics: true, color: "555555" })],
-      })] : []),
-    ]));
+  // Front-matter institucional (Bloco 1h): half-title, verso, folha de rosto
+  // são SEMPRE emitidos. Créditos: se `creditosConfig` presente, renderiza;
+  // caso contrário emite verso branco (paridade recto/verso).
 
-    // ── 2. Blank verso ──────────────────────────────────────────────────────
-    docSections.push(frontSection([emptyPara()]));
+  // ── 1. Half-title ────────────────────────────────────────────────────────
+  const htId = nextBmkId();
+  docSections.push(frontSection([
+    emptyPara(), emptyPara(), emptyPara(), emptyPara(),
+    new Paragraph({
+      alignment: "center",
+      children: [
+        new BookmarkStart("autoria_half_title", htId),
+        trun(titulo, { font, size: hp(corpo_pt * 1.7), allCaps: true }),
+        new BookmarkEnd(htId),
+      ],
+    }),
+    ...(subtitulo ? [new Paragraph({
+      alignment: "center",
+      children: [trun(subtitulo, { font, size: hp(corpo_pt), italics: true, color: "555555" })],
+    })] : []),
+  ]));
 
-    // ── 3. Title page ───────────────────────────────────────────────────────
-    const tpId = nextBmkId();
-    docSections.push(frontSection([
-      emptyPara(), emptyPara(), emptyPara(),
-      new Paragraph({
-        alignment: "center",
-        children: [
-          new BookmarkStart("autoria_title_page", tpId),
-          trun(titulo, { font, size: hp(corpo_pt * 2), allCaps: true }),
-          new BookmarkEnd(tpId),
-        ],
-      }),
-      ...(subtitulo ? [new Paragraph({
-        alignment: "center",
-        spacing: { before: mm(3) },
-        children: [trun(subtitulo, { font, size: hp(corpo_pt * 1.15), italics: true, color: "555555" })],
-      })] : []),
-      new Paragraph({
-        alignment: "center",
-        spacing: { before: mm(28) },
-        children: [trun(autor, { font, size: hp(corpo_pt * 1.25), color: "444444" })],
-      }),
-    ]));
+  // ── 2. Blank verso ──────────────────────────────────────────────────────
+  docSections.push(frontSection([emptyPara()]));
 
-    // ── 4. Credits ──────────────────────────────────────────────────────────
+  // ── 3. Title page ───────────────────────────────────────────────────────
+  const tpId = nextBmkId();
+  docSections.push(frontSection([
+    emptyPara(), emptyPara(), emptyPara(),
+    new Paragraph({
+      alignment: "center",
+      children: [
+        new BookmarkStart("autoria_title_page", tpId),
+        trun(titulo, { font, size: hp(corpo_pt * 2), allCaps: true }),
+        new BookmarkEnd(tpId),
+      ],
+    }),
+    ...(subtitulo ? [new Paragraph({
+      alignment: "center",
+      spacing: { before: mm(3) },
+      children: [trun(subtitulo, { font, size: hp(corpo_pt * 1.15), italics: true, color: "555555" })],
+    })] : []),
+    new Paragraph({
+      alignment: "center",
+      spacing: { before: mm(28) },
+      children: [trun(autor, { font, size: hp(corpo_pt * 1.25), color: "444444" })],
+    }),
+  ]));
+
+  // ── 4. Credits (verso da folha de rosto) ou verso branco ─────────────────
+  if (creditosConfig) {
     const crId = nextBmkId();
-    let creditosChildren: (Paragraph | Table)[];
-
-    if (creditosConfig) {
-      creditosChildren = buildCreditosParagraphs(
-        creditosConfig as CreditosConfig, fichaOficial, font,
-      );
-      creditosChildren.unshift(new Paragraph({
-        children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)],
-      }));
-    } else {
-      creditosChildren = [
-        new Paragraph({ children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)] }),
-        emptyPara(), emptyPara(), emptyPara(),
-        new Paragraph({ children: [trun(`© ${new Date().getFullYear()} ${autor}`, { font, size: hp(9) })] }),
-        new Paragraph({ children: [trun("Todos os direitos reservados.", { font, size: hp(9) })] }),
-        new Paragraph({ children: [trun("Publicado pela plataforma Autoria.", { font, size: hp(9) })] }),
-      ];
-    }
-
+    const creditosChildren = buildCreditosParagraphs(
+      creditosConfig as CreditosConfig, fichaOficial, font,
+    );
+    creditosChildren.unshift(new Paragraph({
+      children: [new BookmarkStart("autoria_creditos", crId), new BookmarkEnd(crId)],
+    }));
     docSections.push(frontSection(creditosChildren));
+  } else {
+    docSections.push(frontSection([emptyPara()]));
   }
 
   // ── 5. Dedicatória ────────────────────────────────────────────────────────

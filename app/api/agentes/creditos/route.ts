@@ -14,11 +14,18 @@ import { getBodyFontFamily, type TemplateId } from "@/lib/miolo-builder";
 
 /**
  * Propósito da publicação — determina o que é gerado:
- *  - "digital":   sem ficha CRB. Aceito por KDP/Apple/Kobo e similares. Default.
- *  - "livrarias": exige ficha oficial CRB (Lei 10.753, Res. CFB 184/2017).
- *  - "pessoal":   uso privado / presente. Pula folha de rosto e verso.
+ *  - "digital":  plataformas digitais + distribuição gratuita. Ficha CRB
+ *                não é exigida por essas plataformas. Página de créditos
+ *                é opcional (controlada por incluir_creditos).
+ *  - "completa": publicação em plataformas digitais + livro físico oficial
+ *                (livrarias, bibliotecas, editais, prêmios). Exige ficha
+ *                oficial CRB (Lei 10.753, Res. CFB 184/2017).
+ *
+ * Retrocompat: valores legados "pessoal" e "livrarias" são normalizados
+ * no handler POST e no restoreConfig do dashboard. Nunca deveriam chegar
+ * ao renderer ou ao miolo-builder.
  */
-export type PropositoPublicacao = "digital" | "livrarias" | "pessoal";
+export type PropositoPublicacao = "digital" | "completa";
 
 export interface CreditosConfig {
   formato: FormatoLivro;
@@ -54,16 +61,18 @@ export interface CreditosConfig {
   site_editora?: string;
   email_editora?: string;
 
-  // ISBN — dado factual, útil em qualquer propósito onde a ficha
-  // é impressa. Opcional em digital, obrigatório em livrarias.
+  // ISBN — dado factual, útil em qualquer propósito. Opcional em digital,
+  // obrigatório em completa.
   isbn?: string;
 
-  // Folha de rosto (half-title + verso + folha de rosto). Default por propósito:
-  //   livrarias → sempre true (não overridable — pré-textuais mínimos ABNT)
-  //   digital   → true
-  //   pessoal   → false
-  // O autor pode override em digital e pessoal.
-  incluir_folha_rosto?: boolean;
+  // Bloco 1h: toggle para incluir/excluir a PÁGINA DE CRÉDITOS (verso da
+  // folha de rosto). Não afeta half-title, folha de rosto, dedicatória,
+  // sumário — apenas o verso.
+  //   - digital:  respeita o valor. Se false, verso da folha de rosto
+  //               fica em branco (mantém paridade recto/verso).
+  //   - completa: sempre true (ignora este campo).
+  // Default: true.
+  incluir_creditos?: boolean;
 }
 
 export interface FichaOficialCRB {
@@ -87,7 +96,7 @@ export interface FichaOficialCRB {
 export interface CreditosResult {
   config: CreditosConfig;
   ficha_oficial?: FichaOficialCRB;
-  /** null quando modo pessoal (nada é gerado). */
+  /** null quando autor optou por não incluir créditos (só em digital). */
   html_storage_path: string | null;
   input_hash: string;
   paginas_usadas: number;
@@ -129,7 +138,7 @@ ${content}
 
 // ─── POST — generate credits page ────────────────────────────────────────────
 
-const PROPOSITOS_VALIDOS: readonly PropositoPublicacao[] = ["digital", "livrarias", "pessoal"];
+const PROPOSITOS_VALIDOS: readonly PropositoPublicacao[] = ["digital", "completa"];
 
 export async function POST(request: NextRequest) {
   try {
@@ -172,18 +181,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Bloco 1h: normalização retrocompat. Valores antigos ("pessoal",
+  // "livrarias") são convertidos silenciosamente para os novos.
+  const propositoRaw = config.proposito as string;
+  if (propositoRaw === "pessoal") {
+    config.proposito = "digital";
+    config.incluir_creditos = false;
+  } else if (propositoRaw === "livrarias") {
+    config.proposito = "completa";
+  }
+
   if (!PROPOSITOS_VALIDOS.includes(config.proposito)) {
     return NextResponse.json(
-      { error: "Campo 'proposito' obrigatório. Valores: digital, livrarias, pessoal." },
+      { error: "Campo 'proposito' obrigatório. Valores: digital, completa." },
       { status: 400 }
     );
   }
 
-  // Modo pessoal: nenhum outro campo é obrigatório — é bypass total.
-  const isPessoal   = config.proposito === "pessoal";
-  const exigeOficial = config.proposito === "livrarias";
+  const exigeOficial = config.proposito === "completa";
+  const incluirCreditos =
+    exigeOficial ? true : (config.incluir_creditos !== false);
 
-  if (!isPessoal) {
+  // Bloco 1h: validação só quando créditos serão gerados.
+  if (incluirCreditos) {
     if (typeof config.ano_copyright !== "number" || !Number.isFinite(config.ano_copyright)) {
       return NextResponse.json(
         { error: "Campo obrigatório: ano_copyright (número)." },
@@ -199,14 +219,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Livrarias: exige dados completos do bibliotecário CRB.
+  // Publicação completa: exige dados completos do bibliotecário CRB.
   const CRB_REGEX = /^CRB-([1-9]|1[0-5])\/\d{1,6}$/;
 
   if (exigeOficial) {
     const fo = body.ficha_oficial_input;
     if (!fo) {
       return NextResponse.json(
-        { error: "Modo 'livrarias' requer ficha oficial preenchida pelo bibliotecário." },
+        { error: "Modo 'completa' requer ficha oficial preenchida pelo bibliotecário." },
         { status: 400 }
       );
     }
@@ -223,7 +243,7 @@ export async function POST(request: NextRequest) {
     for (const [nome, valor] of camposObrigatorios) {
       if (!valor?.trim()) {
         return NextResponse.json(
-          { error: `Campo obrigatório no modo livrarias: ${nome}.` },
+          { error: `Campo obrigatório no modo completa: ${nome}.` },
           { status: 400 }
         );
       }
@@ -298,7 +318,7 @@ export async function POST(request: NextRequest) {
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
   const genero = ms?.genero_principal ?? "Literatura";
 
-  // Modo livrarias: monta ficha_oficial com log de aceite (IP + user_agent).
+  // Modo completa: monta ficha_oficial com log de aceite (IP + user_agent).
   let fichaOficial: FichaOficialCRB | undefined = undefined;
 
   if (exigeOficial && body.ficha_oficial_input) {
@@ -339,9 +359,10 @@ export async function POST(request: NextRequest) {
     nome_editora: configResolved.nome_editora ?? "",
   });
 
-  // Modo pessoal: nada é gerado. Persistimos só o marcador para o pipeline
-  // do miolo saber que deve pular folha de rosto + créditos.
-  if (isPessoal) {
+  // Bloco 1h: bypass quando autor optou por não incluir créditos.
+  // Persiste o marcador para o miolo-builder pular a página de créditos
+  // e inserir verso branco no lugar (paridade recto/verso).
+  if (!incluirCreditos) {
     const result: CreditosResult = {
       config: configResolved,
       html_storage_path: null,
@@ -358,9 +379,9 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id);
 
     if (updateErr) {
-      console.error("[creditos] Erro ao salvar (pessoal):", updateErr);
+      console.error("[creditos] Erro ao salvar (sem créditos):", updateErr);
       return NextResponse.json(
-        { error: "Falha ao salvar propósito no banco." },
+        { error: "Falha ao salvar configuração no banco." },
         { status: 500 }
       );
     }
@@ -368,7 +389,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, creditos: result, preview_url: null, html: null });
   }
 
-  // Digital / livrarias: monta e persiste HTML.
+  // Créditos incluídos: monta e persiste HTML.
   const template = mioloData?.config?.template;
   const bodyFontFamily = template ? getBodyFontFamily(template) : undefined;
   const html = buildCreditosStandaloneHtml({
@@ -488,7 +509,7 @@ export async function GET(request: NextRequest) {
 
   const creditos = project.dados_creditos as CreditosResult;
 
-  // Modo pessoal: sem HTML persistido.
+  // Sem créditos: HTML não é persistido.
   if (!creditos.html_storage_path) {
     return NextResponse.json({ creditos, preview_url: null, html: null });
   }
