@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
+import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -150,7 +151,7 @@ export async function POST(req: NextRequest) {
 
   // ── Puppeteer: HTML → PDF ─────────────────────────────────────────────────
   let pdfBuffer: Buffer;
-  const browser = await puppeteer.launch({
+  const browser = await launchWithRetry({
     args: chromium.args,
     executablePath: await chromium.executablePath(),
     headless: true,
