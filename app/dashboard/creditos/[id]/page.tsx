@@ -108,6 +108,9 @@ export default function CreditosPage() {
   // ── Propósito da publicação (Bloco 1f) ──────────────────────────────────────
   const [proposito, setProposito] = useState<PropositoPublicacao>("digital");
 
+  // ── Folha de rosto: default por propósito, overridable em digital/pessoal ──
+  const [incluirFolhaRosto, setIncluirFolhaRosto] = useState<boolean>(true);
+
   // ── Config form — Direitos ──────────────────────────────────────────────────
   const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
   const [anoCopyright, setAnoCopyright] = useState(new Date().getFullYear().toString());
@@ -235,8 +238,21 @@ export default function CreditosPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Ficha catalográfica é o item central em modo livrarias — abrir por default
+  // para o autor ver os campos sem precisar clicar. Em digital/pessoal fica
+  // recolhida (nunca é usada).
+  useEffect(() => {
+    if (proposito === "livrarias") setSecFicha(true);
+  }, [proposito]);
+
   function restoreConfig(c: CreditosConfig) {
-    setProposito(c.proposito ?? "digital");
+    const prop = c.proposito ?? "digital";
+    setProposito(prop);
+    // Folha de rosto: usa o valor salvo, ou o default do propósito
+    // (livrarias=true, digital=true, pessoal=false).
+    setIncluirFolhaRosto(
+      c.incluir_folha_rosto ?? (prop === "livrarias" ? true : prop === "digital" ? true : false)
+    );
     setFormato(c.formato);
     if (typeof c.ano_copyright === "number") setAnoCopyright(c.ano_copyright.toString());
     if (c.titular_direitos) setTitularDireitos(c.titular_direitos);
@@ -311,6 +327,9 @@ export default function CreditosPage() {
       site_editora:     siteEditora.trim()       || undefined,
       email_editora:    emailEditora.trim()      || undefined,
       isbn:             isbn.trim()              || undefined,
+      // Livrarias força true (pré-textuais mínimos ABNT). Digital/pessoal
+      // respeitam a escolha do autor.
+      incluir_folha_rosto: isLivrarias ? true : incluirFolhaRosto,
     };
 
     try {
@@ -451,47 +470,66 @@ export default function CreditosPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
-                onClick={() => setProposito("digital")}
+                onClick={() => { setProposito("digital"); setIncluirFolhaRosto(true); }}
                 className={`text-left rounded-xl border-2 p-4 transition-all ${
                   proposito === "digital"
                     ? "border-brand-primary bg-brand-primary/5"
                     : "border-zinc-200 hover:border-zinc-300"
                 }`}
               >
-                <p className="text-sm font-semibold text-brand-primary mb-1">Digital</p>
+                <p className="text-sm font-semibold text-brand-primary mb-1">Plataformas digitais</p>
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  KDP, Apple Books, Kobo, Kiwify. Nenhum registro CRB obrigatório.
+                  Amazon KDP, Apple Books, Kobo, Kiwify. Ficha CRB não é exigida por essas plataformas.
                 </p>
               </button>
               <button
                 type="button"
-                onClick={() => setProposito("livrarias")}
+                onClick={() => { setProposito("livrarias"); setIncluirFolhaRosto(true); }}
                 className={`text-left rounded-xl border-2 p-4 transition-all ${
                   proposito === "livrarias"
                     ? "border-brand-primary bg-brand-primary/5"
                     : "border-zinc-200 hover:border-zinc-300"
                 }`}
               >
-                <p className="text-sm font-semibold text-brand-primary mb-1">Livrarias & prêmios</p>
+                <p className="text-sm font-semibold text-brand-primary mb-1">Livrarias, editais e prêmios</p>
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Livrarias físicas, editais, Jabuti, bibliotecas. Exige ficha CRB oficial.
+                  Bibliotecas, Jabuti, concursos. Ficha CRB oficial obrigatória (Lei 10.753).
                 </p>
               </button>
               <button
                 type="button"
-                onClick={() => setProposito("pessoal")}
+                onClick={() => { setProposito("pessoal"); setIncluirFolhaRosto(false); }}
                 className={`text-left rounded-xl border-2 p-4 transition-all ${
                   proposito === "pessoal"
                     ? "border-brand-primary bg-brand-primary/5"
                     : "border-zinc-200 hover:border-zinc-300"
                 }`}
               >
-                <p className="text-sm font-semibold text-brand-primary mb-1">Uso pessoal / presente</p>
+                <p className="text-sm font-semibold text-brand-primary mb-1">Uso pessoal</p>
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Distribuição gratuita, sem folha de rosto nem créditos.
+                  Arquivo próprio, presente ou distribuição gratuita. Miolo enxuto.
                 </p>
               </button>
             </div>
+
+            {/* Toggle de folha de rosto — só em digital e pessoal.
+                Em livrarias é forçado true (pré-textuais mínimos ABNT). */}
+            {proposito !== "livrarias" && (
+              <label className="flex items-start gap-3 mt-5 pt-5 border-t border-zinc-100 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={incluirFolhaRosto}
+                  onChange={e => setIncluirFolhaRosto(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="text-sm text-zinc-700 leading-relaxed">
+                  <span className="font-medium">Incluir folha de rosto</span>
+                  <span className="block text-xs text-zinc-500 mt-0.5">
+                    Página inicial com título, subtítulo e autor. Padrão editorial em publicações formais.
+                  </span>
+                </span>
+              </label>
+            )}
           </section>
 
           {isPessoal ? (
@@ -504,10 +542,15 @@ export default function CreditosPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-brand-primary mb-1">Sem folha de rosto, verso ou créditos</p>
+                  <p className="text-sm font-semibold text-brand-primary mb-1">
+                    {incluirFolhaRosto
+                      ? "Com folha de rosto, sem créditos"
+                      : "Miolo enxuto, sem páginas iniciais"}
+                  </p>
                   <p className="text-sm text-zinc-600 leading-relaxed">
-                    Para uso pessoal, presente ou distribuição gratuita o miolo pula essas páginas iniciais e começa
-                    direto no sumário/prólogo. Nada de copyright, equipe ou ficha catalográfica.
+                    {incluirFolhaRosto
+                      ? "O miolo tem folha de rosto (título + autor) mas pula a página de créditos. Sem copyright, equipe ou ficha catalográfica."
+                      : "O miolo pula folha de rosto e créditos e começa direto no conteúdo. Ideal para arquivos pessoais e presentes."}
                   </p>
                   <p className="text-xs text-zinc-400 mt-3">
                     Se depois quiser vender em livraria ou concorrer a prêmio, volte aqui e escolha outro propósito.
@@ -685,9 +728,9 @@ export default function CreditosPage() {
                   open={secFicha}
                   onToggle={() => setSecFicha(v => !v)}
                 >
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 leading-relaxed">
-                    Ficha catalográfica é <strong>atividade privativa de bibliotecário com CRB ativo</strong>
-                    (Lei 10.753/2003, Res. CFB 184/2017). Solicite em{" "}
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 leading-relaxed">
+                    Caso já possua a ficha oficial, preencha os dados abaixo. Caso não possua, você pode
+                    solicitar diretamente pela CBL em{" "}
                     <a
                       href="https://www.cblservicos.org.br/catalogacao/"
                       target="_blank"
@@ -696,7 +739,7 @@ export default function CreditosPage() {
                     >
                       cblservicos.org.br
                     </a>{" "}
-                    (R$ 60–100, ~5 dias úteis) e cole os campos abaixo.
+                    ou aguardar o nosso serviço de mediação (em breve).
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

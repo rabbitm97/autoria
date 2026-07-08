@@ -124,8 +124,22 @@ export function buildCreditosContentHtml(params: {
   </div>`;
   }
 
+  // ── ISBN autônomo — quando há ISBN mas não há ficha CRB (modo digital) ────
+  // Sem esse bloco, o ISBN preenchido no formulário só apareceria dentro da
+  // ficha oficial, ficando invisível em modo digital.
+  let isbnAutonomoHtml = "";
+  if (!fichaOficial && config.isbn?.trim()) {
+    const isbnStyle = "font-size:8.5pt;line-height:1.7;margin-top:1.2cm;";
+    isbnAutonomoHtml = `<div style="${isbnStyle}">
+    <p style="margin:0;">ISBN ${esc(config.isbn.trim())}</p>
+  </div>`;
+  }
+
   // ── Publisher block ───────────────────────────────────────────────────────
   const pubLines: string[] = [];
+  if (config.numero_edicao?.trim()) {
+    pubLines.push(`<p style="${S.publisherP}">${esc(config.numero_edicao.trim())}</p>`);
+  }
   if (config.ano_edicao || config.ano_copyright) {
     pubLines.push(`<p style="${S.publisherP}">${config.ano_edicao || config.ano_copyright}</p>`);
   }
@@ -153,9 +167,10 @@ export function buildCreditosContentHtml(params: {
   </div>`
     : "";
 
-  return `<div data-autoria-creditos="v4" style="${S.wrap}">
+  return `<div data-autoria-creditos="v5" style="${S.wrap}">
   ${topHtml}
   ${fichaHtml}
+  ${isbnAutonomoHtml}
   ${publisherHtml}
 </div>`;
 }

@@ -245,9 +245,13 @@ export async function POST(request: NextRequest) {
         autor,
       });
 
-  // Propaga o propósito para o builder — habilita o bypass do front-matter
-  // institucional em modo pessoal.
-  const configComProposito: MioloConfig = { ...config, proposito: propositoCreditos ?? "digital" };
+  // Propaga o propósito e a decisão de folha de rosto para o builder — habilita
+  // o bypass parcial do front-matter (créditos + folha de rosto independentes).
+  const configComProposito: MioloConfig = {
+    ...config,
+    proposito: propositoCreditos ?? "digital",
+    incluir_folha_rosto: dadosCreditos.config.incluir_folha_rosto,
+  };
 
   // Build HTML — two passes when sumário is on so TOC shows real page numbers.
   // Pass 1 (no TOC): get chapterStartPages from actual page counter.

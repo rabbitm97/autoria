@@ -57,6 +57,13 @@ export interface CreditosConfig {
   // ISBN — dado factual, útil em qualquer propósito onde a ficha
   // é impressa. Opcional em digital, obrigatório em livrarias.
   isbn?: string;
+
+  // Folha de rosto (half-title + verso + folha de rosto). Default por propósito:
+  //   livrarias → sempre true (não overridable — pré-textuais mínimos ABNT)
+  //   digital   → true
+  //   pessoal   → false
+  // O autor pode override em digital e pessoal.
+  incluir_folha_rosto?: boolean;
 }
 
 export interface FichaOficialCRB {
