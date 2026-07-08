@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import { type FormatoLivro, getFormatoDef, isFormatoValido, estimarPaginas } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
+import { getBodyFontFamily, type TemplateId } from "@/lib/miolo-builder";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ function buildCreditosStandaloneHtml(params: {
   titulo: string;
   subtitulo: string;
   autor: string;
+  bodyFontFamily?: string;
 }): string {
   const content = buildCreditosContentHtml(params);
   const { width_cm, height_cm } = getFormatoDef(params.config.formato).specs;
@@ -235,7 +237,11 @@ export async function POST(request: NextRequest) {
   const configResolved: CreditosConfig = { ...config, formato: formatoDb as FormatoLivro };
 
   // Páginas: preferir reais (do miolo já gerado), cair para estimadas, ou estimar do texto.
-  const mioloData = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
+  const mioloData = project.dados_miolo as {
+    paginas_reais?: number;
+    paginas_estimadas?: number;
+    config?: { template?: TemplateId };
+  } | null;
   let paginasParaFicha = mioloData?.paginas_reais ?? mioloData?.paginas_estimadas ?? 0;
   let paginasOrigem: "real" | "estimada" = mioloData?.paginas_reais ? "real" : "estimada";
 
@@ -285,8 +291,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Build HTML
-  const html = buildCreditosStandaloneHtml({ config: configResolved, ficha, titulo, subtitulo, autor });
+  // Build HTML — passa a fonte editorial do template do miolo (se disponível)
+  // para os créditos ficarem tipograficamente coerentes com o resto do livro.
+  const template = mioloData?.config?.template;
+  const bodyFontFamily = template ? getBodyFontFamily(template) : undefined;
+  const html = buildCreditosStandaloneHtml({ config: configResolved, ficha, titulo, subtitulo, autor, bodyFontFamily });
 
   const inputHash = calcularCreditosInputHash({
     titulo,

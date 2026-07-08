@@ -15,22 +15,6 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Inline style constants — every element is self-styled, zero dependency on external CSS.
-const S = {
-  wrap: "font-family:'Times New Roman',Times,serif;font-size:9pt;line-height:1.6;color:#1a1a1a;",
-  top: "font-size:8.5pt;line-height:1.7;",
-  topP: "margin:0 0 0.12em 0;",
-  itl: "font-style:italic;",
-  fichaWrap: "margin-top:1.2cm;margin-bottom:1.2cm;",
-  ficha: "border:0.75pt solid #555;padding:0.7cm 0.9cm;font-size:8pt;line-height:1.6;width:100%;",
-  fichaHeader: "text-align:center;font-size:7.5pt;text-transform:uppercase;letter-spacing:0.02em;margin-bottom:0.7em;line-height:1.4;",
-  fichaP: "margin:0;",
-  fichaCdd: "margin:0;text-align:right;",
-  publisher: "font-size:8pt;line-height:1.7;padding-top:1cm;",
-  publisherP: "margin:0;",
-  editoraNome: "margin:0;text-transform:uppercase;font-weight:bold;",
-};
-
 /**
  * Self-contained HTML block for the credits page.
  * All styles are inline — no external CSS dependency.
@@ -43,8 +27,28 @@ export function buildCreditosContentHtml(params: {
   titulo: string;
   subtitulo: string;
   autor: string;
+  /** Fonte editorial do template do livro. Default: Times New Roman
+   *  (retrocompat com preview standalone que não conhece o template). */
+  bodyFontFamily?: string;
 }): string {
   const { config, ficha, titulo, subtitulo, autor } = params;
+  const bodyFontFamily = params.bodyFontFamily ?? "'Times New Roman',Times,serif";
+
+  // Inline style constants — every element is self-styled, zero dependency on external CSS.
+  const S = {
+    wrap: `font-family:${bodyFontFamily};font-size:9pt;line-height:1.6;color:#1a1a1a;`,
+    top: "font-size:8.5pt;line-height:1.7;",
+    topP: "margin:0 0 0.12em 0;",
+    itl: "font-style:italic;",
+    fichaWrap: "margin-top:1.2cm;margin-bottom:1.2cm;",
+    ficha: "border:0.75pt solid #555;padding:0.7cm 0.9cm;font-size:8pt;line-height:1.6;width:100%;",
+    fichaHeader: "text-align:center;font-size:7.5pt;text-transform:uppercase;letter-spacing:0.02em;margin-bottom:0.7em;line-height:1.4;",
+    fichaP: "margin:0;",
+    fichaCdd: "margin:0;text-align:right;",
+    publisher: "font-size:8pt;line-height:1.7;padding-top:1cm;",
+    publisherP: "margin:0;",
+    editoraNome: "margin:0;text-transform:uppercase;font-weight:bold;",
+  };
 
   // ── Top block: copyright + technical team ─────────────────────────────────
   const teamFields: [string, string | undefined][] = [

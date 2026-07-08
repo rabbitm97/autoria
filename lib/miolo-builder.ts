@@ -204,7 +204,7 @@ function cornerSvgUrl(corner: "tl" | "tr" | "bl" | "br"): string {
 //   (2) O `@page @bottom-center` precisa da mesma cadeia — `inherit` não
 //       funciona no contexto de margin boxes do Chromium.
 
-function getBodyFontFamily(template: TemplateId): string {
+export function getBodyFontFamily(template: TemplateId): string {
   switch (template) {
     case "literario":         return "'EB Garamond', Georgia, 'Times New Roman', serif";
     case "literario_moderno": return "'Spectral', Georgia, serif";
@@ -295,6 +295,16 @@ body {
   page: no-num;
   break-after: page;
   page-break-after: always;
+}
+
+/* Defesa em profundidade: HTMLs de front matter podem vir com CSS inline
+   próprio (ex: creditos-render.ts declara font-family:'Times New Roman'
+   inline, que não existe no Chromium serverless e cai em OpenSans).
+   Forçamos herança da fonte editorial via !important, garantindo
+   consistência tipográfica em todo o miolo. Cobre créditos, dedicatória,
+   epígrafe e qualquer futuro HTML injetado. */
+.front-page * {
+  font-family: inherit !important;
 }
 .blank-page {
   page: no-num;
