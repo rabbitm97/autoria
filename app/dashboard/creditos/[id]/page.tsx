@@ -145,10 +145,14 @@ export default function CreditosPage() {
   const [cdd, setCdd] = useState("");
   const [cdu, setCdu] = useState("");
 
-  // Modo ficha oficial CRB (Bloco 1d)
+  // Modo ficha oficial CRB (Bloco 1d) — campos estruturados
   const [tipoFicha, setTipoFicha] = useState<"sugestao_ia" | "oficial_crb">("sugestao_ia");
-  const [modoOficialAberto, setModoOficialAberto] = useState(false);
-  const [fichaOficialTexto, setFichaOficialTexto] = useState("");
+  const [foNumeroChamada, setFoNumeroChamada] = useState("");
+  const [foEntradaAutor, setFoEntradaAutor] = useState("");
+  const [foDescricao, setFoDescricao] = useState("");
+  const [foAssuntos, setFoAssuntos] = useState("");
+  const [foCdd, setFoCdd] = useState("");
+  const [foCdu, setFoCdu] = useState("");
   const [bibliotecarioNome, setBibliotecarioNome] = useState("");
   const [bibliotecarioCrb, setBibliotecarioCrb] = useState("");
   const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
@@ -156,7 +160,12 @@ export default function CreditosPage() {
   const CRB_REGEX_CLIENT = /^CRB-([1-9]|1[0-5])\/\d{1,6}$/;
   const crbValido = CRB_REGEX_CLIENT.test(bibliotecarioCrb.trim());
   const modoOficialValido =
-    fichaOficialTexto.trim().length > 20 &&
+    foNumeroChamada.trim().length > 0 &&
+    foEntradaAutor.trim().length > 0 &&
+    foDescricao.trim().length > 0 &&
+    foAssuntos.trim().length > 0 &&
+    foCdd.trim().length > 0 &&
+    foCdu.trim().length > 0 &&
     bibliotecarioNome.trim().length > 0 &&
     crbValido &&
     declaracaoAceita;
@@ -191,31 +200,28 @@ export default function CreditosPage() {
         restoreConfig(existing.config);
 
         // Hidratar modo oficial CRB se já foi salvo antes; caso contrário,
-        // pré-preencher textarea do modo oficial com a sugestão IA existente
+        // pré-preencher os campos estruturados com a sugestão IA existente
         // (autor edita a partir dela em vez de começar do zero).
         const dc = existing as { config?: CreditosConfig; ficha_catalografica?: FichaCatalografica; ficha_oficial?: FichaOficialCRB };
         if (dc.config?.tipo_ficha === "oficial_crb" && dc.ficha_oficial) {
           setTipoFicha("oficial_crb");
-          setModoOficialAberto(true);
-          setFichaOficialTexto(dc.ficha_oficial.texto);
+          setFoNumeroChamada(dc.ficha_oficial.numero_chamada);
+          setFoEntradaAutor(dc.ficha_oficial.entrada_autor);
+          setFoDescricao(dc.ficha_oficial.descricao_bibliografica);
+          setFoAssuntos(dc.ficha_oficial.assuntos);
+          setFoCdd(dc.ficha_oficial.cdd);
+          setFoCdu(dc.ficha_oficial.cdu);
           setBibliotecarioNome(dc.ficha_oficial.bibliotecario_nome);
           setBibliotecarioCrb(dc.ficha_oficial.bibliotecario_crb);
           setDeclaracaoAceita(true);
         } else if (dc.ficha_catalografica) {
           const f = dc.ficha_catalografica;
-          const cddCdu = [f.cdd && `CDD: ${f.cdd}`, f.cdu && `CDU: ${f.cdu}`].filter(Boolean).join("\n");
-          const preenchido = [
-            f.numero_chamada,
-            f.entrada_autor,
-            f.descricao_bibliografica,
-            f.extensao,
-            "",
-            f.isbn_formatado || "",
-            ...(f.assuntos ?? []),
-            "",
-            cddCdu,
-          ].filter(l => l !== undefined).join("\n");
-          setFichaOficialTexto(preenchido);
+          setFoNumeroChamada(f.numero_chamada);
+          setFoEntradaAutor(f.entrada_autor);
+          setFoDescricao(f.descricao_bibliografica);
+          setFoAssuntos((f.assuntos ?? []).join("\n"));
+          setFoCdd(f.cdd);
+          setFoCdu(f.cdu);
         }
 
         // Fetch fresh signed URL
@@ -278,6 +284,10 @@ export default function CreditosPage() {
       setError("Informe o titular dos direitos autorais.");
       return;
     }
+    if (tipoFicha === "oficial_crb" && !modoOficialValido) {
+      setError("Preencha todos os campos da ficha oficial, o CRB no formato CRB-X/YYYY e aceite a declaração.");
+      return;
+    }
     setStep("processing");
     setError(null);
     setProcessingPct(0);
@@ -330,10 +340,15 @@ export default function CreditosPage() {
           config,
           ...(tipoFicha === "oficial_crb" ? {
             ficha_oficial_input: {
-              texto: fichaOficialTexto.trim(),
-              bibliotecario_nome: bibliotecarioNome.trim(),
-              bibliotecario_crb: bibliotecarioCrb.trim(),
-              declaracao_aceita: declaracaoAceita,
+              numero_chamada:          foNumeroChamada.trim(),
+              entrada_autor:           foEntradaAutor.trim(),
+              descricao_bibliografica: foDescricao.trim(),
+              assuntos:                foAssuntos.trim(),
+              cdd:                     foCdd.trim(),
+              cdu:                     foCdu.trim(),
+              bibliotecario_nome:      bibliotecarioNome.trim(),
+              bibliotecario_crb:       bibliotecarioCrb.trim(),
+              declaracao_aceita:       declaracaoAceita,
             }
           } : {}),
         }),
@@ -455,10 +470,34 @@ export default function CreditosPage() {
           <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-4">
             <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-5">Direitos autorais</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Ano do copyright *" value={anoCopyright} onChange={setAnoCopyright} placeholder="2024" />
-              <Field label="Titular dos direitos *" value={titularDireitos} onChange={setTitularDireitos} placeholder="Nome do autor ou editora" />
-              <Field label="Número da edição" value={numeroEdicao} onChange={setNumeroEdicao} placeholder="1ª edição" />
-              <Field label="Ano da edição" value={anoEdicao} onChange={setAnoEdicao} placeholder="2024" />
+              <Field
+                label="Ano do copyright *"
+                hint="Ano em que a obra foi criada (não confundir com ano da edição)"
+                value={anoCopyright}
+                onChange={setAnoCopyright}
+                placeholder="2024"
+              />
+              <Field
+                label="Titular dos direitos *"
+                hint="Pré-preenchido com o nome do autor. Altere se os direitos pertencerem a outra pessoa/editora."
+                value={titularDireitos}
+                onChange={setTitularDireitos}
+                placeholder="Nome do autor ou editora"
+              />
+              <Field
+                label="Número da edição"
+                hint="1ª edição para a primeira publicação. 2ª em diante para relançamentos com mudanças."
+                value={numeroEdicao}
+                onChange={setNumeroEdicao}
+                placeholder="1ª edição"
+              />
+              <Field
+                label="Ano da edição"
+                hint="Ano em que esta edição específica foi publicada (pode diferir do copyright)"
+                value={anoEdicao}
+                onChange={setAnoEdicao}
+                placeholder="2024"
+              />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-zinc-100">
               <Field
@@ -484,24 +523,39 @@ export default function CreditosPage() {
             open={secEquipe}
             onToggle={() => setSecEquipe(v => !v)}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Tradução" value={traducao} onChange={setTraducao} placeholder="Nome do tradutor" />
-              <Field label="Revisão técnica" value={revisaoTecnica} onChange={setRevisaoTecnica} placeholder="Nome(s)" />
-              <Field label="Revisão" value={revisao} onChange={setRevisao} placeholder="Nome do revisor" />
-              <Field label="Preparação de texto" value={preparacao} onChange={setPreparacao} placeholder="Nome" />
-              <Field label="Diagramação" value={diagramacao} onChange={setDiagramacao} placeholder="Nome ou empresa" />
-              <Field label="Projeto gráfico de capa" value={projetoCapa} onChange={setProjetoCapa} placeholder="Nome ou empresa" />
-              <Field label="Ilustração de capa" value={ilustracaoCapa} onChange={setIlustracaoCapa} placeholder="Ex: Foto: Acervo do autor" />
-              <Field label="Produção editorial" value={producaoEditorial} onChange={setProducaoEditorial} placeholder="Nome" />
+            <div>
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Texto</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Tradução" value={traducao} onChange={setTraducao} placeholder="Nome do tradutor" />
+                <Field label="Revisão técnica" value={revisaoTecnica} onChange={setRevisaoTecnica} placeholder="Nome(s)" />
+                <Field label="Revisão" value={revisao} onChange={setRevisao} placeholder="Nome do revisor" />
+                <Field label="Preparação de texto" value={preparacao} onChange={setPreparacao} placeholder="Nome" />
+              </div>
             </div>
-            <Field
-              label="Outros créditos"
-              hint="Um crédito por linha (ex: Impressão: Gráfica XYZ)"
-              value={outrosCreditos}
-              onChange={setOutrosCreditos}
-              placeholder={"Impressão: Gráfica XYZ\nAcabamento: Encadernações Ltda."}
-              multiline
-            />
+            <div className="pt-4 border-t border-zinc-100">
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Design</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Diagramação" value={diagramacao} onChange={setDiagramacao} placeholder="Nome ou empresa" />
+                <Field label="Projeto gráfico de capa" value={projetoCapa} onChange={setProjetoCapa} placeholder="Nome ou empresa" />
+                <Field label="Ilustração de capa" value={ilustracaoCapa} onChange={setIlustracaoCapa} placeholder="Ex: Foto: Acervo do autor" />
+              </div>
+            </div>
+            <div className="pt-4 border-t border-zinc-100">
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Coordenação</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Produção editorial" value={producaoEditorial} onChange={setProducaoEditorial} placeholder="Nome" />
+              </div>
+              <div className="mt-4">
+                <Field
+                  label="Outros créditos"
+                  hint="Um crédito por linha (ex: Impressão: Gráfica XYZ)"
+                  value={outrosCreditos}
+                  onChange={setOutrosCreditos}
+                  placeholder={"Impressão: Gráfica XYZ\nAcabamento: Encadernações Ltda."}
+                  multiline
+                />
+              </div>
+            </div>
           </SectionToggle>
 
           {/* Editora */}
@@ -511,21 +565,48 @@ export default function CreditosPage() {
             open={secEditora}
             onToggle={() => setSecEditora(v => !v)}
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Nome da editora" value={nomeEditora} onChange={setNomeEditora} placeholder="Editora Autoria Ltda." />
-              <Field label="Local de edição" value={localEdicao} onChange={setLocalEdicao} placeholder="São Paulo" />
-              <Field label="Endereço" value={enderecoEditora} onChange={setEnderecoEditora} placeholder="Rua das Flores, 123" />
-              <Field label="Cidade — Estado" value={cidadeEstado} onChange={setCidadeEstado} placeholder="São Paulo — SP" />
-              <Field label="CEP" value={cep} onChange={setCep} placeholder="01310-100" />
-              <Field label="Site" value={siteEditora} onChange={setSiteEditora} placeholder="www.minhaedotira.com.br" />
-              <Field label="E-mail" value={emailEditora} onChange={setEmailEditora} placeholder="contato@editora.com.br" />
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 leading-relaxed">
+              <strong>Autopublicando?</strong> Deixe o nome da editora em branco. A CBL reconhece
+              <em> Edição do Autor</em> como forma legítima de publicação — o texto aparecerá
+              automaticamente na ficha catalográfica.
+            </div>
+
+            <div>
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Identificação</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
+                  label="Nome da editora"
+                  hint="Deixe em branco para aparecer como 'Edição do Autor'"
+                  value={nomeEditora}
+                  onChange={setNomeEditora}
+                  placeholder="Editora Autoria Ltda."
+                />
+                <Field label="Local de edição" value={localEdicao} onChange={setLocalEdicao} placeholder="São Paulo" />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-100">
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Endereço</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Endereço" value={enderecoEditora} onChange={setEnderecoEditora} placeholder="Rua das Flores, 123" />
+                <Field label="Cidade — Estado" value={cidadeEstado} onChange={setCidadeEstado} placeholder="São Paulo — SP" />
+                <Field label="CEP" value={cep} onChange={setCep} placeholder="01310-100" />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-100">
+              <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Contatos</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Site" value={siteEditora} onChange={setSiteEditora} placeholder="www.minhaeditora.com.br" />
+                <Field label="E-mail" value={emailEditora} onChange={setEmailEditora} placeholder="contato@editora.com.br" />
+              </div>
             </div>
           </SectionToggle>
 
           {/* Ficha catalográfica */}
           <SectionToggle
-            title="Sugestão de ficha catalográfica"
-            hint="Gerada automaticamente pela IA seguindo normas AACR2/RDA"
+            title="Ficha catalográfica"
+            hint="Sugestão gerada por IA ou ficha oficial elaborada por bibliotecário CRB"
             open={secFicha}
             onToggle={() => setSecFicha(v => !v)}
           >
@@ -537,132 +618,181 @@ export default function CreditosPage() {
               >
                 <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${incluirFicha ? "translate-x-4" : "translate-x-0"}`} />
               </div>
-              <span className="text-sm text-zinc-600">Incluir sugestão de ficha catalográfica no verso da folha de rosto</span>
+              <span className="text-sm text-zinc-600">Incluir ficha catalográfica no verso da folha de rosto</span>
             </label>
 
             {incluirFicha && (
               <div className="space-y-4">
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 leading-relaxed">
-                  A IA gera uma <strong>sugestão de ficha catalográfica</strong> a partir dos dados do manuscrito. Para valer legalmente em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em{" "}
-                  <a
-                    href="https://www.cblservicos.org.br/catalogacao/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    cblservicos.org.br
-                  </a>.
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="ISBN" value={isbn} onChange={setIsbn} placeholder="978-65-XXXXX-XX-X" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="CDD" value={cdd} onChange={setCdd} placeholder="869.3" />
-                    <Field label="CDU" value={cdu} onChange={setCdu} placeholder="821.134.3-3" />
-                  </div>
-                </div>
-                <Field
-                  label="Assuntos (opcional)"
-                  hint="Deixe em branco para a IA sugerir com base no gênero. Um assunto por linha."
-                  value={assuntosLivres}
-                  onChange={setAssuntosLivres}
-                  placeholder={"1. Romance brasileiro. I. Título.\n2. Ficção."}
-                  multiline
-                />
-
-                {/* Divisor + bloco de ficha oficial CRB */}
-                <div className="pt-4 mt-2 border-t border-zinc-200">
+                {/* Radio de modo — sugestão IA vs ficha oficial CRB */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setModoOficialAberto(v => !v)}
-                    className="flex items-center gap-2 text-sm text-zinc-700 hover:text-brand-primary transition-colors"
+                    onClick={() => setTipoFicha("sugestao_ia")}
+                    className={`text-left rounded-xl border-2 p-4 transition-all ${
+                      tipoFicha === "sugestao_ia"
+                        ? "border-brand-primary bg-brand-primary/5"
+                        : "border-zinc-200 hover:border-zinc-300"
+                    }`}
                   >
-                    <span className={`inline-block transition-transform ${modoOficialAberto ? "rotate-90" : ""}`}>▸</span>
-                    Já tenho ficha oficial de bibliotecário CRB
-                  </button>
-
-                  {modoOficialAberto && (
-                    <div className="mt-4 space-y-4 rounded-xl border border-zinc-200 p-4 bg-zinc-50">
-                      <div className="text-xs text-zinc-600 leading-relaxed">
-                        Cole aqui a ficha catalográfica oficial que você recebeu do bibliotecário. Se você já gerou a sugestão IA acima, o texto abaixo já vem pré-preenchido para edição. Ao ativar este modo, o disclaimer legal será substituído pela identificação do bibliotecário responsável no PDF final.
+                    <div className="flex items-start gap-3">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
+                        tipoFicha === "sugestao_ia" ? "border-brand-primary" : "border-zinc-300"
+                      }`}>
+                        {tipoFicha === "sugestao_ia" && (
+                          <div className="w-2.5 h-2.5 rounded-full bg-brand-primary" />
+                        )}
                       </div>
-
                       <div>
-                        <label className="text-xs font-semibold text-zinc-600 block mb-1">
-                          Texto integral da ficha oficial
-                        </label>
-                        <textarea
-                          value={fichaOficialTexto}
-                          onChange={e => setFichaOficialTexto(e.target.value)}
-                          placeholder={"C672e\nCOELHO, Mateus, 1985-\nO empreendedor aumentado : subtítulo / Mateus Coelho. – São Paulo : Autoria, 2026.\n67p. : 14 × 21 cm\n\n1. Assunto principal. I. Título.\n2. Outro assunto.\n\nCDD: 658.421\nCDU: 658.012.4:004.8"}
-                          className="w-full min-h-[220px] rounded-lg border border-zinc-300 bg-white p-3 text-sm font-mono leading-relaxed focus:outline-none focus:border-brand-primary"
-                        />
+                        <p className="text-sm font-semibold text-brand-primary">Sugestão gerada por IA</p>
+                        <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+                          Preenche os campos automaticamente a partir do manuscrito. Não substitui bibliotecário CRB.
+                        </p>
                       </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Field
-                          label="Nome do bibliotecário"
-                          value={bibliotecarioNome}
-                          onChange={setBibliotecarioNome}
-                          placeholder="Maria Silva"
-                        />
-                        <div>
-                          <Field
-                            label="Registro CRB"
-                            value={bibliotecarioCrb}
-                            onChange={setBibliotecarioCrb}
-                            placeholder="CRB-8/12345"
-                          />
-                          {bibliotecarioCrb.trim() && !crbValido && (
-                            <p className="text-xs text-red-600 mt-1">
-                              Formato: CRB-X/YYYY (regiões de 1 a 15). Ex: CRB-8/12345
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={declaracaoAceita}
-                          onChange={e => setDeclaracaoAceita(e.target.checked)}
-                          className="mt-1"
-                        />
-                        <span className="text-xs text-zinc-700 leading-relaxed">
-                          Declaro, sob as penas do art. 299 do Código Penal (falsidade ideológica), que a ficha catalográfica acima foi elaborada e assinada por bibliotecário com CRB ativo, e que os dados fornecidos são verdadeiros. Ciente de que declaração falsa gera responsabilidade civil e criminal integral pelo uso indevido da ficha.
-                        </span>
-                      </label>
-
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          disabled={!modoOficialValido}
-                          onClick={() => setTipoFicha("oficial_crb")}
-                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            modoOficialValido && tipoFicha !== "oficial_crb"
-                              ? "bg-brand-primary text-brand-surface hover:bg-[#2a2a4e]"
-                              : tipoFicha === "oficial_crb"
-                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                              : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
-                          }`}
-                        >
-                          {tipoFicha === "oficial_crb" ? "✓ Modo oficial ativo" : "Ativar modo oficial"}
-                        </button>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoFicha("oficial_crb")}
+                    className={`text-left rounded-xl border-2 p-4 transition-all ${
+                      tipoFicha === "oficial_crb"
+                        ? "border-brand-primary bg-brand-primary/5"
+                        : "border-zinc-200 hover:border-zinc-300"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${
+                        tipoFicha === "oficial_crb" ? "border-brand-primary" : "border-zinc-300"
+                      }`}>
                         {tipoFicha === "oficial_crb" && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTipoFicha("sugestao_ia");
-                              setDeclaracaoAceita(false);
-                            }}
-                            className="text-xs text-zinc-600 underline hover:text-zinc-800"
-                          >
-                            Voltar para sugestão IA
-                          </button>
+                          <div className="w-2.5 h-2.5 rounded-full bg-brand-primary" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-brand-primary">Ficha oficial CRB</p>
+                        <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+                          Você já tem a ficha elaborada por bibliotecário. Vale legalmente em editais, bibliotecas e prêmios.
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {tipoFicha === "sugestao_ia" ? (
+                  <>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 leading-relaxed">
+                      A IA gera uma <strong>sugestão de ficha catalográfica</strong> a partir dos dados do manuscrito. Para valer legalmente em bibliotecas, editais e prêmios (Lei 10.753/2003 e Resolução CFB 184/2017), a ficha deve ser revisada e assinada por bibliotecário com CRB ativo. Solicite a ficha oficial em{" "}
+                      <a
+                        href="https://www.cblservicos.org.br/catalogacao/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                      >
+                        cblservicos.org.br
+                      </a>.
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <Field
+                        label="ISBN"
+                        hint="Opcional. Se em branco, aparecerá 'ISBN XXX-XX-XXXXX-XX-X' no lugar."
+                        value={isbn}
+                        onChange={setIsbn}
+                        placeholder="978-65-XXXXX-XX-X"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="CDD" value={cdd} onChange={setCdd} placeholder="869.3" />
+                        <Field label="CDU" value={cdu} onChange={setCdu} placeholder="821.134.3-3" />
+                      </div>
+                    </div>
+                    <Field
+                      label="Assuntos (opcional)"
+                      hint="Deixe em branco para a IA sugerir com base no gênero. Um assunto por linha."
+                      value={assuntosLivres}
+                      onChange={setAssuntosLivres}
+                      placeholder={"1. Romance brasileiro. I. Título.\n2. Ficção."}
+                      multiline
+                    />
+                  </>
+                ) : (
+                  <div className="space-y-4 rounded-xl border border-zinc-200 p-4 bg-zinc-50">
+                    <div className="text-xs text-zinc-600 leading-relaxed">
+                      Cole abaixo os campos da ficha catalográfica oficial que você recebeu do bibliotecário. Se você já gerou a sugestão IA anteriormente, os campos vêm pré-preenchidos para edição. Ao gerar com este modo ativo, o disclaimer legal será substituído pela identificação do bibliotecário responsável no PDF final.
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <Field
+                        label="Número de chamada *"
+                        hint="Cutter-Sanborn ou PHA (ex: C672e, M854i)"
+                        value={foNumeroChamada}
+                        onChange={setFoNumeroChamada}
+                        placeholder="C672e"
+                      />
+                      <Field
+                        label="Entrada do autor *"
+                        hint="Formato: SOBRENOME, Nome[, YYYY-]"
+                        value={foEntradaAutor}
+                        onChange={setFoEntradaAutor}
+                        placeholder="COELHO, Mateus, 1985-"
+                      />
+                    </div>
+
+                    <Field
+                      label="Descrição bibliográfica *"
+                      hint="Título : Subtítulo / Autor. – Edição – Local : Editora, Ano."
+                      value={foDescricao}
+                      onChange={setFoDescricao}
+                      placeholder="O empreendedor aumentado : subtítulo / Mateus Coelho. – São Paulo : Edição do Autor, 2026."
+                      multiline
+                    />
+
+                    <Field
+                      label="Assuntos *"
+                      hint="Um assunto por linha (com numeração, ex: '1. Administração. I. Título.')"
+                      value={foAssuntos}
+                      onChange={setFoAssuntos}
+                      placeholder={"1. Administração. I. Título.\n2. Empreendedorismo."}
+                      multiline
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="CDD *" value={foCdd} onChange={setFoCdd} placeholder="658.421" />
+                      <Field label="CDU *" value={foCdu} onChange={setFoCdu} placeholder="658.012.4:004.8" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-zinc-200">
+                      <Field
+                        label="Nome do bibliotecário *"
+                        value={bibliotecarioNome}
+                        onChange={setBibliotecarioNome}
+                        placeholder="Maria Silva"
+                      />
+                      <div>
+                        <Field
+                          label="Registro CRB *"
+                          value={bibliotecarioCrb}
+                          onChange={setBibliotecarioCrb}
+                          placeholder="CRB-8/12345"
+                        />
+                        {bibliotecarioCrb.trim() && !crbValido && (
+                          <p className="text-xs text-red-600 mt-1">
+                            Formato: CRB-X/YYYY (regiões de 1 a 15). Ex: CRB-8/12345
+                          </p>
                         )}
                       </div>
                     </div>
-                  )}
-                </div>
+
+                    <label className="flex items-start gap-3 cursor-pointer pt-2">
+                      <input
+                        type="checkbox"
+                        checked={declaracaoAceita}
+                        onChange={e => setDeclaracaoAceita(e.target.checked)}
+                        className="mt-1"
+                      />
+                      <span className="text-xs text-zinc-700 leading-relaxed">
+                        Declaro, sob as penas do art. 299 do Código Penal (falsidade ideológica), que a ficha catalográfica acima foi elaborada e assinada por bibliotecário com CRB ativo, e que os dados fornecidos são verdadeiros. Ciente de que declaração falsa gera responsabilidade civil e criminal integral pelo uso indevido da ficha.
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
           </SectionToggle>
@@ -670,7 +800,8 @@ export default function CreditosPage() {
           <button
             type="button"
             onClick={handleGerar}
-            className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
+            disabled={tipoFicha === "oficial_crb" && incluirFicha && !modoOficialValido}
+            className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed"
           >
             Gerar página de créditos →
           </button>

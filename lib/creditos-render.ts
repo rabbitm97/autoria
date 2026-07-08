@@ -94,19 +94,26 @@ export function buildCreditosContentHtml(params: {
     const isOficial = config.tipo_ficha === "oficial_crb" && fichaOficial;
 
     if (isOficial && fichaOficial) {
-      // ── Modo oficial CRB: texto do autor + rodapé com bibliotecário ──────
-      const linhas = fichaOficial.texto
+      // ── Modo oficial CRB: campos estruturados + rodapé com bibliotecário ──
+      const assuntosLinhas = fichaOficial.assuntos
         .split("\n")
-        .map(l => l.trim().length ? `<p style="${S.fichaP}">${esc(l)}</p>` : `<p style="${S.fichaP}">&nbsp;</p>`)
-        .join("\n        ");
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      const oficialInner = `
+          <p style="${S.fichaP}">${esc(fichaOficial.numero_chamada)}</p>
+          <p style="${S.fichaP}">${esc(fichaOficial.entrada_autor)}</p>
+          <p style="${S.fichaP}">${esc(fichaOficial.descricao_bibliografica)}</p>
+          ${assuntosLinhas.length ? `<p style="${S.fichaP}">&nbsp;</p>${assuntosLinhas.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n          ")}` : ""}
+          <p style="${S.fichaP}">&nbsp;</p>
+          <p style="${S.fichaCdd}">CDD: ${esc(fichaOficial.cdd)}<br>CDU: ${esc(fichaOficial.cdu)}</p>`;
 
       fichaHtml = `<div style="${S.fichaWrap}">
     <div style="${S.ficha}">
       <div style="${S.fichaHeader}">
         CATALOGAÇÃO NA PUBLICAÇÃO
       </div>
-      <div>
-        ${linhas}
+      <div>${oficialInner}
       </div>
       <div style="${S.fichaFooterOficial}">
         Ficha catalográfica elaborada por ${esc(fichaOficial.bibliotecario_nome)}<br>
@@ -117,12 +124,17 @@ export function buildCreditosContentHtml(params: {
     } else {
       // ── Modo sugestão IA (pós-1c, comportamento default) ─────────────────
       const f = ficha;
-      const isbn = config.isbn?.trim() || f?.isbn_formatado || "";
+      // ISBN: se autor não forneceu e IA não gerou, mostra placeholder para
+      // sinalizar que precisa ser preenchido antes da publicação.
+      const isbn = config.isbn?.trim() || f?.isbn_formatado || "ISBN XXX-XX-XXXXX-XX-X";
       const assuntos = config.assuntos_livres?.trim()
         ? config.assuntos_livres.split("\n").filter(l => l.trim())
         : (f?.assuntos ?? []);
       const cdd = config.cdd?.trim() || f?.cdd || "";
       const cdu = config.cdu?.trim() || f?.cdu || "";
+      // "Edição do Autor" é a designação da CBL para autopublicação, quando
+      // não há editora registrada com selo próprio.
+      const editoraLabel = config.nome_editora?.trim() || "Edição do Autor";
 
       const fichaInner = f
         ? `<p style="${S.fichaP}">${esc(f.numero_chamada)}</p>
@@ -130,13 +142,15 @@ export function buildCreditosContentHtml(params: {
           <p style="${S.fichaP}">${esc(f.descricao_bibliografica)}</p>
           <p style="${S.fichaP}">${esc(f.extensao)}</p>
           <p style="${S.fichaP}">&nbsp;</p>
-          ${isbn ? `<p style="${S.fichaP}">${esc(isbn)}</p><p style="${S.fichaP}">&nbsp;</p>` : ""}
+          <p style="${S.fichaP}">${esc(isbn)}</p>
+          <p style="${S.fichaP}">&nbsp;</p>
           ${assuntos.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n        ")}
           ${cdd || cdu ? `<p style="${S.fichaP}">&nbsp;</p>
           <p style="${S.fichaCdd}">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`
         : `<p style="${S.fichaP}">${esc(autor)}</p>
-          <p style="${S.fichaP}">${esc(titulo)}${subtitulo ? ` : ${esc(subtitulo)}` : ""}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(config.nome_editora || "Autoria")}, ${config.ano_edicao || config.ano_copyright}.</p>
-          ${isbn ? `<p style="${S.fichaP}">&nbsp;</p><p style="${S.fichaP}">${esc(isbn)}</p>` : ""}
+          <p style="${S.fichaP}">${esc(titulo)}${subtitulo ? ` : ${esc(subtitulo)}` : ""}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(editoraLabel)}, ${config.ano_edicao || config.ano_copyright}.</p>
+          <p style="${S.fichaP}">&nbsp;</p>
+          <p style="${S.fichaP}">${esc(isbn)}</p>
           ${assuntos.length ? `<p style="${S.fichaP}">&nbsp;</p>${assuntos.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n        ")}` : ""}
           ${cdd || cdu ? `<p style="${S.fichaP}">&nbsp;</p>
           <p style="${S.fichaCdd}">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`;

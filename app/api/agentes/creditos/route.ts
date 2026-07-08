@@ -55,11 +55,18 @@ export interface CreditosConfig {
 }
 
 export interface FichaOficialCRB {
-  /** Texto integral da ficha catalográfica oficial, linhas separadas por \n */
-  texto: string;
+  // Campos elaborados pelo bibliotecário
+  numero_chamada: string;
+  entrada_autor: string;
+  descricao_bibliografica: string;
+  assuntos: string;               // texto, uma linha por assunto
+  cdd: string;
+  cdu: string;
+
+  // Identificação e log de aceite
   bibliotecario_nome: string;
-  bibliotecario_crb: string;    // formato: CRB-X/YYYY (ex: CRB-8/12345)
-  declaracao_aceita_em: string; // ISO timestamp
+  bibliotecario_crb: string;      // formato: CRB-X/YYYY (ex: CRB-8/12345)
+  declaracao_aceita_em: string;   // ISO timestamp
   declaracao_ip: string;
   declaracao_user_agent?: string;
 }
@@ -386,7 +393,12 @@ export async function POST(request: NextRequest) {
     project_id: string;
     config: CreditosConfig;
     ficha_oficial_input?: {
-      texto: string;
+      numero_chamada: string;
+      entrada_autor: string;
+      descricao_bibliografica: string;
+      assuntos: string;
+      cdd: string;
+      cdu: string;
       bibliotecario_nome: string;
       bibliotecario_crb: string;
       declaracao_aceita: boolean;
@@ -439,17 +451,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (!fo.texto?.trim()) {
-      return NextResponse.json(
-        { error: "Texto da ficha oficial não pode estar vazio." },
-        { status: 400 }
-      );
-    }
-    if (!fo.bibliotecario_nome?.trim()) {
-      return NextResponse.json(
-        { error: "Nome do bibliotecário obrigatório no modo oficial." },
-        { status: 400 }
-      );
+
+    const camposObrigatorios: Array<[string, string | undefined]> = [
+      ["numero_chamada",           fo.numero_chamada],
+      ["entrada_autor",            fo.entrada_autor],
+      ["descricao_bibliografica",  fo.descricao_bibliografica],
+      ["assuntos",                 fo.assuntos],
+      ["cdd",                      fo.cdd],
+      ["cdu",                      fo.cdu],
+      ["bibliotecario_nome",       fo.bibliotecario_nome],
+    ];
+    for (const [nome, valor] of camposObrigatorios) {
+      if (!valor?.trim()) {
+        return NextResponse.json(
+          { error: `Campo obrigatório no modo oficial: ${nome}.` },
+          { status: 400 }
+        );
+      }
     }
     if (!CRB_REGEX.test(fo.bibliotecario_crb?.trim() ?? "")) {
       return NextResponse.json(
@@ -540,12 +558,17 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get("user-agent") ?? undefined;
 
     fichaOficial = {
-      texto: fo.texto.trim(),
-      bibliotecario_nome: fo.bibliotecario_nome.trim(),
-      bibliotecario_crb: fo.bibliotecario_crb.trim(),
-      declaracao_aceita_em: new Date().toISOString(),
-      declaracao_ip: ip,
-      declaracao_user_agent: userAgent,
+      numero_chamada:          fo.numero_chamada.trim(),
+      entrada_autor:           fo.entrada_autor.trim(),
+      descricao_bibliografica: fo.descricao_bibliografica.trim(),
+      assuntos:                fo.assuntos.trim(),
+      cdd:                     fo.cdd.trim(),
+      cdu:                     fo.cdu.trim(),
+      bibliotecario_nome:      fo.bibliotecario_nome.trim(),
+      bibliotecario_crb:       fo.bibliotecario_crb.trim(),
+      declaracao_aceita_em:    new Date().toISOString(),
+      declaracao_ip:           ip,
+      declaracao_user_agent:   userAgent,
     };
   } else if (configResolved.incluir_ficha) {
     ficha = await gerarFichaCatalografica({
@@ -555,7 +578,7 @@ export async function POST(request: NextRequest) {
       genero,
       paginas: paginasParaFicha,
       ano: configResolved.ano_edicao ?? configResolved.ano_copyright,
-      editora: configResolved.nome_editora ?? "Autoria",
+      editora: configResolved.nome_editora ?? "Edição do Autor",
       local: configResolved.local_edicao ?? "São Paulo",
       isbn: configResolved.isbn ?? "",
       formato: configResolved.formato,
