@@ -66,22 +66,180 @@ export interface CreditosResult {
 // ─── Claude prompt — ficha catalográfica ─────────────────────────────────────
 
 const FALLBACK_PROMPT = `\
-Você é um catalogador de bibliotecas brasileiro especializado em gerar fichas catalográficas \
+Você é um catalogador de bibliotecas brasileiro, especializado em gerar fichas catalográficas \
 seguindo o padrão AACR2/RDA e a norma ABNT NBR 6029. Gere a ficha catalográfica para o livro descrito.
 
-Se houver subtítulo, incluí-lo na descrição bibliográfica no padrão "Título principal : Subtítulo / Autor."
+## REGRAS DE OURO — LEIA COM ATENÇÃO
+
+1. **Caracteres permitidos em CDU, CDD e numero_chamada:** APENAS caracteres ASCII latinos.
+   Use somente dígitos (0-9), letras latinas (A-Z, a-z), ponto (.), dois pontos (:),
+   barra (/), hífen (-), parênteses (), ponto-e-vírgula (;) e espaço.
+   NUNCA use caracteres não-latinos (cirílico, chinês, árabe, grego, etc.),
+   NUNCA use letras acentuadas dentro desses códigos, NUNCA use símbolos exóticos.
+
+2. **Data de nascimento do autor:** só inclua se a data for informada explicitamente
+   no input. Se o input NÃO informar a data de nascimento (ou informar "não informado",
+   "desconhecido" ou similar), a entrada do autor DEVE ser apenas:
+
+   \`SOBRENOME, Nome.\`  (com ponto final, sem vírgula, sem traço, sem placeholder)
+
+   Exemplos CORRETOS:
+   - Com data informada: \`COELHO, Mateus, 1985-\`
+   - Sem data informada: \`COELHO, Mateus.\`
+   - Autor falecido:     \`COELHO, Mateus, 1974-2020.\`
+
+   Exemplos ERRADOS (NUNCA usar):
+   - \`COELHO, Mateus, 199?-\`  (placeholder inventado)
+   - \`COELHO, Mateus, XXXX-\`  (placeholder literal)
+   - \`COELHO, Mateus, -\`      (traço solto)
+
+3. **Subtítulo:** se houver, incluí-lo na descrição bibliográfica no padrão
+   \`Título principal : Subtítulo / Autor.\`
+
+## FORMATO DE RESPOSTA
 
 Retorne EXCLUSIVAMENTE um objeto JSON válido com exatamente estes campos:
 {
-  "numero_chamada": "código de chamada: 1 letra do primeiro assunto + 3 letras iniciais do sobrenome do autor + letra minúscula inicial do título (ex: M854i)",
-  "entrada_autor": "SOBRENOME, Nome, XXXX-  (usar ano de nascimento estimado ou deixar apenas traço após o ano)",
-  "descricao_bibliografica": "Título principal : Subtítulo / Nome Autor. – X. ed. – Local : Editora, Ano. (Se não houver subtítulo, omitir ' : Subtítulo')",
+  "numero_chamada": "código Cutter-Sanborn ou PHA: 1 letra maiúscula do sobrenome do autor + 3 dígitos numéricos + 1 letra minúscula inicial do título (ex: M854i, C672e). Apenas ASCII.",
+  "entrada_autor": "SOBRENOME, Nome[, YYYY-][ | , YYYY-YYYY.] — ver Regra 2 acima",
+  "descricao_bibliografica": "Título principal : Subtítulo / Nome Autor. – X. ed. – Local : Editora, Ano. (Se não houver subtítulo, omitir ' : Subtítulo'. Se não houver indicação de edição, omitir ' – X. ed.')",
   "extensao": "XXXp. : XX × XX cm",
   "isbn_formatado": "ISBN XXX-XX-XXXXX-XX-X  (ou string vazia se não informado)",
-  "assuntos": ["1. Gênero/assunto principal. I. Título.", "mais itens se relevante"],
-  "cdd": "classificação CDD numérica (ex: 869.3 para romance brasileiro)",
-  "cdu": "classificação CDU numérica (ex: 821.134.3-3)"
+  "assuntos": ["1. Assunto principal. I. Título.", "mais itens numerados se relevante"],
+  "cdd": "classificação CDD numérica em ASCII (ex: 869.3, 658.421). APENAS dígitos e ponto.",
+  "cdu": "classificação CDU numérica em ASCII (ex: 821.134.3-3, 658.012.4:004.8). APENAS dígitos, ponto, dois pontos, barra, hífen, parênteses e espaço."
 }`;
+
+// ─── Validação e fallbacks ─────────────────────────────────────────────────
+
+// Regex ASCII-only para códigos de catalogação.
+// CDU aceita: dígitos, . : / - ( ) espaço ;   (ex: 658.012.4:004.8)
+// CDD aceita: dígitos, . espaço                (ex: 658.421)
+// numero_chamada aceita: 1 letra ASCII + dígitos + letra opcional (ex: C672e, M854i)
+const CDU_REGEX = /^[0-9.:/\-()\s;]+$/;
+const CDD_REGEX = /^[0-9.\s]+$/;
+const NUMERO_CHAMADA_REGEX = /^[A-Z][0-9]{1,4}[.\-]?[a-z]?[0-9]?$/;
+
+// Detecta entrada_autor com placeholder alucinado.
+// Casa: `, 199?-`, `, XXXX-`, `, ?-`, `, X-`, trailing `- ` com nada antes,
+// ou qualquer `X`/`?` na área da data.
+const ENTRADA_AUTOR_PLACEHOLDER = /,\s*(?:[X?]+[-]?|[0-9]*\?[-]?|X{2,}[-]?)\s*\.?$/;
+
+// Tabela de fallback CDU/CDD por gênero — usada se o Claude falhar 2x.
+// Baseada em classificações CDU/CDD padrão para autopublicação BR.
+const FALLBACK_CATALOGACAO: Record<string, { cdu: string; cdd: string }> = {
+  // Ficção
+  "ficcao":                 { cdu: "82-3",         cdd: "800"    },
+  "romance":                { cdu: "82-31",        cdd: "808.3"  },
+  "romance_brasileiro":     { cdu: "82-31(81)",    cdd: "869.3"  },
+  "conto":                  { cdu: "82-32",        cdd: "808.31" },
+  "poesia":                 { cdu: "82-1",         cdd: "800.1"  },
+  "poesia_brasileira":      { cdu: "82-1(81)",     cdd: "869.1"  },
+  "teatro":                 { cdu: "82-2",         cdd: "808.2"  },
+  "fantasia":               { cdu: "82-312.9",     cdd: "808.3"  },
+  "ficcao_cientifica":      { cdu: "82-312.9",     cdd: "808.3"  },
+  "suspense":               { cdu: "82-312.4",     cdd: "808.3"  },
+  // Não-ficção pessoal
+  "biografia":              { cdu: "929",          cdd: "920"    },
+  "autobiografia":          { cdu: "929",          cdd: "920"    },
+  "memorias":               { cdu: "82-94",        cdd: "920"    },
+  "ensaio":                 { cdu: "82-4",         cdd: "814"    },
+  // Autoajuda / desenvolvimento pessoal
+  "autoajuda":              { cdu: "159.9.019",    cdd: "158"    },
+  "desenvolvimento_pessoal":{ cdu: "159.923",      cdd: "158.1"  },
+  // Negócios
+  "empreendedorismo":       { cdu: "658.421",      cdd: "658.421"},
+  "administracao":          { cdu: "658",          cdd: "658"    },
+  "gestao":                 { cdu: "658",          cdd: "658"    },
+  "marketing":              { cdu: "658.8",        cdd: "658.8"  },
+  "financas":               { cdu: "332.024",      cdd: "332.024"},
+  "financas_pessoais":      { cdu: "332.024",      cdd: "332.024"},
+  // Educação / conhecimento
+  "educacao":               { cdu: "37",           cdd: "370"    },
+  "psicologia":             { cdu: "159.9",        cdd: "150"    },
+  "filosofia":              { cdu: "1",            cdd: "100"    },
+  "historia":               { cdu: "94",           cdd: "900"    },
+  // Religião
+  "religiao":               { cdu: "2",            cdd: "200"    },
+  "cristianismo":           { cdu: "27",           cdd: "230"    },
+  "espiritualidade":        { cdu: "133",          cdd: "133"    },
+  // Infantojuvenil
+  "infantil":               { cdu: "82-93",        cdd: "808.899"},
+  "juvenil":                { cdu: "82-93",        cdd: "808.899"},
+  // Técnico
+  "tecnico":                { cdu: "62",           cdd: "600"    },
+  "tecnologia":             { cdu: "004",          cdd: "004"    },
+  "programacao":            { cdu: "004.4",        cdd: "005.1"  },
+  // Saúde
+  "saude":                  { cdu: "61",           cdd: "610"    },
+  "medicina":               { cdu: "61",           cdd: "610"    },
+  "nutricao":               { cdu: "612.3",        cdd: "613.2"  },
+  "culinaria":              { cdu: "641",          cdd: "641"    },
+  // Outros
+  "esportes":               { cdu: "796",          cdd: "796"    },
+  "arte":                   { cdu: "7",            cdd: "700"    },
+  "literatura":             { cdu: "82",           cdd: "800"    },
+};
+
+const FALLBACK_GENERICO = { cdu: "82", cdd: "800" };
+
+function normalizarGenero(g: string): string {
+  return g
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function fallbackPorGenero(genero: string): { cdu: string; cdd: string } {
+  const key = normalizarGenero(genero);
+  if (FALLBACK_CATALOGACAO[key]) return FALLBACK_CATALOGACAO[key];
+  for (const [k, v] of Object.entries(FALLBACK_CATALOGACAO)) {
+    if (key.startsWith(k) || key.includes(k)) return v;
+  }
+  return FALLBACK_GENERICO;
+}
+
+function sanearFicha(
+  ficha: FichaCatalografica,
+  genero: string,
+  autorNome: string
+): { ficha: FichaCatalografica; correcoes: string[] } {
+  const correcoes: string[] = [];
+  const saneada: FichaCatalografica = { ...ficha };
+
+  if (ENTRADA_AUTOR_PLACEHOLDER.test(saneada.entrada_autor)) {
+    const partes = autorNome.trim().split(/\s+/);
+    if (partes.length >= 2) {
+      const sobrenome = partes[partes.length - 1].toUpperCase();
+      const nome = partes.slice(0, -1).join(" ");
+      saneada.entrada_autor = `${sobrenome}, ${nome}.`;
+    } else {
+      saneada.entrada_autor = `${autorNome}.`;
+    }
+    correcoes.push("entrada_autor_placeholder_removido");
+  }
+
+  if (!CDU_REGEX.test(saneada.cdu)) {
+    saneada.cdu = fallbackPorGenero(genero).cdu;
+    correcoes.push("cdu_fallback");
+  }
+
+  if (!CDD_REGEX.test(saneada.cdd)) {
+    saneada.cdd = fallbackPorGenero(genero).cdd;
+    correcoes.push("cdd_fallback");
+  }
+
+  if (!NUMERO_CHAMADA_REGEX.test(saneada.numero_chamada)) {
+    const partes = autorNome.trim().split(/\s+/);
+    const sobrenome = partes[partes.length - 1] || "A";
+    const inicial = sobrenome.charAt(0).toUpperCase();
+    saneada.numero_chamada = `${inicial}000`;
+    correcoes.push("numero_chamada_fallback");
+  }
+
+  return { ficha: saneada, correcoes };
+}
 
 async function gerarFichaCatalografica(params: {
   titulo: string;
@@ -101,33 +259,69 @@ async function gerarFichaCatalografica(params: {
   const dim = { w: `${width_cm}cm`, h: `${height_cm}cm` };
   const FICHA_PROMPT = await getAgentPrompt("creditos", FALLBACK_PROMPT);
 
-  try {
-    const fichaUserContent = `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\n` +
-      (subtitulo ? `Subtítulo: ${subtitulo}\n` : "") +
-      `Autor: ${autor}\nGênero: ${genero}\n` +
-      `Páginas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
-      `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`;
-    const msg = await traceClaudeCall({
-      agentName: "creditos",
-      projectId: context?.projectId,
-      userId: context?.userId,
-      model: "claude-sonnet-4-6",
-      input: { system: FICHA_PROMPT, messages: [{ role: "user", content: fichaUserContent }] },
-      fn: () => anthropic.messages.create({
+  const fichaUserContent = `Gere a ficha catalográfica para:\n\nTítulo: ${titulo}\n` +
+    (subtitulo ? `Subtítulo: ${subtitulo}\n` : "") +
+    `Autor: ${autor}\n` +
+    `Data de nascimento do autor: não informada (aplicar Regra 2: entrada apenas com SOBRENOME, Nome.)\n` +
+    `Gênero: ${genero}\n` +
+    `Páginas: ${paginas}\nAno: ${ano}\nEditora: ${editora || "Autoria"}\nLocal: ${local || "São Paulo"}\n` +
+    `ISBN: ${isbn || "não informado"}\nFormato: ${dim.w} × ${dim.h}`;
+
+  const RETRY_REINFORCEMENT = `\n\n## ATENÇÃO — TENTATIVA 2 DE 2
+
+A tentativa anterior violou uma ou mais regras. Verifique:
+- CDU, CDD e numero_chamada usam APENAS caracteres ASCII latinos (0-9, A-Z, a-z, . : / - ( ) ; espaço).
+- Se o input diz "Data de nascimento não informada", a entrada_autor é APENAS "SOBRENOME, Nome." — não inclua ano, traço ou placeholder.
+- Retorne APENAS o JSON, sem texto adicional.`;
+
+  async function callClaude(reforcado: boolean): Promise<FichaCatalografica | null> {
+    try {
+      const system = reforcado ? FICHA_PROMPT + RETRY_REINFORCEMENT : FICHA_PROMPT;
+      const msg = await traceClaudeCall({
+        agentName: reforcado ? "creditos-retry" : "creditos",
+        projectId: context?.projectId,
+        userId: context?.userId,
         model: "claude-sonnet-4-6",
-        max_tokens: 512,
-        system: FICHA_PROMPT,
-        messages: [{ role: "user", content: fichaUserContent }],
-      }),
-    });
-    const raw = extractText(msg.content);
-    const data = parseLLMJson<FichaCatalografica>(raw);
-    if (!data?.numero_chamada) return null;
-    return data;
-  } catch (err) {
-    console.error("[creditos] gerarFichaCatalografica falhou:", err);
+        input: { system, messages: [{ role: "user", content: fichaUserContent }] },
+        fn: () => anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 512,
+          system,
+          messages: [{ role: "user", content: fichaUserContent }],
+        }),
+      });
+      const raw = extractText(msg.content);
+      const data = parseLLMJson<FichaCatalografica>(raw);
+      if (!data?.numero_chamada) return null;
+      return data;
+    } catch (err) {
+      console.error(`[creditos] gerarFichaCatalografica ${reforcado ? "(retry)" : ""} falhou:`, err);
+      return null;
+    }
+  }
+
+  const t1 = await callClaude(false);
+  if (t1) {
+    const cduOk = CDU_REGEX.test(t1.cdu);
+    const cddOk = CDD_REGEX.test(t1.cdd);
+    const numeroOk = NUMERO_CHAMADA_REGEX.test(t1.numero_chamada);
+    const autorOk = !ENTRADA_AUTOR_PLACEHOLDER.test(t1.entrada_autor);
+    if (cduOk && cddOk && numeroOk && autorOk) return t1;
+    console.warn("[creditos] Tentativa 1 falhou validação:", { cduOk, cddOk, numeroOk, autorOk, cdu: t1.cdu, cdd: t1.cdd, entrada_autor: t1.entrada_autor });
+  }
+
+  const t2 = await callClaude(true);
+  const base = t2 ?? t1;
+  if (!base) {
+    console.error("[creditos] Ambas tentativas retornaram null. Sem ficha.");
     return null;
   }
+
+  const { ficha: sanitizada, correcoes } = sanearFicha(base, genero, autor);
+  if (correcoes.length) {
+    console.warn("[creditos] Ficha sanitizada por fallback determinístico:", correcoes);
+  }
+  return sanitizada;
 }
 
 // ─── HTML builder — standalone preview/download envelope ─────────────────────
