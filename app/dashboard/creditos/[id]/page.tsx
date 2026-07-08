@@ -18,14 +18,63 @@ const PROCESSING_MSGS = [
   "Finalizando visualização…",
 ];
 
+// ─── Formatters e validadores (Bloco 1i) ─────────────────────────────────────
+
+function formatCDD(input: string): string {
+  const digits = input.replace(/\D/g, "").slice(0, 9);
+  if (digits.length <= 3) return digits;
+  return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+}
+const CDD_REGEX = /^\d{3}(\.\d{1,6})?$/;
+
+function formatCDU(input: string): string {
+  return input.replace(/[^0-9.:()"=\-'\[\]/]/g, "");
+}
+const CDU_REGEX = /^\d[\d.:()"=\-'\[\]/]*$/;
+
+function formatISBN(input: string): string {
+  const digits = input.replace(/\D/g, "").slice(0, 13);
+  const parts: string[] = [];
+  if (digits.length > 0)  parts.push(digits.slice(0, 3));
+  if (digits.length > 3)  parts.push(digits.slice(3, 5));
+  if (digits.length > 5)  parts.push(digits.slice(5, 10));
+  if (digits.length > 10) parts.push(digits.slice(10, 12));
+  if (digits.length > 12) parts.push(digits.slice(12, 13));
+  return parts.join("-");
+}
+const ISBN_REGEX = /^97[89]-\d{2}-\d{5}-\d{2}-\d$/;
+
+function formatNumeroChamada(input: string): string {
+  const cleaned = input.replace(/[^A-Za-z0-9]/g, "").slice(0, 7);
+  if (cleaned.length === 0) return "";
+  const first = cleaned[0].toUpperCase();
+  const middle = cleaned.slice(1, -1).replace(/\D/g, "");
+  const last = cleaned.length > 1 ? cleaned[cleaned.length - 1] : "";
+  const lastChar = /[a-zA-Z]/.test(last) ? last.toLowerCase() : last.replace(/\D/g, "");
+  return first + middle + lastChar;
+}
+const CUTTER_REGEX = /^[A-Z]\d{2,5}[a-z]?$/;
+
+function formatCRBNumero(input: string): string {
+  return input.replace(/\D/g, "").slice(0, 6);
+}
+const CRB_NUMERO_REGEX = /^\d{1,6}$/;
+
+const CRB_REGIOES = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"] as const;
+
 // ─── Field row helper ─────────────────────────────────────────────────────────
 
 function Field({
-  label, hint, value, onChange, placeholder, multiline,
+  label, hint, value, onChange, placeholder, multiline, error,
 }: {
   label: string; hint?: string; value: string;
   onChange: (v: string) => void; placeholder?: string; multiline?: boolean;
+  error?: string;
 }) {
+  const hasError = Boolean(error);
+  const borderClass = hasError
+    ? "border-red-300 focus:border-red-500"
+    : "border-zinc-200 focus:border-brand-gold";
   return (
     <div>
       <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
@@ -38,7 +87,7 @@ function Field({
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           rows={3}
-          className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold resize-none"
+          className={`w-full border ${borderClass} rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none resize-none`}
         />
       ) : (
         <input
@@ -46,9 +95,10 @@ function Field({
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:border-brand-gold"
+          className={`w-full border ${borderClass} rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none`}
         />
       )}
+      {hasError && <p className="text-xs text-red-600 mt-1">{error}</p>}
     </div>
   );
 }
@@ -154,18 +204,27 @@ export default function CreditosPage() {
   const [foCdd, setFoCdd] = useState("");
   const [foCdu, setFoCdu] = useState("");
   const [bibliotecarioNome, setBibliotecarioNome] = useState("");
-  const [bibliotecarioCrb, setBibliotecarioCrb] = useState("");
+  const [crbRegiao, setCrbRegiao] = useState("");
+  const [crbNumero, setCrbNumero] = useState("");
   const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
 
-  const CRB_REGEX_CLIENT = /^CRB-([1-9]|1[0-5])\/\d{1,6}$/;
-  const crbValido = CRB_REGEX_CLIENT.test(bibliotecarioCrb.trim());
+  // Bloco 1i: validações de formato dos campos mascarados.
+  const isbnInvalido      = isbn.trim().length > 0 && !ISBN_REGEX.test(isbn.trim());
+  const numeroChamadaInvalido = foNumeroChamada.trim().length > 0 && !CUTTER_REGEX.test(foNumeroChamada.trim());
+  const cddInvalido       = foCdd.trim().length > 0 && !CDD_REGEX.test(foCdd.trim());
+  const cduInvalido       = foCdu.trim().length > 0 && !CDU_REGEX.test(foCdu.trim());
+  const crbNumeroInvalido = crbNumero.trim().length > 0 && !CRB_NUMERO_REGEX.test(crbNumero.trim());
+
+  const crbValido = crbRegiao !== "" && CRB_NUMERO_REGEX.test(crbNumero.trim());
+  const bibliotecarioCrb = crbValido ? `CRB-${crbRegiao}/${crbNumero.trim()}` : "";
+
   const modoOficialValido =
-    foNumeroChamada.trim().length > 0 &&
+    foNumeroChamada.trim().length > 0 && !numeroChamadaInvalido &&
     foEntradaAutor.trim().length > 0 &&
     foDescricao.trim().length > 0 &&
     foAssuntos.trim().length > 0 &&
-    foCdd.trim().length > 0 &&
-    foCdu.trim().length > 0 &&
+    foCdd.trim().length > 0 && !cddInvalido &&
+    foCdu.trim().length > 0 && !cduInvalido &&
     bibliotecarioNome.trim().length > 0 &&
     crbValido &&
     declaracaoAceita;
@@ -213,7 +272,12 @@ export default function CreditosPage() {
           setFoCdd(existing.ficha_oficial.cdd);
           setFoCdu(existing.ficha_oficial.cdu);
           setBibliotecarioNome(existing.ficha_oficial.bibliotecario_nome);
-          setBibliotecarioCrb(existing.ficha_oficial.bibliotecario_crb);
+          // Bloco 1i: split "CRB-8/12345" em região + número.
+          const crbMatch = existing.ficha_oficial.bibliotecario_crb.match(/^CRB-([1-9]|1[0-5])\/(\d{1,6})$/);
+          if (crbMatch) {
+            setCrbRegiao(crbMatch[1]);
+            setCrbNumero(crbMatch[2]);
+          }
           setDeclaracaoAceita(true);
         }
 
@@ -648,8 +712,9 @@ export default function CreditosPage() {
                       ? "Obrigatório em publicação completa. Registre em cblservicos.org.br"
                       : "Opcional. Se preenchido, aparece na página de créditos."}
                     value={isbn}
-                    onChange={setIsbn}
+                    onChange={v => setIsbn(formatISBN(v))}
                     placeholder="978-65-XXXXX-XX-X"
+                    error={isbnInvalido ? "Formato: 978-XX-XXXXX-XX-X (13 dígitos, prefixo 978 ou 979)." : undefined}
                   />
                 </div>
               </section>
@@ -767,8 +832,9 @@ export default function CreditosPage() {
                       label="Número de chamada *"
                       hint="Cutter-Sanborn ou PHA (ex: C672e, M854i)"
                       value={foNumeroChamada}
-                      onChange={setFoNumeroChamada}
+                      onChange={v => setFoNumeroChamada(formatNumeroChamada(v))}
                       placeholder="C672e"
+                      error={numeroChamadaInvalido ? "Formato: letra maiúscula + 2 a 5 dígitos + letra minúscula opcional (ex: C672e)." : undefined}
                     />
                     <Field
                       label="Entrada do autor *"
@@ -806,8 +872,20 @@ export default function CreditosPage() {
                   />
 
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="CDD *" value={foCdd} onChange={setFoCdd} placeholder="658.421" />
-                    <Field label="CDU *" value={foCdu} onChange={setFoCdu} placeholder="658.012.4:004.8" />
+                    <Field
+                      label="CDD *"
+                      value={foCdd}
+                      onChange={v => setFoCdd(formatCDD(v))}
+                      placeholder="658.421"
+                      error={cddInvalido ? "Formato: 3 dígitos + ponto + até 6 decimais (ex: 658.421)." : undefined}
+                    />
+                    <Field
+                      label="CDU *"
+                      value={foCdu}
+                      onChange={v => setFoCdu(formatCDU(v))}
+                      placeholder="658.012.4:004.8"
+                      error={cduInvalido ? "Deve começar com dígito. Aceita apenas dígitos e . : ( ) \" = - ' [ ] /." : undefined}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-zinc-200">
@@ -818,16 +896,34 @@ export default function CreditosPage() {
                       placeholder="Maria Silva"
                     />
                     <div>
-                      <Field
-                        label="Registro CRB *"
-                        value={bibliotecarioCrb}
-                        onChange={setBibliotecarioCrb}
-                        placeholder="CRB-8/12345"
-                      />
-                      {bibliotecarioCrb.trim() && !crbValido && (
-                        <p className="text-xs text-red-600 mt-1">
-                          Formato: CRB-X/YYYY (regiões de 1 a 15). Ex: CRB-8/12345
-                        </p>
+                      <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                        Registro CRB *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={crbRegiao}
+                          onChange={e => setCrbRegiao(e.target.value)}
+                          className={`w-full border ${!crbRegiao && crbNumero.trim() ? "border-red-300 focus:border-red-500" : "border-zinc-200 focus:border-brand-gold"} rounded-lg px-3 py-2 text-sm text-zinc-800 focus:outline-none bg-white`}
+                        >
+                          <option value="">Região…</option>
+                          {CRB_REGIOES.map(r => (
+                            <option key={r} value={r}>CRB-{r}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={crbNumero}
+                          onChange={e => setCrbNumero(formatCRBNumero(e.target.value))}
+                          placeholder="12345"
+                          className={`w-full border ${crbNumeroInvalido ? "border-red-300 focus:border-red-500" : "border-zinc-200 focus:border-brand-gold"} rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none`}
+                        />
+                      </div>
+                      {crbValido && (
+                        <p className="text-xs text-zinc-500 mt-1">Registro: {bibliotecarioCrb}</p>
+                      )}
+                      {!crbRegiao && crbNumero.trim() && (
+                        <p className="text-xs text-red-600 mt-1">Selecione a região do CRB.</p>
                       )}
                     </div>
                   </div>
@@ -851,7 +947,11 @@ export default function CreditosPage() {
           <button
             type="button"
             onClick={handleGerar}
-            disabled={isCompleta && !modoOficialValido}
+            disabled={
+              (isCompleta && !modoOficialValido) ||
+              isbnInvalido ||
+              (isCompleta && isbn.trim() === "")
+            }
             className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed"
           >
             {!geraCreditos
