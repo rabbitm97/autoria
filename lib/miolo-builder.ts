@@ -197,12 +197,35 @@ function cornerSvgUrl(corner: "tl" | "tr" | "bl" | "br"): string {
   return `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
 }
 
+// ─── Font-family CSS por template ────────────────────────────────────────────
+// Retorna a cadeia de fallback CSS para o body de cada template.
+// Usada em dois contextos:
+//   (1) TEMPLATE_SPECIFIC_CSS já tem `body { font-family: ... }` embutido
+//   (2) O `@page @bottom-center` precisa da mesma cadeia — `inherit` não
+//       funciona no contexto de margin boxes do Chromium.
+
+function getBodyFontFamily(template: TemplateId): string {
+  switch (template) {
+    case "literario":         return "'EB Garamond', Georgia, 'Times New Roman', serif";
+    case "literario_moderno": return "'Spectral', Georgia, serif";
+    case "memorial":          return "'Source Serif 4', Georgia, serif";
+    case "nao_ficcao":        return "'Source Serif 4', Georgia, serif";
+    case "academico":         return "'Crimson Pro', Georgia, serif";
+    case "abnt":              return "'Times New Roman', Times, serif";
+    case "poesia":            return "'Crimson Text', Georgia, serif";
+    case "teatro":            return "'Crimson Text', Georgia, serif";
+    case "infantil":          return "'Andika', 'Lora', Georgia, sans-serif";
+    case "juvenil":           return "'Lora', Georgia, serif";
+    case "religioso":         return "'Gentium Book Plus', Georgia, serif";
+  }
+}
+
 // ─── CSS de @page para um formato ────────────────────────────────────────────
 // Gera o bloco @page completo: tamanho da folha (com sangria), margens
 // editoriais (sangria + margem), marcas de corte nos 4 cantos, numeração no
 // rodapé. Inclui também o @page no-num para o front matter.
 
-function buildPageCss(spec: FormatoSpecs, includeMarks: boolean): string {
+function buildPageCss(spec: FormatoSpecs, includeMarks: boolean, template: TemplateId): string {
   const B = spec.bleed_mm;
   const W = spec.width_mm + 2 * B;
   const H = spec.height_mm + 2 * B;
@@ -226,7 +249,7 @@ function buildPageCss(spec: FormatoSpecs, includeMarks: boolean): string {
   margin: ${mT}mm ${mO}mm ${mB}mm ${mI}mm;${marksBlock}
   @bottom-center {
     content: counter(page);
-    font-family: inherit;
+    font-family: ${getBodyFontFamily(template)};
     font-size: 9pt;
     color: #555;
     margin-bottom: 12mm;
@@ -1153,7 +1176,7 @@ export function buildBookHtml(params: {
   // O builder digital (lib/miolo-builder-digital.ts) reescreve o @page
   // posteriormente para remover sangria e marcas.
   const css =
-    buildPageCss(spec, true) +
+    buildPageCss(spec, true, config.template) +
     buildBaseCss(corpoPt) +
     buildFontFaceCss(config.template) +
     TEMPLATE_SPECIFIC_CSS[config.template];
