@@ -9,7 +9,7 @@ import { buildBookHtml, clampCorpoPt } from "@/lib/miolo-builder";
 import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas, estimarLombadaMm } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml, type FichaCatalografica } from "@/lib/creditos-render";
-import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
+import type { CreditosConfig, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
     paginas_usadas?: number;
     config?: CreditosConfig;
     ficha_catalografica?: FichaCatalografica;
+    ficha_oficial?: FichaOficialCRB;
   } | null;
 
   if (!dadosCreditos?.html_storage_path || !dadosCreditos?.input_hash) {
@@ -243,6 +244,7 @@ export async function POST(request: NextRequest) {
   const creditosInnerHtml = buildCreditosContentHtml({
     config: dadosCreditos.config,
     ficha: dadosCreditos.ficha_catalografica ?? null,
+    fichaOficial: dadosCreditos.ficha_oficial,
     titulo,
     subtitulo,
     autor,

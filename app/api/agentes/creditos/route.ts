@@ -45,17 +45,29 @@ export interface CreditosConfig {
   site_editora?: string;
   email_editora?: string;
 
-  // Sugestão de ficha catalográfica
+  // Ficha catalográfica — sugestão IA por padrão
   incluir_ficha: boolean;
+  tipo_ficha?: "sugestao_ia" | "oficial_crb"; // default: 'sugestao_ia'
   isbn?: string;
   assuntos_livres?: string;       // ex: "1. Romance brasileiro. 2. Ficção."
   cdd?: string;
   cdu?: string;
 }
 
+export interface FichaOficialCRB {
+  /** Texto integral da ficha catalográfica oficial, linhas separadas por \n */
+  texto: string;
+  bibliotecario_nome: string;
+  bibliotecario_crb: string;    // formato: CRB-X/YYYY (ex: CRB-8/12345)
+  declaracao_aceita_em: string; // ISO timestamp
+  declaracao_ip: string;
+  declaracao_user_agent?: string;
+}
+
 export interface CreditosResult {
   config: CreditosConfig;
   ficha_catalografica?: FichaCatalografica;
+  ficha_oficial?: FichaOficialCRB;
   html_storage_path: string;
   input_hash: string;
   paginas_usadas: number;
@@ -329,6 +341,7 @@ A tentativa anterior violou uma ou mais regras. Verifique:
 function buildCreditosStandaloneHtml(params: {
   config: CreditosConfig;
   ficha: FichaCatalografica | null;
+  fichaOficial?: FichaOficialCRB;
   titulo: string;
   subtitulo: string;
   autor: string;
@@ -369,7 +382,16 @@ export async function POST(request: NextRequest) {
     return res as Response;
   }
 
-  let body: { project_id: string; config: CreditosConfig };
+  let body: {
+    project_id: string;
+    config: CreditosConfig;
+    ficha_oficial_input?: {
+      texto: string;
+      bibliotecario_nome: string;
+      bibliotecario_crb: string;
+      declaracao_aceita: boolean;
+    };
+  };
   try {
     body = await request.json();
   } catch {
@@ -403,6 +425,44 @@ export async function POST(request: NextRequest) {
       { error: "Campo obrigatório: incluir_ficha (booleano)." },
       { status: 400 }
     );
+  }
+
+  // Se modo oficial CRB: validar dados do bibliotecário
+  const CRB_REGEX = /^CRB-([1-9]|1[0-5])\/\d{1,6}$/;
+  const isOficial = config.tipo_ficha === "oficial_crb";
+
+  if (isOficial) {
+    const fo = body.ficha_oficial_input;
+    if (!fo) {
+      return NextResponse.json(
+        { error: "Modo ficha oficial requer dados do bibliotecário." },
+        { status: 400 }
+      );
+    }
+    if (!fo.texto?.trim()) {
+      return NextResponse.json(
+        { error: "Texto da ficha oficial não pode estar vazio." },
+        { status: 400 }
+      );
+    }
+    if (!fo.bibliotecario_nome?.trim()) {
+      return NextResponse.json(
+        { error: "Nome do bibliotecário obrigatório no modo oficial." },
+        { status: 400 }
+      );
+    }
+    if (!CRB_REGEX.test(fo.bibliotecario_crb?.trim() ?? "")) {
+      return NextResponse.json(
+        { error: "CRB inválido. Formato esperado: CRB-X/YYYY (ex: CRB-8/12345)." },
+        { status: 400 }
+      );
+    }
+    if (fo.declaracao_aceita !== true) {
+      return NextResponse.json(
+        { error: "Declaração de veracidade deve ser aceita." },
+        { status: 400 }
+      );
+    }
   }
 
   // Load project data
@@ -467,9 +527,27 @@ export async function POST(request: NextRequest) {
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
   const genero = ms?.genero_principal ?? "Literatura";
 
-  // Generate ficha catalográfica via Claude if requested
+  // Modo oficial CRB: pula Claude e monta ficha_oficial com log de aceite
   let ficha: FichaCatalografica | null = null;
-  if (configResolved.incluir_ficha) {
+  let fichaOficial: FichaOficialCRB | undefined = undefined;
+
+  if (isOficial && body.ficha_oficial_input) {
+    const fo = body.ficha_oficial_input;
+    // Log de IP + user_agent para blindagem legal
+    const forwardedFor = request.headers.get("x-forwarded-for");
+    const realIp = request.headers.get("x-real-ip");
+    const ip = forwardedFor?.split(",")[0]?.trim() || realIp || "desconhecido";
+    const userAgent = request.headers.get("user-agent") ?? undefined;
+
+    fichaOficial = {
+      texto: fo.texto.trim(),
+      bibliotecario_nome: fo.bibliotecario_nome.trim(),
+      bibliotecario_crb: fo.bibliotecario_crb.trim(),
+      declaracao_aceita_em: new Date().toISOString(),
+      declaracao_ip: ip,
+      declaracao_user_agent: userAgent,
+    };
+  } else if (configResolved.incluir_ficha) {
     ficha = await gerarFichaCatalografica({
       titulo,
       subtitulo,
@@ -489,7 +567,7 @@ export async function POST(request: NextRequest) {
   // para os créditos ficarem tipograficamente coerentes com o resto do livro.
   const template = mioloData?.config?.template;
   const bodyFontFamily = template ? getBodyFontFamily(template) : undefined;
-  const html = buildCreditosStandaloneHtml({ config: configResolved, ficha, titulo, subtitulo, autor, bodyFontFamily });
+  const html = buildCreditosStandaloneHtml({ config: configResolved, ficha, fichaOficial, titulo, subtitulo, autor, bodyFontFamily });
 
   const inputHash = calcularCreditosInputHash({
     titulo,
@@ -548,6 +626,7 @@ export async function POST(request: NextRequest) {
   const result: CreditosResult = {
     config: configResolved,
     ficha_catalografica: ficha ?? undefined,
+    ficha_oficial: fichaOficial,
     html_storage_path: storagePath,
     input_hash: inputHash,
     paginas_usadas: paginasParaFicha,

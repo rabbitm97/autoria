@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
-import type { CreditosConfig, CreditosResult } from "@/app/api/agentes/creditos/route";
+import type { CreditosConfig, CreditosResult, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
+import type { FichaCatalografica } from "@/lib/creditos-render";
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 
@@ -144,6 +145,22 @@ export default function CreditosPage() {
   const [cdd, setCdd] = useState("");
   const [cdu, setCdu] = useState("");
 
+  // Modo ficha oficial CRB (Bloco 1d)
+  const [tipoFicha, setTipoFicha] = useState<"sugestao_ia" | "oficial_crb">("sugestao_ia");
+  const [modoOficialAberto, setModoOficialAberto] = useState(false);
+  const [fichaOficialTexto, setFichaOficialTexto] = useState("");
+  const [bibliotecarioNome, setBibliotecarioNome] = useState("");
+  const [bibliotecarioCrb, setBibliotecarioCrb] = useState("");
+  const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
+
+  const CRB_REGEX_CLIENT = /^CRB-([1-9]|1[0-5])\/\d{1,6}$/;
+  const crbValido = CRB_REGEX_CLIENT.test(bibliotecarioCrb.trim());
+  const modoOficialValido =
+    fichaOficialTexto.trim().length > 20 &&
+    bibliotecarioNome.trim().length > 0 &&
+    crbValido &&
+    declaracaoAceita;
+
   // ── Load ─────────────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
@@ -172,6 +189,35 @@ export default function CreditosPage() {
       if (existing) {
         setCreditos(existing);
         restoreConfig(existing.config);
+
+        // Hidratar modo oficial CRB se já foi salvo antes; caso contrário,
+        // pré-preencher textarea do modo oficial com a sugestão IA existente
+        // (autor edita a partir dela em vez de começar do zero).
+        const dc = existing as { config?: CreditosConfig; ficha_catalografica?: FichaCatalografica; ficha_oficial?: FichaOficialCRB };
+        if (dc.config?.tipo_ficha === "oficial_crb" && dc.ficha_oficial) {
+          setTipoFicha("oficial_crb");
+          setModoOficialAberto(true);
+          setFichaOficialTexto(dc.ficha_oficial.texto);
+          setBibliotecarioNome(dc.ficha_oficial.bibliotecario_nome);
+          setBibliotecarioCrb(dc.ficha_oficial.bibliotecario_crb);
+          setDeclaracaoAceita(true);
+        } else if (dc.ficha_catalografica) {
+          const f = dc.ficha_catalografica;
+          const cddCdu = [f.cdd && `CDD: ${f.cdd}`, f.cdu && `CDU: ${f.cdu}`].filter(Boolean).join("\n");
+          const preenchido = [
+            f.numero_chamada,
+            f.entrada_autor,
+            f.descricao_bibliografica,
+            f.extensao,
+            "",
+            f.isbn_formatado || "",
+            ...(f.assuntos ?? []),
+            "",
+            cddCdu,
+          ].filter(l => l !== undefined).join("\n");
+          setFichaOficialTexto(preenchido);
+        }
+
         // Fetch fresh signed URL
         const res = await fetch(`/api/agentes/creditos?project_id=${projectId}`);
         if (res.ok) {
@@ -268,6 +314,7 @@ export default function CreditosPage() {
       site_editora:     siteEditora.trim()       || undefined,
       email_editora:    emailEditora.trim()      || undefined,
       incluir_ficha: incluirFicha,
+      tipo_ficha: tipoFicha,
       isbn:           isbn.trim()  || undefined,
       assuntos_livres: assuntosLivres.trim() || undefined,
       cdd:            cdd.trim()   || undefined,
@@ -278,7 +325,18 @@ export default function CreditosPage() {
       const res = await fetch("/api/agentes/creditos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, config }),
+        body: JSON.stringify({
+          project_id: projectId,
+          config,
+          ...(tipoFicha === "oficial_crb" ? {
+            ficha_oficial_input: {
+              texto: fichaOficialTexto.trim(),
+              bibliotecario_nome: bibliotecarioNome.trim(),
+              bibliotecario_crb: bibliotecarioCrb.trim(),
+              declaracao_aceita: declaracaoAceita,
+            }
+          } : {}),
+        }),
       });
       const data = await res.json() as { ok?: boolean; creditos?: CreditosResult; preview_url?: string; html?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar página de créditos.");
@@ -510,6 +568,101 @@ export default function CreditosPage() {
                   placeholder={"1. Romance brasileiro. I. Título.\n2. Ficção."}
                   multiline
                 />
+
+                {/* Divisor + bloco de ficha oficial CRB */}
+                <div className="pt-4 mt-2 border-t border-zinc-200">
+                  <button
+                    type="button"
+                    onClick={() => setModoOficialAberto(v => !v)}
+                    className="flex items-center gap-2 text-sm text-zinc-700 hover:text-brand-primary transition-colors"
+                  >
+                    <span className={`inline-block transition-transform ${modoOficialAberto ? "rotate-90" : ""}`}>▸</span>
+                    Já tenho ficha oficial de bibliotecário CRB
+                  </button>
+
+                  {modoOficialAberto && (
+                    <div className="mt-4 space-y-4 rounded-xl border border-zinc-200 p-4 bg-zinc-50">
+                      <div className="text-xs text-zinc-600 leading-relaxed">
+                        Cole aqui a ficha catalográfica oficial que você recebeu do bibliotecário. Se você já gerou a sugestão IA acima, o texto abaixo já vem pré-preenchido para edição. Ao ativar este modo, o disclaimer legal será substituído pela identificação do bibliotecário responsável no PDF final.
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-zinc-600 block mb-1">
+                          Texto integral da ficha oficial
+                        </label>
+                        <textarea
+                          value={fichaOficialTexto}
+                          onChange={e => setFichaOficialTexto(e.target.value)}
+                          placeholder={"C672e\nCOELHO, Mateus, 1985-\nO empreendedor aumentado : subtítulo / Mateus Coelho. – São Paulo : Autoria, 2026.\n67p. : 14 × 21 cm\n\n1. Assunto principal. I. Título.\n2. Outro assunto.\n\nCDD: 658.421\nCDU: 658.012.4:004.8"}
+                          className="w-full min-h-[220px] rounded-lg border border-zinc-300 bg-white p-3 text-sm font-mono leading-relaxed focus:outline-none focus:border-brand-primary"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Field
+                          label="Nome do bibliotecário"
+                          value={bibliotecarioNome}
+                          onChange={setBibliotecarioNome}
+                          placeholder="Maria Silva"
+                        />
+                        <div>
+                          <Field
+                            label="Registro CRB"
+                            value={bibliotecarioCrb}
+                            onChange={setBibliotecarioCrb}
+                            placeholder="CRB-8/12345"
+                          />
+                          {bibliotecarioCrb.trim() && !crbValido && (
+                            <p className="text-xs text-red-600 mt-1">
+                              Formato: CRB-X/YYYY (regiões de 1 a 15). Ex: CRB-8/12345
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={declaracaoAceita}
+                          onChange={e => setDeclaracaoAceita(e.target.checked)}
+                          className="mt-1"
+                        />
+                        <span className="text-xs text-zinc-700 leading-relaxed">
+                          Declaro, sob as penas do art. 299 do Código Penal (falsidade ideológica), que a ficha catalográfica acima foi elaborada e assinada por bibliotecário com CRB ativo, e que os dados fornecidos são verdadeiros. Ciente de que declaração falsa gera responsabilidade civil e criminal integral pelo uso indevido da ficha.
+                        </span>
+                      </label>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={!modoOficialValido}
+                          onClick={() => setTipoFicha("oficial_crb")}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            modoOficialValido && tipoFicha !== "oficial_crb"
+                              ? "bg-brand-primary text-brand-surface hover:bg-[#2a2a4e]"
+                              : tipoFicha === "oficial_crb"
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
+                          }`}
+                        >
+                          {tipoFicha === "oficial_crb" ? "✓ Modo oficial ativo" : "Ativar modo oficial"}
+                        </button>
+                        {tipoFicha === "oficial_crb" && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTipoFicha("sugestao_ia");
+                              setDeclaracaoAceita(false);
+                            }}
+                            className="text-xs text-zinc-600 underline hover:text-zinc-800"
+                          >
+                            Voltar para sugestão IA
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </SectionToggle>
@@ -522,7 +675,9 @@ export default function CreditosPage() {
             Gerar página de créditos →
           </button>
           <p className="text-center text-xs text-zinc-400 mt-3">
-            {incluirFicha ? "30–45 segundos (sugestão de ficha gerada por IA)" : "Apenas alguns segundos"}
+            {incluirFicha && tipoFicha === "sugestao_ia"
+              ? "30–45 segundos (sugestão de ficha gerada por IA)"
+              : "Apenas alguns segundos"}
           </p>
         </main>
 

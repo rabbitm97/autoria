@@ -1,4 +1,4 @@
-import type { CreditosConfig } from "@/app/api/agentes/creditos/route";
+import type { CreditosConfig, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
 
 export interface FichaCatalografica {
   numero_chamada: string;
@@ -24,6 +24,7 @@ function esc(s: string): string {
 export function buildCreditosContentHtml(params: {
   config: CreditosConfig;
   ficha: FichaCatalografica | null;
+  fichaOficial?: FichaOficialCRB;
   titulo: string;
   subtitulo: string;
   autor: string;
@@ -31,7 +32,7 @@ export function buildCreditosContentHtml(params: {
    *  (retrocompat com preview standalone que não conhece o template). */
   bodyFontFamily?: string;
 }): string {
-  const { config, ficha, titulo, subtitulo, autor } = params;
+  const { config, ficha, fichaOficial, titulo, subtitulo, autor } = params;
   const bodyFontFamily = params.bodyFontFamily ?? "'Times New Roman',Times,serif";
 
   // Inline style constants — every element is self-styled, zero dependency on external CSS.
@@ -45,6 +46,7 @@ export function buildCreditosContentHtml(params: {
     fichaHeader: "text-align:center;font-size:7.5pt;text-transform:uppercase;letter-spacing:0.02em;margin-bottom:0.7em;line-height:1.4;",
     fichaSubheader: "display:block;font-size:6.5pt;text-transform:none;letter-spacing:0;font-style:italic;color:#666;margin-top:0.3em;",
     fichaFooter: "margin-top:0.7em;padding-top:0.5em;border-top:0.5pt dotted #999;font-size:6.5pt;color:#777;font-style:italic;text-align:justify;line-height:1.5;",
+    fichaFooterOficial: "margin-top:0.7em;padding-top:0.5em;border-top:0.5pt solid #333;font-size:7.5pt;color:#333;text-align:right;line-height:1.5;",
     fichaP: "margin:0;",
     fichaCdd: "margin:0;text-align:right;",
     publisher: "font-size:8pt;line-height:1.7;padding-top:1cm;",
@@ -89,32 +91,57 @@ export function buildCreditosContentHtml(params: {
   // ── Ficha catalográfica ───────────────────────────────────────────────────
   let fichaHtml = "";
   if (config.incluir_ficha) {
-    const f = ficha;
-    const isbn = config.isbn?.trim() || f?.isbn_formatado || "";
-    const assuntos = config.assuntos_livres?.trim()
-      ? config.assuntos_livres.split("\n").filter(l => l.trim())
-      : (f?.assuntos ?? []);
-    const cdd = config.cdd?.trim() || f?.cdd || "";
-    const cdu = config.cdu?.trim() || f?.cdu || "";
+    const isOficial = config.tipo_ficha === "oficial_crb" && fichaOficial;
 
-    const fichaInner = f
-      ? `<p style="${S.fichaP}">${esc(f.numero_chamada)}</p>
-        <p style="${S.fichaP}">${esc(f.entrada_autor)}</p>
-        <p style="${S.fichaP}">${esc(f.descricao_bibliografica)}</p>
-        <p style="${S.fichaP}">${esc(f.extensao)}</p>
-        <p style="${S.fichaP}">&nbsp;</p>
-        ${isbn ? `<p style="${S.fichaP}">${esc(isbn)}</p><p style="${S.fichaP}">&nbsp;</p>` : ""}
-        ${assuntos.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n        ")}
-        ${cdd || cdu ? `<p style="${S.fichaP}">&nbsp;</p>
-        <p style="${S.fichaCdd}">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`
-      : `<p style="${S.fichaP}">${esc(autor)}</p>
-        <p style="${S.fichaP}">${esc(titulo)}${subtitulo ? ` : ${esc(subtitulo)}` : ""}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(config.nome_editora || "Autoria")}, ${config.ano_edicao || config.ano_copyright}.</p>
-        ${isbn ? `<p style="${S.fichaP}">&nbsp;</p><p style="${S.fichaP}">${esc(isbn)}</p>` : ""}
-        ${assuntos.length ? `<p style="${S.fichaP}">&nbsp;</p>${assuntos.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n        ")}` : ""}
-        ${cdd || cdu ? `<p style="${S.fichaP}">&nbsp;</p>
-        <p style="${S.fichaCdd}">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`;
+    if (isOficial && fichaOficial) {
+      // ── Modo oficial CRB: texto do autor + rodapé com bibliotecário ──────
+      const linhas = fichaOficial.texto
+        .split("\n")
+        .map(l => l.trim().length ? `<p style="${S.fichaP}">${esc(l)}</p>` : `<p style="${S.fichaP}">&nbsp;</p>`)
+        .join("\n        ");
 
-    fichaHtml = `<div style="${S.fichaWrap}">
+      fichaHtml = `<div style="${S.fichaWrap}">
+    <div style="${S.ficha}">
+      <div style="${S.fichaHeader}">
+        CATALOGAÇÃO NA PUBLICAÇÃO
+      </div>
+      <div>
+        ${linhas}
+      </div>
+      <div style="${S.fichaFooterOficial}">
+        Ficha catalográfica elaborada por ${esc(fichaOficial.bibliotecario_nome)}<br>
+        ${esc(fichaOficial.bibliotecario_crb)}
+      </div>
+    </div>
+  </div>`;
+    } else {
+      // ── Modo sugestão IA (pós-1c, comportamento default) ─────────────────
+      const f = ficha;
+      const isbn = config.isbn?.trim() || f?.isbn_formatado || "";
+      const assuntos = config.assuntos_livres?.trim()
+        ? config.assuntos_livres.split("\n").filter(l => l.trim())
+        : (f?.assuntos ?? []);
+      const cdd = config.cdd?.trim() || f?.cdd || "";
+      const cdu = config.cdu?.trim() || f?.cdu || "";
+
+      const fichaInner = f
+        ? `<p style="${S.fichaP}">${esc(f.numero_chamada)}</p>
+          <p style="${S.fichaP}">${esc(f.entrada_autor)}</p>
+          <p style="${S.fichaP}">${esc(f.descricao_bibliografica)}</p>
+          <p style="${S.fichaP}">${esc(f.extensao)}</p>
+          <p style="${S.fichaP}">&nbsp;</p>
+          ${isbn ? `<p style="${S.fichaP}">${esc(isbn)}</p><p style="${S.fichaP}">&nbsp;</p>` : ""}
+          ${assuntos.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n        ")}
+          ${cdd || cdu ? `<p style="${S.fichaP}">&nbsp;</p>
+          <p style="${S.fichaCdd}">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`
+        : `<p style="${S.fichaP}">${esc(autor)}</p>
+          <p style="${S.fichaP}">${esc(titulo)}${subtitulo ? ` : ${esc(subtitulo)}` : ""}. – ${config.numero_edicao ? esc(config.numero_edicao) + " – " : ""}${esc(config.local_edicao || "São Paulo")} : ${esc(config.nome_editora || "Autoria")}, ${config.ano_edicao || config.ano_copyright}.</p>
+          ${isbn ? `<p style="${S.fichaP}">&nbsp;</p><p style="${S.fichaP}">${esc(isbn)}</p>` : ""}
+          ${assuntos.length ? `<p style="${S.fichaP}">&nbsp;</p>${assuntos.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n        ")}` : ""}
+          ${cdd || cdu ? `<p style="${S.fichaP}">&nbsp;</p>
+          <p style="${S.fichaCdd}">${cdd ? `CDD: ${esc(cdd)}` : ""}${cdd && cdu ? "<br>" : ""}${cdu ? `CDU: ${esc(cdu)}` : ""}</p>` : ""}`;
+
+      fichaHtml = `<div style="${S.fichaWrap}">
     <div style="${S.ficha}">
       <div style="${S.fichaHeader}">
         SUGESTÃO DE FICHA CATALOGRÁFICA<br>
@@ -128,6 +155,7 @@ export function buildCreditosContentHtml(params: {
       </div>
     </div>
   </div>`;
+    }
   }
 
   // ── Publisher block ───────────────────────────────────────────────────────
