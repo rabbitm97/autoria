@@ -150,6 +150,7 @@ export default function CreditosPage() {
   const [foNumeroChamada, setFoNumeroChamada] = useState("");
   const [foEntradaAutor, setFoEntradaAutor] = useState("");
   const [foDescricao, setFoDescricao] = useState("");
+  const [foNotasGerais, setFoNotasGerais] = useState(""); // Bloco 1e: opcional (área 7 ISBD)
   const [foAssuntos, setFoAssuntos] = useState("");
   const [foCdd, setFoCdd] = useState("");
   const [foCdu, setFoCdu] = useState("");
@@ -208,6 +209,7 @@ export default function CreditosPage() {
           setFoNumeroChamada(dc.ficha_oficial.numero_chamada);
           setFoEntradaAutor(dc.ficha_oficial.entrada_autor);
           setFoDescricao(dc.ficha_oficial.descricao_bibliografica);
+          setFoNotasGerais(dc.ficha_oficial.notas_gerais ?? "");
           setFoAssuntos(dc.ficha_oficial.assuntos);
           setFoCdd(dc.ficha_oficial.cdd);
           setFoCdu(dc.ficha_oficial.cdu);
@@ -343,6 +345,7 @@ export default function CreditosPage() {
               numero_chamada:          foNumeroChamada.trim(),
               entrada_autor:           foEntradaAutor.trim(),
               descricao_bibliografica: foDescricao.trim(),
+              notas_gerais:            foNotasGerais.trim() || undefined,
               assuntos:                foAssuntos.trim(),
               cdd:                     foCdd.trim(),
               cdu:                     foCdu.trim(),
@@ -451,6 +454,67 @@ export default function CreditosPage() {
               A segunda página do livro — copyright, equipe técnica, sugestão de ficha catalográfica
               e dados da editora. Posição obrigatória conforme <strong>ABNT NBR 6029</strong>.
             </p>
+          </div>
+
+          {/* Disclaimer legal — Lei 10.753/2003 + Res. CFB 184/2017 (Bloco 1e) */}
+          <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/60 p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-700">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-blue-900 uppercase tracking-wide mb-1">Antes de começar — importante saber</p>
+                <p className="text-sm text-blue-900 leading-relaxed">
+                  A ficha catalográfica oficial é <strong>atividade privativa de bibliotecário com CRB ativo</strong>, conforme a <strong>Lei 10.753/2003</strong> (Lei do Livro) e a <strong>Resolução CFB 184/2017</strong>. O que isso significa para a sua publicação:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pl-11">
+              <div className="flex items-start gap-2.5">
+                <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 mt-0.5">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <p className="text-sm text-blue-900 leading-relaxed">
+                  <strong>Uso pessoal, presente ou distribuição gratuita:</strong> você pode gerar os arquivos, imprimir e distribuir livremente. Nenhum registro obrigatório.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M12 9v4M12 17h.01"/></svg>
+                </div>
+                <p className="text-sm text-blue-900 leading-relaxed">
+                  <strong>Amazon KDP, Apple Books, Kobo, Kiwify:</strong> aceitam publicação sem ficha CRB oficial. Recomendado ter a ficha para conformidade formal com a Lei 10.753.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center shrink-0 mt-0.5">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </div>
+                <p className="text-sm text-blue-900 leading-relaxed">
+                  <strong>Livrarias físicas, editais, Prêmio Jabuti e bibliotecas:</strong> exigem a ficha CRB oficial. Sem ela, o livro é rejeitado.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-blue-100 pl-11">
+              <p className="text-xs text-blue-800 leading-relaxed">
+                Você pode gerar a sugestão de ficha nesta etapa e depois solicitar a ficha oficial em{" "}
+                <a
+                  href="https://www.cblservicos.org.br/catalogacao/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-medium hover:text-blue-900"
+                >
+                  cblservicos.org.br
+                </a>
+                {" "}por R$ 60–100, prazo de 5 dias úteis.
+              </p>
+            </div>
           </div>
 
           {/* Formato — inherited from Capa step */}
@@ -743,6 +807,26 @@ export default function CreditosPage() {
                       placeholder="O empreendedor aumentado : subtítulo / Mateus Coelho. – São Paulo : Edição do Autor, 2026."
                       multiline
                     />
+
+                    <Field
+                      label="Notas gerais (opcional)"
+                      hint='Características especiais. Ex: "Inclui bibliografia", "Ilustrado", "Contém mapas"'
+                      value={foNotasGerais}
+                      onChange={setFoNotasGerais}
+                      placeholder="Inclui bibliografia."
+                    />
+
+                    {/* Dado factual — ISBN vem do autor, não do bibliotecário (Bloco 1e) */}
+                    <div>
+                      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Dado factual</p>
+                      <Field
+                        label="ISBN"
+                        hint="Opcional. Se preenchido, aparecerá na ficha após as notas gerais."
+                        value={isbn}
+                        onChange={setIsbn}
+                        placeholder="978-65-XXXXX-XX-X"
+                      />
+                    </div>
 
                     <Field
                       label="Assuntos *"

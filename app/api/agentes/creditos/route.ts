@@ -59,6 +59,7 @@ export interface FichaOficialCRB {
   numero_chamada: string;
   entrada_autor: string;
   descricao_bibliografica: string;
+  notas_gerais?: string;          // opcional: "Inclui bibliografia", "Ilustrado", etc. (área 7 ISBD)
   assuntos: string;               // texto, uma linha por assunto
   cdd: string;
   cdu: string;
@@ -396,6 +397,7 @@ export async function POST(request: NextRequest) {
       numero_chamada: string;
       entrada_autor: string;
       descricao_bibliografica: string;
+      notas_gerais?: string;
       assuntos: string;
       cdd: string;
       cdu: string;
@@ -561,6 +563,7 @@ export async function POST(request: NextRequest) {
       numero_chamada:          fo.numero_chamada.trim(),
       entrada_autor:           fo.entrada_autor.trim(),
       descricao_bibliografica: fo.descricao_bibliografica.trim(),
+      notas_gerais:            fo.notas_gerais?.trim() || undefined,
       assuntos:                fo.assuntos.trim(),
       cdd:                     fo.cdd.trim(),
       cdu:                     fo.cdu.trim(),

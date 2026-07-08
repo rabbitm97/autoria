@@ -95,15 +95,19 @@ export function buildCreditosContentHtml(params: {
 
     if (isOficial && fichaOficial) {
       // ── Modo oficial CRB: campos estruturados + rodapé com bibliotecário ──
+      // Ordem ISBD: descrição → notas gerais (área 7) → ISBN (área 8) → assuntos → CDD/CDU
       const assuntosLinhas = fichaOficial.assuntos
         .split("\n")
         .map(l => l.trim())
         .filter(l => l.length > 0);
+      const isbnOficial = config.isbn?.trim() || "";
 
       const oficialInner = `
           <p style="${S.fichaP}">${esc(fichaOficial.numero_chamada)}</p>
           <p style="${S.fichaP}">${esc(fichaOficial.entrada_autor)}</p>
           <p style="${S.fichaP}">${esc(fichaOficial.descricao_bibliografica)}</p>
+          ${fichaOficial.notas_gerais ? `<p style="${S.fichaP}">${esc(fichaOficial.notas_gerais)}</p>` : ""}
+          ${isbnOficial ? `<p style="${S.fichaP}">&nbsp;</p><p style="${S.fichaP}">ISBN ${esc(isbnOficial)}</p>` : ""}
           ${assuntosLinhas.length ? `<p style="${S.fichaP}">&nbsp;</p>${assuntosLinhas.map(a => `<p style="${S.fichaP}">${esc(a)}</p>`).join("\n          ")}` : ""}
           <p style="${S.fichaP}">&nbsp;</p>
           <p style="${S.fichaCdd}">CDD: ${esc(fichaOficial.cdd)}<br>CDU: ${esc(fichaOficial.cdu)}</p>`;

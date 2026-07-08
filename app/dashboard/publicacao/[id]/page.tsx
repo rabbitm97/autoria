@@ -19,6 +19,7 @@ interface ProjectData {
   pdf: PdfResult | null;
   epub: EpubResult | null;
   mioloPreviewUrl: string | null;
+  tipoFicha: "sugestao_ia" | "oficial_crb";
 }
 
 // ─── Platform guide cards ─────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ export default function PublicacaoPage() {
       const [projRes, pdfRes, epubRes, mioloRes] = await Promise.all([
         supabase
           .from("projects")
-          .select("dados_elementos, dados_capa, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+          .select("dados_elementos, dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
           .eq("id", id)
           .single(),
         fetch(`/api/agentes/gerar-pdf?project_id=${id}`),
@@ -90,6 +91,7 @@ export default function PublicacaoPage() {
       const el = proj?.dados_elementos as Record<string, unknown> | null;
       const capa = proj?.dados_capa as { url_escolhida?: string; url?: string } | null;
       const miolo = proj?.dados_miolo as { lombada_mm?: number; paginas_reais?: number; paginas_estimadas?: number } | null;
+      const creditos = proj?.dados_creditos as { config?: { tipo_ficha?: "sugestao_ia" | "oficial_crb" } } | null;
 
       setProject({
         titulo: (el?.titulo_escolhido as string) ?? ms?.titulo ?? "Sem título",
@@ -100,6 +102,7 @@ export default function PublicacaoPage() {
         pdf,
         epub,
         mioloPreviewUrl: mioloData?.preview_url ?? null,
+        tipoFicha: creditos?.config?.tipo_ficha ?? "sugestao_ia",
       });
     } finally {
       setLoading(false);
@@ -217,6 +220,52 @@ export default function PublicacaoPage() {
                 Os links do PDF expiram em 1 hora. Regenere na etapa de Diagramação se necessário.
               </p>
             </div>
+
+            {/* Aviso pré-publicação se ficha não é oficial CRB (Bloco 1e) */}
+            {project.tipoFicha !== "oficial_crb" && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-700">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[11px] font-semibold text-amber-900 uppercase tracking-wide mb-1">Antes de publicar — importante</p>
+                    <p className="text-sm text-amber-900 leading-relaxed mb-3">
+                      Seu livro está com <strong>sugestão de ficha catalográfica</strong> gerada por IA. Isso funciona para:
+                    </p>
+                    <ul className="text-sm text-amber-900 leading-relaxed mb-3 space-y-1 pl-1">
+                      <li>✓ Downloads dos arquivos para uso pessoal ou distribuição gratuita</li>
+                      <li>✓ Publicação em Amazon KDP, Apple Books, Kobo, Kiwify e similares</li>
+                    </ul>
+                    <p className="text-sm text-amber-900 leading-relaxed mb-3">
+                      <strong>Mas não é aceito em:</strong> livrarias físicas, bibliotecas, editais governamentais e prêmios como o Jabuti. Para esses, você precisa da <strong>ficha CRB oficial</strong> (Lei 10.753/2003 e Resolução CFB 184/2017).
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <Link
+                        href={`/dashboard/creditos/${id}`}
+                        className="inline-flex items-center gap-1.5 bg-amber-800 text-amber-50 font-medium px-4 py-2 rounded-lg hover:bg-amber-900 transition-colors text-xs"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                        Voltar aos Créditos
+                      </Link>
+                      <a
+                        href="https://www.cblservicos.org.br/catalogacao/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-white text-amber-900 font-medium px-4 py-2 rounded-lg border border-amber-300 hover:border-amber-500 transition-colors text-xs"
+                      >
+                        Solicitar ficha oficial na CBL
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Publication wizard CTA */}
             <div className="bg-brand-primary rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
