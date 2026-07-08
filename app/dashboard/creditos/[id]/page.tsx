@@ -28,9 +28,46 @@ function formatCDD(input: string): string {
 const CDD_REGEX = /^\d{3}(\.\d{1,6})?$/;
 
 function formatCDU(input: string): string {
-  return input.replace(/[^0-9.:()"=\-'\[\]/]/g, "");
+  // Normaliza aspas tipográficas para retas (colagem de Word/PDF).
+  const normalized = input
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+
+  // Aceita dígitos + símbolos válidos em CDU. Também aceita "+" (combinação
+  // de assuntos), "," (auxiliares de forma) e "*" (raro).
+  const filtered = normalized.replace(/[^\d.:()"=+*,\-'\[\]/]/g, "");
+
+  // Agrupamento: acumula dígitos em buffer. Ao encontrar símbolo, faz
+  // "flush" — divide em chunks de 3 e junta com pontos.
+  let result = "";
+  let digitBuffer = "";
+
+  const flushBuffer = () => {
+    if (digitBuffer.length === 0) return;
+    const chunks: string[] = [];
+    for (let i = 0; i < digitBuffer.length; i += 3) {
+      chunks.push(digitBuffer.slice(i, i + 3));
+    }
+    result += chunks.join(".");
+    digitBuffer = "";
+  };
+
+  for (const c of filtered) {
+    if (/\d/.test(c)) {
+      digitBuffer += c;
+    } else if (c === ".") {
+      flushBuffer();
+      result += ".";
+    } else {
+      flushBuffer();
+      result += c;
+    }
+  }
+  flushBuffer();
+
+  return result;
 }
-const CDU_REGEX = /^\d[\d.:()"=\-'\[\]/]*$/;
+const CDU_REGEX = /^\d[\d.:()"=+*,\-'\[\]/]*$/;
 
 function formatISBN(input: string): string {
   const digits = input.replace(/\D/g, "").slice(0, 13);
@@ -62,14 +99,47 @@ const CRB_NUMERO_REGEX = /^\d{1,6}$/;
 
 const CRB_REGIOES = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"] as const;
 
+// Formata entrada do autor no padrão AACR2 quando autor sai do campo.
+// Ex: "coelho, mateus, 1985-" → "COELHO, Mateus, 1985-".
+function formatEntradaAutorOnBlur(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const parts = trimmed.split(",").map(p => p.trim());
+  if (parts.length < 2) return trimmed;
+  parts[0] = parts[0].toUpperCase();
+  if (parts[1]) {
+    parts[1] = parts[1]
+      .split(/\s+/)
+      .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w))
+      .join(" ");
+  }
+  return parts.join(", ");
+}
+const ENTRADA_AUTOR_REGEX = /^[^,]+,\s*.+$/;
+
+// Auto-capitaliza uma palavra respeitando apóstrofo e hífen internos.
+function titleCaseWord(w: string): string {
+  if (!w) return w;
+  return w.split(/(['-])/).map(part => {
+    if (part === "'" || part === "-") return part;
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  }).join("");
+}
+// Filtra nome do bibliotecário: letras Unicode + espaços + hífens + apóstrofos.
+function formatNomeBibliotecario(input: string): string {
+  const filtered = input.replace(/[^\p{L}\s\-']/gu, "");
+  return filtered.split(" ").map(titleCaseWord).join(" ");
+}
+const NOME_BIBLIOTECARIO_REGEX = /^\p{L}[\p{L}\-']*\s+\p{L}[\p{L}\s\-']*$/u;
+
 // ─── Field row helper ─────────────────────────────────────────────────────────
 
 function Field({
-  label, hint, value, onChange, placeholder, multiline, error,
+  label, hint, value, onChange, placeholder, multiline, error, onBlur,
 }: {
   label: string; hint?: string; value: string;
   onChange: (v: string) => void; placeholder?: string; multiline?: boolean;
-  error?: string;
+  error?: string; onBlur?: () => void;
 }) {
   const hasError = Boolean(error);
   const borderClass = hasError
@@ -85,6 +155,7 @@ function Field({
         <textarea
           value={value}
           onChange={e => onChange(e.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
           rows={3}
           className={`w-full border ${borderClass} rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none resize-none`}
@@ -94,6 +165,7 @@ function Field({
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder}
           className={`w-full border ${borderClass} rounded-lg px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none`}
         />
@@ -214,18 +286,22 @@ export default function CreditosPage() {
   const cddInvalido       = foCdd.trim().length > 0 && !CDD_REGEX.test(foCdd.trim());
   const cduInvalido       = foCdu.trim().length > 0 && !CDU_REGEX.test(foCdu.trim());
   const crbNumeroInvalido = crbNumero.trim().length > 0 && !CRB_NUMERO_REGEX.test(crbNumero.trim());
+  // Bloco 1j: entrada do autor precisa ter vírgula; nome do bibliotecário
+  // precisa ter pelo menos 2 palavras.
+  const entradaAutorInvalida      = foEntradaAutor.trim().length > 0 && !ENTRADA_AUTOR_REGEX.test(foEntradaAutor.trim());
+  const nomeBibliotecarioInvalido = bibliotecarioNome.trim().length > 0 && !NOME_BIBLIOTECARIO_REGEX.test(bibliotecarioNome.trim());
 
   const crbValido = crbRegiao !== "" && CRB_NUMERO_REGEX.test(crbNumero.trim());
   const bibliotecarioCrb = crbValido ? `CRB-${crbRegiao}/${crbNumero.trim()}` : "";
 
   const modoOficialValido =
     foNumeroChamada.trim().length > 0 && !numeroChamadaInvalido &&
-    foEntradaAutor.trim().length > 0 &&
+    ENTRADA_AUTOR_REGEX.test(foEntradaAutor.trim()) &&
     foDescricao.trim().length > 0 &&
     foAssuntos.trim().length > 0 &&
     foCdd.trim().length > 0 && !cddInvalido &&
     foCdu.trim().length > 0 && !cduInvalido &&
-    bibliotecarioNome.trim().length > 0 &&
+    NOME_BIBLIOTECARIO_REGEX.test(bibliotecarioNome.trim()) &&
     crbValido &&
     declaracaoAceita;
 
@@ -838,10 +914,12 @@ export default function CreditosPage() {
                     />
                     <Field
                       label="Entrada do autor *"
-                      hint="Formato: SOBRENOME, Nome[, YYYY-]"
+                      hint="SOBRENOME, Nome[, YYYY-]. Formatado ao sair do campo."
                       value={foEntradaAutor}
                       onChange={setFoEntradaAutor}
+                      onBlur={() => setFoEntradaAutor(formatEntradaAutorOnBlur(foEntradaAutor))}
                       placeholder="COELHO, Mateus, 1985-"
+                      error={entradaAutorInvalida ? "Precisa ter vírgula entre sobrenome e nome. Ex: COELHO, Mateus" : undefined}
                     />
                   </div>
 
@@ -891,9 +969,11 @@ export default function CreditosPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-zinc-200">
                     <Field
                       label="Nome do bibliotecário *"
+                      hint="Nome completo. Apenas letras, espaços, hífens e apóstrofos."
                       value={bibliotecarioNome}
-                      onChange={setBibliotecarioNome}
+                      onChange={v => setBibliotecarioNome(formatNomeBibliotecario(v))}
                       placeholder="Maria Silva"
+                      error={nomeBibliotecarioInvalido ? "Nome incompleto. Informe nome e sobrenome." : undefined}
                     />
                     <div>
                       <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
