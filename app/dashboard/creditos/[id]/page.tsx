@@ -900,7 +900,14 @@ export default function CreditosPage() {
                     >
                       solicite pela CBL
                     </a>
-                    {" "}ou entre em contato conosco para mais informações sobre nosso serviço de catalogação.
+                    {" "}ou entre em contato conosco em{" "}
+                    <a
+                      href="mailto:contato@useautoria.com?subject=Serviço de catalogação — ficha CRB"
+                      className="underline font-medium"
+                    >
+                      contato@useautoria.com
+                    </a>
+                    {" "}para saber sobre nosso serviço de catalogação.
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
