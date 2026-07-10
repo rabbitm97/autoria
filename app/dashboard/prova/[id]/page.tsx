@@ -465,6 +465,7 @@ function TrilhaCard({
   ctaBusy,
   ctaError,
   onCta,
+  avisoInfo,
 }: {
   icone: "tablet" | "livro";
   titulo: string;
@@ -477,6 +478,8 @@ function TrilhaCard({
   ctaBusy: boolean;
   ctaError: string | null;
   onCta?: () => void;
+  // Bloco 1m: mensagem positiva (azul) confirmando escolha explícita do autor.
+  avisoInfo?: string;
 }) {
   const status: "pronto" | "atencao" | "pendente" =
     aprovado && avisos.length === 0 ? "pronto"
@@ -551,6 +554,16 @@ function TrilhaCard({
               </div>
             ))}
           </>
+        )}
+        {avisoInfo && (
+          <div className="flex items-start gap-2 text-xs text-blue-700 bg-blue-50 rounded-md p-2 mt-1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span className="flex-1">{avisoInfo}</span>
+          </div>
         )}
       </div>
 
@@ -665,6 +678,9 @@ export default function ProvaPage() {
   const [preparandoCapaGrafica, setPreparandoCapaGrafica] = useState(false);
   const [capaGraficaError, setCapaGraficaError] = useState<string | null>(null);
   const [isFrentePura, setIsFrentePura] = useState(false);
+  // Bloco 1m: reflete escolha do autor sobre incluir página de créditos.
+  // No modo completa é sempre true. No modo digital respeita config.incluir_creditos.
+  const [hasCreditos, setHasCreditos] = useState<boolean>(true);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
@@ -674,7 +690,7 @@ export default function ProvaPage() {
     try {
       const { data: project } = await supabase
         .from("projects")
-        .select("formato, dados_capa, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("formato, dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
 
@@ -724,6 +740,23 @@ export default function ProvaPage() {
           orelhaRatioW,
         });
         setIsFrentePura(capaResolvida.analise_tecnica?.is_frente_pura ?? false);
+
+        // Bloco 1m: computa hasCreditos com mesma lógica da tela de publicação.
+        // Retrocompat: "pessoal" → digital + !incluir_creditos; "livrarias" → completa.
+        const creditos = project.dados_creditos as {
+          config?: { proposito?: string; incluir_creditos?: boolean };
+        } | null;
+        const propRaw = creditos?.config?.proposito;
+        const propositoNormalizado =
+          propRaw === "livrarias" ? "completa"
+          : propRaw === "pessoal" ? "digital"
+          : (propRaw ?? "digital");
+        const incluirCreditosNormalizado =
+          propRaw === "pessoal" ? false
+          : (creditos?.config?.incluir_creditos !== false);
+        setHasCreditos(
+          propositoNormalizado === "completa" || incluirCreditosNormalizado
+        );
       }
 
       // Primeira análise — sempre POST pra garantir shape novo em dados_qa.
@@ -871,10 +904,19 @@ export default function ProvaPage() {
     p.categoria === "pdf_miolo_grafica" ||
     (p.categoria === "pdf_capa_grafica" && p.acao?.etapa !== "__alterar_capa__");
 
+  // Bloco 1m: pendências da página de créditos ficam obsoletas quando o autor
+  // conscientemente optou por não incluí-la (digital com toggle off).
+  const isPendenciaCreditosObsoleta = (p: ProvaItem) =>
+    !hasCreditos && p.acao?.etapa === "creditos";
+
   const digitalPendenciasRaw = result?.digital?.pendencias ?? [];
   const impressaPendenciasRaw = result?.grafica?.pendencias ?? [];
-  const digitalPendencias = digitalPendenciasRaw.filter(p => !isPendenciaDerivada(p));
-  const impressaPendencias = impressaPendenciasRaw.filter(p => !isPendenciaDerivada(p));
+  const digitalPendencias = digitalPendenciasRaw.filter(
+    p => !isPendenciaDerivada(p) && !isPendenciaCreditosObsoleta(p)
+  );
+  const impressaPendencias = impressaPendenciasRaw.filter(
+    p => !isPendenciaDerivada(p) && !isPendenciaCreditosObsoleta(p)
+  );
   const impressaAvisos = result?.grafica?.avisos ?? [];
 
   const digitalAprovado = digitalPendencias.length === 0;
@@ -1005,6 +1047,7 @@ export default function ProvaPage() {
                   ctaLabel={null}
                   ctaBusy={false}
                   ctaError={null}
+                  avisoInfo={!hasCreditos ? "Livro gerado sem página de créditos, conforme sua escolha. Adequado para plataformas digitais e distribuição gratuita." : undefined}
                 />
                 <TrilhaCard
                   icone="livro"
