@@ -1021,11 +1021,12 @@ function Footer() {
             <p className="text-white/20 text-xs font-semibold uppercase tracking-widest mb-5">Empresa</p>
             <ul className="space-y-3">
               {[
-                { label: "Sobre",       href: "/sobre"       },
-                { label: "Blog",        href: "/blog"        },
-                { label: "Contato",     href: "/contato"     },
-                { label: "Termos",      href: "/termos"      },
-                { label: "Privacidade", href: "/privacidade" },
+                { label: "Sobre",              href: "/sobre"           },
+                { label: "Blog",               href: "/blog"            },
+                { label: "Contato",            href: "/contato"         },
+                { label: "Termos",             href: "/termos"          },
+                { label: "Privacidade",        href: "/privacidade"     },
+                { label: "Contrato de Edição", href: "/contrato-edicao" },
               ].map((l) => (
                 <li key={l.label}>
                   <a href={l.href} className="text-white/35 hover:text-white/65 text-sm transition-colors">{l.label}</a>
