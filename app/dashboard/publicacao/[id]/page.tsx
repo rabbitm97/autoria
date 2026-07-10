@@ -250,14 +250,32 @@ export default function PublicacaoPage() {
                   <div className="flex-1">
                     <p className="text-[11px] font-semibold text-zinc-700 uppercase tracking-wide mb-1">Sem página de créditos</p>
                     <p className="text-sm text-zinc-700 leading-relaxed mb-3">
-                      Este livro foi gerado com half-title e folha de rosto, mas <strong>sem página
-                      de créditos</strong> (verso em branco). Copyright, equipe técnica e dados da
-                      editora não aparecem no miolo.
+                      Conforme sua escolha, o livro foi gerado <strong>sem a página de créditos</strong>.
+                      O verso da folha de rosto ficou em branco.
                     </p>
                     <p className="text-sm text-zinc-700 leading-relaxed mb-3">
-                      Para vender em livrarias, participar de editais ou entrar em bibliotecas você
-                      precisará voltar aos Créditos, escolher <em>Publicação completa</em> e anexar
-                      a ficha CRB oficial.
+                      Isso funciona para <strong>plataformas digitais</strong> (Amazon KDP, Apple Books,
+                      Kobo, Kiwify) e para <strong>uso pessoal ou distribuição gratuita</strong>.
+                    </p>
+                    <p className="text-sm text-zinc-700 leading-relaxed mb-3">
+                      Para publicar em livrarias, bibliotecas ou concursos, você pode voltar aos Créditos,
+                      ativar a página de créditos e escolher <em>Publicação completa</em> com ficha CRB
+                      oficial. Dá para solicitar a ficha pela CBL em{" "}
+                      <a
+                        href="https://www.cblservicos.org.br/catalogacao/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-zinc-900"
+                      >
+                        cblservicos.org.br
+                      </a>
+                      {" "}ou pelo nosso serviço em{" "}
+                      <a
+                        href="mailto:contato@useautoria.com?subject=Serviço de catalogação — ficha CRB"
+                        className="underline hover:text-zinc-900"
+                      >
+                        contato@useautoria.com
+                      </a>.
                     </p>
                     <Link
                       href={`/dashboard/creditos/${id}`}
@@ -284,14 +302,33 @@ export default function PublicacaoPage() {
                   <div className="flex-1">
                     <p className="text-[11px] font-semibold text-amber-900 uppercase tracking-wide mb-1">Modo digital — antes de publicar</p>
                     <p className="text-sm text-amber-900 leading-relaxed mb-3">
-                      Seu livro foi gerado <strong>sem ficha catalográfica CRB</strong>. Isso funciona para:
+                      Seu livro está pronto para publicação em <strong>plataformas digitais</strong> e para
+                      <strong> uso pessoal ou distribuição gratuita</strong>:
                     </p>
                     <ul className="text-sm text-amber-900 leading-relaxed mb-3 space-y-1 pl-1">
                       <li>✓ Amazon KDP, Apple Books, Kobo, Kiwify e similares</li>
                       <li>✓ Uso pessoal ou distribuição gratuita</li>
                     </ul>
                     <p className="text-sm text-amber-900 leading-relaxed mb-3">
-                      <strong>Não é aceito em:</strong> livrarias físicas, bibliotecas, editais governamentais e prêmios como o Jabuti. Para esses, você precisa da <strong>ficha CRB oficial</strong> (Lei 10.753/2003 e Res. CFB 184/2017) — solicite em <a href="https://www.cblservicos.org.br/catalogacao/" target="_blank" rel="noopener noreferrer" className="underline">cblservicos.org.br</a> e volte aos Créditos para anexá-la.
+                      A ficha catalográfica CRB não foi incluída — essas plataformas não a exigem.
+                      Para publicar em <strong>livrarias, bibliotecas ou concursos</strong>, você vai
+                      precisar da ficha CRB oficial. Você pode solicitar diretamente pela CBL em{" "}
+                      <a
+                        href="https://www.cblservicos.org.br/catalogacao/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-amber-950"
+                      >
+                        cblservicos.org.br
+                      </a>
+                      {" "}ou entrar em contato conosco em{" "}
+                      <a
+                        href="mailto:contato@useautoria.com?subject=Serviço de catalogação — ficha CRB"
+                        className="underline hover:text-amber-950"
+                      >
+                        contato@useautoria.com
+                      </a>
+                      {" "}para saber sobre nosso serviço de catalogação.
                     </p>
                     <div className="flex flex-wrap gap-3">
                       <Link
