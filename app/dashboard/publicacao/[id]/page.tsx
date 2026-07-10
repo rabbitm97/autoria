@@ -21,39 +21,6 @@ interface ProjectMeta {
 
 const ACEITE_STORAGE_KEY = "autoria:contrato-aceito:v0.1";
 
-const PLATAFORMAS = [
-  {
-    nome: "Amazon KDP",
-    icon: "A",
-    formatos: "PDF + EPUB + Capa",
-    prazo: "24–72h",
-    comissao: "35–70% royalties",
-    url: "https://kdp.amazon.com",
-    cor: "bg-amber-50 border-amber-200",
-    corIcon: "bg-amber-100 text-amber-700",
-  },
-  {
-    nome: "Kobo Writing Life",
-    icon: "K",
-    formatos: "EPUB + Capa",
-    prazo: "24–48h",
-    comissao: "70% royalties",
-    url: "https://kobowritinglife.com",
-    cor: "bg-blue-50 border-blue-200",
-    corIcon: "bg-blue-100 text-blue-700",
-  },
-  {
-    nome: "Draft2Digital",
-    icon: "D",
-    formatos: "EPUB (distribui para 30+ lojas)",
-    prazo: "48–96h",
-    comissao: "90% para o autor",
-    url: "https://draft2digital.com",
-    cor: "bg-violet-50 border-violet-200",
-    corIcon: "bg-violet-100 text-violet-700",
-  },
-];
-
 export default function PublicacaoPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -227,8 +194,23 @@ export default function PublicacaoPage() {
           <div className="space-y-6">
 
             <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex gap-5 items-start">
-              {meta.capaThumbUrl ? (
-                <img src={meta.capaThumbUrl} alt="Capa" className="w-20 h-28 object-cover rounded-lg shadow-md shrink-0" />
+              {(meta.capaThumbUrl || downloads?.capa.jpeg_ebook) ? (
+                <div className="flex gap-2 shrink-0 items-end">
+                  {meta.capaThumbUrl && (
+                    <img
+                      src={meta.capaThumbUrl}
+                      alt="Capa aberta"
+                      className="h-28 w-auto max-w-[9rem] object-contain rounded-lg shadow-md"
+                    />
+                  )}
+                  {downloads?.capa.jpeg_ebook && (
+                    <img
+                      src={downloads.capa.jpeg_ebook.url}
+                      alt="Capa eBook"
+                      className="h-28 w-auto object-contain rounded-lg shadow-md"
+                    />
+                  )}
+                </div>
               ) : (
                 <div className="w-20 h-28 bg-brand-primary rounded-lg shadow-md shrink-0 flex items-center justify-center">
                   <span className="text-brand-gold text-xs font-bold text-center px-2 leading-tight">{meta.titulo}</span>
@@ -285,6 +267,7 @@ export default function PublicacaoPage() {
                   <DownloadGroup
                     title="Miolo do livro"
                     subtitle="Interior formatado do livro"
+                    iconType="pdf"
                     items={[
                       downloads.miolo.pdf_impressao && { ...downloads.miolo.pdf_impressao, label: "PDF Impressão", desc: "Com sangria e marcas de corte — para gráficas" },
                       downloads.miolo.pdf_digital && { ...downloads.miolo.pdf_digital, label: "PDF Digital", desc: "Sem marcas — para Amazon KDP, Apple Books, Kobo" },
@@ -296,6 +279,7 @@ export default function PublicacaoPage() {
                   {mostrarGrupoCapa ? (
                     <DownloadGroup
                       title="Capa"
+                      iconType="capa"
                       subtitle={
                         downloads.capa.origem === "upload"
                           ? "Arquivo que você enviou"
@@ -311,14 +295,14 @@ export default function PublicacaoPage() {
                               },
                               downloads.capa.jpeg_ebook && {
                                 ...downloads.capa.jpeg_ebook,
-                                label: "JPEG capa eBook",
+                                label: "Capa Ebook",
                                 desc: "Só a frente — Amazon KDP, Apple Books, Kobo pedem separada",
                               },
                             ].filter(Boolean) as DownloadEntry[])
                           : ([
                               downloads.capa.jpeg_ebook && {
                                 ...downloads.capa.jpeg_ebook,
-                                label: "JPEG capa eBook",
+                                label: "Capa Ebook",
                                 desc: "Só a frente — Amazon KDP, Apple Books, Kobo pedem separada",
                               },
                               downloads.capa.jpeg_completa && {
@@ -354,6 +338,7 @@ export default function PublicacaoPage() {
                   <DownloadGroup
                     title="eBook"
                     subtitle="Formato para leitores digitais"
+                    iconType="epub"
                     items={[
                       downloads.ebook.epub && { ...downloads.ebook.epub, label: "EPUB", desc: "Padrão para todas as plataformas de eBook" },
                     ].filter(Boolean) as DownloadEntry[]}
@@ -558,27 +543,6 @@ export default function PublicacaoPage() {
               )}
             </div>
 
-            <div>
-              <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">
-                Principais plataformas
-              </p>
-              <div className="grid sm:grid-cols-3 gap-3">
-                {PLATAFORMAS.map(p => (
-                  <a key={p.nome} href={p.url} target="_blank" rel="noreferrer" className={`rounded-xl border p-4 hover:shadow-sm transition-shadow ${p.cor}`}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 ${p.corIcon}`}>{p.icon}</span>
-                      <span className="font-semibold text-sm text-zinc-800">{p.nome}</span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500">{p.formatos}</p>
-                      <p className="text-xs text-zinc-400">Prazo: {p.prazo}</p>
-                      <p className="text-xs font-medium text-zinc-600">{p.comissao}</p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
-
             <div className="pt-2 text-center">
               <Link href="/dashboard" className="text-sm text-zinc-400 hover:text-zinc-600 transition-colors">
                 ← Voltar ao dashboard
@@ -655,16 +619,20 @@ function DownloadButton({ url, filename }: { url: string; filename: string }) {
   );
 }
 
+type GroupIcon = "pdf" | "capa" | "epub" | "audio";
+
 function DownloadGroup({
   title,
   subtitle,
   items,
+  iconType,
   fallbackHref,
   fallbackLabel,
 }: {
   title: string;
   subtitle: string;
   items: DownloadEntry[];
+  iconType: GroupIcon;
   fallbackHref?: string;
   fallbackLabel?: string;
 }) {
@@ -680,12 +648,7 @@ function DownloadGroup({
         <div className="space-y-2">
           {items.map(item => (
             <div key={item.url} className="flex items-center gap-3 p-2.5 rounded-lg border border-zinc-100 bg-zinc-50">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
-              </div>
+              <GroupItemIcon type={iconType} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-800 truncate">{item.label}</p>
                 <p className="text-xs text-zinc-400 truncate">{item.desc}</p>
@@ -699,6 +662,49 @@ function DownloadGroup({
           {fallbackLabel} →
         </Link>
       )}
+    </div>
+  );
+}
+
+function GroupItemIcon({ type }: { type: GroupIcon }) {
+  if (type === "pdf") {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+      </div>
+    );
+  }
+  if (type === "capa") {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center shrink-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-rose-600">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+      </div>
+    );
+  }
+  if (type === "epub") {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-violet-600">
+          <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+        </svg>
+      </div>
+    );
+  }
+  return (
+    <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-600">
+        <path d="M3 12a9 9 0 019-9v0a9 9 0 019 9v7a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3M3 19v-7a9 9 0 019-9M3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3"/>
+      </svg>
     </div>
   );
 }
