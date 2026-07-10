@@ -213,6 +213,57 @@ export async function POST(req: NextRequest) {
           ? getOrelhaDefault(formatoAtual)
           : 0;
 
+    // ── Geração adicional do PDF gráfica RGB (BLOCO-02-B0) ───────────────────
+    // Mesma rota cover-editor/export-pdf, mesmo editorData/dimensões, apenas
+    // versao="grafica_rgb" para gráficas digitais/POD. Falha é não-fatal:
+    // CMYK continua persistido; migração retroativa reprocessa depois.
+    let pdfRgbStoragePath: string | null = null;
+    try {
+      const exportRgbRes = await fetch(exportUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          cookie: req.headers.get("cookie") ?? "",
+        },
+        body: JSON.stringify({
+          versao: "grafica_rgb",
+          editorData,
+          coverImagePath,
+          format: project.formato,
+          pages: paginasReais,
+        }),
+      });
+
+      if (exportRgbRes.ok) {
+        const exportRgbData = await exportRgbRes.json().catch(() => ({}));
+        const rgbPath = (exportRgbData as { storage_path?: string }).storage_path;
+        if (rgbPath) {
+          pdfRgbStoragePath = rgbPath;
+          console.log(`[preparar-capa-grafica] PDF RGB persistido: ${rgbPath}`);
+        } else {
+          console.warn("[preparar-capa-grafica] export RGB ok mas sem storage_path no retorno");
+        }
+      } else {
+        const rgbErr = await exportRgbRes.json().catch(() => ({}));
+        console.warn("[preparar-capa-grafica] export RGB falhou:", exportRgbRes.status, rgbErr);
+      }
+    } catch (rgbErr) {
+      console.warn("[preparar-capa-grafica] erro não-fatal ao gerar PDF RGB:", rgbErr);
+    }
+
+    // Merge com dados_capa.exports existente (preserva jpeg_ebook do gerar-epub)
+    const exportsAtual = (capa.exports as Record<string, unknown>) ?? {};
+    const novosExports: Record<string, unknown> = { ...exportsAtual };
+    if (pdfRgbStoragePath) {
+      novosExports.pdf_rgb = {
+        storage_path: pdfRgbStoragePath,
+        gerado_em: new Date().toISOString(),
+        fonte: "editor" as const,
+        formato: project.formato,
+        paginas_no_momento: paginasReais,
+      };
+    }
+
     const newCapa = {
       ...capa,
       pdf_grafica: {
@@ -224,6 +275,7 @@ export async function POST(req: NextRequest) {
         com_orelhas: orelhaMmAtual > 0,
         fonte: "editor" as const,
       },
+      exports: novosExports,
     };
 
     const { error: updateErr } = await supabase

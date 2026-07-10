@@ -439,6 +439,68 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
   };
 
+  // ── Persistir a JPEG frente pura standalone (BLOCO-02-B0) ────────────────
+  // Fonte única: mesma coverBuffer embutida no zip do EPUB, agora também
+  // uploadada standalone para consumo da página de Publicação e das lojas
+  // (Amazon KDP, Kobo, Apple Books) que pedem capa separada para thumbnails.
+  // Merge preserva outros exports já populados (ex.: pdf_rgb do preparar-capa-grafica).
+  // Falha é não-fatal: EPUB continua funcional.
+  if (coverBuffer && coverExt) {
+    try {
+      const jpegEbookTimestamp = Date.now();
+      const jpegEbookPath = `${userId}/${project_id}/exports/capa-ebook-${jpegEbookTimestamp}.${coverExt}`;
+      const jpegContentType = coverExt === "png" ? "image/png" : "image/jpeg";
+
+      const { error: jpegUploadErr } = await storageClient.storage
+        .from("editor-assets")
+        .upload(jpegEbookPath, coverBuffer, {
+          contentType: jpegContentType,
+          upsert: true,
+        });
+
+      if (jpegUploadErr) {
+        console.warn("[gerar-epub] falha ao persistir JPEG eBook standalone:", jpegUploadErr.message);
+      } else {
+        const { data: projRow } = await supabase
+          .from("projects")
+          .select("dados_capa")
+          .eq("id", project_id)
+          .eq("user_id", userId)
+          .single();
+
+        const capaAtual = (projRow?.dados_capa as Record<string, unknown>) ?? {};
+        const exportsAtual = (capaAtual.exports as Record<string, unknown>) ?? {};
+
+        const novaCapa = {
+          ...capaAtual,
+          exports: {
+            ...exportsAtual,
+            jpeg_ebook: {
+              storage_path: jpegEbookPath,
+              gerado_em: new Date().toISOString(),
+              fonte: "gerar-epub" as const,
+              ext: coverExt,
+            },
+          },
+        };
+
+        const { error: updateCapaErr } = await supabase
+          .from("projects")
+          .update({ dados_capa: novaCapa })
+          .eq("id", project_id)
+          .eq("user_id", userId);
+
+        if (updateCapaErr) {
+          console.warn("[gerar-epub] JPEG eBook uploadada mas falha ao persistir path em dados_capa:", updateCapaErr.message);
+        } else {
+          console.log(`[gerar-epub] JPEG eBook standalone persistida: ${jpegEbookPath}`);
+        }
+      }
+    } catch (jpegErr) {
+      console.warn("[gerar-epub] erro não-fatal ao persistir JPEG eBook standalone:", jpegErr);
+    }
+  }
+
   // Store in dados_pdf alongside PDF data (reuse column)
   const { data: existing } = await supabase
     .from("projects")
