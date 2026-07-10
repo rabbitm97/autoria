@@ -156,7 +156,6 @@ export default function PublicacaoPage() {
 
       addFile(mioloFolder, downloads.miolo.pdf_impressao);
       addFile(mioloFolder, downloads.miolo.pdf_digital);
-      addFile(mioloFolder, downloads.miolo.docx);
       addFile(zip, downloads.ebook.epub);
       addFile(capaFolder, downloads.capa.jpeg_ebook);
       addFile(capaFolder, downloads.capa.jpeg_completa);
@@ -191,7 +190,7 @@ export default function PublicacaoPage() {
   const mostrarGrupoCapa = useMemo(() => {
     if (!downloads) return false;
     const { origem, jpeg_ebook, jpeg_completa, pdf_cmyk, pdf_rgb, capa_original } = downloads.capa;
-    if (origem === "upload") return !!capa_original;
+    if (origem === "upload") return !!(capa_original || jpeg_ebook);
     return !!(jpeg_ebook || jpeg_completa || pdf_cmyk || pdf_rgb);
   }, [downloads]);
 
@@ -289,21 +288,9 @@ export default function PublicacaoPage() {
                     items={[
                       downloads.miolo.pdf_impressao && { ...downloads.miolo.pdf_impressao, label: "PDF Impressão", desc: "Com sangria e marcas de corte — para gráficas" },
                       downloads.miolo.pdf_digital && { ...downloads.miolo.pdf_digital, label: "PDF Digital", desc: "Sem marcas — para Amazon KDP, Apple Books, Kobo" },
-                      downloads.miolo.docx && { ...downloads.miolo.docx, label: "DOCX", desc: "Editar o texto em Word" },
-                      downloads.miolo.html_preview && { ...downloads.miolo.html_preview, label: "HTML Preview", desc: "Prova de revisão", newTab: true },
                     ].filter(Boolean) as DownloadEntry[]}
                     fallbackHref={`/dashboard/miolo/${id}`}
                     fallbackLabel="Gerar arquivos do miolo"
-                  />
-
-                  <DownloadGroup
-                    title="eBook"
-                    subtitle="Formato para leitores digitais"
-                    items={[
-                      downloads.ebook.epub && { ...downloads.ebook.epub, label: "EPUB", desc: "Padrão para todas as plataformas de eBook" },
-                    ].filter(Boolean) as DownloadEntry[]}
-                    fallbackHref={`/dashboard/miolo/${id}`}
-                    fallbackLabel="Gerar EPUB"
                   />
 
                   {mostrarGrupoCapa ? (
@@ -321,6 +308,11 @@ export default function PublicacaoPage() {
                                 ...downloads.capa.capa_original,
                                 label: "Capa original",
                                 desc: "O arquivo que você enviou",
+                              },
+                              downloads.capa.jpeg_ebook && {
+                                ...downloads.capa.jpeg_ebook,
+                                label: "JPEG capa eBook",
+                                desc: "Só a frente — Amazon KDP, Apple Books, Kobo pedem separada",
                               },
                             ].filter(Boolean) as DownloadEntry[])
                           : ([
@@ -358,6 +350,16 @@ export default function PublicacaoPage() {
                       </Link>
                     </div>
                   )}
+
+                  <DownloadGroup
+                    title="eBook"
+                    subtitle="Formato para leitores digitais"
+                    items={[
+                      downloads.ebook.epub && { ...downloads.ebook.epub, label: "EPUB", desc: "Padrão para todas as plataformas de eBook" },
+                    ].filter(Boolean) as DownloadEntry[]}
+                    fallbackHref={`/dashboard/miolo/${id}`}
+                    fallbackLabel="Gerar EPUB"
+                  />
 
                   {downloads.audiolivro.capitulos.length > 0 ? (
                     <div>
@@ -598,7 +600,59 @@ interface DownloadEntry {
   filename: string;
   label: string;
   desc: string;
-  newTab?: boolean;
+}
+
+async function downloadAsBlob(url: string, filename: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
+}
+
+function DownloadButton({ url, filename }: { url: string; filename: string }) {
+  const [busy, setBusy] = useState(false);
+  const handle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await downloadAsBlob(url, filename);
+    } catch (err) {
+      console.warn(`[download] falha em ${filename}:`, err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      disabled={busy}
+      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-brand-primary text-brand-gold hover:bg-brand-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {busy ? (
+        <>
+          <div className="w-3 h-3 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
+          Baixando…
+        </>
+      ) : (
+        <>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Baixar
+        </>
+      )}
+    </button>
+  );
 }
 
 function DownloadGroup({
@@ -636,21 +690,7 @@ function DownloadGroup({
                 <p className="text-sm text-zinc-800 truncate">{item.label}</p>
                 <p className="text-xs text-zinc-400 truncate">{item.desc}</p>
               </div>
-              <a
-                href={item.url}
-                download={item.newTab ? undefined : item.filename}
-                target={item.newTab ? "_blank" : undefined}
-                rel={item.newTab ? "noreferrer" : undefined}
-                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-brand-primary text-brand-gold hover:bg-brand-primary/90 transition-colors"
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  {item.newTab
-                    ? <><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></>
-                    : <><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>
-                  }
-                </svg>
-                {item.newTab ? "Abrir" : "Baixar"}
-              </a>
+              <DownloadButton url={item.url} filename={item.filename} />
             </div>
           ))}
         </div>

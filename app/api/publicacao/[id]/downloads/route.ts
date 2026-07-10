@@ -24,8 +24,6 @@ export interface PublicacaoDownloadsResponse {
   miolo: {
     pdf_impressao: DownloadItem | null;
     pdf_digital: DownloadItem | null;
-    docx: DownloadItem | null;
-    html_preview: DownloadItem | null;
   };
   ebook: {
     epub: DownloadItem | null;
@@ -86,7 +84,7 @@ export async function GET(
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_pdf, dados_pdf_digital, dados_miolo, dados_audio, dados_qa, formato")
+    .select("dados_capa, dados_pdf, dados_pdf_digital, dados_miolo, dados_audio, dados_qa, dados_elementos, formato, manuscripts(titulo)")
     .eq("id", projectId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -99,6 +97,14 @@ export async function GET(
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
 
+  const ms = project.manuscripts as unknown as { titulo?: string } | null;
+  const elementos = project.dados_elementos as { titulo_escolhido?: string } | null;
+  const tituloCanon = elementos?.titulo_escolhido ?? ms?.titulo ?? "livro";
+  const safeName = tituloCanon
+    .replace(/[^a-zA-Z0-9À-ſ\s]/g, "")
+    .replace(/\s+/g, "_")
+    .slice(0, 60) || "livro";
+
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -108,8 +114,6 @@ export async function GET(
     storage_path?: string;
     filename?: string;
     epub?: { storage_path?: string; capitulos?: number; gerado_em?: string };
-    docx?: { storage_path?: string; filename?: string };
-    html_preview_path?: string;
   } | null;
   const dadosPdfDigital = project.dados_pdf_digital as {
     storage_path?: string;
@@ -120,32 +124,20 @@ export async function GET(
     storageClient,
     "livros",
     dadosPdf?.storage_path ?? null,
-    dadosPdf?.filename ?? "livro-impressao.pdf",
+    `${safeName}.pdf`,
   );
   const pdfDigital = await signedFromBucket(
     storageClient,
     "livros",
     dadosPdfDigital?.storage_path ?? null,
-    dadosPdfDigital?.filename ?? "livro-digital.pdf",
-  );
-  const docx = await signedFromBucket(
-    storageClient,
-    "livros",
-    dadosPdf?.docx?.storage_path ?? null,
-    dadosPdf?.docx?.filename ?? "livro.docx",
-  );
-  const htmlPreview = await signedFromBucket(
-    storageClient,
-    "livros",
-    dadosPdf?.html_preview_path ?? null,
-    "miolo-preview.html",
+    `${safeName}_digital.pdf`,
   );
 
   const epub = await signedFromBucket(
     storageClient,
     "livros",
     dadosPdf?.epub?.storage_path ?? null,
-    "livro.epub",
+    `${safeName}.epub`,
   );
 
   const dadosCapa = project.dados_capa as Record<string, unknown> | null;
@@ -161,21 +153,21 @@ export async function GET(
     storageClient,
     "editor-assets",
     exportsCapa.jpeg_ebook?.storage_path ?? null,
-    `capa-ebook.${exportsCapa.jpeg_ebook?.ext ?? "jpg"}`,
+    `${safeName}_capa-ebook.${exportsCapa.jpeg_ebook?.ext ?? "jpg"}`,
   );
 
   const pdfCmyk = await signedFromBucket(
     storageClient,
     "editor-assets",
     (dadosCapa?.pdf_grafica as { storage_path?: string } | undefined)?.storage_path ?? null,
-    "capa-CMYK-grafica.pdf",
+    `${safeName}_capa-CMYK-grafica.pdf`,
   );
 
   const pdfRgb = await signedFromBucket(
     storageClient,
     "editor-assets",
     exportsCapa.pdf_rgb?.storage_path ?? null,
-    "capa-RGB-grafica.pdf",
+    `${safeName}_capa-RGB-grafica.pdf`,
   );
 
   let jpegCompleta: DownloadItem | null = null;
@@ -188,7 +180,7 @@ export async function GET(
       if (capaResolvida?.url_principal) {
         jpegCompleta = {
           url: capaResolvida.url_principal,
-          filename: "capa-completa-300dpi.jpg",
+          filename: `${safeName}_capa-completa-300dpi.jpg`,
           storage_path: null,
         };
       }
@@ -206,7 +198,7 @@ export async function GET(
         const ext = storagePathUpload.split(".").pop() ?? "jpg";
         capaOriginal = {
           url: signedUrl,
-          filename: `capa-original.${ext}`,
+          filename: `${safeName}_capa-original.${ext}`,
           storage_path: storagePathUpload,
         };
       }
@@ -285,7 +277,7 @@ export async function GET(
   }
 
   const response: PublicacaoDownloadsResponse = {
-    miolo: { pdf_impressao: pdfImpressao, pdf_digital: pdfDigital, docx, html_preview: htmlPreview },
+    miolo: { pdf_impressao: pdfImpressao, pdf_digital: pdfDigital },
     ebook: { epub },
     capa: {
       origem: capaOrigem,
