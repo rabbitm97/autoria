@@ -194,23 +194,12 @@ export default function PublicacaoPage() {
           <div className="space-y-6">
 
             <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex gap-5 items-start">
-              {(meta.capaThumbUrl || downloads?.capa.jpeg_ebook) ? (
-                <div className="flex gap-2 shrink-0 items-end">
-                  {meta.capaThumbUrl && (
-                    <img
-                      src={meta.capaThumbUrl}
-                      alt="Capa aberta"
-                      className="h-28 w-auto max-w-[9rem] object-contain rounded-lg shadow-md"
-                    />
-                  )}
-                  {downloads?.capa.jpeg_ebook && (
-                    <img
-                      src={downloads.capa.jpeg_ebook.url}
-                      alt="Capa eBook"
-                      className="h-28 w-auto object-contain rounded-lg shadow-md"
-                    />
-                  )}
-                </div>
+              {(downloads?.capa.jpeg_ebook || meta.capaThumbUrl) ? (
+                <img
+                  src={downloads?.capa.jpeg_ebook?.url ?? meta.capaThumbUrl!}
+                  alt="Capa eBook"
+                  className="h-28 w-auto object-contain rounded-lg shadow-md shrink-0"
+                />
               ) : (
                 <div className="w-20 h-28 bg-brand-primary rounded-lg shadow-md shrink-0 flex items-center justify-center">
                   <span className="text-brand-gold text-xs font-bold text-center px-2 leading-tight">{meta.titulo}</span>
