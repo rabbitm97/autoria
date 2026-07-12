@@ -20,9 +20,9 @@ import {
 
 /**
  * Nome-base dos arquivos exportados por versão. Usado tanto no filename
- * do download quanto no storage path. Padrão semântico + ordenável:
- *   - "capa-CMYK-grafica-<ts>.pdf"   — versão CMYK para gráfica offset
- *   - "capa-RGB-grafica-<ts>.pdf"    — versão RGB para gráfica digital
+ * do download quanto no storage path. Padrão fixo (sem timestamp):
+ *   - "capa-CMYK-grafica.pdf"   — versão CMYK para gráfica offset
+ *   - "capa-RGB-grafica.pdf"    — versão RGB para gráfica digital
  *
  * A versão eBook (antigo "digital") foi descontinuada no 14.M.5 — o
  * download agora sai como JPEG só-frente extraído client-side pelo Konva
@@ -31,52 +31,6 @@ import {
 function getFilenameBase(versao: "grafica" | "grafica_rgb"): string {
   if (versao === "grafica_rgb") return "capa-RGB-grafica";
   return "capa-CMYK-grafica";
-}
-
-/**
- * Limpa PDFs CMYK anteriores. Considera nomes novos (pós-14.M.3) e antigos,
- * garantindo transição sem arquivos órfãos ocupando espaço no bucket.
- * Nunca deleta arquivos RGB (ver filtro abaixo).
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteOldPdfs(storageClient: any, userId: string, projectId: string) {
-  const prefixesNovos = ["capa-CMYK-grafica-"];
-  const prefixesAntigos = ["capa-grafica-"];      // ⚠ bate com capa-grafica-rgb-, filtramos abaixo
-  const allPrefixes = [...prefixesNovos, ...prefixesAntigos];
-
-  const { data: allFiles } = await storageClient.storage
-    .from("editor-assets")
-    .list(`${userId}/${projectId}/exports`);
-  if (!allFiles?.length) return;
-
-  const filesToDelete = allFiles.filter((f: { name: string }) => {
-    // Nunca deletar arquivos RGB quando estamos limpando CMYK
-    if (f.name.startsWith("capa-RGB-grafica-") || f.name.startsWith("capa-grafica-rgb-")) {
-      return false;
-    }
-    return allPrefixes.some((p) => f.name.startsWith(p));
-  });
-  if (!filesToDelete.length) return;
-
-  const paths = filesToDelete.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
-  await storageClient.storage.from("editor-assets").remove(paths);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function deleteOldRgbPdfs(storageClient: any, userId: string, projectId: string) {
-  const prefixes = ["capa-RGB-grafica-", "capa-grafica-rgb-"];
-  const { data: allFiles } = await storageClient.storage
-    .from("editor-assets")
-    .list(`${userId}/${projectId}/exports`);
-  if (!allFiles?.length) return;
-
-  const filesToDelete = allFiles.filter((f: { name: string }) =>
-    prefixes.some((p) => f.name.startsWith(p)),
-  );
-  if (!filesToDelete.length) return;
-
-  const paths = filesToDelete.map((f: { name: string }) => `${userId}/${projectId}/exports/${f.name}`);
-  await storageClient.storage.from("editor-assets").remove(paths);
 }
 
 function extractTitle(elements: AnyElement[]): string {
@@ -233,16 +187,11 @@ export async function POST(
     pdfBuffer = Buffer.from(pdfBytes);
   }
 
-  const timestamp = Date.now();
-
-  if (versao === "grafica_rgb") {
-    await deleteOldRgbPdfs(storageClient, userId, id);
-  } else {
-    await deleteOldPdfs(storageClient, userId, id);
-  }
-
+  // BLOCO-02-B-housekeeping: path fixo, upsert sobrescreve versão anterior.
+  // Não precisa mais dos helpers deleteOldPdfs/deleteOldRgbPdfs — o upsert
+  // já garante 1 arquivo único por projeto+versão.
   const filenameBase = getFilenameBase(versao);
-  const storagePath = `${userId}/${id}/exports/${filenameBase}-${timestamp}.pdf`;
+  const storagePath = `${userId}/${id}/exports/${filenameBase}.pdf`;
 
   const { error: uploadErr } = await storageClient.storage
     .from("editor-assets")
@@ -262,7 +211,7 @@ export async function POST(
     .from("editor-assets")
     .createSignedUrl(storagePath, 365 * 24 * 3600);
 
-  const filename = `${filenameBase}-${timestamp}.pdf`;
+  const filename = `${filenameBase}.pdf`;
 
   return NextResponse.json({
     url: pdfSigned?.signedUrl ?? null,

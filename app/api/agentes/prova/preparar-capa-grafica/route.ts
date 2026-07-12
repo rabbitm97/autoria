@@ -345,8 +345,8 @@ export async function POST(req: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
 
-    const timestamp = Date.now();
-    const storagePath = `${userId}/${projectId}/exports/capa-grafica-${timestamp}.pdf`;
+    // BLOCO-02-B-housekeeping: path fixo, upsert sobrescreve versão anterior.
+    const storagePath = `${userId}/${projectId}/exports/capa-grafica.pdf`;
 
     const { error: uploadErr } = await storageClient.storage
       .from("editor-assets")

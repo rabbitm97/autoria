@@ -447,8 +447,8 @@ export async function POST(req: NextRequest) {
   // Falha é não-fatal: EPUB continua funcional.
   if (coverBuffer && coverExt) {
     try {
-      const jpegEbookTimestamp = Date.now();
-      const jpegEbookPath = `${userId}/${project_id}/exports/capa-ebook-${jpegEbookTimestamp}.${coverExt}`;
+      // BLOCO-02-B-housekeeping: path fixo, upsert sobrescreve versão anterior.
+      const jpegEbookPath = `${userId}/${project_id}/exports/capa-ebook.${coverExt}`;
       const jpegContentType = coverExt === "png" ? "image/png" : "image/jpeg";
 
       const { error: jpegUploadErr } = await storageClient.storage

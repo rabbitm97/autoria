@@ -39,9 +39,9 @@ export async function POST(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // Upload PNG thumbnail to storage
-  const timestamp = Date.now();
-  const pngPath = `${userId}/${id}/cover-confirmed-${timestamp}.png`;
+  // Upload PNG thumbnail — path fixo, upsert sobrescreve versão anterior.
+  // BLOCO-02-B-housekeeping: sem timestamp, 1 arquivo por projeto.
+  const pngPath = `${userId}/${id}/cover-confirmed.png`;
   const pngBuffer = Buffer.from(await pngFile.arrayBuffer());
 
   const { error: pngUploadErr } = await storageClient.storage
