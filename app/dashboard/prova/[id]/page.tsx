@@ -870,13 +870,19 @@ export default function ProvaPage() {
   }
 
   async function handleAprovarEPublicar() {
-    if (!digitalAprovado) return;
+    if (!digitalAprovado || !projectIdStr) return;
     setApprovingPub(true);
-    await supabase
+    const { error } = await supabase
       .from("projects")
       .update({ etapa_atual: "publicacao", qa_aprovado_em: new Date().toISOString() })
-      .eq("id", id);
-    router.push(`/dashboard/publicacao/${id}`);
+      .eq("id", projectIdStr);
+    if (error) {
+      console.error("[prova] falha ao aprovar e publicar:", error);
+      alert(`Não foi possível registrar a aprovação: ${error.message}`);
+      setApprovingPub(false);
+      return;
+    }
+    router.push(`/dashboard/publicacao/${projectIdStr}`);
   }
 
   function handleNavigateToEtapa(etapa: string) {
