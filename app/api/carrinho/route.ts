@@ -84,12 +84,24 @@ export async function POST(req: NextRequest) {
   }
 
   // Verifica ownership do projeto.
-  const { data: project } = await supabase
+  // BLOCO-02-C-FIX-2: select("id") apenas — a coluna `titulo` não existe em
+  // `projects` (título canônico vem de manuscripts.titulo via join FK ou
+  // dados_elementos.titulo_escolhido no JSONB). Aqui só precisamos confirmar
+  // que o projeto existe e pertence ao user.
+  const { data: project, error: projectErr } = await supabase
     .from("projects")
-    .select("id, titulo")
+    .select("id")
     .eq("id", body.project_id)
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (projectErr) {
+    console.error("[carrinho POST] erro ao verificar ownership do projeto:", projectErr);
+    return NextResponse.json(
+      { error: "Erro ao verificar acesso ao projeto." },
+      { status: 500 },
+    );
+  }
 
   if (!project) {
     return NextResponse.json(
