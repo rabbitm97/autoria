@@ -22,8 +22,7 @@ export type CorMiolo = "pb" | "cor";
 
 export type AcabamentoCapa =
   | "fosca_bopp"
-  | "brilho_bopp"
-  | "verniz_uv";
+  | "brilho_bopp";
 
 export type EncadernacaoTecnica = "grampeado" | "brochura_pur";
 
@@ -108,11 +107,6 @@ const CAPA_POR_ACABAMENTO: Record<AcabamentoCapa, FaixaCapa[]> = {
     { ate_cm: 51, sem_orelhas: 11.53, com_orelhas: 17.55 },
     { ate_cm: Infinity, sem_orelhas: 20.0, com_orelhas: 26.02 },
   ],
-  verniz_uv: [
-    { ate_cm: 40, sem_orelhas: 9.63, com_orelhas: 17.45 },
-    { ate_cm: 51, sem_orelhas: 14.99, com_orelhas: 22.82 },
-    { ate_cm: Infinity, sem_orelhas: 26.0, com_orelhas: 33.83 },
-  ],
 };
 
 // ─── Encadernação (planilha aba 4) ────────────────────────────────────────
@@ -159,14 +153,29 @@ const FAIXAS_TIRAGEM: FaixaTiragem[] = [
 
 const SETUP_TITULO_REAIS = 2.375;
 
-// ─── Frete estimado por região (fixo — item 5 conversa) ──────────────────
+// ─── Frete estimado por tiragem × região (escalado — item 6 conversa) ────
 
-const FRETE_POR_REGIAO: Record<RegiaoFrete, number> = {
-  sul_sudeste: 25,
-  centro_oeste: 35,
-  norte_nordeste: 45,
-  desconhecida: 40,
-};
+interface FaixaFrete {
+  min: number;
+  max: number;
+  precos: Record<RegiaoFrete, number>;
+}
+
+const FRETE_FAIXAS: FaixaFrete[] = [
+  { min: 1, max: 1,   precos: { sul_sudeste: 25,  centro_oeste: 35,  norte_nordeste: 45,  desconhecida: 40 } },
+  { min: 2, max: 5,   precos: { sul_sudeste: 35,  centro_oeste: 50,  norte_nordeste: 65,  desconhecida: 55 } },
+  { min: 6, max: 10,  precos: { sul_sudeste: 55,  centro_oeste: 80,  norte_nordeste: 105, desconhecida: 90 } },
+  { min: 11, max: 25, precos: { sul_sudeste: 90,  centro_oeste: 130, norte_nordeste: 170, desconhecida: 145 } },
+  { min: 26, max: 50, precos: { sul_sudeste: 150, centro_oeste: 220, norte_nordeste: 290, desconhecida: 245 } },
+  { min: 51, max: 100, precos: { sul_sudeste: 260, centro_oeste: 380, norte_nordeste: 500, desconhecida: 420 } },
+  { min: 101, max: 300, precos: { sul_sudeste: 550, centro_oeste: 800, norte_nordeste: 1050, desconhecida: 880 } },
+];
+
+function calcularFrete(tiragem: number, regiao: RegiaoFrete): number {
+  const faixa = FRETE_FAIXAS.find(f => tiragem >= f.min && tiragem <= f.max);
+  if (!faixa) return FRETE_FAIXAS[FRETE_FAIXAS.length - 1].precos[regiao];
+  return faixa.precos[regiao];
+}
 
 // Prefixos de CEP por região (BR — aproximado, suficiente para MVP)
 function inferirRegiao(cep: string): RegiaoFrete {
@@ -216,6 +225,14 @@ export function calcularOrcamento(config: ConfigImpressao): ResultadoOrcamento {
     };
   }
 
+  if (config.tiragem > 300) {
+    return {
+      ok: false,
+      erro: `Tiragens acima de 300 exemplares requerem orçamento personalizado. Fale com contato@useautoria.com.`,
+      codigo: "TIRAGEM_INVALIDA",
+    };
+  }
+
   if (config.papel_miolo === "couche_fosco_90g" && config.cor_miolo === "pb") {
     return {
       ok: false,
@@ -259,7 +276,7 @@ export function calcularOrcamento(config: ConfigImpressao): ResultadoOrcamento {
   const subtotalProdutos = custoPorExemplar * config.tiragem;
 
   const regiao = config.cep_entrega ? inferirRegiao(config.cep_entrega) : "desconhecida";
-  const freteEstimado = FRETE_POR_REGIAO[regiao];
+  const freteEstimado = calcularFrete(config.tiragem, regiao);
 
   const total = subtotalProdutos + freteEstimado;
 
@@ -293,6 +310,14 @@ function round2(n: number): number {
 
 // ─── Labels helpers (para UI) ─────────────────────────────────────────────
 
+export const FORMATO_LABELS: Record<FormatoLivro, string> = {
+  compacto: "Formato compacto • 14x21",
+  padrao_br: "Formato Padrão BR • 16x23",
+  bolso: "Formato Bolso • 11x18",
+  quadrado: "Formato Quadrado • 20x20",
+  a4: "Formato A4 • 21x29,7",
+};
+
 export const PAPEL_LABELS: Record<PapelMiolo, string> = {
   offset_75g: "Offset branco 75g/m²",
   avena_80g: "Avena creme 80g/m²",
@@ -303,7 +328,6 @@ export const PAPEL_LABELS: Record<PapelMiolo, string> = {
 export const ACABAMENTO_LABELS: Record<AcabamentoCapa, string> = {
   fosca_bopp: "Laminação fosca (BOPP fosco)",
   brilho_bopp: "Laminação brilho (BOPP brilho)",
-  verniz_uv: "Verniz UV total",
 };
 
 export const REGIAO_LABELS: Record<RegiaoFrete, string> = {

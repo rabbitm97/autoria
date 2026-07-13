@@ -10,6 +10,8 @@ import type {
   AcabamentoCapa,
   OrcamentoImpressao,
 } from "@/lib/impressao-pricing";
+import { FORMATO_LABELS } from "@/lib/impressao-pricing";
+import type { FormatoLivro } from "@/lib/formatos";
 
 /**
  * BLOCO-02-C — Orçamento de impressão POD.
@@ -27,31 +29,28 @@ interface FormState {
   papel_miolo: Papel;
   cor_miolo: Cor;
   acabamento_capa: Acab;
-  com_orelhas: boolean;
   tiragem: number;
   cep_entrega: string;
 }
 
 const PAPEL_OPTIONS: Array<{ value: Papel; label: string; hint: string }> = [
-  { value: "offset_75g", label: "Offset branco 75g", hint: "Padrão econômico" },
-  { value: "avena_80g", label: "Avena creme 80g", hint: "Tom creme, leitura confortável" },
-  { value: "polen_bold_90g", label: "Pólen Bold 90g", hint: "Premium, ideal para livros literários" },
-  { value: "couche_fosco_90g", label: "Couché fosco 90g", hint: "Só para miolo colorido" },
+  { value: "offset_75g", label: "Offset branco 75g", hint: "Papel branco comum, econômico" },
+  { value: "avena_80g", label: "Avena creme 80g", hint: "Papel off-white (creme) liso, ideal para ficção" },
+  { value: "polen_bold_90g", label: "Pólen Bold 90g", hint: "Papel off-white com maior aspereza e volume, premium" },
+  { value: "couche_fosco_90g", label: "Couché fosco 90g", hint: "Papel liso, ideal para livros coloridos" },
 ];
 
 const ACABAMENTO_OPTIONS: Array<{ value: Acab; label: string }> = [
   { value: "fosca_bopp", label: "Laminação fosca" },
   { value: "brilho_bopp", label: "Laminação brilho" },
-  { value: "verniz_uv", label: "Verniz UV total" },
 ];
 
-const TIRAGEM_PRESETS = [1, 5, 10, 25, 50, 100, 200, 500];
+const TIRAGEM_PRESETS = [1, 5, 10, 25, 50, 100, 200, 300];
 
 const DEFAULTS: FormState = {
   papel_miolo: "offset_75g",
   cor_miolo: "pb",
   acabamento_capa: "fosca_bopp",
-  com_orelhas: false,
   tiragem: 10,
   cep_entrega: "",
 };
@@ -62,6 +61,7 @@ interface ProjectMeta {
   paginas: number;
   formato: string;
   capa_thumb_url: string | null;
+  com_orelhas_projeto: boolean;
   qa_grafica_aprovado: boolean;
   qa_grafica_pendencias: string[];
 }
@@ -141,7 +141,7 @@ export default function ImpressaoPage() {
       const orelhaMmEditor = capa?.editor_data?.orelhaMm ?? 0;
       const comOrelhasEditor = capa?.editor_data?.comOrelhas ?? false;
       const comOrelhasUpload = capa?.usar_orelhas ?? (capa?.orelha_mm ?? 0) > 0;
-      const comOrelhasDefault = orelhaMmEditor > 0 || comOrelhasEditor || comOrelhasUpload;
+      const comOrelhasProjeto = orelhaMmEditor > 0 || comOrelhasEditor || comOrelhasUpload;
 
       let capaThumbUrl: string | null = null;
       const ebookPath = capa?.exports?.jpeg_ebook?.storage_path;
@@ -160,10 +160,10 @@ export default function ImpressaoPage() {
         paginas,
         formato: (data.formato as string) ?? "padrao_br",
         capa_thumb_url: capaThumbUrl,
+        com_orelhas_projeto: comOrelhasProjeto,
         qa_grafica_aprovado: qa?.grafica?.aprovado ?? false,
         qa_grafica_pendencias: qa?.grafica?.pendencias?.map(p => p.mensagem) ?? [],
       });
-      setForm(prev => ({ ...prev, com_orelhas: comOrelhasDefault }));
       setLoadingMeta(false);
     })();
     return () => { cancel = true; };
@@ -252,11 +252,11 @@ export default function ImpressaoPage() {
     if (!orcamento) return "";
     const parts = [
       `${form.tiragem} exemplar${form.tiragem > 1 ? "es" : ""}`,
-      `${orcamento.encadernacao_tecnica === "grampeado" ? "grampeado" : "brochura PUR"}`,
-      form.com_orelhas ? "com orelhas" : "sem orelhas",
+      `${orcamento.encadernacao_tecnica === "grampeado" ? "grampeado" : "brochura"}`,
+      meta?.com_orelhas_projeto ? "com orelhas" : "sem orelhas",
     ];
     return parts.join(" • ");
-  }, [orcamento, form]);
+  }, [orcamento, form, meta]);
 
   if (loadingMeta) {
     return (
@@ -296,7 +296,8 @@ export default function ImpressaoPage() {
           Orçamento de impressão
         </h1>
         <p className="text-slate-600 mt-1">
-          <span className="font-medium">{meta.titulo}</span> • {meta.autor} • {meta.paginas} páginas • formato {meta.formato}
+          <span className="font-medium">{meta.titulo}</span> • {meta.paginas} páginas • {FORMATO_LABELS[meta.formato as FormatoLivro] ?? `Formato ${meta.formato}`}
+          {meta.com_orelhas_projeto && " • capa com orelhas"}
         </p>
         <p className="text-sm text-slate-500 mt-2 leading-relaxed">
           Configure a tiragem e o acabamento do seu livro. O orçamento é calculado em tempo real. Adicione ao carrinho quando estiver pronto.
@@ -389,7 +390,7 @@ export default function ImpressaoPage() {
           {/* Acabamento da capa */}
           <section>
             <h2 className="text-lg font-semibold text-slate-900 mb-3">Acabamento da capa</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {ACABAMENTO_OPTIONS.map(opt => {
                 const selected = form.acabamento_capa === opt.value;
                 return (
@@ -408,22 +409,6 @@ export default function ImpressaoPage() {
                 );
               })}
             </div>
-          </section>
-
-          {/* Orelhas */}
-          <section>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.com_orelhas}
-                onChange={e => setForm(prev => ({ ...prev, com_orelhas: e.target.checked }))}
-                className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              <span className="text-sm">
-                <span className="font-medium text-slate-900">Capa com orelhas</span>
-                <span className="text-slate-600 ml-2">(+ R$ 6 a 8 por exemplar)</span>
-              </span>
-            </label>
           </section>
 
           {/* Tiragem */}
@@ -453,17 +438,24 @@ export default function ImpressaoPage() {
               <input
                 type="number"
                 min={1}
-                max={5000}
+                max={300}
                 value={form.tiragem}
                 onChange={e => {
                   const n = parseInt(e.target.value, 10);
                   if (Number.isFinite(n) && n >= 1) {
-                    setForm(prev => ({ ...prev, tiragem: n }));
+                    setForm(prev => ({ ...prev, tiragem: Math.min(300, n) }));
                   }
                 }}
                 className="w-24 px-3 py-1.5 rounded-md border border-slate-300 text-sm"
               />
-              <span className="text-sm text-slate-600">exemplares</span>
+              <span className="text-sm text-slate-600">exemplares (máx. 300)</span>
+            </div>
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              Precisa de mais de 300 exemplares? Fale com a gente em{" "}
+              <a href="mailto:contato@useautoria.com" className="font-medium underline">
+                contato@useautoria.com
+              </a>{" "}
+              para um orçamento personalizado.
             </div>
           </section>
 
