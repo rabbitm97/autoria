@@ -12,7 +12,7 @@ import type {
 } from "@/lib/impressao-pricing";
 
 /**
- * BLOCO-02-C — Simulador de impressão POD.
+ * BLOCO-02-C — Orçamento de impressão POD.
  *
  * Usuário escolhe papel, cor, acabamento, orelhas, tiragem e CEP.
  * O preço é calculado server-side (rota /orcamento) e refeito com debounce.
@@ -58,8 +58,12 @@ const DEFAULTS: FormState = {
 
 interface ProjectMeta {
   titulo: string;
+  autor: string;
   paginas: number;
   formato: string;
+  capa_thumb_url: string | null;
+  qa_grafica_aprovado: boolean;
+  qa_grafica_pendencias: string[];
 }
 
 function formatBRL(reais: number): string {
@@ -91,7 +95,10 @@ export default function ImpressaoPage() {
       setLoadingMeta(true);
       const { data, error } = await supabase
         .from("projects")
-        .select("titulo, formato, dados_miolo, dados_capa")
+        .select(`
+          formato, dados_capa, dados_miolo, dados_elementos, dados_qa,
+          manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)
+        `)
         .eq("id", id)
         .single();
 
@@ -103,23 +110,58 @@ export default function ImpressaoPage() {
         return;
       }
 
+      const ms = data.manuscripts as unknown as {
+        titulo?: string;
+        autor_primeiro_nome?: string;
+        autor_sobrenome?: string;
+      } | null;
+      const el = data.dados_elementos as { titulo_escolhido?: string } | null;
+      const capa = data.dados_capa as {
+        editor_data?: { orelhaMm?: number; comOrelhas?: boolean };
+        orelha_mm?: number;
+        usar_orelhas?: boolean;
+        exports?: { jpeg_ebook?: { storage_path?: string } };
+      } | null;
       const miolo = data.dados_miolo as { paginas_reais?: number } | null;
+      const qa = data.dados_qa as {
+        grafica?: { aprovado?: boolean; pendencias?: Array<{ mensagem: string }> };
+      } | null;
+
       const paginas = miolo?.paginas_reais ?? 0;
       if (!paginas) {
-        setMetaErro("Miolo ainda não foi gerado. Gere o PDF do miolo antes de simular impressão.");
+        setMetaErro("Miolo ainda não foi gerado. Gere o PDF do miolo antes de orçar impressão.");
         setLoadingMeta(false);
         return;
       }
 
-      const capa = data.dados_capa as { orelha_mm?: number; usar_orelhas?: boolean } | null;
-      const comOrelhasDefault = typeof capa?.orelha_mm === "number"
-        ? capa.orelha_mm > 0
-        : capa?.usar_orelhas === true;
+      const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "Sem título";
+      const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome]
+        .filter(Boolean).join(" ") || "Autor";
+
+      const orelhaMmEditor = capa?.editor_data?.orelhaMm ?? 0;
+      const comOrelhasEditor = capa?.editor_data?.comOrelhas ?? false;
+      const comOrelhasUpload = capa?.usar_orelhas ?? (capa?.orelha_mm ?? 0) > 0;
+      const comOrelhasDefault = orelhaMmEditor > 0 || comOrelhasEditor || comOrelhasUpload;
+
+      let capaThumbUrl: string | null = null;
+      const ebookPath = capa?.exports?.jpeg_ebook?.storage_path;
+      if (ebookPath) {
+        const { data: signed } = await supabase.storage
+          .from("editor-assets")
+          .createSignedUrl(ebookPath, 3600);
+        capaThumbUrl = signed?.signedUrl ?? null;
+      }
+
+      if (cancel) return;
 
       setMeta({
-        titulo: (data.titulo as string) ?? "Sem título",
+        titulo,
+        autor,
         paginas,
         formato: (data.formato as string) ?? "padrao_br",
+        capa_thumb_url: capaThumbUrl,
+        qa_grafica_aprovado: qa?.grafica?.aprovado ?? false,
+        qa_grafica_pendencias: qa?.grafica?.pendencias?.map(p => p.mensagem) ?? [],
       });
       setForm(prev => ({ ...prev, com_orelhas: comOrelhasDefault }));
       setLoadingMeta(false);
@@ -227,7 +269,7 @@ export default function ImpressaoPage() {
   if (metaErro || !meta) {
     return (
       <div className="max-w-2xl mx-auto p-8">
-        <h1 className="text-2xl font-semibold text-slate-900 mb-2">Simulador de impressão</h1>
+        <h1 className="text-2xl font-semibold text-slate-900 mb-2">Orçamento de impressão</h1>
         <div className="mt-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
           {metaErro ?? "Erro desconhecido."}
         </div>
@@ -235,7 +277,7 @@ export default function ImpressaoPage() {
           href={`/dashboard/publicacao/${id}`}
           className="inline-block mt-6 text-sm text-emerald-700 hover:underline"
         >
-          ← Voltar para downloads
+          ← Voltar para Publicação
         </Link>
       </div>
     );
@@ -248,15 +290,47 @@ export default function ImpressaoPage() {
           href={`/dashboard/publicacao/${id}`}
           className="text-sm text-emerald-700 hover:underline"
         >
-          ← Voltar para downloads
+          ← Voltar para Publicação
         </Link>
         <h1 className="text-2xl lg:text-3xl font-semibold text-slate-900 mt-2">
-          Simulador de impressão
+          Orçamento de impressão
         </h1>
         <p className="text-slate-600 mt-1">
-          <span className="font-medium">{meta.titulo}</span> • {meta.paginas} páginas • formato {meta.formato}
+          <span className="font-medium">{meta.titulo}</span> • {meta.autor} • {meta.paginas} páginas • formato {meta.formato}
+        </p>
+        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+          Configure a tiragem e o acabamento do seu livro. O orçamento é calculado em tempo real. Adicione ao carrinho quando estiver pronto.
         </p>
       </div>
+
+      {!meta.qa_grafica_aprovado && meta.qa_grafica_pendencias.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-700 shrink-0 mt-0.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-900 mb-1">
+                Sua capa tem pontos de atenção
+              </p>
+              <p className="text-xs text-amber-800 mb-2 leading-relaxed">
+                Você pode adicionar ao carrinho mesmo assim, mas pode haver problemas na impressão. Recomendamos ajustar antes:
+              </p>
+              <ul className="text-xs text-amber-800 pl-4 list-disc space-y-0.5 marker:text-amber-500 mb-2">
+                {meta.qa_grafica_pendencias.slice(0, 3).map((msg, i) => <li key={i}>{msg}</li>)}
+              </ul>
+              <Link
+                href={`/dashboard/prova/${id}`}
+                className="text-xs font-medium text-amber-900 hover:underline"
+              >
+                Ir para a Prova →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
         {/* Coluna esquerda: opções */}
