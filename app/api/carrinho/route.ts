@@ -6,6 +6,7 @@ import {
   calcularOrcamento,
   type ConfigImpressao,
 } from "@/lib/impressao-pricing";
+import type { FormatoLivro } from "@/lib/formatos";
 
 /**
  * BLOCO-02-C — Carrinho de compras unificado.
@@ -83,20 +84,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Verifica ownership do projeto.
-  // BLOCO-02-C-FIX-2: select("id") apenas — a coluna `titulo` não existe em
-  // `projects` (título canônico vem de manuscripts.titulo via join FK ou
-  // dados_elementos.titulo_escolhido no JSONB). Aqui só precisamos confirmar
-  // que o projeto existe e pertence ao user.
+  // BLOCO-02-C-FIX-3: busca dados do projeto para enriquecer o config
+  // server-side. Formato e páginas SEMPRE vêm do banco (nunca do client)
+  // para evitar manipulação. Orelhas caem no valor do projeto se o client
+  // não sobrescrever. Mesmo padrão da rota /impressao/orcamento.
   const { data: project, error: projectErr } = await supabase
     .from("projects")
-    .select("id")
+    .select("id, formato, dados_miolo, dados_capa")
     .eq("id", body.project_id)
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (projectErr) {
-    console.error("[carrinho POST] erro ao verificar ownership do projeto:", projectErr);
+    console.error("[carrinho POST] erro ao buscar projeto:", projectErr);
     return NextResponse.json(
       { error: "Erro ao verificar acesso ao projeto." },
       { status: 500 },
@@ -110,7 +110,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const config = body.config as ConfigImpressao;
+  const formato = (project.formato ?? "padrao_br") as FormatoLivro;
+  const miolo = (project.dados_miolo ?? null) as { paginas_reais?: number } | null;
+  const paginas = miolo?.paginas_reais ?? 0;
+
+  if (!paginas || paginas < 4) {
+    return NextResponse.json(
+      { error: "Miolo ainda não foi gerado. Gere o PDF do miolo antes de adicionar ao carrinho." },
+      { status: 409 },
+    );
+  }
+
+  const capa = (project.dados_capa ?? {}) as { orelha_mm?: number; usar_orelhas?: boolean };
+  const orelhasProjeto = typeof capa.orelha_mm === "number"
+    ? capa.orelha_mm > 0
+    : capa.usar_orelhas === true;
+
+  const clientConfig = (body.config ?? {}) as Partial<ConfigImpressao>;
+
+  const config: ConfigImpressao = {
+    formato,
+    paginas,
+    papel_miolo: clientConfig.papel_miolo ?? "offset_75g",
+    cor_miolo: clientConfig.cor_miolo ?? "pb",
+    acabamento_capa: clientConfig.acabamento_capa ?? "fosca_bopp",
+    com_orelhas: clientConfig.com_orelhas ?? orelhasProjeto,
+    tiragem: clientConfig.tiragem ?? 10,
+    cep_entrega: clientConfig.cep_entrega,
+  };
+
   const resultado = calcularOrcamento(config);
 
   if (!resultado.ok) {
