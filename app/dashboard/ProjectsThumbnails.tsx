@@ -3,25 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ETAPA_HREF, derivarEtapaExibida } from "@/lib/etapas";
 
 interface Projeto {
   id: string;
   etapa_atual: string;
+  qa_aprovado_em: string | null;
+  dados_miolo: { paginas_reais?: number } | null;
   criado_em: string;
   manuscript: { nome: string; titulo: string | null } | null;
 }
-
-const ETAPA_HREF: Record<string, (id: string) => string> = {
-  upload:        (id) => `/dashboard/diagnostico/${id}`,
-  diagnostico:   (id) => `/dashboard/diagnostico/${id}`,
-  revisao:       (id) => `/dashboard/revisao/${id}`,
-  sinopse_ficha: (id) => `/dashboard/elementos/${id}`,
-  capa:          (id) => `/dashboard/capa/${id}`,
-  creditos:      (id) => `/dashboard/creditos/${id}`,
-  diagramacao:   (id) => `/dashboard/miolo/${id}`,
-  qa:            (id) => `/dashboard/prova/${id}`,
-  publicacao:    (id) => `/dashboard/publicacao/${id}`,
-};
 
 export function ProjectsThumbnails({
   projetos: initial,
@@ -60,7 +51,7 @@ export function ProjectsThumbnails({
       <div className="flex gap-2">
         {projetos.map((p) => (
           <div key={p.id} className="relative shrink-0 group/card">
-            <Link href={ETAPA_HREF[p.etapa_atual]?.(p.id) ?? "#"}>
+            <Link href={ETAPA_HREF[derivarEtapaExibida(p)]?.(p.id) ?? "#"}>
               <div
                 className={`w-14 h-20 rounded-lg border-2 flex flex-col items-center justify-end pb-1.5 overflow-hidden transition-all
                   ${p.id === activeId

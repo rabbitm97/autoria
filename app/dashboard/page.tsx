@@ -2,58 +2,24 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import Link from "next/link";
 import { ProjectsThumbnails } from "./ProjectsThumbnails";
+import { STEPS, ETAPA_HREF, getStepIndex, derivarEtapaExibida } from "@/lib/etapas";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Projeto {
   id: string;
   etapa_atual: string;
+  qa_aprovado_em: string | null;
+  dados_miolo: { paginas_reais?: number } | null;
   criado_em: string;
   manuscript: { nome: string; titulo: string | null } | null;
 }
 
-// ─── Step config ──────────────────────────────────────────────────────────────
-
-const STEPS = [
-  { key: "diagnostico",   label: "Diagnóstico",  href: (id: string) => `/dashboard/diagnostico/${id}` },
-  { key: "revisao",       label: "Revisão",       href: (id: string) => `/dashboard/revisao/${id}` },
-  { key: "elementos",     label: "Elementos",     href: (id: string) => `/dashboard/elementos/${id}` },
-  { key: "capa",          label: "Capa",          href: (id: string) => `/dashboard/capa/${id}` },
-  { key: "creditos",      label: "Créditos",      href: (id: string) => `/dashboard/creditos/${id}` },
-  { key: "diagramacao",   label: "Diagramação",   href: (id: string) => `/dashboard/miolo/${id}` },
-  { key: "qa",            label: "Prova",         href: (id: string) => `/dashboard/prova/${id}` },
-  { key: "publicacao",    label: "Publicação",    href: (id: string) => `/dashboard/publicacao/${id}` },
-];
-
-const ETAPA_HREF: Record<string, (id: string) => string> = {
-  upload:        (id) => `/dashboard/diagnostico/${id}`,
-  diagnostico:   (id) => `/dashboard/diagnostico/${id}`,
-  revisao:       (id) => `/dashboard/revisao/${id}`,
-  elementos:     (id) => `/dashboard/elementos/${id}`,
-  capa:          (id) => `/dashboard/capa/${id}`,
-  creditos:      (id) => `/dashboard/creditos/${id}`,
-  diagramacao:   (id) => `/dashboard/miolo/${id}`,
-  preview:       (id) => `/dashboard/prova/${id}`,
-  qa:            (id) => `/dashboard/prova/${id}`,
-  publicacao:    (id) => `/dashboard/publicacao/${id}`,
-  concluido:     (id) => `/dashboard/publicacao/${id}`,
-};
-
 const MOCK_PROJETOS: Projeto[] = [
-  { id: "mock-1", etapa_atual: "revisao",       criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
-  { id: "mock-2", etapa_atual: "capa",          criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
-  { id: "mock-3", etapa_atual: "elementos",     criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
+  { id: "mock-1", etapa_atual: "revisao",   qa_aprovado_em: null, dados_miolo: null, criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
+  { id: "mock-2", etapa_atual: "capa",      qa_aprovado_em: null, dados_miolo: null, criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
+  { id: "mock-3", etapa_atual: "elementos", qa_aprovado_em: null, dados_miolo: null, criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
 ];
-
-const ETAPA_STEP_ALIAS: Record<string, string> = {
-  preview: "qa",
-};
-
-function getStepIndex(etapa: string): number {
-  const key = ETAPA_STEP_ALIAS[etapa] ?? etapa;
-  const idx = STEPS.findIndex((s) => s.key === key);
-  return idx >= 0 ? idx : 0;
-}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
@@ -157,7 +123,7 @@ export default async function DashboardPage() {
 
       const { data } = await supabase
         .from("projects")
-        .select("id, etapa_atual, criado_em, manuscript:manuscript_id(nome, titulo)")
+        .select("id, etapa_atual, qa_aprovado_em, dados_miolo, criado_em, manuscript:manuscript_id(nome, titulo)")
         .order("criado_em", { ascending: false });
 
       projetos = (data ?? []) as unknown as Projeto[];
@@ -166,10 +132,11 @@ export default async function DashboardPage() {
 
   const projetoAtivo = projetos[0] ?? null;
   const outrosProjetos = projetos.slice(1);
-  const stepAtivo = projetoAtivo ? getStepIndex(projetoAtivo.etapa_atual) : 0;
+  const etapaExibida = projetoAtivo ? derivarEtapaExibida(projetoAtivo) : null;
+  const stepAtivo = etapaExibida ? getStepIndex(etapaExibida) : 0;
   const nomeAtivo = projetoAtivo?.manuscript?.titulo?.trim() || projetoAtivo?.manuscript?.nome || "Meu Livro";
-  const continueHref = projetoAtivo
-    ? (ETAPA_HREF[projetoAtivo.etapa_atual]?.(projetoAtivo.id) ?? `/dashboard/diagnostico/${projetoAtivo.id}`)
+  const continueHref = projetoAtivo && etapaExibida
+    ? (ETAPA_HREF[etapaExibida]?.(projetoAtivo.id) ?? `/dashboard/diagnostico/${projetoAtivo.id}`)
     : "/dashboard/novo-projeto";
 
   return (
@@ -316,7 +283,7 @@ export default async function DashboardPage() {
                       {outrosProjetos.slice(0, 3).map((p) => (
                         <Link
                           key={p.id}
-                          href={ETAPA_HREF[p.etapa_atual]?.(p.id) ?? "#"}
+                          href={ETAPA_HREF[derivarEtapaExibida(p)]?.(p.id) ?? "#"}
                           className="flex items-center gap-2 p-2 rounded-lg hover:bg-zinc-50 transition-colors group"
                         >
                           <div className="w-5 h-7 rounded shrink-0 flex items-center justify-center"
