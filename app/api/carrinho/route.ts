@@ -36,7 +36,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("cart_items")
     .select(`
-      id, tipo, project_id, config, preco_centavos, created_at, updated_at,
+      id, tipo, project_id, config, preco_centavos, adicionado_em, updated_at,
       projects (
         id, formato, dados_capa, dados_elementos,
         manuscripts (titulo, autor_primeiro_nome, autor_sobrenome)
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
 
   const { data: inserted, error: insertErr } = await supabase
     .from("cart_items")
-    .insert({ ...payload, created_at: now })
+    .insert(payload)
     .select("id")
     .single();
 

@@ -13,7 +13,7 @@ interface CartItem {
   project_id: string;
   config: ConfigImpressao;
   preco_centavos: number;
-  created_at: string;
+  adicionado_em: string;
   updated_at: string;
   projects?: {
     id: string;
