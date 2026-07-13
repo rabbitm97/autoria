@@ -34,7 +34,13 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("cart_items")
-    .select("id, tipo, project_id, config, preco_centavos, created_at, updated_at, projects(id, titulo)")
+    .select(`
+      id, tipo, project_id, config, preco_centavos, created_at, updated_at,
+      projects (
+        id, formato, dados_capa, dados_elementos,
+        manuscripts (titulo, autor_primeiro_nome, autor_sobrenome)
+      )
+    `)
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
 

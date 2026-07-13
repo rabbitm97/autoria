@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -125,6 +126,11 @@ export function Sidebar() {
                   </li>
                 );
               })}
+              {section === "PUBLICAÇÃO" && (
+                <li>
+                  <CartSidebarLink isActive={isActive("/carrinho", true)} />
+                </li>
+              )}
             </ul>
           </div>
         ))}
@@ -160,6 +166,68 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+  );
+}
+
+// ─── Cart link com badge (autoatualiza via CustomEvent 'cart:updated') ────────
+
+function CartSidebarLink({ isActive }: { isActive: boolean }) {
+  const [count, setCount] = useState(0);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/carrinho");
+      if (res.ok) {
+        const data = await res.json();
+        setCount(Array.isArray(data.items) ? data.items.length : 0);
+      }
+    } catch { /* silencioso */ }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const handler = () => load();
+    if (typeof window !== "undefined") {
+      window.addEventListener("cart:updated", handler);
+      return () => window.removeEventListener("cart:updated", handler);
+    }
+  }, [load]);
+
+  return (
+    <Link
+      href="/carrinho"
+      className={`
+        flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150
+        ${isActive
+          ? "bg-brand-gold/12 text-brand-gold border border-brand-gold/20"
+          : "text-white/55 hover:text-white/90 hover:bg-white/5 border border-transparent"
+        }
+      `}
+    >
+      <span className={`shrink-0 ${isActive ? "text-brand-gold" : "text-white/35"}`}>
+        <CartIcon />
+      </span>
+      Carrinho
+      {count > 0 && (
+        <span className="ml-auto bg-brand-gold text-brand-primary text-[10px] font-bold px-2 py-0.5 rounded-full">
+          {count}
+        </span>
+      )}
+      {isActive && count === 0 && (
+        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-gold shrink-0" />
+      )}
+    </Link>
+  );
+}
+
+function CartIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="21" r="1" />
+      <circle cx="20" cy="21" r="1" />
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
   );
 }
 
