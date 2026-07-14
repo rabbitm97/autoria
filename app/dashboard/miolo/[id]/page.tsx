@@ -13,6 +13,7 @@ import {
   type TemplateOption,
 } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
+import { avancarEtapa } from "@/lib/supabase-helpers";
 import { DocxDisclaimer } from "./docx-disclaimer";
 import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-react";
 import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
@@ -456,9 +457,12 @@ export default function MioloPage() {
       // Save new text and clear texto_revisado so Diagramação uses the new upload, not stale revision
       const { data: proj } = await supabase.from("projects").select("manuscript_id").eq("id", projectId).single();
       if (proj?.manuscript_id) {
-        await supabase.from("manuscripts")
+        const { error: msErr } = await supabase.from("manuscripts")
           .update({ texto: parseData.texto, texto_revisado: null })
           .eq("id", proj.manuscript_id as string);
+        if (msErr) {
+          throw new Error(`Falha ao salvar o novo texto: ${msErr.message}`);
+        }
       }
 
       // Re-generate miolo
@@ -1260,7 +1264,7 @@ export default function MioloPage() {
             )}
             <button
               onClick={async () => {
-                await supabase.from("projects").update({ etapa_atual: "preview" }).eq("id", projectId);
+                await avancarEtapa(supabase, projectId, null, "preview", "dashboard-miolo");
                 router.push(`/dashboard/prova/${projectId}`);
               }}
               className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"

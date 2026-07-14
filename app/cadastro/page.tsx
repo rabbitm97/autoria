@@ -63,10 +63,13 @@ export default function CadastroPage() {
 
     // 2. Salvar nome no perfil (o trigger cria a linha, aqui só atualiza)
     if (data.user) {
-      await supabase
+      const { error: nomeErr } = await supabase
         .from("users")
         .update({ nome: nome.trim() })
         .eq("id", data.user.id);
+      if (nomeErr) {
+        console.error("[cadastro] Falha ao salvar nome no perfil:", nomeErr.message);
+      }
     }
 
     // 3. Se Supabase exigir confirmação de e-mail, mostrar aviso;

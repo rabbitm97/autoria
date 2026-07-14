@@ -75,11 +75,17 @@ export async function POST(
   const nextVersion = (latest?.version ?? 0) + 1;
 
   // Deactivate current active
-  await client
+  const { error: deactivateErr } = await client
     .from("agent_prompts")
     .update({ is_active: false })
     .eq("agent_name", nome)
     .eq("is_active", true);
+  if (deactivateErr) {
+    return NextResponse.json(
+      { error: `Falha ao desativar prompt atual: ${deactivateErr.message}` },
+      { status: 500 }
+    );
+  }
 
   // Insert new active version
   const { data: inserted, error } = await client
@@ -120,16 +126,25 @@ export async function PATCH(
 
   const client = svc();
 
-  await client
+  const { error: offErr } = await client
     .from("agent_prompts")
     .update({ is_active: false })
     .eq("agent_name", nome);
+  if (offErr) {
+    return NextResponse.json({ error: `Falha ao desativar: ${offErr.message}` }, { status: 500 });
+  }
 
-  await client
+  const { error: onErr } = await client
     .from("agent_prompts")
     .update({ is_active: true })
     .eq("id", id)
     .eq("agent_name", nome);
+  if (onErr) {
+    return NextResponse.json(
+      { error: `Falha ao ativar a versão selecionada (agente pode ter ficado sem prompt ativo): ${onErr.message}` },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }

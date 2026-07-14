@@ -40,9 +40,12 @@ export async function getProjectFormatoStatus(
 // Idempotent — only sets formato_locked_at when it is still NULL.
 export async function lockFormato(projectId: string): Promise<void> {
   const supabase = adminClient();
-  await supabase
+  const { error } = await supabase
     .from("projects")
     .update({ formato_locked_at: new Date().toISOString() })
     .eq("id", projectId)
     .is("formato_locked_at", null);
+  if (error) {
+    console.error("[lockFormato] Falha ao travar formato:", error.message);
+  }
 }

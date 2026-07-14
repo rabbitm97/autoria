@@ -311,7 +311,7 @@ export default function RevisaoPage() {
 
   async function saveProgress(newAceitas: Set<string>, newRejeitadas: Set<string>) {
     if (!revisao) return;
-    await supabase
+    const { error: progressErr } = await supabase
       .from("projects")
       .update({
         dados_revisao: {
@@ -321,6 +321,9 @@ export default function RevisaoPage() {
         },
       })
       .eq("id", projectId);
+    if (progressErr) {
+      console.error("[revisao] Falha no autosave de progresso:", progressErr.message);
+    }
   }
 
   // ── Actions ──────────────────────────────────────────────────────────────────

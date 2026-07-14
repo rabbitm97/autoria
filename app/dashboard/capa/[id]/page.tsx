@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { supabase } from "@/lib/supabase";
+import { avancarEtapa } from "@/lib/supabase-helpers";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult } from "@/app/api/agentes/upload-capa/route";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
@@ -1582,18 +1583,24 @@ export default function CapaPage() {
       }
     }
 
-    await supabase
-      .from("projects")
-      .update({ etapa_atual: "creditos" })
-      .eq("id", id);
+    const { ok } = await avancarEtapa(supabase, id, null, "creditos", "dashboard-capa");
+    if (!ok) {
+      alert("Não foi possível avançar a etapa. Tente novamente.");
+      return;
+    }
     router.push(`/dashboard/creditos/${id}`);
   }
 
   async function handleSkip() {
-    await supabase
+    const { error: skipErr } = await supabase
       .from("projects")
-      .update({ dados_capa: { modo: "skip" }, etapa_atual: "creditos" })
+      .update({ dados_capa: { modo: "skip" } })
       .eq("id", id);
+    if (skipErr) {
+      alert("Não foi possível pular a capa. Tente novamente.");
+      return;
+    }
+    await avancarEtapa(supabase, id, null, "creditos", "dashboard-capa");
     router.push(`/dashboard/creditos/${id}`);
   }
 

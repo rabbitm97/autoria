@@ -7,6 +7,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import type { CreditosConfig, CreditosResult, PropositoPublicacao } from "@/app/api/agentes/creditos/route";
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
+import { avancarEtapa } from "@/lib/supabase-helpers";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -516,7 +517,7 @@ export default function CreditosPage() {
       // Sem créditos: nada foi gerado — vai direto para diagramação.
       if (!geraCreditos) {
         setTimeout(async () => {
-          await supabase.from("projects").update({ etapa_atual: "diagramacao" }).eq("id", projectId);
+          await avancarEtapa(supabase, projectId, null, "diagramacao", "dashboard-creditos");
           router.push(`/dashboard/miolo/${projectId}`);
         }, 400);
         return;
@@ -1201,7 +1202,7 @@ export default function CreditosPage() {
               <p className="text-zinc-400 text-xs hidden sm:block">Próxima etapa: diagramação do miolo.</p>
               <button
                 onClick={async () => {
-                  await supabase.from("projects").update({ etapa_atual: "diagramacao" }).eq("id", projectId);
+                  await avancarEtapa(supabase, projectId, null, "diagramacao", "dashboard-creditos");
                   router.push(`/dashboard/miolo/${projectId}`);
                 }}
                 className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
