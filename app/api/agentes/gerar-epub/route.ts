@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import JSZip from "jszip";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID, createHash } from "crypto";
@@ -509,11 +510,15 @@ export async function POST(req: NextRequest) {
     .single();
 
   const dadosPdfAtual = (existing?.dados_pdf as Record<string, unknown>) ?? {};
-  await supabase
-    .from("projects")
-    .update({ dados_pdf: { ...dadosPdfAtual, epub: result } })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: epubOk } = await updateProject(supabase, project_id, userId, {
+    dados_pdf: { ...dadosPdfAtual, epub: result },
+  }, "gerar-epub");
+  if (!epubOk) {
+    return NextResponse.json(
+      { error: "EPUB gerado, mas falha ao registrar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json(result);
   } catch (err) {

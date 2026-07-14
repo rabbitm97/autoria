@@ -226,10 +226,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await supabase
+    const { error: debitoErr } = await supabase
       .from("projects")
       .update({ creditos: creditos - 20 })
       .eq("id", project_id);
+    if (debitoErr) {
+      console.error("[gerar-capa] Falha ao debitar créditos:", debitoErr.message);
+      return NextResponse.json(
+        { error: "Falha ao debitar créditos. Tente novamente." },
+        { status: 500 }
+      );
+    }
   }
 
   const prompt = buildPrompt({ titulo, autor, sinopse, genero, estilo, cor_predominante });

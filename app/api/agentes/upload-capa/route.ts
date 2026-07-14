@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { getFormatoDef, estimarLombadaCapaMm, type FormatoLivro } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
@@ -405,14 +406,16 @@ export async function POST(req: NextRequest) {
     pdf_grafica: null,
   };
 
-  await Promise.all([
-    supabase
-      .from("projects")
-      .update({ dados_capa: dadosCapaPayload, etapa_atual: "capa" })
-      .eq("id", project_id)
-      .eq("user_id", userId),
-    lockFormato(project_id),
-  ]);
+  const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
+    dados_capa: dadosCapaPayload,
+  }, "upload-capa");
+  if (!capaOk) {
+    return NextResponse.json(
+      { error: "Upload processado, mas falha ao salvar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
+  await lockFormato(project_id);
 
   // Dispara PDF gráfica em background (fire-and-forget). Só surte efeito se
   // o miolo já foi gerado — caso contrário a rota devolve 422 e a UI trata

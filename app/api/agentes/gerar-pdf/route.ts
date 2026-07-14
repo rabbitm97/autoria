@@ -6,6 +6,7 @@ import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
@@ -407,29 +408,29 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
   };
 
-  await supabase
-    .from("projects")
-    .update({ dados_pdf, etapa_atual: "diagramacao" })
-    .eq("id", project_id)
-    .eq("user_id", userId);
-
-  // ── Sync paginas_reais + lombada_mm in dados_miolo ────────────────────────
+  // ── Persist dados_pdf + sync dados_miolo em UPDATE ÚNICO (C.2) ────────────
+  // Antes eram 2 UPDATEs sequenciais sem check: se o 2º falhava,
+  // dados_pdf.paginas e dados_miolo.paginas_reais divergiam e o cross-check
+  // do QA (lombada capa vs miolo) quebrava. Agora é atômico.
   // PDF page count is authoritative; update miolo so qa/route.ts cross-check
   // (capa lombada vs paginas reais) stays consistent. Usa a fórmula gráfica
   // brasileira unificada (`estimarLombadaMm`), substituindo a fórmula antiga
   // `pgs × 0.07` que divergia ~35% da realidade.
   const lombada_mm = estimarLombadaMm(numPaginas);
-  await supabase
-    .from("projects")
-    .update({
-      dados_miolo: {
-        ...(miolo as unknown as Record<string, unknown>),
-        lombada_mm,
-        paginas_reais: numPaginas,
-      },
-    })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: saveOk } = await updateProject(supabase, project_id, userId, {
+    dados_pdf,
+    dados_miolo: {
+      ...(miolo as unknown as Record<string, unknown>),
+      lombada_mm,
+      paginas_reais: numPaginas,
+    },
+  }, "gerar-pdf");
+  if (!saveOk) {
+    return NextResponse.json(
+      { error: "PDF gerado, mas falha ao salvar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   // Dispara PDF gráfica em background quando a capa já está confirmada mas
   // ainda não tem `pdf_grafica`. Cobre o caso: autor confirmou a capa (editor

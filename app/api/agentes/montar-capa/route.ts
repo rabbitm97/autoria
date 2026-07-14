@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import sharp from "sharp";
 import { getFormatoDef } from "@/lib/formatos";
@@ -283,14 +284,16 @@ export async function POST(req: NextRequest) {
     dimensoes_montada: { largura_px: totalW, altura_px: frontH, dpi: DPI },
   };
 
-  await Promise.all([
-    supabase
-      .from("projects")
-      .update({ dados_capa: dadosCapaAtualizado, etapa_atual: "diagramacao" })
-      .eq("id", project_id)
-      .eq("user_id", userId),
-    lockFormato(project_id),
-  ]);
+  const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
+    dados_capa: dadosCapaAtualizado,
+  }, "montar-capa");
+  if (!capaOk) {
+    return NextResponse.json(
+      { error: "Capa montada, mas falha ao salvar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
+  await lockFormato(project_id);
 
   return NextResponse.json({
     url: publicUrl,

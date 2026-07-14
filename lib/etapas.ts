@@ -28,6 +28,29 @@ export const STEPS = [
   { key: "publicacao",  label: "Publicação",  href: (id: string) => `/dashboard/publicacao/${id}` },
 ] as const;
 
+// ─── Ordem ordinal completa de etapa_atual (11 valores da constraint de prod) ──
+// Usada por avancarEtapa() (lib/supabase-helpers.ts) para escrita forward-only.
+// BLOCO A (futuro): a etapa "audiolivro" será inserida entre "diagramacao" e
+// "preview" — basta adicionar o valor aqui. PRÉ-REQUISITO: a constraint
+// projects_etapa_atual_check em prod precisa ganhar o 12º valor via migration
+// (C.3 ou junto do Bloco A). NÃO adicionar antes disso.
+export const ORDEM_ETAPAS = [
+  "upload",
+  "diagnostico",
+  "revisao",
+  "elementos",
+  "capa",
+  "creditos",
+  "diagramacao",
+  // "audiolivro",  ← Bloco A insere aqui (ver comentário acima)
+  "preview",
+  "qa",
+  "publicacao",
+  "publicado",
+] as const;
+
+export type EtapaAtual = (typeof ORDEM_ETAPAS)[number];
+
 // ─── ETAPA_HREF (deriva de STEPS + aliases) ──────────────────────────────
 // Aliases mapeiam valores possíveis de `etapa_atual` no banco que não
 // aparecem em STEPS (por serem estados de transição ou finais):
