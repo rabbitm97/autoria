@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import {
   FORMATOS_LIVRO,
@@ -480,11 +481,18 @@ export async function POST(request: NextRequest) {
 
     // Persistir texto em manuscripts (commit imediato)
     if (project.manuscript_id) {
-      await supabase
+      const { error: msErr } = await supabase
         .from("manuscripts")
         .update({ texto: textoCompleto })
         .eq("id", project.manuscript_id)
         .eq("user_id", user.id);
+      if (msErr) {
+        console.error("[diagnostico] Falha ao persistir texto normalizado:", msErr.message);
+        return NextResponse.json(
+          { error: "Falha ao salvar o texto do manuscrito. Tente novamente." },
+          { status: 500 }
+        );
+      }
     }
 
     const fragmentos = fragmentarParaDiagnostico(textoCompleto, titulo);
@@ -497,14 +505,16 @@ export async function POST(request: NextRequest) {
       _fragmentos_pendentes: fragmentos,
     };
 
-    await supabase
-      .from("projects")
-      .update({
-        diagnostico: estado,
-        etapa_atual: "diagnostico",
-      })
-      .eq("id", project_id)
-      .eq("user_id", user.id);
+    const { ok: estadoOk } = await updateProject(supabase, project_id, user.id, {
+      diagnostico: estado,
+    }, "diagnostico");
+    if (!estadoOk) {
+      return NextResponse.json(
+        { error: "Falha ao iniciar o diagnóstico. Tente novamente." },
+        { status: 500 }
+      );
+    }
+    await avancarEtapa(supabase, project_id, user.id, "diagnostico", "diagnostico");
   }
 
   if (!estado) {
@@ -539,13 +549,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      await supabase
-        .from("projects")
-        .update({
-          diagnostico: { ...estado, _fragmentos_pendentes: fragmentosPendentes },
-        })
-        .eq("id", project_id)
-        .eq("user_id", user.id);
+      const { ok: okFrag } = await updateProject(supabase, project_id, user.id, {
+        diagnostico: { ...estado, _fragmentos_pendentes: fragmentosPendentes },
+      }, "diagnostico");
+      if (!okFrag) {
+        return NextResponse.json(
+          { error: "Falha ao salvar o progresso do diagnóstico. Tente novamente." },
+          { status: 500 }
+        );
+      }
     }
 
     if (faltantes.length === 0) {
@@ -554,11 +566,15 @@ export async function POST(request: NextRequest) {
       estado.progresso.atual = estado.fragmentos_cache.length;
       delete estado._fragmentos_pendentes;
 
-      await supabase
-        .from("projects")
-        .update({ diagnostico: estado })
-        .eq("id", project_id)
-        .eq("user_id", user.id);
+      const { ok: okConsol } = await updateProject(supabase, project_id, user.id, {
+        diagnostico: estado,
+      }, "diagnostico");
+      if (!okConsol) {
+        return NextResponse.json(
+          { error: "Falha ao salvar o progresso do diagnóstico. Tente novamente." },
+          { status: 500 }
+        );
+      }
     } else {
       return NextResponse.json({ status: estado.status, progresso: estado.progresso });
     }
@@ -590,11 +606,15 @@ export async function POST(request: NextRequest) {
         fragmentos_cache: [],
       };
 
-      await supabase
-        .from("projects")
-        .update({ diagnostico: estadoFinal })
-        .eq("id", project_id)
-        .eq("user_id", user.id);
+      const { ok: okFinal } = await updateProject(supabase, project_id, user.id, {
+        diagnostico: estadoFinal,
+      }, "diagnostico");
+      if (!okFinal) {
+        return NextResponse.json(
+          { error: "Falha ao salvar o progresso do diagnóstico. Tente novamente." },
+          { status: 500 }
+        );
+      }
 
       return NextResponse.json({ status: "concluido", progresso: estado.progresso, diagnostico: resultado });
     } catch (err) {
@@ -605,11 +625,12 @@ export async function POST(request: NextRequest) {
         erro_mensagem: err instanceof Error ? err.message : String(err),
       };
 
-      await supabase
-        .from("projects")
-        .update({ diagnostico: estadoErro })
-        .eq("id", project_id)
-        .eq("user_id", user.id);
+      const { ok: okErro } = await updateProject(supabase, project_id, user.id, {
+        diagnostico: estadoErro,
+      }, "diagnostico");
+      if (!okErro) {
+        console.error("[diagnostico] Falha ao persistir estado de erro (erro original mantido na resposta).");
+      }
 
       return NextResponse.json({ status: "erro", erro: estadoErro.erro_mensagem }, { status: 500 });
     }

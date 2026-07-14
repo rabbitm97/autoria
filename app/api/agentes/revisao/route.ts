@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, langfuse } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -299,9 +300,13 @@ export async function POST(request: NextRequest) {
       }],
       revisado_em: new Date().toISOString(),
     };
-    await supabase.from("projects")
-      .update({ dados_revisao: revisaoMock, etapa_atual: "revisao" })
-      .eq("id", project_id).eq("user_id", user.id);
+    const { ok: mockOk } = await updateProject(supabase, project_id, user.id, {
+      dados_revisao: revisaoMock,
+    }, "revisao");
+    if (!mockOk) {
+      return NextResponse.json({ error: "Falha ao salvar revisão (mock)." }, { status: 500 });
+    }
+    await avancarEtapa(supabase, project_id, user.id, "revisao", "revisao");
     return NextResponse.json({ status: "done", revisao: revisaoMock });
   }
 
@@ -333,11 +338,7 @@ export async function POST(request: NextRequest) {
       // Caso B: revisão finalizada — avança etapa, retorna skipped
       const drResult = dr as RevisaoResult;
       if (drResult.finalizado_em || drResult.revisado_em) {
-        await supabase
-          .from("projects")
-          .update({ etapa_atual: "elementos" })
-          .eq("id", project_id)
-          .eq("user_id", user.id);
+        await avancarEtapa(supabase, project_id, user.id, "elementos", "revisao");
 
         return NextResponse.json({
           status: "skipped",
@@ -384,9 +385,16 @@ export async function POST(request: NextRequest) {
     iniciado_em: new Date().toISOString(),
   };
 
-  await supabase.from("projects")
-    .update({ dados_revisao: state, etapa_atual: "revisao" })
-    .eq("id", project_id).eq("user_id", user.id);
+  const { ok: stateOk } = await updateProject(supabase, project_id, user.id, {
+    dados_revisao: state,
+  }, "revisao");
+  if (!stateOk) {
+    return NextResponse.json(
+      { error: "Falha ao registrar o início da revisão. Tente novamente." },
+      { status: 500 }
+    );
+  }
+  await avancarEtapa(supabase, project_id, user.id, "revisao", "revisao");
 
   void (async () => {
     try {
@@ -554,9 +562,15 @@ export async function GET(request: NextRequest) {
     },
   };
 
-  await supabase.from("projects")
-    .update({ dados_revisao: revisao })
-    .eq("id", project_id).eq("user_id", user.id);
+  const { ok: resultOk } = await updateProject(supabase, project_id, user.id, {
+    dados_revisao: revisao,
+  }, "revisao");
+  if (!resultOk) {
+    return NextResponse.json(
+      { error: "Revisão concluída, mas falha ao salvar as sugestões. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   void (async () => {
     try {
