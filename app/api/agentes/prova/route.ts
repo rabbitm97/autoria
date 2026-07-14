@@ -2,6 +2,7 @@ export const maxDuration = 10;
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
@@ -241,11 +242,15 @@ export async function POST(req: NextRequest) {
     analisado_em: new Date().toISOString(),
   };
 
-  await supabase
-    .from("projects")
-    .update({ dados_qa: result })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: qaOk } = await updateProject(supabase, project_id, userId, {
+    dados_qa: result,
+  }, "prova");
+  if (!qaOk) {
+    return NextResponse.json(
+      { error: "Conferência concluída, mas falha ao salvar o resultado. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json(result);
 }

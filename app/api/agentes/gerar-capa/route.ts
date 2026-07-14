@@ -4,6 +4,7 @@ import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
@@ -322,11 +323,15 @@ export async function POST(req: NextRequest) {
     lombada_mm: estimarLombadaCapaMm(paginas),
   };
 
-  await supabase
-    .from("projects")
-    .update({ dados_capa: result, etapa_atual: "capa" })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
+    dados_capa: result,
+  }, "gerar-capa");
+  if (!capaOk) {
+    return NextResponse.json(
+      { error: "Capas geradas, mas falha ao salvar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json(result);
   } catch (err) {

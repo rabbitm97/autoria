@@ -389,7 +389,7 @@ ${resumo}`;
   };
 
   if (!dev) {
-    await supabase
+    const { error: gateErr } = await supabase
       .from("projects")
       .update({
         dados_qa_publicacao: result,
@@ -397,6 +397,13 @@ ${resumo}`;
       })
       .eq("id", project_id)
       .eq("user_id", userId);
+    if (gateErr) {
+      console.error("[qa-publicacao] Falha ao persistir resultado do gate:", gateErr.message);
+      return NextResponse.json(
+        { error: "Verificação concluída, mas falha ao salvar o resultado. Tente novamente." },
+        { status: 500 }
+      );
+    }
   }
 
   return NextResponse.json(result);

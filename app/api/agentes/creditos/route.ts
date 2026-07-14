@@ -374,7 +374,7 @@ export async function POST(request: NextRequest) {
 
     const { error: updateErr } = await supabase
       .from("projects")
-      .update({ dados_creditos: result, etapa_atual: "creditos" })
+      .update({ dados_creditos: result })
       .eq("id", project_id)
       .eq("user_id", user.id);
 
@@ -451,7 +451,7 @@ export async function POST(request: NextRequest) {
 
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({ dados_creditos: result, etapa_atual: "creditos" })
+    .update({ dados_creditos: result })
     .eq("id", project_id)
     .eq("user_id", user.id);
 

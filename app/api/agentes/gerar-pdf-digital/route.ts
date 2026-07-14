@@ -6,6 +6,7 @@ import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
@@ -287,11 +288,15 @@ export async function POST(req: NextRequest) {
     gerado_em: new Date().toISOString(),
   };
 
-  await supabase
-    .from("projects")
-    .update({ dados_pdf_digital })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: pdfDigOk } = await updateProject(supabase, project_id, userId, {
+    dados_pdf_digital,
+  }, "gerar-pdf-digital");
+  if (!pdfDigOk) {
+    return NextResponse.json(
+      { error: "PDF digital gerado, mas falha ao salvar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   console.log("[gerar-pdf-digital] concluído — páginas:", numPaginas);
 

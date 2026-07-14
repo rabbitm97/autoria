@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { VOZES } from "@/lib/voices";
 import { createHash } from "crypto";
@@ -213,11 +214,15 @@ export async function POST(req: NextRequest) {
 
   const dados_audio: AudioResult = { project_id, capitulos: capitulosAtualizados };
 
-  await supabase
-    .from("projects")
-    .update({ dados_audio })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: audioOk } = await updateProject(supabase, project_id, userId, {
+    dados_audio,
+  }, "gerar-audio");
+  if (!audioOk) {
+    return NextResponse.json(
+      { error: "Áudio gerado, mas falha ao registrar no banco. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json(novoCapitulo);
 }

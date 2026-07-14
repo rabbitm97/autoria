@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import type { CapaGeradaResult } from "@/app/api/agentes/gerar-capa/route";
 
@@ -167,11 +168,15 @@ export async function POST(req: NextRequest) {
 
   // ── Persist ──────────────────────────────────────────────────────────────────
 
-  await supabase
-    .from("projects")
-    .update({ dados_capa: dadosCapaAtualizado })
-    .eq("id", project_id)
-    .eq("user_id", userId);
+  const { ok: lombadaOk } = await updateProject(supabase, project_id, userId, {
+    dados_capa: dadosCapaAtualizado,
+  }, "ajustar-lombada");
+  if (!lombadaOk) {
+    return NextResponse.json(
+      { error: "Lombada recalculada, mas falha ao salvar a capa ajustada. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({
     ajustado: true,

@@ -171,7 +171,15 @@ export async function PATCH(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
-  await supabase.from("tickets").update({ resolvido: true }).eq("id", id).eq("user_id", user.id);
+  const { error: ticketErr } = await supabase
+    .from("tickets")
+    .update({ resolvido: true })
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (ticketErr) {
+    console.error("[suporte] Falha ao resolver ticket:", ticketErr.message);
+    return NextResponse.json({ error: "Falha ao marcar como resolvido." }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }
 

@@ -361,7 +361,6 @@ export async function POST(request: NextRequest) {
   const updatePayload: Record<string, unknown> = {
     dados_miolo: mioloResult,
     dados_pdf: null,
-    etapa_atual: "diagramacao",
   };
   if (novoDadosCapa !== capaAtual) {
     updatePayload.dados_capa = novoDadosCapa;
