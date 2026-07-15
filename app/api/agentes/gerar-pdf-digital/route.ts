@@ -89,12 +89,22 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Load dados_miolo ──────────────────────────────────────────────────────
-  const { data: project } = await supabase
+  const { data: project, error: projErr } = await supabase
     .from("projects")
     .select("dados_miolo")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
+
+  if (projErr) {
+    // C5-04: sem esse guard, um erro transiente devolvia 422 "Gere o miolo
+    // primeiro" mesmo com o miolo já pronto — mensagem enganosa. Retry.
+    console.error("[gerar-pdf-digital] falha ao carregar projeto:", projErr.message);
+    return NextResponse.json(
+      { error: "Falha ao consultar o projeto. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   const miolo = project?.dados_miolo as MioloResult | null;
 

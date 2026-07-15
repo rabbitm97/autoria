@@ -457,43 +457,49 @@ export async function POST(req: NextRequest) {
       if (jpegUploadErr) {
         console.warn("[gerar-epub] falha ao persistir JPEG eBook standalone:", jpegUploadErr.message);
       } else {
-        const { data: projRow } = await supabase
+        const { data: projRow, error: capaLoadErr } = await supabase
           .from("projects")
           .select("dados_capa")
           .eq("id", project_id)
           .eq("user_id", userId)
           .single();
 
-        const capaAtual = (projRow?.dados_capa as Record<string, unknown>) ?? {};
-        const exportsAtual = (capaAtual.exports as Record<string, unknown>) ?? {};
-
-        const novaCapa = {
-          ...capaAtual,
-          exports: {
-            ...exportsAtual,
-            jpeg_ebook: {
-              storage_path: jpegEbookPath,
-              gerado_em: new Date().toISOString(),
-              fonte: "gerar-epub" as const,
-              ext: coverExt,
-            },
-          },
-        };
-
-        const vCapa = validarProjectData("dados_capa", novaCapa, {
-          modo: "estrito", contexto: "gerar-epub",
-        });
-        if (!vCapa.ok) {
-          // Best-effort: não derruba o EPUB, mas NÃO persiste dado torto.
-          console.warn("[zod-reject][gerar-epub][dados_capa] persist do jpeg_ebook pulado:", vCapa.issues.join(" | "));
+        if (capaLoadErr) {
+          // C5-04: best-effort — merge sobre {} apagaria dados_capa. Pula o
+          // persist do jpeg_ebook; o EPUB conclui normalmente.
+          console.warn("[gerar-epub] falha ao carregar dados_capa; persist do jpeg_ebook pulado:", capaLoadErr.message);
         } else {
-          const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
-            dados_capa: novaCapa,
-          }, "gerar-epub");
-          if (!capaOk) {
-            console.warn("[gerar-epub] JPEG eBook uploadada mas falha ao persistir path em dados_capa");
+          const capaAtual = (projRow?.dados_capa as Record<string, unknown>) ?? {};
+          const exportsAtual = (capaAtual.exports as Record<string, unknown>) ?? {};
+
+          const novaCapa = {
+            ...capaAtual,
+            exports: {
+              ...exportsAtual,
+              jpeg_ebook: {
+                storage_path: jpegEbookPath,
+                gerado_em: new Date().toISOString(),
+                fonte: "gerar-epub" as const,
+                ext: coverExt,
+              },
+            },
+          };
+
+          const vCapa = validarProjectData("dados_capa", novaCapa, {
+            modo: "estrito", contexto: "gerar-epub",
+          });
+          if (!vCapa.ok) {
+            // Best-effort: não derruba o EPUB, mas NÃO persiste dado torto.
+            console.warn("[zod-reject][gerar-epub][dados_capa] persist do jpeg_ebook pulado:", vCapa.issues.join(" | "));
           } else {
-            console.log(`[gerar-epub] JPEG eBook standalone persistida: ${jpegEbookPath}`);
+            const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
+              dados_capa: novaCapa,
+            }, "gerar-epub");
+            if (!capaOk) {
+              console.warn("[gerar-epub] JPEG eBook uploadada mas falha ao persistir path em dados_capa");
+            } else {
+              console.log(`[gerar-epub] JPEG eBook standalone persistida: ${jpegEbookPath}`);
+            }
           }
         }
       }
@@ -503,11 +509,20 @@ export async function POST(req: NextRequest) {
   }
 
   // Store in dados_pdf alongside PDF data (reuse column)
-  const { data: existing } = await supabase
+  const { data: existing, error: pdfLoadErr } = await supabase
     .from("projects")
     .select("dados_pdf")
     .eq("id", project_id)
     .single();
+
+  if (pdfLoadErr) {
+    // C5-04: erro transiente aqui + merge sobre {} apagaria dados_pdf inteira (incluindo PDF gráfica já persistida).
+    console.error("[gerar-epub] falha ao carregar dados_pdf:", pdfLoadErr.message);
+    return NextResponse.json(
+      { error: "EPUB gerado, mas falha ao salvar o resultado. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   const dadosPdfAtual = (existing?.dados_pdf as Record<string, unknown>) ?? {};
   const dadosPdfNovo = { ...dadosPdfAtual, epub: result };

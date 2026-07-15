@@ -12,21 +12,34 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
   // Get manuscript_id and storage_path before deleting
-  const { data: project } = await supabase
+  const { data: project, error: projSelErr } = await supabase
     .from("projects")
     .select("manuscript_id")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
 
+  if (projSelErr) {
+    // C5-04: não-fatal — se o SELECT falhar, seguimos com o DELETE do
+    // registro (RLS ainda protege). Sem manuscript_id, o cleanup do
+    // manuscrito órfão é pulado; o DELETE do projeto abaixo lida com o
+    // resto e retorna erro apropriado se o projeto não existir.
+    console.warn("[projects DELETE] falha ao ler manuscript_id (cleanup pode ser incompleto):", projSelErr.message);
+  }
+
   let manuscriptStoragePath: string | null = null;
   if (project?.manuscript_id) {
-    const { data: ms } = await supabase
+    const { data: ms, error: msSelErr } = await supabase
       .from("manuscripts")
       .select("storage_path")
       .eq("id", project.manuscript_id)
       .eq("user_id", user.id)
       .single();
+    if (msSelErr) {
+      // C5-04: não-fatal — sem storage_path, o arquivo do manuscrito não
+      // é removido do bucket, mas o DELETE do projeto continua.
+      console.warn("[projects DELETE] falha ao ler storage_path do manuscript:", msSelErr.message);
+    }
     manuscriptStoragePath = (ms?.storage_path as string | null) ?? null;
   }
 

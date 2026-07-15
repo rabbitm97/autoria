@@ -297,12 +297,23 @@ export async function POST(request: NextRequest) {
   // Decisão de produto (Bloco 12): não reprocessamos automaticamente quando texto
   // muda pós-revisão. Mantém a revisão existente e avança etapa.
   {
-    const { data: existing } = await supabase
+    const { data: existing, error: existingErr } = await supabase
       .from("projects")
       .select("dados_revisao")
       .eq("id", project_id)
       .eq("user_id", user.id)
       .single();
+
+    if (existingErr) {
+      // C5-04: sem esse guard, um erro transiente aqui deixaria `dr` como null
+      // e o handler seguiria como se não houvesse revisão — dispararia batch
+      // paralelo mesmo com revisão já em andamento. Melhor pedir retry.
+      console.error("[revisao] falha ao carregar dados_revisao:", existingErr.message);
+      return NextResponse.json(
+        { error: "Falha ao verificar o estado da revisão. Tente novamente." },
+        { status: 500 }
+      );
+    }
 
     const dr = existing?.dados_revisao as unknown as
       | RevisaoProcessingState

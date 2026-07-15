@@ -73,13 +73,23 @@ export async function POST(req: NextRequest) {
     const admin = adminClient();
 
     // Carrega texto atual para calcular hash
-    const { data: ms } = await admin
+    const { data: ms, error: msErr } = await admin
       .from("manuscripts")
       .select("texto, texto_revisado")
       .eq("id", project.manuscript_id)
       .single();
 
-    const textoAtual = ((ms?.texto_revisado ?? ms?.texto) as string | null | undefined) ?? "";
+    if (msErr || !ms) {
+      // C5-04: erro transiente + fallback "" gera hash md5("") e "aprova"
+      // um conjunto que não bate com o texto real. Melhor pedir retry.
+      console.error("[aprovar-capitulos] falha ao carregar manuscrito:", msErr?.message);
+      return NextResponse.json(
+        { error: "Falha ao carregar o texto do manuscrito. Tente novamente." },
+        { status: 500 }
+      );
+    }
+
+    const textoAtual = ((ms.texto_revisado ?? ms.texto) as string | null | undefined) ?? "";
     const textoHash = createHash("md5").update(textoAtual).digest("hex");
 
     const { error: updateErr } = await admin

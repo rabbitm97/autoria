@@ -62,11 +62,20 @@ export async function POST(
   const imagemUrl = pngSigned?.signedUrl ?? null;
 
   // Update dados_capa
-  const { data: currentProject } = await supabase
+  const { data: currentProject, error: capaLoadErr } = await supabase
     .from("projects")
     .select("dados_capa")
     .eq("id", id)
     .single();
+
+  if (capaLoadErr) {
+    // C5-04: erro transiente aqui + merge sobre {} apagaria dados_capa inteira.
+    console.error("[cover-editor-confirm] falha ao carregar dados_capa:", capaLoadErr.message);
+    return NextResponse.json(
+      { error: "Falha ao carregar a capa atual. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   const currentCapa = ((currentProject?.dados_capa as Record<string, unknown>) ?? {});
   const confirmedAt = new Date().toISOString();

@@ -95,12 +95,22 @@ export async function POST(req: NextRequest) {
   // retroativamente (quando o autor confirmou a capa ANTES de gerar o miolo,
   // preparar-capa-grafica devolve 422 — só dá pra rodar quando o miolo existe,
   // ou seja, agora).
-  const { data: project } = await supabase
+  const { data: project, error: projErr } = await supabase
     .from("projects")
     .select("dados_miolo, dados_capa")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
+
+  if (projErr) {
+    // C5-04: sem esse guard, um erro transiente devolvia 422 "Gere o miolo
+    // primeiro" mesmo com o miolo já pronto — mensagem enganosa. Retry.
+    console.error("[gerar-pdf] falha ao carregar projeto:", projErr.message);
+    return NextResponse.json(
+      { error: "Falha ao consultar o projeto. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   const miolo = project?.dados_miolo as MioloResult | null;
 

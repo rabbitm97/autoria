@@ -268,12 +268,21 @@ export async function POST(req: NextRequest) {
   // Lê o dados_capa atual e faz MERGE — não substituição. Os campos do pipeline
   // original (modo, url_escolhida, opcoes, source, imagem_url, editor_data...)
   // precisam ser preservados; só adicionamos os campos da montagem em cima.
-  const { data: currentProject } = await supabase
+  const { data: currentProject, error: capaLoadErr } = await supabase
     .from("projects")
     .select("dados_capa")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
+
+  if (capaLoadErr) {
+    // C5-04: erro transiente aqui + merge sobre {} apagaria dados_capa inteira.
+    console.error("[montar-capa] falha ao carregar dados_capa:", capaLoadErr.message);
+    return NextResponse.json(
+      { error: "Falha ao carregar a capa atual. Tente novamente." },
+      { status: 500 }
+    );
+  }
 
   const dadosCapaAtual = (currentProject?.dados_capa as Record<string, unknown> | null) ?? {};
 
