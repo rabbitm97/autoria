@@ -10,7 +10,7 @@ import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
-import type { PdfResult } from "@/lib/project-data";
+import { validarProjectData, type PdfResult } from "@/lib/project-data";
 import { applyDigitalCss } from "@/lib/miolo-builder-digital";
 import type { FormatoLivro } from "@/lib/miolo-builder-digital";
 
@@ -269,9 +269,6 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Persist dados_pdf_digital ─────────────────────────────────────────────
-  // REQUER: coluna dados_pdf_digital (jsonb) em projects.
-  // Se ainda não existe, criar via Supabase SQL editor:
-  //   ALTER TABLE projects ADD COLUMN dados_pdf_digital JSONB;
   const dados_pdf_digital: PdfResult = {
     project_id,
     formato: (miolo.config?.formato ?? "padrao_br") as FormatoLivro,
@@ -280,6 +277,17 @@ export async function POST(req: NextRequest) {
     paginas: numPaginas,
     gerado_em: new Date().toISOString(),
   };
+
+  const vPdfDig = validarProjectData("dados_pdf_digital", dados_pdf_digital, {
+    modo: "estrito", contexto: "gerar-pdf-digital",
+  });
+  if (!vPdfDig.ok) {
+    console.error("[zod-reject][gerar-pdf-digital][dados_pdf_digital]", vPdfDig.issues.join(" | "));
+    return NextResponse.json(
+      { error: "PDF digital gerado, mas os dados falharam na validação. Tente novamente.", issues: vPdfDig.issues },
+      { status: 500 }
+    );
+  }
 
   const { ok: pdfDigOk } = await updateProject(supabase, project_id, userId, {
     dados_pdf_digital,
@@ -311,9 +319,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(null);
   }
 
-  // REQUER: coluna dados_pdf_digital (jsonb) em projects.
-  // Se ainda não existe, criar via Supabase SQL editor:
-  //   ALTER TABLE projects ADD COLUMN dados_pdf_digital JSONB;
   const { data } = await supabase
     .from("projects")
     .select("dados_pdf_digital")

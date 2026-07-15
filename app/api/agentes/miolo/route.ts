@@ -10,7 +10,8 @@ import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas, estim
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml } from "@/lib/creditos-render";
 import type { CreditosConfig, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
-import type { MioloResult } from "@/lib/project-data";
+import { updateProject } from "@/lib/supabase-helpers";
+import { validarProjectData, type MioloResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -343,22 +344,35 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Fiscal C.4: dados_miolo estrito (produto deste agente); dados_capa em
+  // modo observador — a promoção a estrito é do C4-03 (o merge aqui só
+  // anula pdf_grafica sobre um objeto que este agente não produz).
+  const vMiolo = validarProjectData("dados_miolo", mioloResult, {
+    modo: "estrito", contexto: "miolo",
+  });
+  if (!vMiolo.ok) {
+    console.error("[zod-reject][miolo][dados_miolo]", vMiolo.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Miolo gerado com dados inválidos. Tente novamente.", issues: vMiolo.issues },
+      { status: 500 }
+    );
+  }
+
   const updatePayload: Record<string, unknown> = {
     dados_miolo: mioloResult,
     dados_pdf: null,
   };
   if (novoDadosCapa !== capaAtual) {
+    validarProjectData("dados_capa", novoDadosCapa, {
+      modo: "observador", contexto: "miolo",
+    });
     updatePayload.dados_capa = novoDadosCapa;
   }
 
-  const { error: updateErr } = await supabase
-    .from("projects")
-    .update(updatePayload)
-    .eq("id", project_id)
-    .eq("user_id", user.id);
-
-  if (updateErr) {
-    console.error("[miolo] Erro ao salvar:", updateErr);
+  const { ok: saveOk } = await updateProject(
+    supabase, project_id, user.id, updatePayload, "miolo"
+  );
+  if (!saveOk) {
     return NextResponse.json({ error: "Miolo gerado, mas falha ao salvar no banco." }, { status: 500 });
   }
 

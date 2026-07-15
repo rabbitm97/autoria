@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
+import { validarProjectData } from "@/lib/project-data";
 import type { MioloConfig } from "@/lib/miolo-builder";
 
 // POST /api/preview/config?project_id=...
@@ -40,13 +42,22 @@ export async function POST(request: NextRequest) {
 
   const updated = { ...(project.dados_miolo as object ?? {}), config };
 
-  const { error } = await supabase
-    .from("projects")
-    .update({ dados_miolo: updated })
-    .eq("id", project_id)
-    .eq("user_id", user.id);
+  // Fiscal C.4: `config` vem do CLIENTE — se torto, é input inválido (400).
+  const vMiolo = validarProjectData("dados_miolo", updated, {
+    modo: "estrito", contexto: "preview-config",
+  });
+  if (!vMiolo.ok) {
+    console.error("[zod-reject][preview-config][dados_miolo]", vMiolo.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Configuração inválida.", issues: vMiolo.issues },
+      { status: 400 }
+    );
+  }
 
-  if (error) {
+  const { ok } = await updateProject(supabase, project_id, user.id, {
+    dados_miolo: updated,
+  }, "preview-config");
+  if (!ok) {
     return NextResponse.json({ error: "Erro ao salvar configuração" }, { status: 500 });
   }
 

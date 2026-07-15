@@ -10,7 +10,7 @@ import { randomUUID, createHash } from "crypto";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { extractFrontCover, type FormatoCapa } from "@/lib/capa-frente-extractor";
 import { segmentByCapitulosAprovados, type CapituloAprovado } from "@/lib/parse-chapters";
-import type { EpubResult } from "@/lib/project-data";
+import { validarProjectData, type EpubResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -505,8 +505,21 @@ export async function POST(req: NextRequest) {
     .single();
 
   const dadosPdfAtual = (existing?.dados_pdf as Record<string, unknown>) ?? {};
+  const dadosPdfNovo = { ...dadosPdfAtual, epub: result };
+
+  const vPdf = validarProjectData("dados_pdf", dadosPdfNovo, {
+    modo: "estrito", contexto: "gerar-epub",
+  });
+  if (!vPdf.ok) {
+    console.error("[zod-reject][gerar-epub][dados_pdf]", vPdf.issues.join(" | "));
+    return NextResponse.json(
+      { error: "EPUB gerado, mas os dados falharam na validação. Tente novamente.", issues: vPdf.issues },
+      { status: 500 }
+    );
+  }
+
   const { ok: epubOk } = await updateProject(supabase, project_id, userId, {
-    dados_pdf: { ...dadosPdfAtual, epub: result },
+    dados_pdf: dadosPdfNovo,
   }, "gerar-epub");
   if (!epubOk) {
     return NextResponse.json(

@@ -800,16 +800,28 @@ const creditosResultSchema = z.looseObject({
 
 // ── miolo ────────────────────────────────────────────────────────────────────
 
+/**
+ * `dados_miolo` tem estados PARCIAIS legais além do `MioloResult` completo:
+ *  - `preview/config/route.ts` faz `{ ...(dados_miolo ?? {}), config }` — quando
+ *    o autor ajusta uma opção de config no preview antes de existir um miolo,
+ *    persiste `{ config }` sozinho.
+ *  - Blocos futuros (C4-05) vão anular derivados em trocas de formato.
+ *
+ * Por isso TODOS os campos são `.nullish()` no SCHEMA. O tipo TS `MioloResult`
+ * NÃO muda — só o schema é permissivo em presença; ainda garante TIPO e
+ * ESTRUTURA de cada campo presente (número onde é número, array onde é array,
+ * shape do `config`).
+ */
 const mioloResultSchema = z.looseObject({
-  config: mioloConfigSchema,
-  html_storage_path: z.string(),
-  capitulos: z.array(capituloInfoSchema),
-  paginas_estimadas: z.number(),
-  paginas_reais: z.number().nullable(),
-  lombada_mm: z.number(),
-  palavras: z.number(),
-  caracteres: z.number(),
-  gerado_em: z.string(),
+  config: mioloConfigSchema.nullish(),
+  html_storage_path: z.string().nullish(),
+  capitulos: z.array(capituloInfoSchema).nullish(),
+  paginas_estimadas: z.number().nullish(),
+  paginas_reais: z.number().nullish(),
+  lombada_mm: z.number().nullish(),
+  palavras: z.number().nullish(),
+  caracteres: z.number().nullish(),
+  gerado_em: z.string().nullish(),
 });
 
 // ── pdf / pdf-digital ────────────────────────────────────────────────────────
@@ -822,6 +834,27 @@ const pdfResultSchema = z.looseObject({
   paginas: z.number(),
   gerado_em: z.string(),
 });
+
+const epubResultSchema = z.looseObject({
+  project_id: z.string(),
+  storage_path: z.string(),
+  url_download: z.string(),
+  capitulos: z.number(),
+  gerado_em: z.string(),
+});
+
+/**
+ * `dados_pdf` tem DOIS estados legais:
+ *  (a) `PdfResult` completo do `gerar-pdf`, opcionalmente com `epub`
+ *      (o `gerar-epub` mergeia o resultado do EPUB dentro desta coluna).
+ *  (b) `{ epub }` sozinho — quando o EPUB é gerado enquanto `dados_pdf`
+ *      está null (o `miolo/route.ts` zera `dados_pdf` ao regerar o miolo;
+ *      um EPUB gerado nessa janela cai em `{ ...null, epub }` → `{ epub }`).
+ */
+const dadosPdfSchema = z.union([
+  pdfResultSchema.extend({ epub: epubResultSchema.nullish() }),  // (a)
+  z.looseObject({ epub: epubResultSchema }),                      // (b)
+]);
 
 // ── audio ────────────────────────────────────────────────────────────────────
 
@@ -885,7 +918,7 @@ export const PROJECT_DATA_SCHEMAS = {
   dados_capa:       dadosCapaSchema,
   dados_creditos:   creditosResultSchema,
   dados_miolo:      mioloResultSchema,
-  dados_pdf:        pdfResultSchema,
+  dados_pdf:        dadosPdfSchema,
   dados_pdf_digital: pdfResultSchema,
   dados_audio:      audioResultSchema,
   dados_qa:         provaResultSchema,

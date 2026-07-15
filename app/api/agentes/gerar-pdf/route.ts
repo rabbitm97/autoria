@@ -10,7 +10,7 @@ import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
-import type { PdfResult } from "@/lib/project-data";
+import { validarProjectData, type PdfResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -410,13 +410,30 @@ export async function POST(req: NextRequest) {
   // brasileira unificada (`estimarLombadaMm`), substituindo a fórmula antiga
   // `pgs × 0.07` que divergia ~35% da realidade.
   const lombada_mm = estimarLombadaMm(numPaginas);
+  const mioloSync = {
+    ...(miolo as unknown as Record<string, unknown>),
+    lombada_mm,
+    paginas_reais: numPaginas,
+  };
+
+  // Fiscal C.4 — as duas colunas do UPDATE atômico (C.2: nunca fatiar).
+  for (const [coluna, valor] of [
+    ["dados_pdf", dados_pdf],
+    ["dados_miolo", mioloSync],
+  ] as const) {
+    const v = validarProjectData(coluna, valor, { modo: "estrito", contexto: "gerar-pdf" });
+    if (!v.ok) {
+      console.error(`[zod-reject][gerar-pdf][${coluna}]`, v.issues.join(" | "));
+      return NextResponse.json(
+        { error: "PDF gerado, mas os dados de persistência falharam na validação. Tente novamente.", issues: v.issues },
+        { status: 500 }
+      );
+    }
+  }
+
   const { ok: saveOk } = await updateProject(supabase, project_id, userId, {
     dados_pdf,
-    dados_miolo: {
-      ...(miolo as unknown as Record<string, unknown>),
-      lombada_mm,
-      paginas_reais: numPaginas,
-    },
+    dados_miolo: mioloSync,
   }, "gerar-pdf");
   if (!saveOk) {
     return NextResponse.json(
