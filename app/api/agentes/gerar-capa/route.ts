@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject } from "@/lib/supabase-helpers";
+import { lockFormato } from "@/lib/projects";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
@@ -316,6 +317,10 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  // C5-03 (item #31): capa IA é dimensionada pro formato atual (lombada,
+  // proporção) — trava igual upload/montar. Idempotente.
+  await lockFormato(project_id);
 
   return NextResponse.json(result);
   } catch (err) {

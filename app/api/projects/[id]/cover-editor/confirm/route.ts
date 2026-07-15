@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject } from "@/lib/supabase-helpers";
+import { lockFormato } from "@/lib/projects";
 import { isDev } from "@/lib/anthropic";
 import { validarProjectData } from "@/lib/project-data";
 import { createClient } from "@supabase/supabase-js";
@@ -104,6 +105,10 @@ export async function POST(
   if (!ok) {
     return NextResponse.json({ error: "Falha ao confirmar a capa." }, { status: 500 });
   }
+
+  // C5-03 (item #31): capa confirmada no editor foi desenhada nas dimensões
+  // do formato atual — trava igual upload/montar. Idempotente.
+  await lockFormato(id);
 
   // Dispara PDF gráfica em background (fire-and-forget). Não bloqueia a
   // resposta — se falhar, o autor pode tentar novamente pela tela de Prova.

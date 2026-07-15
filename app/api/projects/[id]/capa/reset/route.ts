@@ -39,10 +39,11 @@ export async function POST(
     }
   }
 
-  // Ler dados_capa atual para saber quais paths do Storage limpar.
+  // Ler dados_capa atual para saber quais paths do Storage limpar,
+  // e dados_miolo/dados_pdf/dados_pdf_digital para decidir se destravar.
   const { data: project, error: loadErr } = await supabase
     .from("projects")
-    .select("dados_capa")
+    .select("dados_capa, dados_miolo, dados_pdf, dados_pdf_digital")
     .eq("id", id)
     .eq("user_id", userId)
     .single();
@@ -88,10 +89,26 @@ export async function POST(
     await storageClient.storage.from("editor-assets").remove(pathsBucketEditorAssets).catch(() => null);
   }
 
-  // Zera dados_capa e volta etapa para "capa" (garantia).
+  // C5-03 (item #31): sem capa (acabou de ser zerada) e sem miolo/PDF, nada
+  // mais depende do formato — destrava. Se miolo ou PDF existem, eles foram
+  // gerados NESTE formato e a trava permanece. Nota: dados_pdf = { epub }
+  // sozinho não segura a trava (EPUB é reflowable), por isso o critério é
+  // storage_path do PDF de miolo, não a existência da coluna.
+  const miolo = project.dados_miolo as { html_storage_path?: string } | null;
+  const pdf = project.dados_pdf as { storage_path?: string } | null;
+  const pdfDigital = project.dados_pdf_digital as { storage_path?: string } | null;
+  const temArtefatoDependenteDoFormato =
+    !!miolo?.html_storage_path || !!pdf?.storage_path || !!pdfDigital?.storage_path;
+
+  // Zera dados_capa e volta etapa para "capa" (garantia). Regressão de etapa =
+  // exceção canônica (verdade #19) — update próprio, NÃO usar helpers.
   const { error: updateErr } = await supabase
     .from("projects")
-    .update({ dados_capa: null, etapa_atual: "capa" })
+    .update({
+      dados_capa: null,
+      etapa_atual: "capa",
+      ...(temArtefatoDependenteDoFormato ? {} : { formato_locked_at: null }),
+    })
     .eq("id", id)
     .eq("user_id", userId);
 
