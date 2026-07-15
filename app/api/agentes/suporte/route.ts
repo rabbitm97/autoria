@@ -1,6 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { anthropic, extractText, traceClaudeCall, isDev } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
@@ -154,11 +155,22 @@ export async function POST(req: NextRequest) {
 
   let ticketId: string | null = null;
   if (!dev) {
-    const { data } = await supabase
+    // C5-01B: tickets não tem policy de INSERT (por desenho — schema canônico,
+    // "INSERT via service role"). O client do usuário era bloqueado pelo RLS e
+    // o best-effort engolia: tickets NUNCA persistiram em prod. Service role +
+    // log. Best-effort permanece: falha aqui não derruba a resposta.
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data, error: ticketErr } = await admin
       .from("tickets")
       .insert({ user_id: userId, project_id, pergunta, resposta_ia: resposta })
       .select("id")
       .single();
+    if (ticketErr) {
+      console.error("[suporte] falha ao persistir ticket:", ticketErr.message);
+    }
     ticketId = data?.id ?? null;
   } else {
     ticketId = "dev-ticket-" + Date.now();
