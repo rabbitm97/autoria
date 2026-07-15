@@ -10,6 +10,7 @@ import { getProjectFormato, lockFormato } from "@/lib/projects";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 import { trimarMarcasDeCapa } from "@/lib/capa-trim-marcas";
+import { validarProjectData } from "@/lib/project-data";
 import type { CapaUploadResult, CapaValidacao } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -338,6 +339,17 @@ export async function POST(req: NextRequest) {
     opcoes: null,
     pdf_grafica: null,
   };
+
+  const vCapa = validarProjectData("dados_capa", dadosCapaPayload, {
+    modo: "estrito", contexto: "upload-capa",
+  });
+  if (!vCapa.ok) {
+    console.error("[zod-reject][upload-capa][dados_capa]", vCapa.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+      { status: 500 }
+    );
+  }
 
   const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
     dados_capa: dadosCapaPayload,

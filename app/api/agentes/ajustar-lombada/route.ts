@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
+import { validarProjectData } from "@/lib/project-data";
 import type { CapaGeradaResult } from "@/app/api/agentes/gerar-capa/route";
 
 // ─── POST /api/agentes/ajustar-lombada ───────────────────────────────────────
@@ -167,6 +168,17 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Persist ──────────────────────────────────────────────────────────────────
+
+  const vCapa = validarProjectData("dados_capa", dadosCapaAtualizado, {
+    modo: "estrito", contexto: "ajustar-lombada",
+  });
+  if (!vCapa.ok) {
+    console.error("[zod-reject][ajustar-lombada][dados_capa]", vCapa.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+      { status: 500 }
+    );
+  }
 
   const { ok: lombadaOk } = await updateProject(supabase, project_id, userId, {
     dados_capa: dadosCapaAtualizado,

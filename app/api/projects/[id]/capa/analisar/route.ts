@@ -2,9 +2,11 @@ export const maxDuration = 30;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { analisarCapa } from "@/lib/capa-analyzer";
+import { validarProjectData } from "@/lib/project-data";
 import type { FormatoLivro } from "@/lib/formatos";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 
@@ -156,13 +158,20 @@ export async function POST(
     }
 
     const novoDadosCapa = { ...dadosCapaAtual, analise_tecnica: analise };
-    await supabase
-      .from("projects")
-      .update({ dados_capa: novoDadosCapa })
-      .eq("id", projectId)
-      .eq("user_id", userId);
 
-    return NextResponse.json({ ok: true, analise, persisted: true });
+    const vCapa = validarProjectData("dados_capa", novoDadosCapa, {
+      modo: "estrito", contexto: "capa-analisar",
+    });
+    if (!vCapa.ok) {
+      console.error("[zod-reject][capa-analisar][dados_capa]", vCapa.issues.join(" | "));
+      return NextResponse.json({ ok: true, analise, persisted: false, reason: "zod_reject" });
+    }
+
+    const { ok: persistOk } = await updateProject(supabase, projectId, userId, {
+      dados_capa: novoDadosCapa,
+    }, "capa-analisar");
+
+    return NextResponse.json({ ok: true, analise, persisted: persistOk });
   } catch (err) {
     console.error("[capa/analisar] falha:", err);
     return NextResponse.json(

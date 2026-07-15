@@ -480,16 +480,21 @@ export async function POST(req: NextRequest) {
           },
         };
 
-        const { error: updateCapaErr } = await supabase
-          .from("projects")
-          .update({ dados_capa: novaCapa })
-          .eq("id", project_id)
-          .eq("user_id", userId);
-
-        if (updateCapaErr) {
-          console.warn("[gerar-epub] JPEG eBook uploadada mas falha ao persistir path em dados_capa:", updateCapaErr.message);
+        const vCapa = validarProjectData("dados_capa", novaCapa, {
+          modo: "estrito", contexto: "gerar-epub",
+        });
+        if (!vCapa.ok) {
+          // Best-effort: não derruba o EPUB, mas NÃO persiste dado torto.
+          console.warn("[zod-reject][gerar-epub][dados_capa] persist do jpeg_ebook pulado:", vCapa.issues.join(" | "));
         } else {
-          console.log(`[gerar-epub] JPEG eBook standalone persistida: ${jpegEbookPath}`);
+          const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
+            dados_capa: novaCapa,
+          }, "gerar-epub");
+          if (!capaOk) {
+            console.warn("[gerar-epub] JPEG eBook uploadada mas falha ao persistir path em dados_capa");
+          } else {
+            console.log(`[gerar-epub] JPEG eBook standalone persistida: ${jpegEbookPath}`);
+          }
         }
       }
     } catch (jpegErr) {

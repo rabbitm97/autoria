@@ -9,6 +9,7 @@ import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
+import { validarProjectData } from "@/lib/project-data";
 import type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -294,6 +295,17 @@ export async function POST(req: NextRequest) {
     paginas_estimadas: paginas,
     lombada_mm: estimarLombadaCapaMm(paginas),
   };
+
+  const vCapa = validarProjectData("dados_capa", result, {
+    modo: "estrito", contexto: "gerar-capa",
+  });
+  if (!vCapa.ok) {
+    console.error("[zod-reject][gerar-capa][dados_capa]", vCapa.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+      { status: 500 }
+    );
+  }
 
   const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
     dados_capa: result,

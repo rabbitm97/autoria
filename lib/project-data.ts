@@ -468,6 +468,15 @@ export interface DadosCapaEditor extends DadosCapaExtensoes {
   /** URL da capa final exportada pelo editor. */
   imagem_url: string | null;
   confirmed_at: string;
+  /**
+   * FONTE canônica da orelha (decisão d, chat C.4 14/jul/2026):
+   * `dados_capa.orelha_mm` no ROOT, para os 3 pipelines.
+   * No editor, `editor_data.orelhaMm` é o RASCUNHO durante a edição;
+   * o confirm espelha o valor pro root. IA e upload já gravam no root.
+   * Leitura continua EXCLUSIVA via lib/capa-resolver.ts (verdade #18) —
+   * os fallbacks legados do resolver permanecem.
+   */
+  orelha_mm?: number | null;
 }
 
 export type DadosCapaIa     = CapaGeradaResult   & DadosCapaExtensoes;
@@ -476,6 +485,11 @@ export interface DadosCapaSkip extends DadosCapaExtensoes {
   modo: "skip";
 }
 
+/**
+ * Nota (decisão d, chat C.4 14/jul/2026): `dados_capa.orelha_mm` no ROOT
+ * é a FONTE canônica da orelha nos 3 pipelines; no editor, o rascunho
+ * (`editor_data.orelhaMm`) é espelhado no root pelo confirm.
+ */
 export type DadosCapa =
   | DadosCapaEditor
   | DadosCapaIa
@@ -580,6 +594,8 @@ const dadosCapaEditorSchema = z.looseObject({
   analise_tecnica: analiseTecnicaSchema.nullish(),
   imagem_url: z.string().nullable(),
   confirmed_at: z.string(),
+  // Decisão d (C.4): root canônico da orelha. Espelhado pelo confirm.
+  orelha_mm: z.number().nullish(),
 });
 
 const dadosCapaIaSchema = z.looseObject({

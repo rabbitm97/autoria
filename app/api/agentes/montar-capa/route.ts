@@ -9,6 +9,7 @@ import sharp from "sharp";
 import { getFormatoDef } from "@/lib/formatos";
 import { getProjectFormato, lockFormato } from "@/lib/projects";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
+import { validarProjectData } from "@/lib/project-data";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -283,6 +284,17 @@ export async function POST(req: NextRequest) {
     montada_em: new Date().toISOString(),
     dimensoes_montada: { largura_px: totalW, altura_px: frontH, dpi: DPI },
   };
+
+  const vCapa = validarProjectData("dados_capa", dadosCapaAtualizado, {
+    modo: "estrito", contexto: "montar-capa",
+  });
+  if (!vCapa.ok) {
+    console.error("[zod-reject][montar-capa][dados_capa]", vCapa.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+      { status: 500 }
+    );
+  }
 
   const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
     dados_capa: dadosCapaAtualizado,

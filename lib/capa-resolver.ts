@@ -33,6 +33,11 @@ export type OrigemCapa = "editor" | "ia" | "upload" | null;
  * Resolve `orelha_mm` numérico a partir dos três schemas. Aceita também
  * o boolean legado (`comOrelhas` / `usar_orelhas`) e converte para o
  * default do formato. Retorna 0 quando nada definido.
+ *
+ * Decisão C.4 (14/jul/2026): o campo canônico é `dados_capa.orelha_mm`
+ * (root) nos 3 pipelines; `editor_data.orelhaMm` é rascunho de edição,
+ * espelhado no root pelo confirm. Os fallbacks abaixo permanecem para
+ * dados legados (pré-C.4) e para leitura DURANTE a edição.
  */
 function resolveOrelhaMm(
   numericValue: unknown,

@@ -2,6 +2,8 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
+import { validarProjectData } from "@/lib/project-data";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import {
@@ -278,13 +280,21 @@ export async function POST(req: NextRequest) {
       exports: novosExports,
     };
 
-    const { error: updateErr } = await supabase
-      .from("projects")
-      .update({ dados_capa: newCapa })
-      .eq("id", projectId);
+    const vCapa = validarProjectData("dados_capa", newCapa, {
+      modo: "estrito", contexto: "preparar-capa-grafica",
+    });
+    if (!vCapa.ok) {
+      console.error("[zod-reject][preparar-capa-grafica][dados_capa]", vCapa.issues.join(" | "));
+      return NextResponse.json(
+        { error: "PDF gerado mas os dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+        { status: 500 },
+      );
+    }
 
-    if (updateErr) {
-      console.error("[preparar-capa-grafica] erro ao salvar pdf_grafica (editor):", updateErr);
+    const { ok: capaOk } = await updateProject(
+      supabase, projectId, null, { dados_capa: newCapa }, "preparar-capa-grafica",
+    );
+    if (!capaOk) {
       return NextResponse.json(
         { error: "PDF gerado mas falhou ao persistir em dados_capa. Tente novamente." },
         { status: 500 },
@@ -373,13 +383,21 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    const { error: updateErr } = await supabase
-      .from("projects")
-      .update({ dados_capa: newCapa })
-      .eq("id", projectId);
+    const vCapa = validarProjectData("dados_capa", newCapa, {
+      modo: "estrito", contexto: "preparar-capa-grafica",
+    });
+    if (!vCapa.ok) {
+      console.error("[zod-reject][preparar-capa-grafica][dados_capa]", vCapa.issues.join(" | "));
+      return NextResponse.json(
+        { error: "PDF gerado mas os dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+        { status: 500 },
+      );
+    }
 
-    if (updateErr) {
-      console.error("[preparar-capa-grafica] erro ao salvar pdf_grafica (upload):", updateErr);
+    const { ok: capaOk } = await updateProject(
+      supabase, projectId, null, { dados_capa: newCapa }, "preparar-capa-grafica",
+    );
+    if (!capaOk) {
       return NextResponse.json(
         { error: "PDF gerado mas falhou ao persistir em dados_capa. Tente novamente." },
         { status: 500 },

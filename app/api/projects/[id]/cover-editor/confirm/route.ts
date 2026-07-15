@@ -2,7 +2,9 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
+import { validarProjectData } from "@/lib/project-data";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(
@@ -68,20 +70,39 @@ export async function POST(
   const currentCapa = ((currentProject?.dados_capa as Record<string, unknown>) ?? {});
   const confirmedAt = new Date().toISOString();
 
-  const { error: updateErr } = await supabase
-    .from("projects")
-    .update({
-      dados_capa: {
-        ...currentCapa,
-        imagem_url: imagemUrl,
-        source: "editor",
-        confirmed_at: confirmedAt,
-      },
-    })
-    .eq("id", id);
+  // Decisão d (C.4): root `orelha_mm` é a fonte canônica. O confirm espelha
+  // o rascunho do editor (editor_data.orelhaMm) pro root; se não houver
+  // rascunho numérico, preserva o root existente.
+  const editorOrelha = (currentCapa.editor_data as { orelhaMm?: unknown } | null | undefined)?.orelhaMm;
+  const orelhaRoot =
+    typeof editorOrelha === "number" && Number.isFinite(editorOrelha)
+      ? editorOrelha
+      : (currentCapa.orelha_mm as number | undefined) ?? 0;
 
-  if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  const novoDadosCapa = {
+    ...currentCapa,
+    imagem_url: imagemUrl,
+    source: "editor",
+    confirmed_at: confirmedAt,
+    orelha_mm: orelhaRoot,
+  };
+
+  const vCapa = validarProjectData("dados_capa", novoDadosCapa, {
+    modo: "estrito", contexto: "cover-editor-confirm",
+  });
+  if (!vCapa.ok) {
+    console.error("[zod-reject][cover-editor-confirm][dados_capa]", vCapa.issues.join(" | "));
+    return NextResponse.json(
+      { error: "Dados da capa falharam na validação. Tente novamente.", issues: vCapa.issues },
+      { status: 500 }
+    );
+  }
+
+  const { ok } = await updateProject(supabase, id, null, {
+    dados_capa: novoDadosCapa,
+  }, "cover-editor-confirm");
+  if (!ok) {
+    return NextResponse.json({ error: "Falha ao confirmar a capa." }, { status: 500 });
   }
 
   // Dispara PDF gráfica em background (fire-and-forget). Não bloqueia a

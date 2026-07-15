@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
+import { validarProjectData } from "@/lib/project-data";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
 
 // ─── GET /api/projects/[id]/cover-editor ─────────────────────────────────────
@@ -116,13 +118,16 @@ export async function PUT(
     pdf_grafica: null,
   };
 
-  const { error: updateErr } = await supabase
-    .from("projects")
-    .update({ dados_capa: novoDadosCapa })
-    .eq("id", id)
-    .eq("user_id", userId);
+  // Decisão b (C.4): autosave NUNCA rejeita — bloquear = autor perde
+  // trabalho silenciosamente. Modo observador loga [zod-drift] e persiste.
+  validarProjectData("dados_capa", novoDadosCapa, {
+    modo: "observador", contexto: "cover-editor-autosave",
+  });
 
-  if (updateErr) {
+  const { ok } = await updateProject(supabase, id, userId, {
+    dados_capa: novoDadosCapa,
+  }, "cover-editor-autosave");
+  if (!ok) {
     return NextResponse.json({ error: "Falha ao salvar." }, { status: 500 });
   }
 
