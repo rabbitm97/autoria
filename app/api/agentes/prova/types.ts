@@ -1,3 +1,5 @@
+import type { QAPublicacaoResult } from "@/lib/project-data";
+
 export type ProvaCategoria =
   // Trilha digital
   | "capa"
@@ -39,4 +41,6 @@ export interface ProvaResult {
     lombada_miolo_mm?: number;
   };
   analisado_em: string;
+  /** Resultado do gate qa-publicacao (C5-02). Escrito pelo gate, preservado pela prova. */
+  publicacao?: QAPublicacaoResult;
 }

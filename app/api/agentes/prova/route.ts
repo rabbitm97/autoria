@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   // ── Load project ──────────────────────────────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf, dados_pdf_digital, formato")
+    .select("dados_capa, dados_miolo, dados_creditos, dados_pdf, dados_pdf_digital, dados_qa, formato")
     .eq("id", project_id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -243,12 +243,20 @@ export async function POST(req: NextRequest) {
     analisado_em: new Date().toISOString(),
   };
 
-  validarProjectData("dados_qa", result, {
+  // C5-02: preserva o resultado do gate qa-publicacao se existir. A substituição
+  // total (mata shape legado) continua valendo para o resto da coluna.
+  const publicacaoExistente =
+    (project.dados_qa as { publicacao?: unknown } | null)?.publicacao;
+  const novoDadosQa = publicacaoExistente
+    ? { ...result, publicacao: publicacaoExistente }
+    : result;
+
+  validarProjectData("dados_qa", novoDadosQa, {
     modo: "observador", contexto: "prova",
   });
 
   const { ok: qaOk } = await updateProject(supabase, project_id, userId, {
-    dados_qa: result,
+    dados_qa: novoDadosQa,
   }, "prova");
   if (!qaOk) {
     return NextResponse.json(

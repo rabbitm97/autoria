@@ -313,6 +313,36 @@ export interface AudioResult {
   capitulos: CapituloAudio[];
 }
 
+// ── qa-publicacao (resultado do gate, persistido em dados_qa.publicacao) ─────
+
+export type PlataformaAlvo =
+  | "amazon_kdp_ebook"
+  | "amazon_kdp_print"
+  | "kobo"
+  | "apple_books"
+  | "google_play"
+  | "spotify_audiobooks"
+  | "draft2digital";
+
+export type QAStatus = "ok" | "aviso" | "erro";
+
+export interface QAChecagem {
+  plataforma: PlataformaAlvo | "geral";
+  status: QAStatus;
+  campo: string;
+  mensagem: string;
+}
+
+export interface QAPublicacaoResult {
+  project_id: string;
+  score: number;
+  aprovado: boolean;
+  checagens: QAChecagem[];
+  recomendacao: string;
+  bloqueantes: string[];
+  analisado_em: string;
+}
+
 // ── revisao ──────────────────────────────────────────────────────────────────
 
 export interface SugestaoRevisao {
@@ -923,6 +953,35 @@ const provaResultSchema = z.looseObject({
   analisado_em: z.string(),
 });
 
+// ── qa-publicacao (resultado do gate, persistido em dados_qa.publicacao) ─────
+
+const qaPublicacaoResultSchema = z.looseObject({
+  project_id: z.string(),
+  score: z.number(),
+  aprovado: z.boolean(),
+  checagens: z.array(z.looseObject({
+    plataforma: z.string(),
+    status: z.string(),
+    campo: z.string(),
+    mensagem: z.string(),
+  })),
+  recomendacao: z.string(),
+  bloqueantes: z.array(z.string()),
+  analisado_em: z.string(),
+});
+
+/**
+ * `dados_qa` tem DOIS estados legais (C5-02, espelha o padrão de dados_pdf):
+ *  (a) `ProvaResult` completo do agente prova, opcionalmente com `publicacao`
+ *      (o gate qa-publicacao mergeia o resultado dele nesta coluna).
+ *  (b) `{ publicacao }` sozinho — gate rodado enquanto `dados_qa` está null
+ *      ou em shape legado.
+ */
+const dadosQaSchema = z.union([
+  provaResultSchema.extend({ publicacao: qaPublicacaoResultSchema.nullish() }),
+  z.looseObject({ publicacao: qaPublicacaoResultSchema }),
+]);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAPA COLUNA → SCHEMA.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -937,7 +996,7 @@ export const PROJECT_DATA_SCHEMAS = {
   dados_pdf:        dadosPdfSchema,
   dados_pdf_digital: pdfResultSchema,
   dados_audio:      audioResultSchema,
-  dados_qa:         provaResultSchema,
+  dados_qa:         dadosQaSchema,
 } as const;
 
 export type ProjectJsonbColumn = keyof typeof PROJECT_DATA_SCHEMAS;

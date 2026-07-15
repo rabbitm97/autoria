@@ -3,36 +3,12 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, extractText, traceClaudeCall, isDev } from "@/lib/anthropic";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { validarProjectData } from "@/lib/project-data";
+import type { PlataformaAlvo, QAStatus, QAChecagem, QAPublicacaoResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type PlataformaAlvo =
-  | "amazon_kdp_ebook"
-  | "amazon_kdp_print"
-  | "kobo"
-  | "apple_books"
-  | "google_play"
-  | "spotify_audiobooks"
-  | "draft2digital";
-
-export type QAStatus = "ok" | "aviso" | "erro";
-
-export interface QAChecagem {
-  plataforma: PlataformaAlvo | "geral";
-  status: QAStatus;
-  campo: string;
-  mensagem: string;
-}
-
-export interface QAPublicacaoResult {
-  project_id: string;
-  score: number;
-  aprovado: boolean;
-  checagens: QAChecagem[];
-  recomendacao: string;
-  bloqueantes: string[];
-  analisado_em: string;
-}
+export type { PlataformaAlvo, QAStatus, QAChecagem, QAPublicacaoResult };
 
 // ─── Requisitos por plataforma ────────────────────────────────────────────────
 // Baseados nas guidelines oficiais de cada plataforma (2024/2025)
@@ -89,6 +65,7 @@ export async function POST(req: NextRequest) {
 
   // ── Carregar dados do projeto ─────────────────────────────────────────────
   let dados: RequisitosArquivo;
+  let qaAtual: Record<string, unknown> | null = null;
 
   if (dev) {
     dados = {
@@ -115,6 +92,7 @@ export async function POST(req: NextRequest) {
         dados_pdf,
         dados_audio,
         dados_creditos,
+        dados_qa,
         usar_revisao,
         manuscripts(titulo, subtitulo, genero_principal, autor_primeiro_nome, autor_sobrenome)
       `)
@@ -123,6 +101,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (projErr || !project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+
+    qaAtual = project.dados_qa as Record<string, unknown> | null;
 
     const el       = project.dados_elementos as Record<string, unknown> | null;
     const capa     = project.dados_capa     as Record<string, unknown> | null;
@@ -389,10 +369,22 @@ ${resumo}`;
   };
 
   if (!dev) {
+    // C5-02 (decisão a, Opção 1): resultado do gate vive em dados_qa.publicacao.
+    // Merge sobre o dados_qa atual — NUNCA sobrescrever o resultado da prova.
+    // Estado { publicacao } sozinho é legal (modelado no dadosQaSchema).
+    const novoDadosQa = { ...(qaAtual ?? {}), publicacao: result };
+
+    validarProjectData("dados_qa", novoDadosQa, {
+      modo: "observador", contexto: "qa-publicacao",
+    });
+
+    // Exceção canônica de etapa (verdade #19): o gate REBAIXA de propósito
+    // quando reprovado. etapa_atual e resultado no MESMO update, atômicos.
+    // NÃO converter para avancarEtapa()/updateProject().
     const { error: gateErr } = await supabase
       .from("projects")
       .update({
-        dados_qa_publicacao: result,
+        dados_qa: novoDadosQa,
         etapa_atual: aprovado ? "publicado" : "qa",
       })
       .eq("id", project_id)
