@@ -11,6 +11,7 @@ import {
   segmentByCapitulosAprovados,
   type CapituloAprovado,
 } from "@/lib/parse-chapters";
+import { validarProjectData } from "@/lib/project-data";
 import type { CapituloAudio, AudioResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -202,6 +203,10 @@ export async function POST(req: NextRequest) {
   ].sort((a, b) => a.index - b.index);
 
   const dados_audio: AudioResult = { project_id, capitulos: capitulosAtualizados };
+
+  validarProjectData("dados_audio", dados_audio, {
+    modo: "observador", contexto: "gerar-audio",
+  });
 
   const { ok: audioOk } = await updateProject(supabase, project_id, userId, {
     dados_audio,

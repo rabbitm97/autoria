@@ -4,11 +4,13 @@ export const maxDuration = 60;
 // (elaborada por bibliotecário CRB) ou é omitida por completo.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { type FormatoLivro, getFormatoDef, isFormatoValido, estimarPaginas } from "@/lib/formatos";
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml } from "@/lib/creditos-render";
 import { getBodyFontFamily, type TemplateId } from "@/lib/miolo-builder";
+import { validarProjectData } from "@/lib/project-data";
 import type {
   PropositoPublicacao,
   CreditosConfig,
@@ -293,14 +295,15 @@ export async function POST(request: NextRequest) {
       gerado_em: new Date().toISOString(),
     };
 
-    const { error: updateErr } = await supabase
-      .from("projects")
-      .update({ dados_creditos: result })
-      .eq("id", project_id)
-      .eq("user_id", user.id);
+    validarProjectData("dados_creditos", result, {
+      modo: "observador", contexto: "creditos-bypass",
+    });
 
-    if (updateErr) {
-      console.error("[creditos] Erro ao salvar (sem créditos):", updateErr);
+    const { ok: bypassOk } = await updateProject(supabase, project_id, user.id, {
+      dados_creditos: result,
+    }, "creditos-bypass");
+
+    if (!bypassOk) {
       return NextResponse.json(
         { error: "Falha ao salvar configuração no banco." },
         { status: 500 }
@@ -370,14 +373,15 @@ export async function POST(request: NextRequest) {
     gerado_em: new Date().toISOString(),
   };
 
-  const { error: updateErr } = await supabase
-    .from("projects")
-    .update({ dados_creditos: result })
-    .eq("id", project_id)
-    .eq("user_id", user.id);
+  validarProjectData("dados_creditos", result, {
+    modo: "observador", contexto: "creditos",
+  });
 
-  if (updateErr) {
-    console.error("[creditos] Erro ao salvar:", updateErr);
+  const { ok: creditosOk } = await updateProject(supabase, project_id, user.id, {
+    dados_creditos: result,
+  }, "creditos");
+
+  if (!creditosOk) {
     return NextResponse.json(
       { error: "Página gerada, mas falha ao salvar no banco." },
       { status: 500 }

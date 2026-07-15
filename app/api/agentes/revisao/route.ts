@@ -5,6 +5,7 @@ import { anthropic, parseLLMJson, langfuse } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
+import { validarProjectData } from "@/lib/project-data";
 import type {
   SugestaoRevisao,
   RevisaoResult,
@@ -281,6 +282,7 @@ export async function POST(request: NextRequest) {
       }],
       revisado_em: new Date().toISOString(),
     };
+    validarProjectData("dados_revisao", revisaoMock, { modo: "observador", contexto: "revisao" });
     const { ok: mockOk } = await updateProject(supabase, project_id, user.id, {
       dados_revisao: revisaoMock,
     }, "revisao");
@@ -366,6 +368,7 @@ export async function POST(request: NextRequest) {
     iniciado_em: new Date().toISOString(),
   };
 
+  validarProjectData("dados_revisao", state, { modo: "observador", contexto: "revisao" });
   const { ok: stateOk } = await updateProject(supabase, project_id, user.id, {
     dados_revisao: state,
   }, "revisao");
@@ -543,6 +546,7 @@ export async function GET(request: NextRequest) {
     },
   };
 
+  validarProjectData("dados_revisao", revisao, { modo: "observador", contexto: "revisao" });
   const { ok: resultOk } = await updateProject(supabase, project_id, user.id, {
     dados_revisao: revisao,
   }, "revisao");

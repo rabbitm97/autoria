@@ -3,7 +3,9 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
+import { validarProjectData } from "@/lib/project-data";
 import type { ElementosEditoriais } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -152,18 +154,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { error: updateErr } = await supabase
-    .from("projects")
-    .update({ dados_elementos: elementos })
-    .eq("id", project_id)
-    .eq("user_id", user.id);
+  validarProjectData("dados_elementos", elementos, {
+    modo: "observador", contexto: "elementos-editoriais",
+  });
 
-  if (updateErr) {
-    console.error("[elementos-editoriais] Erro ao salvar:", updateErr);
+  const { ok: saveOk, error: saveErr } = await updateProject(supabase, project_id, user.id, {
+    dados_elementos: elementos,
+  }, "elementos-editoriais");
+
+  if (!saveOk) {
     return NextResponse.json(
       {
         error: "Elementos gerados, mas falha ao salvar no banco.",
-        debug: { code: updateErr.code, message: updateErr.message, details: updateErr.details, hint: updateErr.hint },
+        debug: { code: saveErr?.code, message: saveErr?.message },
       },
       { status: 500 }
     );

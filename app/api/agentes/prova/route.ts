@@ -8,6 +8,7 @@ import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import { validarProjectData } from "@/lib/project-data";
 import type { ProvaItem, ProvaResult } from "./types";
 export type { ProvaCategoria, ProvaStatus, ProvaItem, ProvaResult } from "./types";
 
@@ -241,6 +242,10 @@ export async function POST(req: NextRequest) {
     },
     analisado_em: new Date().toISOString(),
   };
+
+  validarProjectData("dados_qa", result, {
+    modo: "observador", contexto: "prova",
+  });
 
   const { ok: qaOk } = await updateProject(supabase, project_id, userId, {
     dados_qa: result,

@@ -5,6 +5,7 @@ import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/ant
 import { requireAuth } from "@/lib/supabase-server";
 import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
+import { validarProjectData } from "@/lib/project-data";
 import {
   FORMATOS_LIVRO,
   estimarLombadaMm,
@@ -465,6 +466,7 @@ export async function POST(request: NextRequest) {
       _fragmentos_pendentes: fragmentos,
     };
 
+    validarProjectData("diagnostico", estado, { modo: "observador", contexto: "diagnostico" });
     const { ok: estadoOk } = await updateProject(supabase, project_id, user.id, {
       diagnostico: estado,
     }, "diagnostico");
@@ -509,8 +511,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const estadoFrag = { ...estado, _fragmentos_pendentes: fragmentosPendentes };
+      validarProjectData("diagnostico", estadoFrag, { modo: "observador", contexto: "diagnostico" });
       const { ok: okFrag } = await updateProject(supabase, project_id, user.id, {
-        diagnostico: { ...estado, _fragmentos_pendentes: fragmentosPendentes },
+        diagnostico: estadoFrag,
       }, "diagnostico");
       if (!okFrag) {
         return NextResponse.json(
@@ -526,6 +530,7 @@ export async function POST(request: NextRequest) {
       estado.progresso.atual = estado.fragmentos_cache.length;
       delete estado._fragmentos_pendentes;
 
+      validarProjectData("diagnostico", estado, { modo: "observador", contexto: "diagnostico" });
       const { ok: okConsol } = await updateProject(supabase, project_id, user.id, {
         diagnostico: estado,
       }, "diagnostico");
@@ -566,6 +571,7 @@ export async function POST(request: NextRequest) {
         fragmentos_cache: [],
       };
 
+      validarProjectData("diagnostico", estadoFinal, { modo: "observador", contexto: "diagnostico" });
       const { ok: okFinal } = await updateProject(supabase, project_id, user.id, {
         diagnostico: estadoFinal,
       }, "diagnostico");
@@ -585,6 +591,7 @@ export async function POST(request: NextRequest) {
         erro_mensagem: err instanceof Error ? err.message : String(err),
       };
 
+      validarProjectData("diagnostico", estadoErro, { modo: "observador", contexto: "diagnostico" });
       const { ok: okErro } = await updateProject(supabase, project_id, user.id, {
         diagnostico: estadoErro,
       }, "diagnostico");
