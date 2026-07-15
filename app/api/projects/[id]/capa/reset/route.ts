@@ -81,6 +81,17 @@ export async function POST(
     }
   }
 
+  // C5-05: reset descarta a capa por completo — a pasta images/ e o
+  // temp-cover.jpg não têm mais referência viva. Remove tudo, best-effort.
+  const imagesPrefix = `${userId}/${id}/images`;
+  const { data: imgFiles } = await storageClient.storage
+    .from("editor-assets")
+    .list(imagesPrefix, { limit: 1000 });
+  for (const f of imgFiles ?? []) {
+    if (f.name) pathsBucketEditorAssets.push(`${imagesPrefix}/${f.name}`);
+  }
+  pathsBucketEditorAssets.push(`${userId}/${id}/temp-cover.jpg`);
+
   // Remove — best-effort, ignora erros
   if (pathsBucketCapas.length > 0) {
     await storageClient.storage.from("capas").remove(pathsBucketCapas).catch(() => null);

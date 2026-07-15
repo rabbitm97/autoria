@@ -142,6 +142,15 @@ export async function POST(
     console.warn("[cover-editor/confirm] analisar fire-and-forget falhou:", err);
   });
 
+  // Housekeeping (C5-05): remove imagens não-referenciadas de images/.
+  // Best-effort — se falhar, fica pra próxima confirmação.
+  fetch(`${req.nextUrl.origin}/api/projects/${id}/cover-editor/cleanup-images`, {
+    method: "POST",
+    headers: { cookie: req.headers.get("cookie") ?? "" },
+  }).catch((err) => {
+    console.warn("[cover-editor/confirm] cleanup-images fire-and-forget falhou:", err);
+  });
+
   return NextResponse.json({
     imagem_url: imagemUrl,
     confirmed_at: confirmedAt,
