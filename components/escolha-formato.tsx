@@ -14,6 +14,7 @@ export function EscolhaFormato({ projectId, initialFormato, locked, onSaved }: P
   const [selected, setSelected] = useState<FormatoLivro | null>(initialFormato);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avisoCapa, setAvisoCapa] = useState(false);
 
   async function handleSelect(value: FormatoLivro) {
     if (locked || saving) return;
@@ -39,6 +40,10 @@ export function EscolhaFormato({ projectId, initialFormato, locked, onSaved }: P
         return;
       }
 
+      const data = await res.json().catch(() => ({})) as {
+        capa_pode_estar_desatualizada?: boolean;
+      };
+      setAvisoCapa(!!data.capa_pode_estar_desatualizada);
       setSelected(value);
       onSaved?.(value);
     } catch {
@@ -81,6 +86,14 @@ export function EscolhaFormato({ projectId, initialFormato, locked, onSaved }: P
 
       {error && (
         <p className="text-sm text-red-600">{error}</p>
+      )}
+
+      {avisoCapa && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Você mudou o formato do livro. Sua capa foi criada no formato
+          anterior e pode precisar de ajuste — revise-a na etapa Capa antes
+          de gerar a prova.
+        </p>
       )}
 
       {saving && (

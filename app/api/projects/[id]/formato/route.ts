@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { isFormatoValido } from "@/lib/formatos";
+import { validarProjectData } from "@/lib/project-data";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -77,40 +79,84 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
   }
 
-  // Lê formato atual para detectar mudança real
+  // Lê estado atual: formato (detecção de mudança) + miolo/capa (invalidação)
   const { data: current } = await supabase
     .from("projects")
-    .select("formato")
+    .select("formato, dados_miolo, dados_capa")
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
 
   const formatoMudou = !!current?.formato && current.formato !== body.formato;
 
-  // Se o formato mudou, invalida dados_creditos: o hash inclui formato e
-  // paginas_usadas (que depende do formato via miolo), então um snapshot antigo
-  // dessincroniza com o novo formato e leva o autor a loop de reaprovação no miolo.
-  const updatePayload: { formato: string; dados_creditos?: null } = {
-    formato: body.formato,
-  };
+  // Regra de invalidação (C.4, decisão c-ii, 14/jul/2026):
+  // mudar o formato invalida tudo que foi GERADO no formato antigo —
+  // créditos (hash inclui formato), PDFs (página física errada) e os
+  // DERIVADOS do miolo (páginas/lombada/html). As ESCOLHAS do autor
+  // (config: template, corpo, sumário...) são preservadas, com o snapshot
+  // config.formato atualizado — o dashboard/miolo pré-preenche a partir
+  // dele. A capa NÃO é destruída (pode ter custado créditos): o front
+  // recebe flag e avisa o autor.
+  const updatePayload: Record<string, unknown> = { formato: body.formato };
+  let capaPodeEstarDesatualizada = false;
+
   if (formatoMudou) {
     updatePayload.dados_creditos = null;
-    console.log(`[formato PATCH] formato mudou de ${current?.formato} para ${body.formato}, invalidando dados_creditos`);
+    updatePayload.dados_pdf = null;
+    updatePayload.dados_pdf_digital = null;
+
+    const mioloAtual = current?.dados_miolo as { config?: Record<string, unknown> } | null;
+    if (mioloAtual) {
+      const novoMiolo = {
+        config: mioloAtual.config
+          ? { ...mioloAtual.config, formato: body.formato }
+          : null,
+        html_storage_path: null,
+        capitulos: null,
+        paginas_estimadas: null,
+        paginas_reais: null,
+        lombada_mm: null,
+        palavras: null,
+        caracteres: null,
+        gerado_em: null,
+      };
+      const vMiolo = validarProjectData("dados_miolo", novoMiolo, {
+        modo: "estrito", contexto: "formato-patch",
+      });
+      if (!vMiolo.ok) {
+        console.error("[zod-reject][formato-patch][dados_miolo]", vMiolo.issues.join(" | "));
+        return NextResponse.json(
+          { error: "Falha ao invalidar a diagramação antiga.", issues: vMiolo.issues },
+          { status: 500 }
+        );
+      }
+      updatePayload.dados_miolo = novoMiolo;
+    }
+
+    const capa = current?.dados_capa as Record<string, unknown> | null;
+    capaPodeEstarDesatualizada =
+      !!capa && capa.modo !== "skip" &&
+      !!(capa.url ?? capa.url_escolhida ?? capa.imagem_url);
+
+    console.log(
+      `[formato PATCH] ${current?.formato} → ${body.formato}: invalidando ` +
+      `creditos/pdf/pdf_digital/derivados do miolo` +
+      (capaPodeEstarDesatualizada ? " · capa marcada como possivelmente desatualizada" : "")
+    );
   }
 
-  const { error: updateError } = await supabase
-    .from("projects")
-    .update(updatePayload)
-    .eq("id", id)
-    .eq("user_id", userId);
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  const { ok: saveOk, error: saveErr } = await updateProject(
+    supabase, id, userId, updatePayload, "formato-patch"
+  );
+  if (!saveOk) {
+    return NextResponse.json({ error: saveErr?.message ?? "Falha ao salvar formato." }, { status: 500 });
   }
 
   return NextResponse.json({
     formato: body.formato,
     locked: false,
     creditos_invalidated: formatoMudou,
+    diagramacao_invalidated: formatoMudou,
+    capa_pode_estar_desatualizada: capaPodeEstarDesatualizada,
   });
 }
