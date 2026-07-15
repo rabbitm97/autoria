@@ -41,11 +41,16 @@ export async function DELETE(req: NextRequest) {
 
   // Delete the associated manuscript if it exists
   if (project?.manuscript_id) {
-    await supabase
+    // C5-01: check obrigatório (verdade #20 — nunca write cego). Não-fatal:
+    // o project já foi deletado; um manuscript órfão é logado, não derruba.
+    const { error: msDelErr } = await supabase
       .from("manuscripts")
       .delete()
       .eq("id", project.manuscript_id)
       .eq("user_id", user.id);
+    if (msDelErr) {
+      console.error("[projects DELETE] falha ao deletar manuscript associado:", msDelErr.message);
+    }
   }
 
   // Cleanup de Storage usando service role

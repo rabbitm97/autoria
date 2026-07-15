@@ -113,11 +113,21 @@ export async function POST(req: NextRequest) {
   // Load project context if provided
   let contextoProj = "";
   if (project_id && !dev) {
-    const { data } = await supabase
+    // C5-01: o SELECT antigo pedia uma coluna que não existe no schema
+    // (nome de coluna incorreto para o diagnóstico). Como coluna fantasma
+    // faz a query INTEIRA falhar, o contexto ficava vazio SEMPRE em
+    // produção. Como o valor nem era consumido (só etapa_atual + nome),
+    // basta remover do SELECT. maybeSingle + log: contexto é best-effort,
+    // não derruba a resposta do suporte.
+    const { data, error: ctxErr } = await supabase
       .from("projects")
-      .select("etapa_atual, dados_diagnostico, manuscript:manuscript_id(nome)")
+      .select("etapa_atual, manuscript:manuscript_id(nome)")
       .eq("id", project_id)
-      .single();
+      .maybeSingle();
+
+    if (ctxErr) {
+      console.warn("[suporte] falha ao carregar contexto do projeto:", ctxErr.message);
+    }
 
     if (data) {
       const ms = data.manuscript as { nome?: string } | null;
