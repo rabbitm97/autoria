@@ -4,15 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { getAgentPrompt } from "@/lib/agent-prompts";
+import type { ElementosEditoriais } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface ElementosEditoriais {
-  sinopse_curta: string;
-  sinopse_longa: string;
-  palavras_chave: string[];
-  ficha_catalografica: string;
-}
+export type { ElementosEditoriais } from "@/lib/project-data";
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 

@@ -9,39 +9,11 @@ import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
+import type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type EstiloCapa =
-  | "minimalista"
-  | "cartoon"
-  | "aquarela"
-  | "fotorrealista"
-  | "abstrato"
-  | "vintage"
-  | "geometrico";
-
-export interface OpcaoCapa {
-  url: string;
-  storage_path: string;
-}
-
-export interface CapaGeradaResult {
-  project_id: string;
-  modo: "ia";
-  estilo: EstiloCapa;
-  cor_predominante: string;
-  quarta_capa_texto: string;
-  usar_orelhas: boolean;
-  orelha_mm: number;
-  prompt_usado: string;
-  opcoes: OpcaoCapa[];
-  url_escolhida: string | null;
-  gerado_em: string;
-  is_regeneracao: boolean;
-  paginas_estimadas: number;
-  lombada_mm: number;
-}
+export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -10,12 +10,14 @@ import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
+import type { PdfResult } from "@/lib/project-data";
 import { applyDigitalCss } from "@/lib/miolo-builder-digital";
 import type { FormatoLivro } from "@/lib/miolo-builder-digital";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type { FormatoLivro as Formato } from "@/lib/formatos";
+export type { PdfResult } from "@/lib/project-data";
 
 // Dimensões físicas dos formatos em mm.
 // Mantido inline para evitar dependência cruzada com lib/formatos.ts durante o
@@ -40,15 +42,6 @@ const PX_PER_MM = 96 / 25.4;
 // O @page no CSS (preferCSSPageSize: true) continua controlando o tamanho
 // real do PDF.
 const LAYOUT_VIEWPORT_PX = { width: 1240, height: 1754 };
-
-export interface PdfResult {
-  project_id: string;
-  formato: FormatoLivro;
-  storage_path: string;
-  url_download: string;  // signed URL (1h)
-  paginas: number;
-  gerado_em: string;
-}
 
 // ─── POST /api/agentes/gerar-pdf-digital ──────────────────────────────────────
 // Body: { project_id, formato? }

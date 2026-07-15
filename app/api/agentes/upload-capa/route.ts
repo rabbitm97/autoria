@@ -10,78 +10,11 @@ import { getProjectFormato, lockFormato } from "@/lib/projects";
 import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 import { trimarMarcasDeCapa } from "@/lib/capa-trim-marcas";
+import type { CapaUploadResult, CapaValidacao } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface CapaUploadResult {
-  project_id: string;
-  modo: "upload";
-  url: string;
-  storage_path: string;
-  largura_px: number;
-  altura_px: number;
-  dpi: number;
-  orelha_mm: number;
-  lombada_mm_na_validacao: number;
-  validacao: CapaValidacao;
-  gerado_em: string;
-  /**
-   * Origem do arquivo enviado pelo autor. Quando o autor sobe um PDF,
-   * o cliente converte a primeira página em PNG (usado como `url`) mas
-   * preserva o PDF cru em `pdf_original_path`. `origem_arquivo` reflete
-   * o tipo original — usado nas recomendações para pular avisos que só
-   * fazem sentido para imagem (ex: DPI, já que PDF é vetorial).
-   */
-  origem_arquivo: "pdf" | "png" | "jpg";
-  /** Path no bucket `capas` do PDF original quando `origem_arquivo === "pdf"`. */
-  pdf_original_path: string | null;
-  /**
-   * Nome do arquivo original enviado pelo autor (antes de qualquer conversão
-   * PDF→PNG feita no cliente). Usado no preview para o autor reconhecer
-   * seu próprio arquivo. Fallback para "capa" quando não fornecido.
-   */
-  filename_original: string | null;
-  /**
-   * Motivo pelo qual o PDF original NÃO foi preservado, quando aplicável.
-   * `null` significa "sucesso" ou "não era PDF". Preenchido pelo frontend
-   * quando o upload paralelo falha, permitindo rastreamento sem quebrar
-   * o fluxo principal.
-   */
-  pdf_original_error: string | null;
-  /**
-   * URL assinada da imagem já com marcas de corte removidas (Config A → B).
-   * Populada quando o autor sobe PDF com BleedBox declarado e o trim rodou
-   * com sucesso. `null` para Config B/C, uploads não-PDF, ou falha no trim.
-   * Consumidores (EPUB, Prova 3D, extractor de frente) devem preferir esta
-   * URL sobre `url`. Ver `lib/capa-trim-marcas.ts`.
-   */
-  url_area_util: string | null;
-  /** Path no bucket `capas` da imagem trimada. `null` quando `url_area_util` é null. */
-  storage_path_area_util: string | null;
-  /** Dimensões físicas da área útil (BleedBox equivalente) em mm. `null` quando não houve trim. */
-  area_util_mm: { largura: number; altura: number } | null;
-  /**
-   * `true` quando o upload é uma capa em formato eBook — só a frente do
-   * livro, sem lombada nem contracapa. Detectado por comparação direta
-   * das dimensões contra `formato.width_mm × formato.height_mm` (com ou
-   * sem sangria de 3mm), independentemente da análise técnica ter rodado.
-   *
-   * Propagado pelo `capa-resolver` como `is_panoramica: !is_frente_pura`.
-   * Consumidores devem preferir esse campo canônico sobre o `is_frente_pura`
-   * do analyzer (que é fallback pra casos legacy).
-   */
-  is_frente_pura: boolean;
-}
-
-export interface CapaValidacao {
-  ok: boolean;
-  largura_esperada_mm: number;
-  altura_esperada_mm: number;
-  largura_recebida_mm: number;
-  altura_recebida_mm: number;
-  tolerancia_mm: number;
-  detalhes: string[];
-}
+export type { CapaUploadResult, CapaValidacao } from "@/lib/project-data";
 
 // ─── Dimension helpers ────────────────────────────────────────────────────────
 

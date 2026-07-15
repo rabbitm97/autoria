@@ -10,16 +10,11 @@ import { randomUUID, createHash } from "crypto";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { extractFrontCover, type FormatoCapa } from "@/lib/capa-frente-extractor";
 import { segmentByCapitulosAprovados, type CapituloAprovado } from "@/lib/parse-chapters";
+import type { EpubResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface EpubResult {
-  project_id: string;
-  storage_path: string;
-  url_download: string;   // signed URL (1h)
-  capitulos: number;
-  gerado_em: string;
-}
+export type { EpubResult } from "@/lib/project-data";
 
 // ─── Chapters → Paragraphs ───────────────────────────────────────────────────
 // Q.6: capítulos vêm de manuscripts.capitulos_aprovados (mesma fonte que o

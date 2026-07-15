@@ -31,9 +31,10 @@ export const STEPS = [
 // ─── Ordem ordinal completa de etapa_atual (11 valores da constraint de prod) ──
 // Usada por avancarEtapa() (lib/supabase-helpers.ts) para escrita forward-only.
 // BLOCO A (futuro): a etapa "audiolivro" será inserida entre "diagramacao" e
-// "preview" — basta adicionar o valor aqui. PRÉ-REQUISITO: a constraint
-// projects_etapa_atual_check em prod precisa ganhar o 12º valor via migration
-// (C.3 ou junto do Bloco A). NÃO adicionar antes disso.
+// "preview" — basta adicionar o valor aqui. A migration canônica de C.3
+// (`supabase/migrations/20260714000000_canonical_schema.sql`) já contempla o
+// mapeamento; adicionar o 12º valor é apenas expandir a constraint via nova
+// migration incremental antes de descomentar a linha abaixo.
 export const ORDEM_ETAPAS = [
   "upload",
   "diagnostico",

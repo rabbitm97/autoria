@@ -10,28 +10,13 @@ import { isFormatoValido, FORMATOS_VALORES, getFormatoDef, estimarPaginas, estim
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml } from "@/lib/creditos-render";
 import type { CreditosConfig, FichaOficialCRB } from "@/app/api/agentes/creditos/route";
+import type { MioloResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type { MioloConfig, CapituloInfo } from "@/lib/miolo-builder";
 export type { FormatoLivro, TemplateId } from "@/lib/miolo-builder";
-
-export interface MioloResult {
-  config: MioloConfig;
-  html_storage_path: string;
-  capitulos: CapituloInfo[];
-  paginas_estimadas: number;
-  /**
-   * Páginas reais, contadas do PDF.
-   * `null` até o `gerar-pdf` rodar. Consumidores devem usar
-   * `paginas_reais ?? paginas_estimadas` como fallback honesto.
-   */
-  paginas_reais: number | null;
-  lombada_mm: number;          // estimarLombadaMm — fórmula gráfica BR para papéis lisos (offset 75 g/m², avena 80 g/m² aprox.)
-  palavras: number;
-  caracteres: number;
-  gerado_em: string;
-}
+export type { MioloResult } from "@/lib/project-data";
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 

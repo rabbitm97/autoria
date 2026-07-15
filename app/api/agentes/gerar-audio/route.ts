@@ -11,22 +11,11 @@ import {
   segmentByCapitulosAprovados,
   type CapituloAprovado,
 } from "@/lib/parse-chapters";
+import type { CapituloAudio, AudioResult } from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface CapituloAudio {
-  index: number;
-  titulo: string;
-  storage_path: string;
-  url: string;          // signed URL, 1h
-  caracteres: number;
-  gerado_em: string;
-}
-
-export interface AudioResult {
-  project_id: string;
-  capitulos: CapituloAudio[];
-}
+export type { CapituloAudio, AudioResult } from "@/lib/project-data";
 
 // ─── ElevenLabs TTS ───────────────────────────────────────────────────────────
 

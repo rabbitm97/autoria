@@ -5,38 +5,19 @@ import { anthropic, parseLLMJson, langfuse } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
+import type {
+  SugestaoRevisao,
+  RevisaoResult,
+  RevisaoProcessingState,
+} from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface SugestaoRevisao {
-  id: string;
-  tipo: "ortografia" | "gramatica" | "coesao" | "consistencia" | "ritmo";
-  severidade: "critico" | "recomendado" | "opcional";
-  localizacao: {
-    capitulo: number;
-    paragrafo: number;
-    linha_aproximada: number;
-  };
-  trecho_original: string;
-  sugestao: string;
-  explicacao: string;
-  referencia_norma: string;
-}
-
-export interface RevisaoResult {
-  sugestoes: SugestaoRevisao[];
-  revisado_em: string;
-  aceitas?: string[];
-  rejeitadas?: string[];
-  finalizado_em?: string;
-}
-
-export interface RevisaoProcessingState {
-  status: "processing";
-  batch_id: string;
-  total_chunks: number;
-  iniciado_em: string;
-}
+export type {
+  SugestaoRevisao,
+  RevisaoResult,
+  RevisaoProcessingState,
+} from "@/lib/project-data";
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 

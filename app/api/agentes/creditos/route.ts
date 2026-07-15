@@ -9,100 +9,21 @@ import { type FormatoLivro, getFormatoDef, isFormatoValido, estimarPaginas } fro
 import { calcularCreditosInputHash } from "@/lib/creditos-hash";
 import { buildCreditosContentHtml } from "@/lib/creditos-render";
 import { getBodyFontFamily, type TemplateId } from "@/lib/miolo-builder";
+import type {
+  PropositoPublicacao,
+  CreditosConfig,
+  FichaOficialCRB,
+  CreditosResult,
+} from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/**
- * Propósito da publicação — determina o que é gerado:
- *  - "digital":  plataformas digitais + distribuição gratuita. Ficha CRB
- *                não é exigida por essas plataformas. Página de créditos
- *                é opcional (controlada por incluir_creditos).
- *  - "completa": publicação em plataformas digitais + livro físico oficial
- *                (livrarias, bibliotecas, editais, prêmios). Exige ficha
- *                oficial CRB (Lei 10.753, Res. CFB 184/2017).
- *
- * Retrocompat: valores legados "pessoal" e "livrarias" são normalizados
- * no handler POST e no restoreConfig do dashboard. Nunca deveriam chegar
- * ao renderer ou ao miolo-builder.
- */
-export type PropositoPublicacao = "digital" | "completa";
-
-export interface CreditosConfig {
-  formato: FormatoLivro;
-  proposito: PropositoPublicacao;
-
-  // Direitos autorais
-  ano_copyright: number;
-  titular_direitos: string;
-
-  // Tradução (opcional)
-  titulo_original?: string;
-  idioma_original?: string;
-
-  // Equipe técnica (todos opcionais)
-  traducao?: string;
-  revisao_tecnica?: string;
-  revisao?: string;
-  preparacao?: string;
-  diagramacao?: string;
-  projeto_capa?: string;
-  ilustracao_capa?: string;
-  producao_editorial?: string;
-  outros_creditos?: string;
-
-  // Editora
-  nome_editora?: string;
-  numero_edicao?: string;
-  ano_edicao?: number;
-  local_edicao?: string;
-  endereco_editora?: string;
-  cidade_estado?: string;
-  cep?: string;
-  site_editora?: string;
-  email_editora?: string;
-
-  // ISBN — dado factual, útil em qualquer propósito. Opcional em digital,
-  // obrigatório em completa.
-  isbn?: string;
-
-  // Bloco 1h: toggle para incluir/excluir a PÁGINA DE CRÉDITOS (verso da
-  // folha de rosto). Não afeta half-title, folha de rosto, dedicatória,
-  // sumário — apenas o verso.
-  //   - digital:  respeita o valor. Se false, verso da folha de rosto
-  //               fica em branco (mantém paridade recto/verso).
-  //   - completa: sempre true (ignora este campo).
-  // Default: true.
-  incluir_creditos?: boolean;
-}
-
-export interface FichaOficialCRB {
-  // Campos elaborados pelo bibliotecário
-  numero_chamada: string;
-  entrada_autor: string;
-  descricao_bibliografica: string;
-  notas_gerais?: string;          // opcional: "Inclui bibliografia", etc. (área 7 ISBD)
-  assuntos: string;               // texto, uma linha por assunto
-  cdd: string;
-  cdu: string;
-
-  // Identificação e log de aceite
-  bibliotecario_nome: string;
-  bibliotecario_crb: string;      // formato: CRB-X/YYYY (ex: CRB-8/12345)
-  declaracao_aceita_em: string;   // ISO timestamp
-  declaracao_ip: string;
-  declaracao_user_agent?: string;
-}
-
-export interface CreditosResult {
-  config: CreditosConfig;
-  ficha_oficial?: FichaOficialCRB;
-  /** null quando autor optou por não incluir créditos (só em digital). */
-  html_storage_path: string | null;
-  input_hash: string;
-  paginas_usadas: number;
-  paginas_origem: "real" | "estimada";
-  gerado_em: string;
-}
+export type {
+  PropositoPublicacao,
+  CreditosConfig,
+  FichaOficialCRB,
+  CreditosResult,
+} from "@/lib/project-data";
 
 // ─── HTML builder — standalone preview/download envelope ─────────────────────
 

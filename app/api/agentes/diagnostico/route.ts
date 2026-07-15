@@ -15,54 +15,27 @@ import {
   fragmentarParaDiagnostico,
   type FragmentoDiagnostico,
 } from "@/lib/parse-chapters";
+import type {
+  FormatoSugerido,
+  CanaisRecomendados,
+  FaixaPrecoDetalhada,
+  DiagnosticoResult,
+  DiagnosticoState,
+} from "@/lib/project-data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface FormatoSugerido {
-  formato: FormatoLivro | null;
-  label: string;
-  paginas_estimadas: number;
-  lombada_mm: number;
-  motivo: string;
-  aviso?: string;
-  cascata: Array<{ formato: FormatoLivro; paginas: number; lombada_mm: number }>;
-}
+export type {
+  FormatoSugerido,
+  CanaisRecomendados,
+  FaixaPrecoDetalhada,
+  DiagnosticoResult,
+  DiagnosticoState,
+} from "@/lib/project-data";
 
-export interface CanaisRecomendados {
-  ebook: { recomendado: boolean; plataformas: string[]; descricao: string };
-  fisico: { recomendado: boolean; descricao: string };
-  audiolivro: { recomendado: boolean; duracao_estimada_horas: number; descricao: string };
-}
-
-export interface FaixaPrecoDetalhada {
-  ebook: string;
-  fisico: string;
-  audiolivro: string;
-}
-
-export interface DiagnosticoResult {
-  genero_provavel: string;
-  confianca_genero: number;
-  num_capitulos: number;
-  num_palavras: number;
-  paginas_estimadas: number;
-  complexidade: "simples" | "médio" | "complexo";
-  complexidade_flesch: number;
-  tom_narrativo: string;
-  pontos_fortes: string[];
-  pontos_melhorar: string[];
-  mercado_alvo: string;
-  tamanho_mercado: "nicho" | "adequado" | "amplo";
-  potencial_comercial: "baixo" | "médio" | "alto";
-  faixa_preco_sugerida: string;
-  comparaveis_mercado: string[];
-  formato_sugerido: FormatoSugerido;
-  tempo_leitura_horas: number;
-  canais_recomendados: CanaisRecomendados;
-  faixa_preco_detalhada: FaixaPrecoDetalhada;
-  proximos_passos: string[];
-}
-
+// Estrutural: casa com `DiagnosticoState.fragmentos_cache` do project-data.ts.
+// Mantido local porque é forma de trabalho interno do map-reduce, não contrato
+// publicado — o consumidor externo enxerga via `DiagnosticoState`.
 interface FragmentoAnalisado {
   hash: string;
   idx: number;
@@ -75,19 +48,6 @@ interface FragmentoAnalisado {
   observacoes: string[];
   trecho_representativo: string;
   erro?: string;
-}
-
-interface DiagnosticoState {
-  status: "processando_capitulos" | "consolidando" | "concluido" | "erro";
-  progresso: { atual: number; total: number };
-  iniciado_em: string;
-  concluido_em?: string;
-  erro_mensagem?: string;
-  fragmentos_cache: FragmentoAnalisado[];
-  // Quando status === "concluido", o resultado final fica em "resultado"
-  resultado?: DiagnosticoResult;
-  // Efêmero: existe apenas durante o processamento, removido na consolidação
-  _fragmentos_pendentes?: FragmentoDiagnostico[];
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
