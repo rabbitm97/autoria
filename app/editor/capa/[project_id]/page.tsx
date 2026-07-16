@@ -53,12 +53,14 @@ export default async function EditorCapaPage({
     subtitulo?: string;
   } | null;
 
-  // Fonte única: projects.formato. Default temporário "padrao_br" só para o
-  // caso (raro) de o autor abrir o editor sem ter escolhido formato — o fluxo
-  // certo é forçar escolha em Elementos Editoriais antes de gerar a capa.
+  // Fonte única: projects.formato. Sem formato definido, não há como abrir
+  // o editor com dimensões corretas — força escolha em Elementos antes.
   const rawFormat = project.formato as string | undefined;
-  const format: FormatKey =
-    rawFormat && rawFormat in FORMATS ? (rawFormat as FormatKey) : "padrao_br";
+  if (!rawFormat || !(rawFormat in FORMATS)) {
+    console.log("[editor/capa] redirect: formato não definido. project_id =", project_id);
+    redirect(`/dashboard/elementos/${project_id}`);
+  }
+  const format: FormatKey = rawFormat as FormatKey;
 
   const pages = miolo?.paginas_reais ?? 200;
   // Ordem de precedência:

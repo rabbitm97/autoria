@@ -66,7 +66,7 @@ export default function PublicacaoPage() {
         autor_sobrenome?: string;
       } | null;
       const el = proj?.dados_elementos as Record<string, unknown> | null;
-      const capa = proj?.dados_capa as { url_escolhida?: string; url?: string } | null;
+      const capa = proj?.dados_capa as { imagem_url?: string; url_escolhida?: string; url?: string } | null;
       const miolo = proj?.dados_miolo as { lombada_mm?: number; paginas_reais?: number; paginas_estimadas?: number } | null;
       const creditos = proj?.dados_creditos as {
         config?: { proposito?: string };
@@ -85,7 +85,7 @@ export default function PublicacaoPage() {
         autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
         paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? 0,
         lombadaMm: miolo?.lombada_mm ?? 0,
-        capaThumbUrl: capa?.url_escolhida ?? capa?.url ?? null,
+        capaThumbUrl: capa?.imagem_url ?? capa?.url_escolhida ?? capa?.url ?? null,
         proposito,
         hasCreditos,
       });

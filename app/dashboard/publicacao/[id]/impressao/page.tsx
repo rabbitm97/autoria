@@ -154,6 +154,7 @@ export default function ImpressaoPage() {
 
       if (cancel) return;
 
+      if (!data.formato) console.warn("[impressao] [formato-fallback] formato nulo — não deveria acontecer pós FIX-01.");
       setMeta({
         titulo,
         autor,

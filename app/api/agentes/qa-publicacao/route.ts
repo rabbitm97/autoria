@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       idioma:          "pt-BR",
       tem_isbn:        !!isbnReal,
       tem_miolo_pdf:   !!(pdf as { storage_path?: string } | null)?.storage_path,
-      tem_capa_pdf:    !!(capa?.url_escolhida ?? capa?.url),
+      tem_capa_pdf:    !!(capa?.imagem_url ?? capa?.url_escolhida ?? capa?.url),
       tem_epub:        !!epubData?.storage_path,
       resolucao_capa:  resolucaoCapaReal,
       tem_audiolivro:  temAudio,

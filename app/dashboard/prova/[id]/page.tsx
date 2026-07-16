@@ -707,6 +707,9 @@ export default function ProvaPage() {
         } | null;
 
         const dadosCapa = project.dados_capa as Record<string, unknown> | null;
+        if (!((project.formato as string) in FORMATS)) {
+          console.warn("[prova] [formato-fallback] projects.formato inválido/nulo — não deveria acontecer pós FIX-01.");
+        }
         const formatoKey = ((project.formato as string) in FORMATS
           ? (project.formato as keyof typeof FORMATS)
           : "padrao_br") as keyof typeof FORMATS;

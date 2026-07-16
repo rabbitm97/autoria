@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { Smartphone, Library } from "lucide-react";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { CreditosConfig, CreditosResult, PropositoPublicacao } from "@/app/api/agentes/creditos/route";
@@ -238,6 +239,10 @@ export default function CreditosPage() {
 
   // ── Config form — Direitos ──────────────────────────────────────────────────
   const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
+  // null = ainda carregando; false = NULL no banco (não definido);
+  // true = persistido em projects.formato ou snapshot em dados_creditos.
+  // Sem `true`, NÃO renderiza o formulário nem o botão de gerar.
+  const [formatoDefinido, setFormatoDefinido] = useState<boolean | null>(null);
   const [anoCopyright, setAnoCopyright] = useState(new Date().getFullYear().toString());
   const [titularDireitos, setTitularDireitos] = useState("");
   const [numeroEdicao, setNumeroEdicao] = useState("1ª edição");
@@ -332,7 +337,12 @@ export default function CreditosPage() {
       if (nomeCompleto && !titularDireitos) setTitularDireitos(nomeCompleto);
 
       const fmtRes = await fetch(`/api/projects/${projectId}/formato`).then(r => r.ok ? r.json() : null);
-      if (fmtRes?.formato) setFormato(fmtRes.formato as FormatoLivro);
+      if (fmtRes?.formato) {
+        setFormato(fmtRes.formato as FormatoLivro);
+        setFormatoDefinido(true);
+      } else {
+        setFormatoDefinido(false);
+      }
 
       const existing = project.dados_creditos as CreditosResult | null;
       if (existing) {
@@ -408,6 +418,9 @@ export default function CreditosPage() {
       setIncluirCreditos(c.incluir_creditos !== false);
     }
     setFormato(c.formato);
+    // Snapshot do próprio artefato é fonte legítima (invalidação c-ii do C.4):
+    // se o registro em dados_creditos existe, o formato dele conta como definido.
+    setFormatoDefinido(true);
     if (typeof c.ano_copyright === "number") setAnoCopyright(c.ano_copyright.toString());
     if (c.titular_direitos) setTitularDireitos(c.titular_direitos);
     if (c.numero_edicao)    setNumeroEdicao(c.numero_edicao);
@@ -618,6 +631,23 @@ export default function CreditosPage() {
             </p>
           </div>
 
+          {formatoDefinido === false && (
+            <div className="mb-6 bg-white rounded-2xl border border-amber-200 p-6">
+              <p className="text-sm font-medium text-amber-700 mb-1">
+                Formato ainda não definido
+              </p>
+              <p className="text-xs text-zinc-500">
+                Escolha o formato na etapa{" "}
+                <Link href={`/dashboard/elementos/${projectId}`} className="underline text-brand-primary">
+                  Elementos
+                </Link>{" "}
+                antes de gerar a página de créditos.
+              </p>
+            </div>
+          )}
+
+          {formatoDefinido === true && (
+            <>
           {/* Uso do livro — Bloco 1h */}
           <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-4">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Uso do livro</p>
@@ -1049,6 +1079,8 @@ export default function CreditosPage() {
           <p className="text-center text-xs text-zinc-400 mt-3">
             {!geraCreditos ? "Vai direto para a diagramação do miolo." : "Apenas alguns segundos."}
           </p>
+            </>
+          )}
         </main>
 
       ) : step === "processing" ? (
