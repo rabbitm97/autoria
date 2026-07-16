@@ -132,13 +132,8 @@ export async function POST(req: NextRequest) {
 
     dados = {
       ...((body.dados ?? {}) as Partial<RequisitosArquivo>),
-      // Cascata: escolha em Elementos > original. QA valida o título
-      // FINAL que vai para as plataformas (Amazon, Apple, Kobo). Se
-      // validar o original quando autor mudou, aprova errado.
-      titulo:          (el as { titulo_escolhido?: string })?.titulo_escolhido?.trim()
-                       ?? ms?.titulo?.trim() ?? "",
-      subtitulo:       (el as { subtitulo?: string })?.subtitulo?.trim()
-                       || ms?.subtitulo?.trim() || undefined,
+      titulo:          ms?.titulo?.trim() ?? "",
+      subtitulo:       ms?.subtitulo?.trim() || undefined,
       autor:           [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" "),
       sinopse_curta:   (el?.sinopse_curta as string) ?? "",
       sinopse_longa:   (el?.sinopse_longa as string) ?? "",

@@ -38,7 +38,7 @@ export async function GET() {
     .select(`
       id, tipo, project_id, config, preco_centavos, adicionado_em, updated_at,
       projects (
-        id, formato, dados_capa, dados_elementos,
+        id, formato, dados_capa,
         manuscripts (titulo, autor_primeiro_nome, autor_sobrenome)
       )
     `)

@@ -10,7 +10,6 @@ interface CartItemMinimo {
   config: ConfigImpressao;
   projects?: {
     manuscripts?: { titulo?: string } | null;
-    dados_elementos?: { titulo_escolhido?: string } | null;
   };
 }
 
@@ -134,9 +133,7 @@ export default function CheckoutPage() {
                 {items.map(i => (
                   <div key={i.id} className="flex justify-between text-xs text-white/85">
                     <span>
-                      {i.projects?.dados_elementos?.titulo_escolhido ??
-                        i.projects?.manuscripts?.titulo ??
-                        "Livro"}{" "}
+                      {i.projects?.manuscripts?.titulo ?? "Livro"}{" "}
                       × {i.config.tiragem}
                     </span>
                     <span>

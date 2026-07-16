@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
   // ── Fetch titulo, autor, paginas from DB ──────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, dados_elementos, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -125,8 +125,7 @@ export async function POST(req: NextRequest) {
     autor_sobrenome?: string;
   } | null;
 
-  const el = project.dados_elementos as { titulo_escolhido?: string } | null;
-  const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "";
+  const titulo = ms?.titulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
 
   const dadosMiolo = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;

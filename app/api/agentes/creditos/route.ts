@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
   // Load project data
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, formato, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal, texto, texto_revisado)")
+    .select("id, formato, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal, texto, texto_revisado)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -235,9 +235,8 @@ export async function POST(request: NextRequest) {
     genero_principal?: string;
   } | null;
 
-  const el = project.dados_elementos as { titulo_escolhido?: string; subtitulo?: string } | null;
-  const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "Sem título";
-  const subtitulo = el?.subtitulo ?? ms?.subtitulo?.trim() ?? "";
+  const titulo = ms?.titulo ?? "Sem título";
+  const subtitulo = ms?.subtitulo?.trim() ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
   const genero = ms?.genero_principal ?? "Literatura";
 

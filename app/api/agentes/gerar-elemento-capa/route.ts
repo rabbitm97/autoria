@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
   // ── Load project (ownership check + metadata) ────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, dados_elementos, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -130,11 +130,7 @@ export async function POST(req: NextRequest) {
     genero_principal?: string;
   } | null;
 
-  // Cascata: escolha em Elementos > original. Cada elemento da capa
-  // (frente, contracapa, lombada, orelhas) precisa refletir o título
-  // final decidido pelo autor.
-  const el = project.dados_elementos as { titulo_escolhido?: string } | null;
-  const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "";
+  const titulo = ms?.titulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ");
   const genero = ms?.genero_principal ?? "literatura";
 

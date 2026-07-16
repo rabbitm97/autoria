@@ -20,7 +20,6 @@ interface CartItem {
     formato: string;
     dados_capa: { exports?: { jpeg_ebook?: { storage_path?: string } } } | null;
     manuscripts?: { titulo?: string; autor_primeiro_nome?: string; autor_sobrenome?: string } | null;
-    dados_elementos?: { titulo_escolhido?: string } | null;
   };
 }
 
@@ -102,10 +101,7 @@ export default function CarrinhoPage() {
         <div className="space-y-4">
           {items.map(item => {
             const ms = item.projects?.manuscripts;
-            const titulo =
-              item.projects?.dados_elementos?.titulo_escolhido ??
-              ms?.titulo ??
-              "Sem título";
+            const titulo = ms?.titulo ?? "Sem título";
             const autor =
               [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") ||
               "Autor";

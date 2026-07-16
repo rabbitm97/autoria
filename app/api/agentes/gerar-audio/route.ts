@@ -92,14 +92,13 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_audio, dados_elementos, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+      .select("dados_audio, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
     if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
-    const el = project.dados_elementos as Record<string, unknown> | null;
     const ms = project.manuscript as {
       texto?: string;
       texto_revisado?: string;
@@ -109,11 +108,7 @@ export async function POST(req: NextRequest) {
       capitulos_aprovados_texto_hash?: string | null;
     } | null;
 
-    // Cascata: escolha em Elementos > titulo original > nome do arquivo
-    // > fallback. Antes caía direto de titulo_escolhido para ms.nome,
-    // que é o nome do arquivo (ex: "meu-livro.docx") e o audiolivro
-    // anunciava o nome do arquivo em vez do título literário.
-    titulo = (el?.titulo_escolhido as string) ?? ms?.titulo ?? ms?.nome ?? "Sem título";
+    titulo = ms?.titulo ?? ms?.nome ?? "Sem título";
     // Usa texto_revisado se existir (mesmo padrão do miolo/gerar-epub) —
     // garante que o hash bata com a aprovação (que hasheia texto_revisado).
     texto  = ms?.texto_revisado ?? ms?.texto ?? "";
@@ -243,13 +238,12 @@ export async function GET(req: NextRequest) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("dados_audio, dados_elementos, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+    .select("dados_audio, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
     .eq("id", project_id)
     .single();
 
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
-  const el = project.dados_elementos as Record<string, unknown> | null;
   const ms = project.manuscript as {
     texto?: string;
     texto_revisado?: string;
@@ -258,8 +252,7 @@ export async function GET(req: NextRequest) {
     capitulos_aprovados?: CapituloAprovado[] | null;
     capitulos_aprovados_texto_hash?: string | null;
   } | null;
-  // Cascata correta (ver comentário na primeira ocorrência acima).
-  const titulo = (el?.titulo_escolhido as string) ?? ms?.titulo ?? ms?.nome ?? "Sem título";
+  const titulo = ms?.titulo ?? ms?.nome ?? "Sem título";
   const texto  = ms?.texto_revisado ?? ms?.texto ?? "";
 
   // Q.6: valida capítulos aprovados. Se não aprovados ou hash mudou,

@@ -1385,19 +1385,19 @@ export default function CapaPage() {
     try {
       const { data } = await supabase
         .from("projects")
-        .select("dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome)")
+        .select("dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
 
       if (data?.dados_elementos) {
         const el = data.dados_elementos as Record<string, unknown>;
-        setTitulo((el.titulo_escolhido as string) ?? (el.opcoes_titulo as string[])?.[0] ?? "");
         setSinopse(el.sinopse_curta as string ?? "");
         if (el.genero) setGenero(el.genero as string);
       }
 
-      const ms = data?.manuscripts as { autor_primeiro_nome?: string; autor_sobrenome?: string } | null;
+      const ms = data?.manuscripts as { titulo?: string; autor_primeiro_nome?: string; autor_sobrenome?: string } | null;
       if (ms) {
+        setTitulo(ms.titulo ?? "");
         setAutor([ms.autor_primeiro_nome, ms.autor_sobrenome].filter(Boolean).join(" "));
       }
 

@@ -60,16 +60,13 @@ export async function POST(req: NextRequest) {
   } | null;
 
   const el = project.dados_elementos as {
-    titulo_escolhido?: string;
-    subtitulo?: string;
     palavras_chave?: string[];
   } | null;
   const mioloData = project.dados_miolo as { config?: MioloConfig } | null;
   const creditosData = project.dados_creditos as CreditosResult | null;
 
-  const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "Sem título";
-  // Cascata do Q.4: escolha em Elementos > original do manuscrito.
-  const subtitulo = el?.subtitulo ?? ms?.subtitulo ?? "";
+  const titulo = ms?.titulo ?? "Sem título";
+  const subtitulo = ms?.subtitulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor";
   const texto = ms?.texto_revisado ?? ms?.texto ?? "";
 

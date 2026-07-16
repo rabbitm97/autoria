@@ -63,19 +63,9 @@ export default async function EditorCapaPage({
   const format: FormatKey = rawFormat as FormatKey;
 
   const pages = miolo?.paginas_reais ?? 200;
-  // Ordem de precedência:
-  //  1. titulo_escolhido: última decisão consciente do autor em Elementos
-  //  2. opcoes_titulo[0]: primeira sugestão da IA (autor passou por Elementos
-  //     mas não escolheu explicitamente)
-  //  3. manuscripts.titulo: título original do manuscrito (fallback quando o
-  //     autor pulou Elementos Editoriais — segundo a memória do projeto,
-  //     manuscripts.titulo é single source of truth imutável)
-  //  4. "": edge case (projeto sem título em nenhum lugar)
-  const title =
-    (elementos?.titulo_escolhido as string) ??
-    (elementos?.opcoes_titulo as string[])?.[0] ??
-    manuscript?.titulo ??
-    "";
+  // Título/subtítulo: manuscripts é a fonte imutável (decisão de produto —
+  // sem opções de título; a voz do autor é preservada).
+  const title = manuscript?.titulo ?? "";
   const authorName = [
     manuscript?.autor_primeiro_nome,
     manuscript?.autor_sobrenome,
@@ -84,11 +74,7 @@ export default async function EditorCapaPage({
     .join(" ");
   const synopsisShort = (elementos?.sinopse_curta as string) ?? "";
   const synopsisLong = (elementos?.sinopse_longa as string) ?? "";
-  // Mesma cascata do title, mas subtítulo é opcional em muitos manuscritos.
-  const subtitle =
-    (elementos?.subtitulo as string) ??
-    manuscript?.subtitulo ??
-    "";
+  const subtitle = manuscript?.subtitulo ?? "";
   const isbn = (capa?.isbn as string) ?? null;
 
   const confirmedAt = (capa?.confirmed_at as string) ?? null;

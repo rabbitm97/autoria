@@ -151,13 +151,9 @@ export async function POST(req: NextRequest) {
   const dadosElementos = project.dados_elementos as {
     sinopse_curta?: string;
     sinopse_longa?: string;
-    titulo_escolhido?: string;
-    subtitulo?: string;
   } | null;
 
-  // Cascata: escolha em Elementos > original. A capa gerada pela IA
-  // precisa ter o título final que o autor decidiu, não o do upload.
-  const titulo = dadosElementos?.titulo_escolhido ?? ms?.titulo ?? "";
+  const titulo = ms?.titulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
   const genero = ms?.genero_principal || "literatura";
 

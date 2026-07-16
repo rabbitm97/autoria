@@ -53,7 +53,7 @@ export default function PublicacaoPage() {
       const [projRes, downloadsRes] = await Promise.all([
         supabase
           .from("projects")
-          .select("dados_elementos, dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+          .select("dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
           .eq("id", id)
           .single(),
         fetch(`/api/publicacao/${id}/downloads`),
@@ -65,7 +65,6 @@ export default function PublicacaoPage() {
         autor_primeiro_nome?: string;
         autor_sobrenome?: string;
       } | null;
-      const el = proj?.dados_elementos as Record<string, unknown> | null;
       const capa = proj?.dados_capa as { imagem_url?: string; url_escolhida?: string; url?: string } | null;
       const miolo = proj?.dados_miolo as { lombada_mm?: number; paginas_reais?: number; paginas_estimadas?: number } | null;
       const creditos = proj?.dados_creditos as {
@@ -81,7 +80,7 @@ export default function PublicacaoPage() {
         : creditos?.html_storage_path != null;
 
       setMeta({
-        titulo: (el?.titulo_escolhido as string) ?? ms?.titulo ?? "Sem título",
+        titulo: ms?.titulo ?? "Sem título",
         autor: [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "Autor",
         paginas: miolo?.paginas_reais ?? miolo?.paginas_estimadas ?? 0,
         lombadaMm: miolo?.lombada_mm ?? 0,

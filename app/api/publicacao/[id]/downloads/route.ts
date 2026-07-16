@@ -84,7 +84,7 @@ export async function GET(
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_pdf, dados_pdf_digital, dados_miolo, dados_audio, dados_qa, dados_elementos, formato, manuscripts(titulo)")
+    .select("dados_capa, dados_pdf, dados_pdf_digital, dados_miolo, dados_audio, dados_qa, formato, manuscripts(titulo)")
     .eq("id", projectId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -98,8 +98,7 @@ export async function GET(
   }
 
   const ms = project.manuscripts as unknown as { titulo?: string } | null;
-  const elementos = project.dados_elementos as { titulo_escolhido?: string } | null;
-  const tituloCanon = elementos?.titulo_escolhido ?? ms?.titulo ?? "livro";
+  const tituloCanon = ms?.titulo ?? "livro";
   const safeName = tituloCanon
     .replace(/[^a-zA-Z0-9À-ſ\s]/g, "")
     .replace(/\s+/g, "_")

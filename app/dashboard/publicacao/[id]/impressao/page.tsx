@@ -96,7 +96,7 @@ export default function ImpressaoPage() {
       const { data, error } = await supabase
         .from("projects")
         .select(`
-          formato, dados_capa, dados_miolo, dados_elementos, dados_qa,
+          formato, dados_capa, dados_miolo, dados_qa,
           manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)
         `)
         .eq("id", id)
@@ -115,7 +115,6 @@ export default function ImpressaoPage() {
         autor_primeiro_nome?: string;
         autor_sobrenome?: string;
       } | null;
-      const el = data.dados_elementos as { titulo_escolhido?: string } | null;
       const capa = data.dados_capa as {
         editor_data?: { orelhaMm?: number; comOrelhas?: boolean };
         orelha_mm?: number;
@@ -134,7 +133,7 @@ export default function ImpressaoPage() {
         return;
       }
 
-      const titulo = el?.titulo_escolhido ?? ms?.titulo ?? "Sem título";
+      const titulo = ms?.titulo ?? "Sem título";
       const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome]
         .filter(Boolean).join(" ") || "Autor";
 
