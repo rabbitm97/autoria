@@ -134,17 +134,6 @@ export default function PlanosPage() {
           *Audiolivro incluso para obras de até 100 mil palavras; excedente via créditos.
         </p>
 
-        {/* Guarantee */}
-        <div className="text-center">
-          <div className="inline-flex items-center gap-3 bg-white rounded-2xl border border-zinc-100 px-6 py-4">
-            <span className="text-2xl">🔒</span>
-            <div className="text-left">
-              <p className="font-medium text-zinc-700 text-sm">Garantia de 7 dias</p>
-              <p className="text-zinc-400 text-xs">Não ficou satisfeito? Devolvemos 100% do valor.</p>
-            </div>
-          </div>
-        </div>
-
         <p className="text-center text-zinc-300 text-xs mt-10">
           Autoria — Do manuscrito ao leitor.
         </p>
