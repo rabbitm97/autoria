@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
+import { PLANO_PRECO_CENTAVOS } from "@/lib/planos";
 
 // ─── Plans ────────────────────────────────────────────────────────────────────
 
 const PLANS = {
-  essencial: { nome: "Essencial", preco: 197_00, descricao: "Diagnóstico + Revisão + Elementos Editoriais" },
-  completo:  { nome: "Completo",  preco: 397_00, descricao: "Tudo do Essencial + Capa com IA + Diagramação" },
-  pro:       { nome: "Pro",       preco: 697_00, descricao: "Tudo do Completo + Audiolivro + Publicação em 15+ plataformas" },
+  essencial: {
+    nome: "Essencial",
+    preco: PLANO_PRECO_CENTAVOS.essencial,
+    descricao: "Revisão IA + elementos editoriais + capa IA (frente) + EPUB",
+  },
+  pro: {
+    nome: "Pro",
+    preco: PLANO_PRECO_CENTAVOS.pro,
+    descricao: "Tudo do Essencial + PDF gráfico com capa completa + audiolivro",
+  },
 } as const;
 
 type PlanId = keyof typeof PLANS;

@@ -11,7 +11,7 @@ export default function PerfilPage() {
   const router = useRouter();
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
-  const [plano, setPlano] = useState("gratuito");
+  const [plano, setPlano] = useState("freemium");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -21,7 +21,7 @@ export default function PerfilPage() {
     if (process.env.NODE_ENV === "development") {
       setNome("Dev Author");
       setEmail("dev@autoria.com");
-      setPlano("profissional");
+      setPlano("pro");
       setLoading(false);
       return;
     }
@@ -36,7 +36,7 @@ export default function PerfilPage() {
         .single()
         .then(({ data }) => {
           setNome(data?.nome ?? "");
-          setPlano(data?.plano ?? "gratuito");
+          setPlano(data?.plano ?? "freemium");
           setLoading(false);
         });
     });
@@ -74,12 +74,11 @@ export default function PerfilPage() {
   }
 
   const PLANO_LABEL: Record<string, { label: string; color: string }> = {
-    gratuito:     { label: "Gratuito",     color: "text-zinc-500" },
-    basico:       { label: "Essencial",    color: "text-blue-600" },
-    profissional: { label: "Completo",     color: "text-violet-600" },
-    premium:      { label: "Pro",          color: "text-brand-gold" },
+    freemium:  { label: "Freemium",  color: "text-zinc-500" },
+    essencial: { label: "Essencial", color: "text-blue-600" },
+    pro:       { label: "Pro",       color: "text-brand-gold" },
   };
-  const planoInfo = PLANO_LABEL[plano] ?? PLANO_LABEL["gratuito"];
+  const planoInfo = PLANO_LABEL[plano] ?? PLANO_LABEL["freemium"];
 
   return (
     <div>

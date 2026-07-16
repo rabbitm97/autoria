@@ -279,7 +279,7 @@ export default function NovoProjetoPage() {
       .insert({
         user_id: session.user.id,
         manuscript_id: manuscript.id,
-        plano: "basico",
+        plano: "freemium",
         etapa_atual: "upload",
         usar_revisao: usarRevisao,
       })

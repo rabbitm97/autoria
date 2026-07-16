@@ -2,54 +2,55 @@
 
 const PLANS = [
   {
+    id: "freemium",
+    nome: "Freemium",
+    preco: "R$ 0",
+    periodo: "para sempre",
+    descricao: "Prepare seu livro e veja o resultado antes de pagar qualquer coisa.",
+    features: [
+      "Upload de manuscrito (.docx, .pdf, .txt)",
+      "Diagnóstico editorial com IA",
+      "Editor de capa profissional",
+      "Ficha catalográfica (CIP) preenchida por você",
+      "Conversão RGB→CMYK e cálculo de lombada",
+      "PDF digital de prévia (2 por dia, com marca d'água)",
+      "Exportação DOCX",
+    ],
+    cta: "Começar grátis",
+    destaque: false,
+  },
+  {
     id: "essencial",
     nome: "Essencial",
     preco: "R$ 197",
     periodo: "por obra",
-    descricao: "Para autores que querem publicar seu primeiro livro com qualidade profissional.",
+    descricao: "Do manuscrito ao livro digital pronto para publicar.",
     features: [
-      "Upload de manuscrito (.docx, .pdf, .txt)",
-      "Diagnóstico editorial com IA",
-      "Revisão gramatical e de estilo",
+      "Tudo do Freemium +",
+      "Revisão gramatical e de estilo com IA",
       "Sinopses, título e palavras-chave",
-      "Ficha catalográfica (CBL)",
+      "Capa com IA (frente)",
+      "EPUB pronto para as plataformas",
+      "PDF digital sem limite e sem marca d'água",
       "Suporte por e-mail",
     ],
-    cta: "Começar agora",
-    destaque: false,
-  },
-  {
-    id: "completo",
-    nome: "Completo",
-    preco: "R$ 397",
-    periodo: "por obra",
-    descricao: "Para autores que querem um livro profissional com capa e diagramação incluídas.",
-    features: [
-      "Tudo do Essencial +",
-      "Capa profissional com IA (DALL-E 3)",
-      "Diagramação automática (PDF/X-1a + EPUB)",
-      "Preview do livro antes de publicar",
-      "Exportação em múltiplos formatos",
-      "Suporte prioritário",
-    ],
-    cta: "Publicar com qualidade",
+    cta: "Publicar meu livro",
     destaque: true,
   },
   {
     id: "pro",
     nome: "Pro",
-    preco: "R$ 697",
+    preco: "R$ 397",
     periodo: "por obra",
-    descricao: "Para autores sérios que querem máxima distribuição e royalties.",
+    descricao: "Livro completo: digital, papel e áudio.",
     features: [
-      "Tudo do Completo +",
-      "Audiolivro com voz neural em PT-BR",
-      "Publicação automática em 15+ plataformas",
-      "Amazon KDP, Apple Books, Kobo e mais",
-      "Painel de royalties em tempo real",
-      "Gerente de conta dedicado",
+      "Tudo do Essencial +",
+      "PDF gráfico profissional com capa completa (lombada e contracapa)",
+      "Arquivos prontos para impressão (CMYK, sangria, marcas de corte)",
+      "Audiolivro em PT-BR com vozes neurais (em breve)*",
+      "Suporte prioritário",
     ],
-    cta: "Publicar em todas as plataformas",
+    cta: "Quero o livro completo",
     destaque: false,
   },
 ] as const;
@@ -71,7 +72,7 @@ export default function PlanosPage() {
             Do manuscrito ao leitor
           </h2>
           <p className="text-zinc-500 max-w-lg mx-auto">
-            Pague uma vez por obra. Sem assinatura, sem surpresas. Publique e receba 70% de royalties.
+            Pague uma vez por obra. Sem assinatura, sem surpresas.
           </p>
         </div>
 
@@ -128,6 +129,10 @@ export default function PlanosPage() {
             </div>
           ))}
         </div>
+
+        <p className="text-center text-xs text-zinc-400 mt-6">
+          *Audiolivro incluso para obras de até 100 mil palavras; excedente via créditos.
+        </p>
 
         {/* Guarantee */}
         <div className="text-center">
