@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoLivro } from "@/app/api/agentes/miolo/route";
 import { FORMATOS_LIVRO, estimarPaginas, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
@@ -122,6 +123,11 @@ export default function MioloPage() {
   // ── Config form state ───────────────────────────────────────────────────────
   const [template, setTemplate] = useState<TemplateId>("literario");
   const [formato, setFormato] = useState<FormatoLivro>("padrao_br");
+  // null = ainda carregando; false = NULL no banco (não definido);
+  // true = persistido em projects.formato. Sem `true`, NÃO renderiza
+  // o formulário nem o botão de diagramar — evita gerar miolo em cima
+  // de "padrao_br" inventado pelo default do useState.
+  const [formatoDefinido, setFormatoDefinido] = useState<boolean | null>(null);
   const [corpoPt, setCorpoPt] = useState<number>(getDefaultCorpoPt("literario"));
   const [sumario, setSumario] = useState(getDefaultSumario("literario"));
   const [temCapitulos, setTemCapitulos] = useState(true);
@@ -203,7 +209,12 @@ export default function MioloPage() {
         fetch(`/api/agentes/miolo/aprovar-capitulos?project_id=${projectId}`)
           .then(r => r.ok ? r.json() : null).catch(() => null),
       ]);
-      if (fmtRes?.formato) setFormato(fmtRes.formato as FormatoLivro);
+      if (fmtRes?.formato) {
+        setFormato(fmtRes.formato as FormatoLivro);
+        setFormatoDefinido(true);
+      } else {
+        setFormatoDefinido(false);
+      }
       if (aprRes) {
         setStatusAprovacao({
           aprovado: !!aprRes.aprovado,
@@ -679,6 +690,23 @@ export default function MioloPage() {
             </p>
           </div>
 
+          {formatoDefinido === false && (
+            <div className="mb-6 bg-white rounded-2xl border border-amber-200 p-6">
+              <p className="text-sm font-medium text-amber-700 mb-1">
+                Formato ainda não definido
+              </p>
+              <p className="text-xs text-zinc-500">
+                Escolha o formato na etapa{" "}
+                <Link href={`/dashboard/elementos/${projectId}`} className="underline text-brand-primary">
+                  Elementos
+                </Link>{" "}
+                antes de diagramar o miolo.
+              </p>
+            </div>
+          )}
+
+          {formatoDefinido === true && (
+            <>
           {/* Template */}
           <section className="bg-white rounded-2xl border border-zinc-100 p-6 mb-5">
             <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-4">
@@ -881,6 +909,8 @@ export default function MioloPage() {
               </p>
             </div>
           </div>
+            </>
+          )}
         </main>
 
       ) : step === "capitulos" ? (

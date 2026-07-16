@@ -237,7 +237,8 @@ export default function ElementosPage() {
 
                 <EscolhaFormato
                   projectId={projectId}
-                  initialFormato={formato ?? sugestaoFormato?.formato ?? null}
+                  initialFormato={formato}
+                  sugestao={sugestaoFormato?.formato ?? null}
                   locked={formatoLocked}
                   onSaved={setFormato}
                 />

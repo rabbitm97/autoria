@@ -6,11 +6,12 @@ import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
 interface Props {
   projectId: string;
   initialFormato: FormatoLivro | null;
+  sugestao?: FormatoLivro | null;
   locked: boolean;
   onSaved?: (formato: FormatoLivro) => void;
 }
 
-export function EscolhaFormato({ projectId, initialFormato, locked, onSaved }: Props) {
+export function EscolhaFormato({ projectId, initialFormato, sugestao, locked, onSaved }: Props) {
   const [selected, setSelected] = useState<FormatoLivro | null>(initialFormato);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,19 +59,27 @@ export function EscolhaFormato({ projectId, initialFormato, locked, onSaved }: P
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {FORMATOS_LIVRO.map((fmt) => {
           const isActive = selected === fmt.value;
+          const isSugerido = !isActive && selected === null && sugestao === fmt.value;
           return (
             <button
               key={fmt.value}
               onClick={() => handleSelect(fmt.value)}
               disabled={locked || saving}
               className={[
-                "flex flex-col items-center gap-1 rounded-lg border-2 px-3 py-4 text-sm transition-colors",
+                "relative flex flex-col items-center gap-1 rounded-lg border-2 px-3 py-4 text-sm transition-colors",
                 isActive
                   ? "border-blue-600 bg-blue-50 text-blue-700"
-                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300",
+                  : isSugerido
+                    ? "border-dashed border-amber-500 bg-amber-50/40 text-gray-700 hover:bg-amber-50"
+                    : "border-gray-200 bg-white text-gray-700 hover:border-gray-300",
                 locked || saving ? "cursor-not-allowed opacity-60" : "cursor-pointer",
               ].join(" ")}
             >
+              {isSugerido && (
+                <span className="absolute -top-2 right-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+                  Sugerido
+                </span>
+              )}
               <span className="font-semibold">{fmt.label}</span>
               <span className="text-xs text-gray-500">{fmt.descricao_curta}</span>
             </button>

@@ -1355,6 +1355,10 @@ export default function CapaPage() {
 
   // Single source of truth for book format — selected once here, propagates to Créditos + Diagramação
   const [formatoGlobal, setFormatoGlobal] = useState<FormatoLivro>("padrao_br");
+  // null = ainda carregando; false = NULL no banco (não definido);
+  // true = persistido em projects.formato. NUNCA renderizar métodos ou
+  // formulários dependentes de formato antes de `true`.
+  const [formatoDefinido, setFormatoDefinido] = useState<boolean | null>(null);
   // Lombada real: sempre RECALCULADA a partir de paginas_reais usando a
   // fórmula unificada de `estimarLombadaCapaMm`. NÃO confiar em
   // `dados_miolo.lombada_mm` do banco — projetos com miolo gerado antes
@@ -1410,7 +1414,12 @@ export default function CapaPage() {
       }
 
       const fmtRes = await fetch(`/api/projects/${id}/formato`).then(r => r.ok ? r.json() : null);
-      if (fmtRes?.formato) setFormatoGlobal(fmtRes.formato as FormatoLivro);
+      if (fmtRes?.formato) {
+        setFormatoGlobal(fmtRes.formato as FormatoLivro);
+        setFormatoDefinido(true);
+      } else {
+        setFormatoDefinido(false);
+      }
 
       // Load real lombada if diagramação was already done — recalculada
       // a partir de paginas_reais (nunca lê lombada_mm fossilizada do banco)
@@ -1702,18 +1711,35 @@ export default function CapaPage() {
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
                 Formato do livro
               </p>
-              <p className="text-sm font-medium text-brand-primary">
-                {FORMATOS_LIVRO.find(f => f.value === formatoGlobal)?.label ?? "—"}{" "}
-                <span className="text-zinc-400 font-normal">
-                  {FORMATOS_LIVRO.find(f => f.value === formatoGlobal)?.dimensoes}
-                </span>
-              </p>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Definido em Elementos.{" "}
-                {lombadaReal !== null && (
-                  <span className="text-emerald-600">Lombada após diagramação: <strong>{lombadaReal}mm</strong></span>
-                )}
-              </p>
+              {formatoDefinido === true ? (
+                <>
+                  <p className="text-sm font-medium text-brand-primary">
+                    {FORMATOS_LIVRO.find(f => f.value === formatoGlobal)?.label ?? "—"}{" "}
+                    <span className="text-zinc-400 font-normal">
+                      {FORMATOS_LIVRO.find(f => f.value === formatoGlobal)?.dimensoes}
+                    </span>
+                  </p>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Definido em Elementos.{" "}
+                    {lombadaReal !== null && (
+                      <span className="text-emerald-600">Lombada após diagramação: <strong>{lombadaReal}mm</strong></span>
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-amber-700">
+                    Formato ainda não definido
+                  </p>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Escolha o formato na etapa{" "}
+                    <Link href={`/dashboard/elementos/${id}`} className="underline text-brand-primary">
+                      Elementos
+                    </Link>{" "}
+                    antes de criar a capa.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Lombada adjustment banner — shown when miolo is done and spine diverges */}
@@ -1760,7 +1786,7 @@ export default function CapaPage() {
               </div>
             )}
 
-            {(() => {
+            {formatoDefinido === true && (() => {
               const editorConfirmed = dados?.source === "editor" && dados?.confirmed_at;
               const editorThumbnail = editorConfirmed ? (dados?.imagem_url as string | undefined) : null;
               const editorConfirmedAt = editorConfirmed ? (dados?.confirmed_at as string) : null;
@@ -1887,12 +1913,14 @@ export default function CapaPage() {
               );
             })()}
 
-            <div className="text-center">
-              <button onClick={handleSkip}
-                className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2">
-                Pular esta etapa — já tenho a capa fora da plataforma
-              </button>
-            </div>
+            {formatoDefinido === true && (
+              <div className="text-center">
+                <button onClick={handleSkip}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2">
+                  Pular esta etapa — já tenho a capa fora da plataforma
+                </button>
+              </div>
+            )}
           </div>
         ) : modo === "upload" ? (
           <ModoUpload

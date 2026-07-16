@@ -69,13 +69,30 @@ export async function POST(request: NextRequest) {
   // Load project data including credits for injection
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+    .select("id, manuscript_id, formato, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados, capitulos_aprovados_texto_hash)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
 
   if (projErr || !project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+  }
+
+  // ── Formato: banco é a fonte de verdade (BLOCO-FIX-01) ────────────────────
+  // A validação de shape do payload (linha ~59) valida só o slug. Aqui
+  // confrontamos com projects.formato — se NULL, a UI deveria ter bloqueado;
+  // se divergir, o payload é ignorado e o banco vence. Defesa em profundidade
+  // pra impedir diagramar em formato que o autor nunca escolheu.
+  const formatoBanco = (project as { formato?: unknown }).formato;
+  if (!isFormatoValido(formatoBanco)) {
+    return NextResponse.json(
+      { error: "Formato do livro não definido. Escolha o formato na etapa Elementos antes de diagramar." },
+      { status: 422 }
+    );
+  }
+  if (config.formato !== formatoBanco) {
+    console.warn(`[miolo] [formato-drift] payload=${String(config.formato)} banco=${String(formatoBanco)} — usando o banco`);
+    config.formato = formatoBanco;
   }
 
   const ms = project.manuscripts as unknown as {
