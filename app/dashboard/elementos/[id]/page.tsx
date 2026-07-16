@@ -147,7 +147,7 @@ export default function ElementosPage() {
               Elementos editoriais
             </h1>
             <p className="text-zinc-500 leading-relaxed mb-8">
-              A IA irá gerar sinopses, palavras-chave para Amazon KDP
+              A IA irá gerar sinopses, palavras-chave para publicação
               e sugestão de ficha catalográfica — tudo editável.
             </p>
             {error && (
@@ -276,8 +276,8 @@ export default function ElementosPage() {
 
               {/* Keywords */}
               <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-                <h2 className="font-heading text-lg text-brand-primary mb-1">Palavras-chave Amazon KDP</h2>
-                <p className="text-zinc-400 text-xs mb-4">10 keywords para maximizar descoberta</p>
+                <h2 className="font-heading text-lg text-brand-primary mb-1">Palavras-chave para Publicação</h2>
+                <p className="text-zinc-400 text-xs mb-4">7 palavras-chave para maximizar a descoberta nas plataformas (limite da Amazon KDP)</p>
                 <div className="flex flex-wrap gap-2">
                   {elementos.palavras_chave.map((kw, i) => (
                     <span

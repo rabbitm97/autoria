@@ -40,10 +40,7 @@ Schema obrigatório:
     "<keyword 4>",
     "<keyword 5>",
     "<keyword 6>",
-    "<keyword 7>",
-    "<keyword 8>",
-    "<keyword 9>",
-    "<keyword 10>"
+    "<keyword 7>"
   ],
   "ficha_catalografica": "<ficha no formato CBL (Câmara Brasileira do Livro):\\nAutor, Nome.\\nTítulo / Nome Autor. — Cidade: Editora, Ano.\\nXXX p.; 21 cm.\\nISBN xxx-xx-xxxxx-xx-x\\n1. Gênero literário. I. Título.>"
 }
@@ -53,7 +50,7 @@ Diretrizes:
 - Sinopses devem ser magnéticas — façam o leitor querer comprar
 - Palavras-chave: use termos reais de busca no Amazon Kindle BR
 - Ficha catalográfica: use dados fictícios plausíveis se não houver informação real
-- palavras_chave deve ter exatamente 10 itens`;
+- palavras_chave deve ter exatamente 7 itens (limite de campos de keyword da Amazon KDP; as mesmas servem às demais plataformas)`;
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
