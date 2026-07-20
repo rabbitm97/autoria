@@ -3,7 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { anthropic, parseLLMJson, langfuse } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
-import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
+import { updateProject, avancarEtapa, negarPorPlano } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { validarProjectData } from "@/lib/project-data";
 import type {
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, usar_revisao, manuscript_id, manuscripts(texto)")
+    .select("id, plano, usar_revisao, manuscript_id, manuscripts(texto)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -260,6 +260,9 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "revisao");
+  if (gate) return gate;
 
   const texto = (project.manuscripts as unknown as { texto: string | null } | null)?.texto ?? "";
   if (!texto || texto.trim().length < 100) {

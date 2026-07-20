@@ -3,7 +3,7 @@ export const maxDuration = 60;
 import JSZip from "jszip";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { updateProject } from "@/lib/supabase-helpers";
+import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID, createHash } from "crypto";
@@ -214,12 +214,15 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project, error: projErr } = await supabase
       .from("projects")
-      .select("dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+      .select("plano, dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
     if (projErr || !project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+
+    const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-epub");
+    if (gate) return gate;
 
     const el = project.dados_elementos as Record<string, unknown> | null;
     const ms = project.manuscripts as {

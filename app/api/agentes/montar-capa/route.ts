@@ -3,7 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { updateProject } from "@/lib/supabase-helpers";
+import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import sharp from "sharp";
 import { getFormatoDef } from "@/lib/formatos";
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
   // ── Fetch titulo, autor, paginas from DB ──────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+    .select("id, plano, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -118,6 +118,9 @@ export async function POST(req: NextRequest) {
   if (projErr || !project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
+
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "montar-capa");
+  if (gate) return gate;
 
   const ms = project.manuscripts as unknown as {
     titulo?: string;

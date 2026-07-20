@@ -4,7 +4,7 @@ import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
-import { updateProject } from "@/lib/supabase-helpers";
+import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { lockFormato } from "@/lib/projects";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   // ── Fetch project + manuscripts from DB ───────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, creditos, formato, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("id, plano, creditos, formato, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -139,6 +139,9 @@ export async function POST(req: NextRequest) {
   if (projErr || !project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
+
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-capa");
+  if (gate) return gate;
 
   const ms = project.manuscripts as unknown as {
     titulo?: string;

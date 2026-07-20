@@ -3,7 +3,7 @@ export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { updateProject } from "@/lib/supabase-helpers";
+import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { VOZES } from "@/lib/voices";
 import { createHash } from "crypto";
@@ -92,12 +92,15 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project } = await supabase
       .from("projects")
-      .select("dados_audio, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+      .select("plano, dados_audio, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
     if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+
+    const gate = negarPorPlano((project as { plano?: unknown }).plano, "pro", "gerar-audio");
+    if (gate) return gate;
 
     const ms = project.manuscript as {
       texto?: string;
@@ -238,11 +241,14 @@ export async function GET(req: NextRequest) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("dados_audio, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+    .select("plano, dados_audio, manuscript:manuscript_id(texto, texto_revisado, nome, titulo, capitulos_aprovados, capitulos_aprovados_texto_hash)")
     .eq("id", project_id)
     .single();
 
   if (!project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "pro", "gerar-audio-get");
+  if (gate) return gate;
 
   const ms = project.manuscript as {
     texto?: string;

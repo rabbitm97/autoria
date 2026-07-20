@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
 import { ORDEM_ETAPAS } from "@/lib/etapas";
+import { planoAtende, PLANO_LABEL, type Plano } from "@/lib/planos";
 
 // Se o tsc reclamar de generics ao passar clients do @supabase/ssr,
 // trocar o tipo do parâmetro por: SupabaseClient<any, "public", any>
@@ -62,4 +64,25 @@ export async function avancarEtapa(
     return { ok: false, error: { message: error.message, code: error.code } };
   }
   return { ok: true, error: null };
+}
+
+/**
+ * Gate de plano (Bloco D.2). Uso: após o SELECT de ownership que já traz
+ * `plano`, chamar `negarPorPlano(project.plano, "essencial", "revisao")` e,
+ * se retornar Response, devolvê-la. Nunca comparar strings de plano na rota.
+ */
+export function negarPorPlano(
+  planoAtual: unknown,
+  minimo: Plano,
+  contexto: string
+): NextResponse | null {
+  if (planoAtende(planoAtual, minimo)) return null;
+  console.info(`[${contexto}] gate de plano: atual=${String(planoAtual)} minimo=${minimo}`);
+  return NextResponse.json(
+    {
+      error: `Este recurso faz parte do plano ${PLANO_LABEL[minimo]}. Faça o upgrade da obra para continuar.`,
+      plano_necessario: minimo,
+    },
+    { status: 402 }
+  );
 }

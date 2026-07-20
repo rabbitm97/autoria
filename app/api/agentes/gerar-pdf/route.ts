@@ -7,7 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { updateProject } from "@/lib/supabase-helpers";
+import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   // ou seja, agora).
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_miolo, dados_capa")
+    .select("plano, dados_miolo, dados_capa")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -112,6 +112,9 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "pro", "gerar-pdf");
+  if (gate) return gate;
 
   const miolo = project?.dados_miolo as MioloResult | null;
 

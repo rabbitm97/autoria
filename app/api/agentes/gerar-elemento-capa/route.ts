@@ -4,6 +4,7 @@ import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { negarPorPlano } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
   // ── Load project (ownership check + metadata) ────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select("id, plano, dados_miolo, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -122,6 +123,9 @@ export async function POST(req: NextRequest) {
   if (projErr || !project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
+
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-elemento-capa");
+  if (gate) return gate;
 
   const ms = project.manuscripts as {
     titulo?: string;
