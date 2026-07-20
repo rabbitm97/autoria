@@ -130,6 +130,7 @@ export default function MioloPage() {
   const [formatoDefinido, setFormatoDefinido] = useState<boolean | null>(null);
   const [corpoPt, setCorpoPt] = useState<number>(getDefaultCorpoPt("literario"));
   const [sumario, setSumario] = useState(getDefaultSumario("literario"));
+  const [sumarioTouched, setSumarioTouched] = useState(false);
   const [temCapitulos, setTemCapitulos] = useState(true);
   const [dedicatoria, setDedicatoria] = useState("");
   const [epigrafeTexto, setEpigrafeTexto] = useState("");
@@ -233,7 +234,10 @@ export default function MioloPage() {
         const savedCorpoPt = clampCorpoPt(existingConfig.corpo_pt);
         if (savedCorpoPt !== undefined) setCorpoPt(savedCorpoPt);
         else setCorpoPt(getDefaultCorpoPt(suggestedTemplate, formatoResolvido));
-        if (typeof existingConfig.sumario === "boolean") setSumario(existingConfig.sumario);
+        if (typeof existingConfig.sumario === "boolean") {
+          setSumario(existingConfig.sumario);
+          setSumarioTouched(true);
+        }
         if (existingConfig.tem_capitulos === false) setTemCapitulos(false);
       } else {
         setCorpoPt(getDefaultCorpoPt(suggestedTemplate, formatoResolvido));
@@ -662,7 +666,7 @@ export default function MioloPage() {
   function handleTemplateChange(novo: TemplateId) {
     setTemplate(novo);
     setCorpoPt(getDefaultCorpoPt(novo, formato));
-    setSumario(getDefaultSumario(novo));
+    if (!sumarioTouched) setSumario(getDefaultSumario(novo));
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -795,7 +799,7 @@ export default function MioloPage() {
               {/* sumário */}
               <label className={`flex items-center gap-3 ${temCapitulos ? "cursor-pointer" : "opacity-40 cursor-not-allowed"}`}>
                 <div
-                  onClick={() => { if (temCapitulos) setSumario(v => !v); }}
+                  onClick={() => { if (temCapitulos) { setSumario(v => !v); setSumarioTouched(true); } }}
                   className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 shrink-0 ${sumario && temCapitulos ? "bg-brand-primary" : "bg-zinc-200"}`}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${sumario && temCapitulos ? "translate-x-4" : "translate-x-0"}`} />
