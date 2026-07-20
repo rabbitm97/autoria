@@ -416,11 +416,12 @@ body {
 .toc ol { list-style: none; }
 .toc ol li {
   display: flex;
-  align-items: baseline;
+  align-items: last baseline;
   margin-bottom: 0.9em;
   font-size: 0.98em;
 }
-.toc ol li .toc-title { white-space: nowrap; }
+.toc ol li a { flex: 0 1 auto; min-width: 0; }
+.toc ol li .toc-title { white-space: normal; overflow-wrap: break-word; }
 .toc ol li .toc-dots { flex: 1; border-bottom: 1px dotted #999; margin: 0 0.5em 0.2em; min-width: 1em; }
 .toc ol li .toc-pg { color: #555; font-size: 0.9em; white-space: nowrap; }
 
