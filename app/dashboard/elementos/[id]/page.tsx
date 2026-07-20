@@ -24,6 +24,7 @@ export default function ElementosPage() {
   const [formato, setFormato] = useState<FormatoLivro | null>(null);
   const [formatoLocked, setFormatoLocked] = useState(false);
   const [sugestaoFormato, setSugestaoFormato] = useState<FormatoSugerido | null>(null);
+  const [estimativaLive, setEstimativaLive] = useState<{ paginas: number; lombada_mm: number } | null>(null);
 
   // Editable state
   const [sinopseCurta, setSinopseCurta] = useState("");
@@ -59,6 +60,17 @@ export default function ElementosPage() {
       } | null;
       if (diag?.status === "concluido" && diag.resultado?.formato_sugerido) {
         setSugestaoFormato(diag.resultado.formato_sugerido);
+        const fmtSugerido = diag.resultado.formato_sugerido.formato;
+        if (fmtSugerido) {
+          fetch(`/api/projects/${projectId}/estimativa-paginas?formato=${fmtSugerido}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(est => {
+              if (est?.paginas_estimadas) {
+                setEstimativaLive({ paginas: est.paginas_estimadas, lombada_mm: est.lombada_estimada_mm });
+              }
+            })
+            .catch(e => console.warn("[elementos] estimativa viva falhou:", e));
+        }
       }
     }
 
@@ -221,7 +233,7 @@ export default function ElementosPage() {
                             {sugestaoFormato.motivo}
                           </p>
                           <p className="text-[11px] text-zinc-500">
-                            Estimativa: ~{sugestaoFormato.paginas_estimadas} páginas · lombada {sugestaoFormato.lombada_mm.toFixed(1)} mm
+                            Estimativa: ~{estimativaLive?.paginas ?? sugestaoFormato.paginas_estimadas} páginas · lombada {(estimativaLive?.lombada_mm ?? sugestaoFormato.lombada_mm).toFixed(1)} mm
                           </p>
                           {sugestaoFormato.aviso && (
                             <p className="text-[11px] text-amber-700 mt-1.5">⚠ {sugestaoFormato.aviso}</p>

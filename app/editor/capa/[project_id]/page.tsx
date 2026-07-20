@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { estimarPaginas, getFormatoDef } from "@/lib/formatos";
 import { EditorClient } from "./editor-client";
 import { FORMATS } from "./lib/dimensions";
 import { deserializeEditorState } from "./lib/editor-serializer";
@@ -30,7 +31,7 @@ export default async function EditorCapaPage({
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "formato, dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo)",
+      "formato, dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo, texto, texto_revisado)",
     )
     .eq("id", project_id)
     .single();
@@ -51,6 +52,8 @@ export default async function EditorCapaPage({
     autor_sobrenome?: string;
     titulo?: string;
     subtitulo?: string;
+    texto?: string;
+    texto_revisado?: string;
   } | null;
 
   // Fonte única: projects.formato. Sem formato definido, não há como abrir
@@ -62,7 +65,14 @@ export default async function EditorCapaPage({
   }
   const format: FormatKey = rawFormat as FormatKey;
 
-  const pages = miolo?.paginas_reais ?? 200;
+  // Páginas: reais se diagramado; senão a MESMA estimativa da rota
+  // estimativa-paginas (métrica cpp do 14.F, texto_revisado ?? texto).
+  const textoRevisadoTrim = manuscript?.texto_revisado?.trim() ?? "";
+  const textoBase = textoRevisadoTrim.length >= 50
+    ? textoRevisadoTrim
+    : (manuscript?.texto?.trim() ?? "");
+  const pages = miolo?.paginas_reais
+    ?? estimarPaginas(getFormatoDef(format).specs, undefined, textoBase.length);
   // Título/subtítulo: manuscripts é a fonte imutável (decisão de produto —
   // sem opções de título; a voz do autor é preservada).
   const title = manuscript?.titulo ?? "";
@@ -117,7 +127,7 @@ export default async function EditorCapaPage({
     isbn,
     synopsisShort,
     synopsisLong,
-    pagesSource: miolo?.paginas_reais ? "real" : "default",
+    pagesSource: miolo?.paginas_reais ? "real" : "estimativa",
     initialEditorData,
     confirmedAt,
     confirmedImageUrl,

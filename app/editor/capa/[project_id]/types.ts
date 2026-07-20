@@ -18,7 +18,7 @@ export interface ProjectData {
   isbn: string | null;
   synopsisShort: string;
   synopsisLong: string;
-  pagesSource: "real" | "estimated" | "default";
+  pagesSource: "real" | "estimativa";
   initialEditorData: HydratableEditorData | null;
   confirmedAt: string | null;
   confirmedImageUrl: string | null;
