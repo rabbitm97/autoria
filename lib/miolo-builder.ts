@@ -975,6 +975,26 @@ export function cleanFrontMatterText(input: string | null | undefined): string {
     .trim();
 }
 
+// ── Réguas decorativas do manuscrito (FIX-11) ───────────────────────────────
+// Linhas compostas SÓ de caracteres de régua/traço (≥3), típicas de export de
+// editor de texto, viram tofu no PDF (glifos fora da Source Serif). Remover
+// no render; o manuscrito armazenado permanece intocado.
+// Cobertos: box drawing U+2500–U+257F, blocos U+2580–U+259F, ═ ─ ━ ▬ − – — _
+const RE_LINHA_REGUA = /^[─-▟―−_\-–—=~•·\s]{3,}$/;
+
+function stripLinhasDecorativas(texto: string): string {
+  return texto
+    .split("\n")
+    .filter(l => {
+      const s = l.trim();
+      if (!s) return true;
+      if (/[\p{L}\p{N}]/u.test(s)) return true;
+      if (/^\*[\s*]*\*$/.test(s)) return true;
+      return !RE_LINHA_REGUA.test(s);
+    })
+    .join("\n");
+}
+
 function buildParagraphsForChapter(text: string, config: MioloConfig): string {
   console.log("[buildParagraphsForChapter] tamanho:", text.length);
 
@@ -1353,20 +1373,21 @@ ${tocItems}
 
     // Roteador de parser por template. Cada parser sabe gerar o HTML interno
     // do capítulo respeitando convenções do gênero.
+    const textoLimpo = stripLinhasDecorativas(seg.texto);
     let paragrafosHtml: string;
-    if (config.template === "poesia" && looksLikePoetry(seg.texto)) {
-      paragrafosHtml = buildParagraphsForPoesia(seg.texto);
+    if (config.template === "poesia" && looksLikePoetry(textoLimpo)) {
+      paragrafosHtml = buildParagraphsForPoesia(textoLimpo);
     } else if (config.template === "poesia") {
       // Texto não tem estrutura de poesia (ex.: prosa com hard-wrap de 80 colunas).
       // Usa parser de prosa para evitar que cada linha vire um verso independente.
-      paragrafosHtml = buildParagraphsForChapter(seg.texto, config);
+      paragrafosHtml = buildParagraphsForChapter(textoLimpo, config);
     } else if (config.template === "teatro") {
-      paragrafosHtml = buildParagraphsForTeatro(seg.texto);
+      paragrafosHtml = buildParagraphsForTeatro(textoLimpo);
     } else if (config.template === "religioso") {
-      const versHtml = buildParagraphsForReligiosoVersiculo(seg.texto);
-      paragrafosHtml = versHtml || buildParagraphsForChapter(seg.texto, config);
+      const versHtml = buildParagraphsForReligiosoVersiculo(textoLimpo);
+      paragrafosHtml = versHtml || buildParagraphsForChapter(textoLimpo, config);
     } else {
-      paragrafosHtml = buildParagraphsForChapter(seg.texto, config);
+      paragrafosHtml = buildParagraphsForChapter(textoLimpo, config);
     }
 
     sections.push(`<section class="chapter" id="${info.id}">
