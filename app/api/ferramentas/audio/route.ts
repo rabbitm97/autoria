@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isDev } from "@/lib/anthropic";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { VOZES } from "@/lib/voices";
 
 
@@ -8,6 +9,25 @@ const MAX_CHARS = 4500;
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  if (!isDev()) {
+    // ── Auth obrigatória (BLOCO-D2-04) ──────────────────────────────────────
+    const supabase = await createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+
+    // Ferramenta avulsa desativada até o sistema de créditos (Bloco D.5+).
+    // Reativar: apagar este bloco (auth acima permanece).
+    const AVULSA_LIBERADA: boolean = false;
+    if (!AVULSA_LIBERADA) {
+      return NextResponse.json(
+        { error: "Esta ferramenta avulsa está temporariamente indisponível. Use-a dentro do fluxo do seu projeto." },
+        { status: 403 }
+      );
+    }
+  }
+
   let body: { texto: string; voz?: string };
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }

@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isDev } from "@/lib/anthropic";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── POST /api/ferramentas/parse-file ─────────────────────────────────────────
 // Body: FormData { file: File }
 // Returns: { texto: string }
 
 export async function POST(req: NextRequest) {
+  if (!isDev()) {
+    // ── Auth obrigatória (BLOCO-D2-04) ──────────────────────────────────────
+    const supabase = await createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+  }
+
   let formData: FormData;
   try { formData = await req.formData(); }
   catch { return NextResponse.json({ error: "FormData inválido" }, { status: 400 }); }

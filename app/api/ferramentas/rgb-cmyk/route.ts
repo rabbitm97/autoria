@@ -1,4 +1,6 @@
 import type { NextRequest } from "next/server";
+import { isDev } from "@/lib/anthropic";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +65,15 @@ function rgbToHex(r: number, g: number, b: number): string {
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  if (!isDev()) {
+    // ── Auth obrigatória (BLOCO-D2-04) ──────────────────────────────────────
+    const supabase = await createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return Response.json({ error: "Não autenticado." }, { status: 401 });
+    }
+  }
+
   let body: Partial<RgbInput & { hex: string }>;
   try {
     body = await request.json();
@@ -106,6 +117,15 @@ export async function POST(request: NextRequest) {
 
 // Also support GET with query params: /api/ferramentas/rgb-cmyk?r=255&g=0&b=0
 export async function GET(request: NextRequest) {
+  if (!isDev()) {
+    // ── Auth obrigatória (BLOCO-D2-04) ──────────────────────────────────────
+    const supabase = await createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return Response.json({ error: "Não autenticado." }, { status: 401 });
+    }
+  }
+
   const { searchParams } = new URL(request.url);
   const hex = searchParams.get("hex");
   const rStr = searchParams.get("r");

@@ -37,13 +37,6 @@ const NAV_SECTIONS: NavSection[] = [
     section: "FERRAMENTAS",
     items: [
       { href: "/dashboard/ferramentas",            label: "Todas as ferramentas", icon: ToolsIcon, exact: true },
-      { href: "/dashboard/ferramentas/diagnostico", label: "Diagnóstico IA",       icon: ScanIcon      },
-      { href: "/dashboard/ferramentas/revisor",     label: "Revisor de Texto",     icon: CheckEditIcon },
-      { href: "/dashboard/ferramentas/elementos",   label: "Elementos Editoriais", icon: SparkleIcon   },
-      { href: "/dashboard/ferramentas/capa-ia",     label: "Gerador de Capa IA",   icon: ImageBrushIcon},
-      { href: "/dashboard/ferramentas/pdf",         label: "Gerar PDF",            icon: PdfIcon       },
-      { href: "/dashboard/ferramentas/epub",        label: "Gerar EPUB",           icon: EpubIcon      },
-      { href: "/dashboard/ferramentas/audiolivro",  label: "Narração com IA",      icon: MicIcon       },
       { href: "/dashboard/ferramentas/rgb-cmyk",    label: "RGB → CMYK",           icon: PaletteIcon   },
     ],
   },
