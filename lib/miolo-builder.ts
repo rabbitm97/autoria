@@ -1184,6 +1184,19 @@ function buildParagraphsForReligiosoVersiculo(text: string): string {
   }).join("\n");
 }
 
+// ── Aritmética ÚNICA de estimativa de páginas por capítulo (FIX-10) ─────────
+// Overhead: abertura de capítulo (margem superior + título + respiro) consome
+// ~0,7 página que a conta caracteres/cpp não vê. Calibrado contra o livro de
+// teste (98 págs, 13 seções: deriva antes do fix = +8 págs acumuladas).
+const CAPITULO_OVERHEAD_FRACAO = 0.7;
+// Itens de sumário por página (pior caso: bolso com títulos de 2 linhas).
+const ITENS_SUMARIO_POR_PAGINA = 14;
+
+function paginasDoCapitulo(caracteres: number, cppAjustado: number): number {
+  const overhead = Math.round(CAPITULO_OVERHEAD_FRACAO * cppAjustado);
+  return Math.max(1, Math.ceil((caracteres + overhead) / cppAjustado));
+}
+
 // ─── Book HTML builder ────────────────────────────────────────────────────────
 
 export function buildBookHtml(params: {
@@ -1194,9 +1207,8 @@ export function buildBookHtml(params: {
   capitulos: { titulo: string; pos: number }[];
   config: MioloConfig;
   creditosInnerHtml: string;
-  chapterStartPagesOverride?: number[];
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
-  const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml, chapterStartPagesOverride } = params;
+  const { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml } = params;
 
   const spec = getFormatoDef(config.formato).specs;
 
@@ -1304,15 +1316,16 @@ ${config.epigrafe_autor ? `  <p class="epigrafe-autor">— ${escHtml(cleanFrontM
   // ── 7. Sumário (apenas em templates que comportam) ─────────────────────────
   const realChapterStartPages: number[] = [];
   if (deveExibirSumario(config) && segments.length > 1) {
-    // Estimativa de páginas iniciais por capítulo, ou override de uma 2ª passada
-    const startPages = chapterStartPagesOverride ?? (() => {
+    // Páginas do front matter: cada section já emitida = 1 página; o próprio
+    // sumário ocupa tocPages (estimado por contagem de itens).
+    const tocPages = Math.max(1, Math.ceil(capitulosInfo.length / ITENS_SUMARIO_POR_PAGINA));
+    const frontPages = sections.length + tocPages;
+    const startPages = (() => {
       const pages: number[] = [];
-      let running = 1;
+      let running = frontPages + 1;
       for (const info of capitulosInfo) {
         pages.push(running);
-        const pagesInChapter = Math.max(1, Math.ceil(info.caracteres / cppAjustado));
-        running += pagesInChapter;
-        if (running % 2 === 0) running++;
+        running += paginasDoCapitulo(info.caracteres, cppAjustado);
       }
       return pages;
     })();
@@ -1336,7 +1349,7 @@ ${tocItems}
   segments.forEach((seg, i) => {
     const info = capitulosInfo[i];
     realChapterStartPages.push(numberedPagesEstimate + 1);
-    numberedPagesEstimate += Math.max(1, Math.ceil(info.caracteres / cppAjustado));
+    numberedPagesEstimate += paginasDoCapitulo(info.caracteres, cppAjustado);
 
     // Roteador de parser por template. Cada parser sabe gerar o HTML interno
     // do capítulo respeitando convenções do gênero.

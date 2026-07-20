@@ -263,15 +263,11 @@ export async function POST(request: NextRequest) {
     proposito: propositoCreditos,
   };
 
-  // Build HTML — two passes when sumário is on so TOC shows real page numbers.
-  // Pass 1 (no TOC): get chapterStartPages from actual page counter.
-  // Pass 2: rebuild with those real numbers injected into the TOC.
+  // Passada única (FIX-10): os números do sumário são calculados de forma
+  // absoluta dentro do próprio buildBookHtml (front matter + overhead de
+  // capítulo). A antiga "pass 1" nunca mediu páginas reais.
   const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config: configComProposito, creditosInnerHtml };
-  const pass1 = buildBookHtml({ ...buildArgs, config: { ...configComProposito, sumario: false } });
-  const { html, capitulosInfo, paginasReais } =
-    configComProposito.sumario && pass1.capitulosInfo.length > 1
-      ? buildBookHtml({ ...buildArgs, chapterStartPagesOverride: pass1.chapterStartPages })
-      : pass1;
+  const { html, capitulosInfo, paginasReais } = buildBookHtml(buildArgs);
 
   const numPalavras = texto.split(/\s+/).filter(Boolean).length;
   const numCaracteres = texto.length;

@@ -103,7 +103,6 @@ export function buildBookHtmlDigital(params: {
   capitulos: { titulo: string; pos: number }[];
   config: MioloConfig;
   creditosInnerHtml: string;
-  chapterStartPagesOverride?: number[];
 }): { html: string; capitulosInfo: CapituloInfo[]; paginasReais: number; chapterStartPages: number[] } {
   console.log("[buildBookHtmlDigital] gerando versão digital (sem sangria/marcas)");
 

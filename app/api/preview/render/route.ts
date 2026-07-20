@@ -58,13 +58,8 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Texto não encontrado. Faça o upload primeiro.", { status: 422 });
   }
 
-  // Two-pass build for accurate TOC page numbers
-  const buildArgs = { titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml: "<p>&nbsp;</p>" };
-  const pass1 = buildBookHtml({ ...buildArgs, config: { ...config, sumario: false } });
-  const { html } =
-    config.sumario && pass1.capitulosInfo.length > 1
-      ? buildBookHtml({ ...buildArgs, chapterStartPagesOverride: pass1.chapterStartPages })
-      : pass1;
+  // Passada única (FIX-10): números do sumário calculados no próprio builder.
+  const { html } = buildBookHtml({ titulo, subtitulo, autor, texto, capitulos, config, creditosInnerHtml: "<p>&nbsp;</p>" });
 
   return new NextResponse(html, {
     headers: {
