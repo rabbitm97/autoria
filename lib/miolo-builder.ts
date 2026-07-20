@@ -405,7 +405,10 @@ body {
 }
 
 /* Sumário */
-.toc { padding-top: 15mm; text-align: left; hyphens: none; -webkit-hyphens: none; }
+.toc {
+  padding-top: 15mm; text-align: left; hyphens: none; -webkit-hyphens: none;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .toc h2 {
   font-size: 1.3em;
   font-weight: 600;
@@ -415,15 +418,24 @@ body {
 }
 .toc ol { list-style: none; }
 .toc ol li {
-  display: flex;
-  align-items: last baseline;
+  position: relative;
   margin-bottom: 0.9em;
   font-size: 0.98em;
+  padding-right: 2.4em;
+  background-image: repeating-linear-gradient(to right, #999 0, #999 1px, transparent 1px, transparent 4px);
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: left 0 bottom 0.3em;
 }
-.toc ol li a { flex: 0 1 auto; min-width: 0; }
-.toc ol li .toc-title { white-space: normal; overflow-wrap: break-word; }
-.toc ol li .toc-dots { flex: 1; border-bottom: 1px dotted #999; margin: 0 0.5em 0.2em; min-width: 1em; }
-.toc ol li .toc-pg { color: inherit; font-size: inherit; white-space: nowrap; }
+.toc ol li .toc-title {
+  white-space: normal; overflow-wrap: break-word;
+  background: #fff; padding-right: 0.35em;
+}
+.toc ol li .toc-dots { display: none; }
+.toc ol li .toc-pg {
+  position: absolute; right: 0; bottom: 0;
+  background: #fff; padding-left: 0.4em; white-space: nowrap;
+}
 
 /* Links sem formatação visual — preserva navegação em PDF digital,
    mas no impresso e em qualquer leitor o texto sai como prosa normal,
