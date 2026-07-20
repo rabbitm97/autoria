@@ -3,7 +3,7 @@ export const maxDuration = 60;
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -14,6 +14,9 @@ import type { MioloResult } from "@/app/api/agentes/miolo/route";
 import { validarProjectData, type PdfResult } from "@/lib/project-data";
 import { applyDigitalCss } from "@/lib/miolo-builder-digital";
 import type { FormatoLivro } from "@/lib/miolo-builder-digital";
+import { planoAtende } from "@/lib/planos";
+
+const LIMITE_PDF_FREEMIUM_DIA = 2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,7 +95,7 @@ export async function POST(req: NextRequest) {
   // ── Load dados_miolo ──────────────────────────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_miolo")
+    .select("plano, dados_miolo")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -116,12 +119,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Download HTML from Storage ────────────────────────────────────────────
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // ── Limite diário do freemium (Bloco D2-03) ───────────────────────────────
+  const ehFreemium = !planoAtende((project as { plano?: unknown }).plano, "essencial");
+  if (ehFreemium) {
+    const inicioDoDia = new Date();
+    inicioDoDia.setUTCHours(0, 0, 0, 0);
+    const { count, error: cntErr } = await storageClient
+      .from("usage_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("agent_name", "gerar-pdf-digital")
+      .eq("user_id", userId)
+      .gte("created_at", inicioDoDia.toISOString());
+    if (cntErr) {
+      // fail-open LOGADO: erro de telemetria não trava a geração
+      console.error("[gerar-pdf-digital] contagem do limite falhou:", cntErr.message);
+    } else if ((count ?? 0) >= LIMITE_PDF_FREEMIUM_DIA) {
+      return NextResponse.json(
+        {
+          error: `Limite diário do plano Freemium atingido (${LIMITE_PDF_FREEMIUM_DIA} PDFs/dia). Volte amanhã ou faça upgrade para gerar sem limites.`,
+          plano_necessario: "essencial",
+        },
+        { status: 429 }
+      );
+    }
+  }
+
+  // ── Download HTML from Storage ────────────────────────────────────────────
   const { data: htmlBlob, error: downloadErr } = await storageClient.storage
     .from("manuscripts")
     .download(miolo.html_storage_path);
@@ -266,6 +294,28 @@ export async function POST(req: NextRequest) {
     await browser.close();
   }
 
+  // ── Marca d'água freemium (Bloco D2-03) ───────────────────────────────────
+  // Aplicada sobre o buffer FINAL do Puppeteer (depois do [toc-medido]),
+  // antes do upload. Nunca entre os dois page.pdf() — a reimpressão do
+  // sumário descartaria a marca.
+  if (ehFreemium) {
+    const doc = await PDFDocument.load(pdfBuffer);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (const page of doc.getPages()) {
+      const { width, height } = page.getSize();
+      page.drawText("PRÉVIA - useautoria.com", {
+        x: width * 0.12,
+        y: height * 0.42,
+        size: Math.min(width, height) * 0.09,
+        font,
+        color: rgb(0.55, 0.55, 0.55),
+        opacity: 0.22,
+        rotate: degrees(35),
+      });
+    }
+    pdfBuffer = Buffer.from(await doc.save());
+  }
+
   // ── Count real pages ──────────────────────────────────────────────────────
   // pdf-lib não depende de DOMMatrix; funciona em runtime Node serverless do Vercel.
   const parsedPdf = await PDFDocument.load(pdfBuffer);
@@ -330,6 +380,15 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  // ── Telemetria de uso (Bloco D2-03) ───────────────────────────────────────
+  const { error: logErr } = await storageClient.from("usage_logs").insert({
+    agent_name: "gerar-pdf-digital",
+    project_id,
+    user_id: userId,
+    metadata: { plano: (project as { plano?: unknown }).plano ?? "desconhecido" },
+  });
+  if (logErr) console.error("[gerar-pdf-digital] usage_logs falhou:", logErr.message);
 
   console.log("[gerar-pdf-digital] concluído — páginas:", numPaginas);
 
