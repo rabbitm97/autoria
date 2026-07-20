@@ -4,6 +4,7 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
+import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject } from "@/lib/supabase-helpers";
@@ -231,13 +232,34 @@ export async function POST(req: NextRequest) {
     // (<150mm wide). Digital usa formato puro sem sangria — o applyDigitalCss
     // reescreve @page sem sangria. O @page margin do CSS continua controlando
     // margens e numeração. (Fix 13.3.5.)
-    const pdfData = await page.pdf({
+    const PDF_OPTS = {
       printBackground: true,
       width: `${formatoDim.width}mm`,
       height: `${formatoDim.height}mm`,
       scale: 1,
       timeout: 40_000,
-    });
+    } as const;
+    let pdfData = await page.pdf(PDF_OPTS);
+
+    // ── Sumário medido (BLOCO-FIX-12) ─────────────────────────────────────
+    const dests = await extrairDestinosCapitulos(pdfData);
+    const capsNaPagina: string[] = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".toc-pg[data-cap]"))
+        .map(el => (el as HTMLElement).dataset.cap ?? "")
+    );
+    const cobreTodos =
+      capsNaPagina.length > 0 && capsNaPagina.every(id => dests[id] != null);
+    if (cobreTodos) {
+      await page.evaluate((mapa: Record<string, number>) => {
+        document.querySelectorAll(".toc-pg[data-cap]").forEach(el => {
+          const id = (el as HTMLElement).dataset.cap!;
+          el.textContent = String(mapa[id]);
+        });
+      }, dests);
+      pdfData = await page.pdf(PDF_OPTS);
+    } else if (capsNaPagina.length > 0) {
+      console.warn(`[gerar-pdf-digital] [toc-medido] fallback pra estimativa: dests=${Object.keys(dests).length} caps=${capsNaPagina.length}`);
+    }
 
     pdfBuffer = Buffer.from(pdfData);
   } finally {

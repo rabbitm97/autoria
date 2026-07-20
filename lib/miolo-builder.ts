@@ -1351,7 +1351,7 @@ ${config.epigrafe_autor ? `  <p class="epigrafe-autor">— ${escHtml(cleanFrontM
     })();
 
     const tocItems = capitulosInfo.map((c, i) =>
-      `      <li><a href="#${c.id}"><span class="toc-title">${escHtml(c.titulo)}</span></a><span class="toc-dots"></span><span class="toc-pg">${startPages[i]}</span></li>`
+      `      <li><a href="#${c.id}"><span class="toc-title">${escHtml(c.titulo)}</span></a><span class="toc-dots"></span><span class="toc-pg" data-cap="${c.id}">${startPages[i]}</span></li>`
     ).join("\n");
 
     sections.push(`<section class="front-page">
