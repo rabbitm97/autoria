@@ -3,7 +3,8 @@ export const maxDuration = 60;
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
-import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
+import { aplicarMarcaPrevia } from "@/lib/pdf-marca";
 import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -297,23 +298,9 @@ export async function POST(req: NextRequest) {
   // ── Marca d'água freemium (Bloco D2-03) ───────────────────────────────────
   // Aplicada sobre o buffer FINAL do Puppeteer (depois do [toc-medido]),
   // antes do upload. Nunca entre os dois page.pdf() — a reimpressão do
-  // sumário descartaria a marca.
+  // sumário descartaria a marca. Corpo extraído pra lib/pdf-marca.ts (D2-07).
   if (ehFreemium) {
-    const doc = await PDFDocument.load(pdfBuffer);
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    for (const page of doc.getPages()) {
-      const { width, height } = page.getSize();
-      page.drawText("PRÉVIA - useautoria.com", {
-        x: width * 0.12,
-        y: height * 0.42,
-        size: Math.min(width, height) * 0.09,
-        font,
-        color: rgb(0.55, 0.55, 0.55),
-        opacity: 0.22,
-        rotate: degrees(35),
-      });
-    }
-    pdfBuffer = Buffer.from(await doc.save());
+    pdfBuffer = await aplicarMarcaPrevia(pdfBuffer);
   }
 
   // ── Count real pages ──────────────────────────────────────────────────────

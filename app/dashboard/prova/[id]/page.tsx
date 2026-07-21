@@ -16,6 +16,7 @@ import {
   PLANO_LABEL,
   PLANO_TAGLINE,
   PLANO_DESTAQUES,
+  PLANO_PRECO_CENTAVOS,
   formatarPrecoPlano,
 } from "@/lib/planos";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -1113,6 +1114,9 @@ export default function ProvaPage() {
   // o livro dele como parte da celebração.
   const mostrarConversao = plano === "freemium" || gateAtivo;
 
+  // D2-07: upgrade Essencial→Pro pela DIFERENÇA (sempre calculado de lib/planos).
+  const precoUpgradePro = `R$ ${((PLANO_PRECO_CENTAVOS.pro - PLANO_PRECO_CENTAVOS.essencial) / 100).toLocaleString("pt-BR")}`;
+
   return (
     <div>
       <EtapasProgress currentStep={6} projectId={id} />
@@ -1252,6 +1256,28 @@ export default function ProvaPage() {
                   ctaBusy={false}
                   ctaError={null}
                 />
+
+                {/* D2-07: upgrade Essencial→Pro pela diferença (sempre
+                    calculado de lib/planos). CTA → /dashboard/planos até o D.4. */}
+                {plano === "essencial" && (
+                  <div className="md:col-span-2 bg-white rounded-2xl border border-brand-gold/40 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-brand-primary">
+                        Libere seus arquivos de impressão
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        Upgrade para Pro por {precoUpgradePro} e baixe o PDF de impressão
+                        sem marca d'água, com capa completa e impressão via Autoria.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => router.push("/dashboard/planos")}
+                      className="px-5 py-2.5 rounded-xl bg-brand-primary text-brand-gold text-sm font-medium hover:bg-brand-primary/90 transition-colors"
+                    >
+                      Fazer upgrade →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

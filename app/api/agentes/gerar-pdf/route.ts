@@ -4,14 +4,18 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
+import { aplicarMarcaPrevia } from "@/lib/pdf-marca";
 import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
+import { planoAtende } from "@/lib/planos";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
 import { validarProjectData, type PdfResult } from "@/lib/project-data";
+
+const LIMITE_PDF_ESSENCIAL_DIA = 2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,8 +117,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const gate = negarPorPlano((project as { plano?: unknown }).plano, "pro", "gerar-pdf");
+  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-pdf");
   if (gate) return gate;
+  const ehPro = planoAtende((project as { plano?: unknown }).plano, "pro");
 
   const miolo = project?.dados_miolo as MioloResult | null;
 
@@ -130,6 +135,30 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+
+  // ── Limite diário da prévia gráfica do Essencial (Bloco D2-07) ────────────
+  if (!ehPro) {
+    const inicioDoDia = new Date();
+    inicioDoDia.setUTCHours(0, 0, 0, 0);
+    const { count, error: cntErr } = await storageClient
+      .from("usage_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("agent_name", "gerar-pdf")
+      .eq("user_id", userId)
+      .gte("created_at", inicioDoDia.toISOString());
+    if (cntErr) {
+      // fail-open LOGADO: erro de telemetria não trava a geração
+      console.error("[gerar-pdf] contagem do limite falhou:", cntErr.message);
+    } else if ((count ?? 0) >= LIMITE_PDF_ESSENCIAL_DIA) {
+      return NextResponse.json(
+        {
+          error: `Limite diário de prévias do PDF de impressão atingido (${LIMITE_PDF_ESSENCIAL_DIA}/dia). Faça upgrade para Pro para gerar sem limite e sem marca d'água.`,
+          plano_necessario: "pro",
+        },
+        { status: 429 }
+      );
+    }
+  }
 
   const { data: htmlBlob, error: downloadErr } = await storageClient.storage
     .from("manuscripts")
@@ -391,6 +420,13 @@ export async function POST(req: NextRequest) {
     await browser.close();
   }
 
+  // ── Marca d'água de prévia pro Essencial (Bloco D2-07) ────────────────────
+  // Sobre o buffer FINAL, depois do [toc-medido] (FIX-12) — nunca entre os
+  // dois page.pdf(). Pro = arquivo limpo.
+  if (!ehPro) {
+    pdfBuffer = await aplicarMarcaPrevia(pdfBuffer);
+  }
+
   // ── Count real pages ──────────────────────────────────────────────────────
   // pdf-lib não depende de DOMMatrix; funciona em runtime Node serverless do Vercel.
   const parsedPdf = await PDFDocument.load(pdfBuffer);
@@ -505,6 +541,15 @@ export async function POST(req: NextRequest) {
       console.warn("[gerar-pdf] preparar-capa-grafica retroativo falhou:", err);
     });
   }
+
+  // ── Telemetria de uso (Bloco D2-07) ───────────────────────────────────────
+  const { error: logErr } = await storageClient.from("usage_logs").insert({
+    agent_name: "gerar-pdf",
+    project_id,
+    user_id: userId,
+    metadata: { plano: (project as { plano?: unknown }).plano ?? "desconhecido" },
+  });
+  if (logErr) console.error("[gerar-pdf] usage_logs falhou:", logErr.message);
 
   return NextResponse.json(dados_pdf);
   } catch (err) {
