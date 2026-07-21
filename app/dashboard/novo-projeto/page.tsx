@@ -329,7 +329,7 @@ export default function NovoProjetoPage() {
 
       if (!diagRes.ok) {
         const diagData = await diagRes.json();
-        console.warn("[upload] Diagnóstico falhou:", diagData.error);
+        console.warn("[upload] Diagnóstico falhou:", diagData.erro ?? diagData.error);
       }
     } catch (e) {
       console.warn("[upload] Erro na chamada de diagnóstico:", e);

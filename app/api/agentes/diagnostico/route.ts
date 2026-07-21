@@ -488,7 +488,24 @@ export async function POST(request: NextRequest) {
   }
 
   if (estado.status === "erro") {
-    return NextResponse.json({ status: "erro", erro: estado.erro_mensagem }, { status: 500 });
+    // Retomada (FIX-13): erro não é terminal. Voltamos a "processando_capitulos"
+    // preservando fragmentos_cache — o próprio fluxo abaixo detecta o que falta
+    // (map só dos pendentes; se nada pende, promove a consolidando na MESMA
+    // request). Se só o reduce falhou, refaz só o reduce.
+    console.info(`[diagnostico] retomando após erro: "${estado.erro_mensagem ?? ""}" (cache: ${estado.fragmentos_cache.length} fragmentos)`);
+    estado.status = "processando_capitulos";
+    delete estado.erro_mensagem;
+    validarProjectData("diagnostico", estado, { modo: "observador", contexto: "diagnostico" });
+    const { ok: okRetomada } = await updateProject(supabase, project_id, user.id, {
+      diagnostico: estado,
+    }, "diagnostico");
+    if (!okRetomada) {
+      return NextResponse.json(
+        { erro: "Falha ao retomar o diagnóstico. Tente novamente." },
+        { status: 500 }
+      );
+    }
+    // segue o fluxo — NÃO retornar aqui
   }
 
   // ── PROCESSANDO CAPÍTULOS ───────────────────────────────────────────────

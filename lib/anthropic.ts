@@ -3,6 +3,9 @@ import { Langfuse } from "langfuse";
 
 export const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+  // FIX-13: janelas de 529 (overload) de 1-2 min estouram o default (2).
+  // Backoff exponencial do SDK; afeta todos os agentes síncronos.
+  maxRetries: 4,
 });
 
 const langfuseEnabled = !!process.env.LANGFUSE_PUBLIC_KEY;
