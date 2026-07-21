@@ -11,7 +11,6 @@ import {
   SANGRIA_MM,
   calcularLombada,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
-import { FORMATOS_LIVRO } from "@/lib/formatos";
 import {
   PLANO_LABEL,
   PLANO_TAGLINE,
@@ -674,46 +673,20 @@ function detectarArtefatosAusentes(
 // algum artefato voltou 402. CTAs vão para /dashboard/planos até o D.4 —
 // nada de simulação de venda aqui.
 
-function TelaConversaoPlano({
-  bookData,
-  formatoLabel,
-  projectId,
-}: {
-  bookData: BookData;
-  formatoLabel: string;
-  projectId: string;
-}) {
+function TelaConversaoPlano() {
   const router = useRouter();
 
   return (
     <div className="space-y-8">
-      {/* Topo: celebração com dados reais do livro */}
-      <div className="bg-white rounded-2xl border border-zinc-100 p-8 flex flex-col items-center text-center gap-4">
-        {bookData.coverUrl && (
-          <img
-            src={bookData.coverUrl}
-            alt="Capa do livro"
-            className="shadow-lg rounded-sm"
-            style={{ maxHeight: 180, width: "auto" }}
-          />
-        )}
-        <div>
-          <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-2">
-            Seu livro está pronto
-          </p>
-          <h2 className="font-heading text-2xl text-brand-primary mb-2">
-            {bookData.titulo}
-          </h2>
-          <p className="text-sm text-zinc-500">
-            Seu livro está diagramado: {bookData.paginas} páginas no formato {formatoLabel}.
-          </p>
-          <p className="text-sm text-zinc-400 mt-3">
-            A partir daqui, escolha como quer publicar.
-          </p>
-        </div>
+      <div className="text-center pt-2">
+        <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-2">
+          Seu livro está pronto
+        </p>
+        <h2 className="font-heading text-2xl text-brand-primary">
+          Selecione o plano para continuar
+        </h2>
       </div>
 
-      {/* Cards Essencial + Pro */}
       <div className="grid md:grid-cols-2 gap-6">
         <PlanoCard
           plano="essencial"
@@ -724,16 +697,6 @@ function TelaConversaoPlano({
           destaque
           onContinuar={() => router.push("/dashboard/planos")}
         />
-      </div>
-
-      {/* Link discreto: seguir sem pagar */}
-      <div className="text-center">
-        <button
-          onClick={() => router.push(`/preview/${projectId}`)}
-          className="text-sm text-zinc-400 underline hover:text-zinc-600 transition-colors"
-        >
-          continuar no plano gratuito
-        </button>
       </div>
     </div>
   );
@@ -836,7 +799,6 @@ export default function ProvaPage() {
   const [hasCreditos, setHasCreditos] = useState<boolean>(true);
   const [plano, setPlano] = useState<string | null>(null);
   const [gateAtivo, setGateAtivo] = useState(false);
-  const [formatoLabel, setFormatoLabel] = useState<string>("");
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
@@ -872,8 +834,6 @@ export default function ProvaPage() {
         const formatoKey = ((project.formato as string) in FORMATS
           ? (project.formato as keyof typeof FORMATS)
           : "padrao_br") as keyof typeof FORMATS;
-        const formatoDef = FORMATOS_LIVRO.find(f => f.value === formatoKey);
-        setFormatoLabel(formatoDef ? `${formatoDef.label} · ${formatoDef.descricao_curta}` : formatoKey);
         const capaResolvida = resolveCapaCompleta(dadosCapa, formatoKey);
         const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
         const capaTemEditorData = editorDataRaw?.version === 1;
@@ -1194,12 +1154,8 @@ export default function ProvaPage() {
 
             {/* D2-05: tela de conversão substitui trilhas/aprovação para
                 freemium (ou gate 402 no meio da sessão). */}
-            {mostrarConversao && bookData && (
-              <TelaConversaoPlano
-                bookData={bookData}
-                formatoLabel={formatoLabel}
-                projectId={projectIdStr}
-              />
+            {mostrarConversao && (
+              <TelaConversaoPlano />
             )}
 
             {/* Preparando artefatos derivados em background */}
