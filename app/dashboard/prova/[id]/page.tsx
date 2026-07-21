@@ -473,6 +473,7 @@ function TrilhaCard({
   ctaError,
   onCta,
   avisoInfo,
+  modoPrevia,
 }: {
   icone: "tablet" | "livro";
   titulo: string;
@@ -487,18 +488,23 @@ function TrilhaCard({
   onCta?: () => void;
   // Bloco 1m: mensagem positiva (azul) confirmando escolha explícita do autor.
   avisoInfo?: string;
+  // FIX-14: trilha de impressão pra plano não-Pro — artefatos existem,
+  // mas são prévia com marca d'água. Nunca exibir "Pronto".
+  modoPrevia?: boolean;
 }) {
-  const status: "pronto" | "atencao" | "pendente" =
-    aprovado && avisos.length === 0 ? "pronto"
+  const status: "pronto" | "atencao" | "pendente" | "previa" =
+    modoPrevia && aprovado ? "previa"
+    : aprovado && avisos.length === 0 ? "pronto"
     : aprovado ? "atencao"
     : "pendente";
 
   const statusStyle =
     status === "pronto" ? "bg-emerald-50 text-emerald-700"
-    : status === "atencao" ? "bg-amber-50 text-amber-700"
+    : status === "atencao" || status === "previa" ? "bg-amber-50 text-amber-700"
     : "bg-zinc-100 text-zinc-500";
   const statusLabel =
     status === "pronto" ? "Pronto"
+    : status === "previa" ? "Prévia"
     : status === "atencao" ? "Atenção"
     : "Pendente";
 
@@ -524,7 +530,19 @@ function TrilhaCard({
       <p className="text-xs text-zinc-500 mb-3">{subtitulo}</p>
 
       <div className="flex-1 space-y-1.5 mb-3">
-        {aprovado && avisos.length === 0 ? (
+        {modoPrevia && aprovado ? (
+          <div className="flex items-start gap-2 text-xs text-amber-700">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>
+              Seu PDF de impressão está disponível como prévia com marca d'água.
+              Os arquivos definitivos de gráfica fazem parte do plano Pro.
+            </span>
+          </div>
+        ) : aprovado && avisos.length === 0 ? (
           <div className="flex items-center gap-2 text-xs text-emerald-700">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12"/>
@@ -1211,6 +1229,7 @@ export default function ProvaPage() {
                   ctaLabel={null}
                   ctaBusy={false}
                   ctaError={null}
+                  modoPrevia={plano !== null && plano !== "pro"}
                 />
 
                 {/* D2-07: upgrade Essencial→Pro pela diferença (sempre
