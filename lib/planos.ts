@@ -34,3 +34,27 @@ export function planoAtende(atual: unknown, minimo: Plano): boolean {
   const rank = isPlano(atual) ? PLANO_RANK[atual] : 0;
   return rank >= PLANO_RANK[minimo];
 }
+
+/** Copy curta para telas de conversão (D2-05). A página /dashboard/planos
+ *  ainda tem seu array próprio — unificação é escopo do D.4. */
+export const PLANO_TAGLINE: Record<Exclude<Plano, "freemium">, string> = {
+  essencial: "Do manuscrito ao livro digital pronto para publicar.",
+  pro: "Tudo do Essencial + arquivos de impressão e livro físico.",
+};
+
+export const PLANO_DESTAQUES: Record<Exclude<Plano, "freemium">, string[]> = {
+  essencial: [
+    "Revisão gramatical e de estilo com IA",
+    "Capa com IA e EPUB pronto para as plataformas",
+    "PDF digital sem limite e sem marca d'água",
+  ],
+  pro: [
+    "Tudo do Essencial",
+    "PDF de impressão com sangria e marcas de corte",
+    "Capa completa (lombada e orelhas) + impressão via Autoria",
+  ],
+};
+
+export function formatarPrecoPlano(p: Exclude<Plano, "freemium">): string {
+  return `R$ ${(PLANO_PRECO_CENTAVOS[p] / 100).toLocaleString("pt-BR")}`;
+}

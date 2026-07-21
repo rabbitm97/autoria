@@ -11,6 +11,13 @@ import {
   SANGRIA_MM,
   calcularLombada,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import { FORMATOS_LIVRO } from "@/lib/formatos";
+import {
+  PLANO_LABEL,
+  PLANO_TAGLINE,
+  PLANO_DESTAQUES,
+  formatarPrecoPlano,
+} from "@/lib/planos";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -587,7 +594,7 @@ async function gerarArtefato(
   endpoint: string,
   projectId: string,
   timeoutMs = 75_000,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; gated?: boolean; error?: string }> {
   // Retry silencioso: 2 tentativas com backoff (2s, 5s). Se falhar tudo,
   // o client mostra mensagem única genérica ("Estamos finalizando…") sem
   // culpar o autor. Não reintenta 422 (erro lógico do server, ex: capa
@@ -617,6 +624,9 @@ async function gerarArtefato(
 
       // 422 = erro lógico (ex: is_frente_pura). Não vale reintentar.
       if (res.status === 422) return { ok: false, error: errorMsg };
+      // 402 = gate de plano (D2-02). TERMINAL: re-tentar nunca resolve —
+      // a resposta é upgrade, não retry. (D2-05)
+      if (res.status === 402) return { ok: false, gated: true, error: errorMsg };
       lastError = errorMsg;
     } catch (e) {
       clearTimeout(timeout);
@@ -658,6 +668,148 @@ function detectarArtefatosAusentes(
   return missing;
 }
 
+// ─── Tela de conversão (D2-05) ────────────────────────────────────────────────
+// Renderizada no lugar das trilhas/aprovação quando o projeto é freemium ou
+// algum artefato voltou 402. CTAs vão para /dashboard/planos até o D.4 —
+// nada de simulação de venda aqui.
+
+function TelaConversaoPlano({
+  bookData,
+  formatoLabel,
+  projectId,
+}: {
+  bookData: BookData;
+  formatoLabel: string;
+  projectId: string;
+}) {
+  const router = useRouter();
+
+  return (
+    <div className="space-y-8">
+      {/* Topo: celebração com dados reais do livro */}
+      <div className="bg-white rounded-2xl border border-zinc-100 p-8 flex flex-col items-center text-center gap-4">
+        {bookData.coverUrl && (
+          <img
+            src={bookData.coverUrl}
+            alt="Capa do livro"
+            className="shadow-lg rounded-sm"
+            style={{ maxHeight: 180, width: "auto" }}
+          />
+        )}
+        <div>
+          <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-2">
+            Seu livro está pronto
+          </p>
+          <h2 className="font-heading text-2xl text-brand-primary mb-2">
+            {bookData.titulo}
+          </h2>
+          <p className="text-sm text-zinc-500">
+            Seu livro está diagramado: {bookData.paginas} páginas no formato {formatoLabel}.
+          </p>
+          <p className="text-sm text-zinc-400 mt-3">
+            A partir daqui, escolha como quer publicar.
+          </p>
+        </div>
+      </div>
+
+      {/* Cards Essencial + Pro */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <PlanoCard
+          plano="essencial"
+          onContinuar={() => router.push("/dashboard/planos")}
+        />
+        <PlanoCard
+          plano="pro"
+          destaque
+          onContinuar={() => router.push("/dashboard/planos")}
+        />
+      </div>
+
+      {/* Link discreto: seguir sem pagar */}
+      <div className="text-center">
+        <button
+          onClick={() => router.push(`/preview/${projectId}`)}
+          className="text-sm text-zinc-400 underline hover:text-zinc-600 transition-colors"
+        >
+          continuar no plano gratuito
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PlanoCard({
+  plano,
+  destaque = false,
+  onContinuar,
+}: {
+  plano: "essencial" | "pro";
+  destaque?: boolean;
+  onContinuar: () => void;
+}) {
+  return (
+    <div
+      className={`rounded-2xl p-6 flex flex-col relative ${
+        destaque
+          ? "border-2 border-brand-gold bg-white shadow-lg"
+          : "border border-zinc-100 bg-white"
+      }`}
+    >
+      {destaque && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+          <span className="bg-brand-gold text-brand-primary text-xs font-bold px-4 py-1 rounded-full whitespace-nowrap">
+            Recomendado
+          </span>
+        </div>
+      )}
+
+      <div className="mb-4">
+        <p className="font-heading text-xl text-brand-primary mb-2">
+          {PLANO_LABEL[plano]}
+        </p>
+        <p className="font-heading text-3xl text-brand-primary mb-3">
+          {formatarPrecoPlano(plano)}
+        </p>
+        <p className="text-sm text-zinc-500">
+          {PLANO_TAGLINE[plano]}
+        </p>
+      </div>
+
+      <ul className="flex-1 space-y-2 mb-6">
+        {PLANO_DESTAQUES[plano].map((d, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-zinc-600">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#c9a84c"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0 mt-0.5"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>{d}</span>
+          </li>
+        ))}
+      </ul>
+
+      <button
+        onClick={onContinuar}
+        className={`w-full py-3 rounded-xl font-semibold text-sm transition-colors ${
+          destaque
+            ? "bg-brand-primary text-brand-gold hover:bg-brand-primary/90"
+            : "border border-brand-primary text-brand-primary hover:bg-brand-primary/5"
+        }`}
+      >
+        Continuar com {PLANO_LABEL[plano]}
+      </button>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProvaPage() {
@@ -681,20 +833,26 @@ export default function ProvaPage() {
   // Bloco 1m: reflete escolha do autor sobre incluir página de créditos.
   // No modo completa é sempre true. No modo digital respeita config.incluir_creditos.
   const [hasCreditos, setHasCreditos] = useState<boolean>(true);
+  const [plano, setPlano] = useState<string | null>(null);
+  const [gateAtivo, setGateAtivo] = useState(false);
+  const [formatoLabel, setFormatoLabel] = useState<string>("");
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
     let prova: ProvaResult | null = null;
     let capaOrigemLocal: "editor" | "ia_ou_upload" = "ia_ou_upload";
     let isPanoramicLocal = true; // default seguro para casos onde a capa não carregou
+    let planoLocal: string = "freemium";
     try {
       const { data: project } = await supabase
         .from("projects")
-        .select("formato, dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("plano, formato, dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
 
       if (project) {
+        planoLocal = ((project as { plano?: string }).plano) ?? "freemium";
+        setPlano(planoLocal);
         const ms = project.manuscripts as unknown as {
           titulo?: string;
           autor_primeiro_nome?: string;
@@ -713,6 +871,8 @@ export default function ProvaPage() {
         const formatoKey = ((project.formato as string) in FORMATS
           ? (project.formato as keyof typeof FORMATS)
           : "padrao_br") as keyof typeof FORMATS;
+        const formatoDef = FORMATOS_LIVRO.find(f => f.value === formatoKey);
+        setFormatoLabel(formatoDef ? `${formatoDef.label} · ${formatoDef.descricao_curta}` : formatoKey);
         const capaResolvida = resolveCapaCompleta(dadosCapa, formatoKey);
         const editorDataRaw = dadosCapa?.editor_data as { version?: number } | undefined;
         const capaTemEditorData = editorDataRaw?.version === 1;
@@ -780,14 +940,21 @@ export default function ProvaPage() {
     // O autor vê "Preparando arquivos finais…" enquanto rodamos os PDFs.
     // Idempotente — se rodar de novo, só pega o que ainda falta.
     if (!prova) return;
+    // Freemium não dispara auto-gen: os endpoints respondem 402 (gate) e a
+    // Prova é ponto de conversão, não geração. (D2-05)
+    if (planoLocal === "freemium") return;
     const missing = detectarArtefatosAusentes(prova, capaOrigemLocal, isPanoramicLocal);
     if (missing.length === 0) return;
 
     setPreparandoArtefatos(true);
     try {
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         missing.map(m => gerarArtefato(m.endpoint, id as string)),
       );
+      // Defesa em profundidade: se qualquer artefato voltou gated (402),
+      // marca gateAtivo — cobre projeto rebaixado no meio de uma sessão.
+      const anyGated = results.some(r => r.status === "fulfilled" && r.value.gated === true);
+      if (anyGated) setGateAtivo(true);
 
       const reAnalyze = await fetch("/api/agentes/prova", {
         method: "POST",
@@ -941,6 +1108,11 @@ export default function ProvaPage() {
 
   const capaOrigem = bookData?.capaTemEditorData ? "editor" : "ia_ou_upload";
 
+  // D2-05: freemium (ou qualquer artefato retornado 402) SUBSTITUI trilhas +
+  // aprovação pela tela de conversão. Book3D/abas permanecem — o autor vê
+  // o livro dele como parte da celebração.
+  const mostrarConversao = plano === "freemium" || gateAtivo;
+
   return (
     <div>
       <EtapasProgress currentStep={6} projectId={id} />
@@ -1016,8 +1188,18 @@ export default function ProvaPage() {
               </div>
             )}
 
+            {/* D2-05: tela de conversão substitui trilhas/aprovação para
+                freemium (ou gate 402 no meio da sessão). */}
+            {mostrarConversao && bookData && (
+              <TelaConversaoPlano
+                bookData={bookData}
+                formatoLabel={formatoLabel}
+                projectId={projectIdStr}
+              />
+            )}
+
             {/* Preparando artefatos derivados em background */}
-            {preparandoArtefatos && (
+            {preparandoArtefatos && !mostrarConversao && (
               <div className="bg-brand-gold/5 border border-brand-gold/20 rounded-xl p-4 flex items-center gap-3">
                 <span className="w-5 h-5 rounded-full border-2 border-brand-gold border-t-transparent animate-spin shrink-0" />
                 <div>
@@ -1032,7 +1214,7 @@ export default function ProvaPage() {
             {/* Estado silencioso: artefato derivado ainda ausente entre ciclos.
                 Autor não vê erro nem CTA — só a mensagem calma de que a
                 plataforma está finalizando por ele. */}
-            {finalizandoArtefatos && (
+            {finalizandoArtefatos && !mostrarConversao && (
               <div className="bg-brand-gold/5 border border-brand-gold/20 rounded-xl p-4 flex items-center gap-3">
                 <span className="w-5 h-5 rounded-full border-2 border-brand-gold border-t-transparent animate-spin shrink-0" />
                 <div>
@@ -1043,7 +1225,7 @@ export default function ProvaPage() {
             )}
 
             {/* Trilhas de prontidão */}
-            {result && (
+            {result && !mostrarConversao && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <TrilhaCard
                   icone="tablet"
@@ -1074,7 +1256,7 @@ export default function ProvaPage() {
             )}
 
             {/* Card de aprovação */}
-            {result && (
+            {result && !mostrarConversao && (
               <div className="bg-white rounded-2xl border-2 border-brand-gold/40 p-6">
                 <div className="flex items-start gap-3 mb-3">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
@@ -1117,7 +1299,7 @@ export default function ProvaPage() {
             )}
 
             {/* Estado inicial: sem análise ainda */}
-            {!result && !loading && (
+            {!result && !loading && !mostrarConversao && (
               <div className="bg-white rounded-2xl border border-zinc-100 p-8 text-center">
                 <h3 className="font-heading text-xl text-brand-primary mb-2">Conferir o livro</h3>
                 <p className="text-zinc-400 text-sm mb-6 max-w-sm mx-auto">
