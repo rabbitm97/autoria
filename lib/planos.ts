@@ -45,13 +45,13 @@ export const PLANO_TAGLINE: Record<Exclude<Plano, "freemium">, string> = {
 export const PLANO_DESTAQUES: Record<Exclude<Plano, "freemium">, string[]> = {
   essencial: [
     "Revisão gramatical e de estilo com IA",
-    "Capa de frente com IA",
+    "Capa (frente) com IA",
     "EPUB pronto para as plataformas",
     "PDF digital sem limite e sem marca d'água",
   ],
   pro: [
     "Tudo do Essencial",
-    "Capa frente e verso com IA",
+    "Capa (frente e verso) com IA",
     "PDF de impressão com sangria e marcas de corte",
     "Audiolivro com voz neural (em breve)",
   ],
