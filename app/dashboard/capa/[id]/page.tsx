@@ -808,6 +808,7 @@ function ModoIA({
   const [imgRefIntencao, setImgRefIntencao] = useState<"estilo" | "conteudo">("estilo");
   const [isRegen, setIsRegen] = useState(false);
   const [deltaTexto, setDeltaTexto] = useState("");
+  const [cobranca, setCobranca] = useState<{ gratis: boolean; custo: number; saldo: number | null } | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
   const [sugerindo, setSugerindo] = useState(false);
 
@@ -893,6 +894,7 @@ function ModoIA({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
       setFrase(data.frase_confirmacao);
+      setCobranca(data.cobranca ?? null);
     } catch (e) {
       setErroForm(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
       setFase("briefing");
@@ -915,7 +917,6 @@ function ModoIA({
           briefing: { ...buildBriefing(), descricao_livre: descFinal || undefined },
           imagemRef: imgRef ?? undefined,
           imagemRefIntencao: imgRef ? imgRefIntencao : undefined,
-          is_regeneracao: isRegen,
         }),
       });
       const data = await r.json();
@@ -926,7 +927,7 @@ function ModoIA({
       setResultado(data as CapaGeradaResult);
       setEscolhida((data as CapaGeradaResult).opcoes[0]?.url ?? null);
       setFase("escolha");
-      if (isRegen) refreshSaldo();
+      if (cobranca && !cobranca.gratis) refreshSaldo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido");
       setFase(resultado ? "escolha" : "briefing");
@@ -1229,6 +1230,20 @@ function ModoIA({
             <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
               <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
+              {cobranca && (
+                <div className={`rounded-xl p-3 text-xs ${
+                  cobranca.gratis
+                    ? "bg-green-50 text-green-700"
+                    : "bg-amber-50 text-amber-700"
+                }`}>
+                  {cobranca.gratis
+                    ? "Esta geração está incluída — sem custo."
+                    : `Esta geração custará ${cobranca.custo} créditos. Seu saldo: ${cobranca.saldo ?? "—"}.`}
+                </div>
+              )}
+              {cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo && (
+                <p className="text-xs text-red-600 font-medium">Créditos insuficientes para gerar.</p>
+              )}
               <div className="flex gap-3">
                 <button onClick={() => setFase("briefing")}
                   className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
@@ -1236,8 +1251,9 @@ function ModoIA({
                   Ajustar
                 </button>
                 <button onClick={handleGerar}
+                  disabled={!!(cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo)}
                   className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
-                    hover:bg-brand-primary/90 transition-colors">
+                    hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
                   Gerar 4 capas →
                 </button>
               </div>

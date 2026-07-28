@@ -12,7 +12,7 @@ import { estimarLombadaCapaMm } from "@/lib/formatos";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 import { validarProjectData } from "@/lib/project-data";
 import type { EstiloCapa, OpcaoCapa, CapaGeradaResult, GaleriaCapaItem } from "@/lib/project-data";
-import { briefingCapaSchema, processarBriefingCapa, type ContextoLivro } from "@/lib/capa-briefing";
+import { briefingCapaSchema, processarBriefingCapa, jaGerouCapaIa, type ContextoLivro } from "@/lib/capa-briefing";
 import { debitarCreditos, estornarCreditos, CUSTOS_CREDITOS } from "@/lib/creditos";
 
 // Re-export types for consumers that import from this route path
@@ -39,7 +39,6 @@ const gerarCapaBodySchema = z.object({
   briefing: briefingCapaSchema,
   imagemRef: z.string().max(5_000_000).optional(),
   imagemRefIntencao: z.enum(["estilo", "conteudo"]).optional().default("estilo"),
-  is_regeneracao: z.boolean().optional().default(false),
   qtd: z.number().int().min(1).max(4).optional().default(4),
 });
 
@@ -81,7 +80,7 @@ export async function POST(req: NextRequest) {
     );
   }
   const body = parsed.data;
-  const { project_id, is_regeneracao } = body;
+  const { project_id } = body;
 
   // Fetch project — includes dados_capa for galeria merge
   const { data: project, error: projErr } = await supabase
@@ -146,6 +145,28 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
+  // Decisão de cobrança server-side (B2-04a): marcador vive em usage_logs,
+  // sobrevive a capa/reset — fail-closed no erro de leitura.
+  const ehRegeneracao = await jaGerouCapaIa(storageClient, project_id);
+  if (ehRegeneracao && !dev) {
+    const debito = await debitarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
+    if (!debito.ok) {
+      if (debito.erro === "saldo_insuficiente") {
+        return NextResponse.json(
+          {
+            error: `Créditos insuficientes. Regenerar capa custa ${CUSTOS_CREDITOS.regenerar_capa_frente} créditos.`,
+            saldo: debito.saldo,
+          },
+          { status: 402 },
+        );
+      }
+      return NextResponse.json(
+        { error: "Falha ao debitar créditos. Tente novamente." },
+        { status: 500 },
+      );
+    }
+  }
+
   const contexto: ContextoLivro = {
     titulo,
     subtitulo: ms?.subtitulo ?? "",
@@ -174,26 +195,6 @@ export async function POST(req: NextRequest) {
       { error: "Não foi possível preparar a geração. Tente novamente." },
       { status: 502 },
     );
-  }
-
-  // Débito de créditos (após prompt, antes de imagem — falha de imagem → estorno)
-  if (is_regeneracao && !dev) {
-    const debito = await debitarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
-    if (!debito.ok) {
-      if (debito.erro === "saldo_insuficiente") {
-        return NextResponse.json(
-          {
-            error: `Créditos insuficientes. Regenerar capa custa ${CUSTOS_CREDITOS.regenerar_capa_frente} créditos.`,
-            saldo: debito.saldo,
-          },
-          { status: 402 },
-        );
-      }
-      return NextResponse.json(
-        { error: "Falha ao debitar créditos. Tente novamente." },
-        { status: 500 },
-      );
-    }
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
@@ -248,7 +249,7 @@ export async function POST(req: NextRequest) {
     .filter((o): o is OpcaoCapa => o !== null);
 
   if (opcoes.length === 0) {
-    if (is_regeneracao && !dev) {
+    if (ehRegeneracao && !dev) {
       await estornarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
     }
     return NextResponse.json(
@@ -314,7 +315,7 @@ export async function POST(req: NextRequest) {
     url_escolhida: opcoes[0]?.url ?? null,
     verso: null,
     gerado_em: new Date().toISOString(),
-    is_regeneracao,
+    is_regeneracao: ehRegeneracao,
     paginas_estimadas: paginas,
     lombada_mm: estimarLombadaCapaMm(paginas),
   };
@@ -342,6 +343,24 @@ export async function POST(req: NextRequest) {
   }
 
   await lockFormato(project_id);
+
+  // Marcador anti-vazamento: registrar APÓS rodada persistida com sucesso.
+  // Rodada estornada (opcoes===0) não chega aqui — próxima tentativa fica grátis.
+  try {
+    await storageClient.from("usage_logs").insert({
+      agent_name: "gerar-capa",
+      project_id,
+      user_id: userId,
+      metadata: {
+        opcoes_geradas: opcoes.length,
+        qtd_pedida: body.qtd,
+        regeneracao: ehRegeneracao,
+        estilo: body.briefing.estilo,
+      },
+    });
+  } catch (e) {
+    console.error("[gerar-capa] log de rodada falhou:", e);
+  }
 
   return NextResponse.json(result);
   } catch (err) {

@@ -86,6 +86,11 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   arte. Se o autor indicou posição do título, descreva a composição com
   essa região calma (ex.: "upper third kept visually calm but with subtle
   gradient texture, to receive the title later").
+- Quando a posição do título for CENTRO: posicione o elemento dominante
+  DESLOCADO do centro (terço inferior ou superior) e componha a faixa
+  central como região de menor detalhe e contraste — tonalmente contínua
+  com a arte, NUNCA um vazio; a imagem deve parecer completa mesmo sem o
+  título.
 - Adapte a densidade do conceito ao estilo: para MINIMALISTA, reduza a UM
   único elemento essencial com amplo espaço negativo e nenhuma iconografia
   acessória; para abstrato, fotorrealista e demais estilos, a densidade
@@ -328,4 +333,25 @@ export async function processarBriefingCapa(args: {
 
   const promptFinal = `${promptImagem}${SUFIXO_TECNICO_IMAGEM(args.alvo)}`;
   return { prompt_imagem: promptFinal, frase_confirmacao: frase, negative_hints: hints };
+}
+
+/** True se o projeto já teve alguma rodada de geração IA de frente
+ *  bem-sucedida. Marcador vive em usage_logs — sobrevive a capa/reset
+ *  (anti-vazamento, B2-04a). */
+export async function jaGerouCapaIa(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: SupabaseClient<any>,
+  projectId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("usage_logs")
+    .select("id")
+    .eq("agent_name", "gerar-capa")
+    .eq("project_id", projectId)
+    .limit(1);
+  if (error) {
+    console.error("[capa-briefing] jaGerouCapaIa falhou:", error.message);
+    return true; // fail-closed: na dúvida, cobra — nunca vaza de graça
+  }
+  return (data?.length ?? 0) > 0;
 }

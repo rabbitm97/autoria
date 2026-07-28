@@ -10,7 +10,9 @@ import {
   carregarContexto,
   sugerirConceitoCapa,
   processarBriefingCapa,
+  jaGerouCapaIa,
 } from "@/lib/capa-briefing";
+import { CUSTOS_CREDITOS, getSaldoCreditos } from "@/lib/creditos";
 
 const bodySchema = z.discriminatedUnion("acao", [
   z.object({ acao: z.literal("sugerir_conceito"), project_id: z.string().min(1) }),
@@ -77,7 +79,18 @@ export async function POST(req: NextRequest) {
         projectId: body.project_id,
         userId,
       });
-      return NextResponse.json(result);
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const ehRegen = await jaGerouCapaIa(admin, body.project_id);
+      const saldo = dev ? null : await getSaldoCreditos(supabase, userId);
+      return NextResponse.json({
+        ...result,
+        cobranca: ehRegen
+          ? { gratis: false, custo: CUSTOS_CREDITOS.regenerar_capa_frente, saldo }
+          : { gratis: true, custo: 0, saldo },
+      });
     } catch (err) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Erro interno." },
