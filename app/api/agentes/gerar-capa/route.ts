@@ -18,12 +18,15 @@ import { debitarCreditos, estornarCreditos, CUSTOS_CREDITOS } from "@/lib/credit
 // Re-export types for consumers that import from this route path
 export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
 
-function buildContents(prompt: string, ref: string | undefined): Part[] {
+function buildContents(prompt: string, ref: string | undefined, intencao: "estilo" | "conteudo" = "estilo"): Part[] {
   if (ref) {
     const match = ref.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
+      const instrucao = intencao === "conteudo"
+        ? " Incorporate the provided reference image as actual subject matter of the artwork — integrate it naturally into the composition while matching the requested style and palette."
+        : " Use the provided reference image as a style and mood guide only — do not copy it literally.";
       return [
-        { text: prompt + " Use the provided reference image as a style and mood guide only — do not copy it literally." } as Part,
+        { text: prompt + instrucao } as Part,
         { inlineData: { mimeType: match[1], data: match[2] } } as Part,
       ];
     }
@@ -35,6 +38,7 @@ const gerarCapaBodySchema = z.object({
   project_id: z.string().min(1),
   briefing: briefingCapaSchema,
   imagemRef: z.string().max(5_000_000).optional(),
+  imagemRefIntencao: z.enum(["estilo", "conteudo"]).optional().default("estilo"),
   is_regeneracao: z.boolean().optional().default(false),
   qtd: z.number().int().min(1).max(4).optional().default(4),
 });
@@ -199,7 +203,7 @@ export async function POST(req: NextRequest) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-image-preview",
-        contents: [{ role: "user", parts: buildContents(prompt_imagem, body.imagemRef) }],
+        contents: [{ role: "user", parts: buildContents(prompt_imagem, body.imagemRef, body.imagemRefIntencao) }],
         config: {
           responseModalities: ["IMAGE"],
           imageConfig: { aspectRatio: "2:3", imageSize: "4K" },

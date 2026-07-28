@@ -86,6 +86,10 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   arte. Se o autor indicou posição do título, descreva a composição com
   essa região calma (ex.: "upper third kept visually calm but with subtle
   gradient texture, to receive the title later").
+- Adapte a densidade do conceito ao estilo: para MINIMALISTA, reduza a UM
+  único elemento essencial com amplo espaço negativo e nenhuma iconografia
+  acessória; para abstrato, fotorrealista e demais estilos, a densidade
+  pode ser maior, mantendo sempre um elemento dominante.
 - Incorpore o que o autor pediu para evitar como instruções negativas
   claras no próprio prompt.
 - Se o briefing do verso tiver modo "continuacao", o prompt deve pedir

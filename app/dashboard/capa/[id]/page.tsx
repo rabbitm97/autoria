@@ -12,6 +12,7 @@ import type { CapaUploadResult } from "@/app/api/agentes/upload-capa/route";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
+import { CUSTOS_CREDITOS } from "@/lib/creditos";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,17 @@ const CORES_PRESET = [
   { label: "Azul cinza",    value: "azul acinzentado", hex: "#4a6fa5" },
   { label: "Roxo",          value: "roxo",          hex: "#5a3d7a" },
 ];
+
+const ATMOSFERAS_LABELS = [
+  { id: "melancolica", label: "Melancólica" },
+  { id: "vibrante",   label: "Vibrante" },
+  { id: "sobria",     label: "Sóbria" },
+  { id: "misteriosa", label: "Misteriosa" },
+  { id: "acolhedora", label: "Acolhedora" },
+  { id: "epica",      label: "Épica" },
+  { id: "tensa",      label: "Tensa" },
+  { id: "luminosa",   label: "Luminosa" },
+] as const;
 
 function calcLombadaMm(paginas: number) {
   return estimarLombadaCapaMm(paginas);
@@ -754,80 +766,89 @@ function ModoUpload({
 
 function ModoIA({
   projectId,
-  formatoInicial,
   titulo,
   autor,
-  sinopse,
   genero,
-  estimativaPaginas,
+  estimativaPaginas: _estimativaPaginas,
   onSalvo,
   onVoltar,
 }: {
   projectId: string;
-  formatoInicial: FormatoLivro;
   titulo: string;
   autor: string;
   sinopse: string;
   genero: string;
   estimativaPaginas: number | null;
-  onSalvo: (result: CapaGeradaResult, escolhida: string) => void;
+  onSalvo: (dadosServidor: CapaGeradaResult) => void;
   onVoltar: () => void;
 }) {
-  const [paginas, setPaginas] = useState(estimativaPaginas ?? 200);
-
+  // Modal educativo — primeira visita ao modo IA
+  const [modalVisto, setModalVisto] = useState(true);
   useEffect(() => {
-    if (estimativaPaginas != null) setPaginas(estimativaPaginas);
-  }, [estimativaPaginas]);
+    setModalVisto(localStorage.getItem("autoria:capa-ia-explicada-v1") === "true");
+  }, []);
+  function fecharModal() {
+    localStorage.setItem("autoria:capa-ia-explicada-v1", "true");
+    setModalVisto(true);
+  }
 
-  const formato = formatoInicial;
+  // Máquina de estados: briefing → confirmando → gerando → escolha
+  const [fase, setFase] = useState<"briefing" | "confirmando" | "gerando" | "escolha">("briefing");
+
+  // Briefing
   const [estilo, setEstilo] = useState<EstiloCapa>("minimalista");
+  const [atmosfera, setAtmosfera] = useState<string[]>([]);
   const [cor, setCor] = useState(CORES_PRESET[0].value);
   const [corHex, setCorHex] = useState(CORES_PRESET[0].hex);
-  const [orelhaMm, setOrelhaMm] = useState(0);
-  useEffect(() => {
-    setOrelhaMm((prev) => (prev > 0 ? clampOrelhaMm(formato as FormatKey, prev) : 0));
-  }, [formato]);
-  const usarOrelhas = orelhaMm > 0;
-  const orelhaMaxCm = getOrelhaMax(formato as FormatKey) / 10;
-  const orelhaMinCm = ORELHA_MIN_MM / 10;
-  const orelhaCm = Math.round(orelhaMm / 10);
-  const [quartaTexto, setQuartaTexto] = useState(sinopse?.slice(0, 500) ?? "");
+  const [posicaoTitulo, setPosicaoTitulo] = useState<"topo" | "centro" | "base" | "sem_preferencia">("topo");
+  const [descricaoLivre, setDescricaoLivre] = useState("");
+  const [referenciasTexto, setReferenciasTexto] = useState("");
+  const [evitar, setEvitar] = useState("");
   const [imgRef, setImgRef] = useState<string | null>(null);
+  const [imgRefIntencao, setImgRefIntencao] = useState<"estilo" | "conteudo">("estilo");
+  const [isRegen, setIsRegen] = useState(false);
+  const [deltaTexto, setDeltaTexto] = useState("");
+  const [erroForm, setErroForm] = useState<string | null>(null);
+  const [sugerindo, setSugerindo] = useState(false);
 
-  const [gerando, setGerando] = useState(false);
+  // Créditos
+  const [saldo, setSaldo] = useState<number | null>(null);
+  function refreshSaldo() {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from("users").select("creditos").eq("id", user.id).single()
+        .then(({ data }) => { if (data) setSaldo((data as { creditos: number }).creditos); });
+    });
+  }
+  useEffect(() => { refreshSaldo(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Confirmação
+  const [frase, setFrase] = useState("");
+
+  // Resultado / escolha
   const [resultado, setResultado] = useState<CapaGeradaResult | null>(null);
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isRegen, setIsRegen] = useState(false);
+  const [aceitando, setAceitando] = useState(false);
 
-  async function handleGerar(regen = false) {
-    setGerando(true);
-    setError(null);
-    setIsRegen(regen);
-    try {
-      const r = await fetch("/api/agentes/gerar-capa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: projectId,
-          estilo,
-          cor_predominante: cor,
-          orelha_mm: orelhaMm,
-          usar_orelhas: usarOrelhas,
-          quarta_capa_texto: quartaTexto,
-          imagemRef: imgRef ?? undefined,
-          is_regeneracao: regen,
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Erro ao gerar");
-      setResultado(data as CapaGeradaResult);
-      setEscolhida(data.opcoes[0]?.url ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro desconhecido");
-    } finally {
-      setGerando(false);
-    }
+  function buildBriefing() {
+    return {
+      estilo,
+      atmosfera,
+      cor_predominante: { nome: cor, hex: corHex },
+      posicao_titulo: posicaoTitulo,
+      descricao_livre: descricaoLivre || undefined,
+      referencias_texto: referenciasTexto || undefined,
+      evitar: evitar || undefined,
+    };
+  }
+
+  function toggleAtmosfera(a: string) {
+    setAtmosfera(prev => {
+      if (prev.includes(a)) return prev.filter(x => x !== a);
+      if (prev.length >= 2) return prev;
+      return [...prev, a];
+    });
   }
 
   function handleRefImg(e: React.ChangeEvent<HTMLInputElement>) {
@@ -838,15 +859,160 @@ function ModoIA({
     reader.readAsDataURL(f);
   }
 
+  async function handleSugerirConceito() {
+    setSugerindo(true);
+    try {
+      const r = await fetch("/api/agentes/capa-briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "sugerir_conceito", project_id: projectId }),
+      });
+      const data = await r.json();
+      if (r.ok && data.conceito) setDescricaoLivre(data.conceito);
+    } catch {
+      // best-effort — falha silenciosa
+    } finally {
+      setSugerindo(false);
+    }
+  }
+
+  async function handleConfirmar() {
+    if (atmosfera.length === 0) {
+      setErroForm("Escolha pelo menos 1 atmosfera antes de continuar.");
+      return;
+    }
+    setErroForm(null);
+    setFrase("");
+    setFase("confirmando");
+    try {
+      const r = await fetch("/api/agentes/capa-briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing() }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
+      setFrase(data.frase_confirmacao);
+    } catch (e) {
+      setErroForm(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
+      setFase("briefing");
+    }
+  }
+
+  async function handleGerar() {
+    setFase("gerando");
+    setError(null);
+    const descFinal = isRegen && deltaTexto.trim()
+      ? `${descricaoLivre}\n\nAJUSTE PEDIDO: ${deltaTexto.trim()}`
+      : descricaoLivre;
+    try {
+      const r = await fetch("/api/agentes/gerar-capa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          qtd: 4,
+          briefing: { ...buildBriefing(), descricao_livre: descFinal || undefined },
+          imagemRef: imgRef ?? undefined,
+          imagemRefIntencao: imgRef ? imgRefIntencao : undefined,
+          is_regeneracao: isRegen,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        const sufixo = r.status === 402 && data.saldo != null ? ` Saldo: ${data.saldo} créditos.` : "";
+        throw new Error((data.error ?? "Erro ao gerar") + sufixo);
+      }
+      setResultado(data as CapaGeradaResult);
+      setEscolhida((data as CapaGeradaResult).opcoes[0]?.url ?? null);
+      setFase("escolha");
+      if (isRegen) refreshSaldo();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido");
+      setFase(resultado ? "escolha" : "briefing");
+    }
+  }
+
+  function handleRegerar() {
+    if (resultado) {
+      setEstilo(resultado.estilo);
+      setAtmosfera([...resultado.atmosfera]);
+      const presetCor = CORES_PRESET.find(c => c.value === resultado.cor_predominante);
+      if (presetCor) { setCor(presetCor.value); setCorHex(presetCor.hex); }
+      else { setCor(resultado.cor_predominante); setCorHex(resultado.cor_predominante_hex); }
+      setPosicaoTitulo(resultado.posicao_titulo);
+      setDescricaoLivre(resultado.descricao_livre ?? "");
+      setReferenciasTexto(resultado.referencias_texto ?? "");
+      setEvitar(resultado.evitar ?? "");
+    }
+    setIsRegen(true);
+    setDeltaTexto("");
+    setFase("briefing");
+  }
+
+  async function handleAceitar() {
+    if (!escolhida || !resultado) return;
+    setAceitando(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: escolhida }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Erro ao salvar escolha");
+      onSalvo(data as CapaGeradaResult);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar escolha");
+    } finally {
+      setAceitando(false);
+    }
+  }
+
+  // Suppress unused-var warnings for props used only in context (titulo, autor, genero)
+  void titulo; void autor; void genero;
+
   return (
     <div className="space-y-6">
+      {/* Modal educativo — primeira visita */}
+      {!modalVisto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full space-y-4 shadow-xl">
+            <h2 className="text-lg font-semibold text-brand-primary">Como funciona a capa com IA</h2>
+            <ol className="space-y-2 text-sm text-zinc-600">
+              <li><span className="font-medium">1.</span> Você descreve estilo, atmosfera e cor</li>
+              <li><span className="font-medium">2.</span> Geramos 4 opções de arte</li>
+              <li><span className="font-medium">3.</span> Você escolhe e personaliza no editor com títulos e textos</li>
+            </ol>
+            <p className="text-xs text-zinc-500 bg-zinc-50 rounded-xl p-3">
+              As imagens são geradas <strong>SEM texto</strong>: título, nome e demais textos são
+              adicionados por você no editor — isso garante tipografia perfeita.
+            </p>
+            <p className="text-xs text-amber-600">
+              Gerar de novo custa {CUSTOS_CREDITOS.regenerar_capa_frente} créditos.
+            </p>
+            <button onClick={fecharModal}
+              className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
+                hover:bg-brand-primary/90 transition-colors">
+              Entendi, começar →
+            </button>
+          </div>
+        </div>
+      )}
+
       <button onClick={onVoltar} className="text-xs text-zinc-400 hover:text-zinc-600 flex items-center gap-1">
         ← Voltar
       </button>
 
-      {!resultado ? (
+      {/* ── BRIEFING ────────────────────────────────────────────────────────── */}
+      {fase === "briefing" && (
         <>
-          {/* Style */}
+          <p className="text-xs text-zinc-400 flex items-center gap-1.5">
+            <span>·</span> Usando o que sabemos do seu livro: título, gênero e sinopse
+          </p>
+
+          {/* Estilo — TODO B2-06: default por família editorial + thumbnails */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Estilo visual</p>
             <div className="grid grid-cols-4 gap-2">
@@ -863,9 +1029,38 @@ function ModoIA({
             </div>
           </div>
 
-          {/* Color */}
+          {/* Atmosfera */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Cor predominante</p>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">
+              Atmosfera <span className="normal-case font-normal text-zinc-300">(1 ou 2)</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {ATMOSFERAS_LABELS.map(a => {
+                const sel = atmosfera.includes(a.id);
+                const bloq = !sel && atmosfera.length >= 2;
+                return (
+                  <button key={a.id} type="button"
+                    onClick={() => { if (!bloq) toggleAtmosfera(a.id); }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                      ${sel ? "border-brand-gold bg-brand-gold/10 text-brand-primary" :
+                        bloq ? "border-zinc-100 text-zinc-300 cursor-not-allowed" :
+                        "border-zinc-200 text-zinc-600 hover:border-zinc-300"}`}>
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+            {atmosfera.length >= 2 && (
+              <p className="text-[11px] text-zinc-400 mt-2">Máximo 2 atmosferas.</p>
+            )}
+          </div>
+
+          {/* Cor predominante */}
+          <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Cor predominante</p>
+            <p className="text-[11px] text-zinc-400 mb-3">
+              Esta cor também será a base da lombada e do verso no editor.
+            </p>
             <div className="flex flex-wrap gap-2">
               {CORES_PRESET.map(c => (
                 <button key={c.value} type="button"
@@ -879,93 +1074,195 @@ function ModoIA({
             </div>
           </div>
 
-          {/* Orelhas + quarta capa + ref */}
-          <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-5">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Opções adicionais</p>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <div onClick={() => setOrelhaMm(usarOrelhas ? 0 : getOrelhaDefault(formato as FormatKey))}
-                className={`w-10 h-5 rounded-full border-2 transition-colors relative
-                  ${usarOrelhas ? "bg-brand-gold border-brand-gold" : "bg-zinc-200 border-zinc-300"}`}>
-                <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all
-                  ${usarOrelhas ? "left-5" : "left-0.5"}`} />
-              </div>
-              <div>
-                <p className="text-sm text-zinc-700 font-medium">Incluir orelhas</p>
-                <p className="text-xs text-zinc-400">Dobras laterais — espaço para bio do autor</p>
-              </div>
-            </label>
-            {usarOrelhas && (
-              <div className="flex items-center gap-2 pl-13">
-                <label className="text-xs text-zinc-500">Largura:</label>
-                <input
-                  type="number"
-                  min={orelhaMinCm}
-                  max={orelhaMaxCm}
-                  step={1}
-                  value={orelhaCm}
-                  onChange={(e) => {
-                    const cm = Number(e.target.value);
-                    if (!Number.isFinite(cm)) return;
-                    setOrelhaMm(clampOrelhaMm(formato as FormatKey, cm * 10));
-                  }}
-                  className="w-16 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-brand-gold"
-                />
-                <span className="text-xs text-zinc-500">cm ({orelhaMinCm}–{orelhaMaxCm})</span>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-zinc-500 mb-1.5">
-                Texto da quarta capa (gerado automaticamente, editável)
-              </label>
-              <textarea value={quartaTexto} onChange={e => setQuartaTexto(e.target.value)} rows={4}
-                className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none
-                  focus:outline-none focus:border-brand-gold" />
+          {/* Posição do título */}
+          <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Posição do título</p>
+            <p className="text-[11px] text-zinc-400 mb-3">
+              A arte deixa essa área mais limpa para o título que você colocará no editor.
+            </p>
+            <div className="flex gap-2">
+              {(["topo", "centro", "base", "sem_preferencia"] as const).map(p => (
+                <button key={p} type="button" onClick={() => setPosicaoTitulo(p)}
+                  className={`flex-1 py-2 px-1 rounded-lg border text-xs font-medium transition-all
+                    ${posicaoTitulo === p
+                      ? "border-brand-gold bg-brand-gold/5 text-brand-primary"
+                      : "border-zinc-200 text-zinc-500 hover:border-zinc-300"}`}>
+                  {p === "topo" ? "Topo" : p === "centro" ? "Centro" : p === "base" ? "Base" : "Sem pref."}
+                </button>
+              ))}
             </div>
+          </div>
 
+          {/* Descrição livre + sugerir conceito */}
+          <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Descrição (opcional)</p>
+              <button type="button" onClick={handleSugerirConceito} disabled={sugerindo}
+                className="flex items-center gap-1 text-xs text-brand-primary hover:text-brand-primary/80 font-medium disabled:opacity-50">
+                {sugerindo
+                  ? <><span className="w-3 h-3 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" /> Sugerindo…</>
+                  : "✦ Sugerir conceito"}
+              </button>
+            </div>
+            <textarea
+              value={descricaoLivre}
+              onChange={e => setDescricaoLivre(e.target.value)}
+              rows={4}
+              placeholder="Descreva cena, objetos, atmosfera. Ex.: 'uma estrada vazia ao amanhecer, névoa, tom melancólico'. Não peça textos — você os adiciona no editor."
+              className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none
+                focus:outline-none focus:border-brand-gold"
+            />
+          </div>
+
+          {/* Referências */}
+          <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Referências (opcional)</p>
             <div>
               <label className="block text-xs font-medium text-zinc-500 mb-1.5">
-                Imagem de referência (opcional)
+                Capas que considera referência
+              </label>
+              <input
+                type="text"
+                value={referenciasTexto}
+                onChange={e => setReferenciasTexto(e.target.value)}
+                placeholder="Ex.: Atomic Habits, The Lean Startup…"
+                className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm
+                  focus:outline-none focus:border-brand-gold"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-zinc-500 mb-1.5">
+                Imagem de referência
               </label>
               {imgRef ? (
-                <div className="flex items-center gap-3">
-                  <img src={imgRef} alt="ref" className="w-16 h-16 object-cover rounded-lg border border-zinc-200" />
-                  <button onClick={() => setImgRef(null)}
-                    className="text-xs text-red-500 hover:text-red-700">Remover</button>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <img src={imgRef} alt="ref" className="w-16 h-16 object-cover rounded-lg border border-zinc-200" />
+                    <button onClick={() => setImgRef(null)} className="text-xs text-red-500 hover:text-red-700">
+                      Remover
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    {(["estilo", "conteudo"] as const).map(i => (
+                      <button key={i} type="button" onClick={() => setImgRefIntencao(i)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
+                          ${imgRefIntencao === i
+                            ? "border-brand-gold bg-brand-gold/5 text-brand-primary"
+                            : "border-zinc-200 text-zinc-500 hover:border-zinc-300"}`}>
+                        {i === "estilo" ? "Usar como guia de estilo" : "Quero esta imagem na capa"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
-                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-zinc-300
-                  cursor-pointer hover:border-brand-gold/50 text-xs text-zinc-500 w-fit">
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed
+                  border-zinc-300 cursor-pointer hover:border-brand-gold/50 text-xs text-zinc-500 w-fit">
                   <UploadIcon size={14} />
                   Selecionar imagem
                   <input type="file" accept="image/*" className="hidden" onChange={handleRefImg} />
                 </label>
               )}
-              <p className="text-[11px] text-zinc-400 mt-1">
-                Use como guia de estilo e composição. A IA não copia — adapta a atmosfera.
-              </p>
             </div>
           </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
+          {/* Evitar */}
+          <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+              O que evitar (opcional)
+            </label>
+            <input
+              type="text"
+              value={evitar}
+              onChange={e => setEvitar(e.target.value)}
+              placeholder="Ex.: pessoas, fotos, tons frios…"
+              className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm
+                focus:outline-none focus:border-brand-gold"
+            />
+          </div>
+
+          <p className="text-xs text-zinc-400 text-center">
+            Orelhas, lombada e verso você configura no editor.
+          </p>
+
+          {/* Campo de delta para regeneração */}
+          {isRegen && (
+            <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+                O que mudar em relação às opções anteriores?
+              </label>
+              <textarea
+                value={deltaTexto}
+                onChange={e => setDeltaTexto(e.target.value)}
+                rows={3}
+                placeholder="Ex.: cores mais vibrantes, menos elementos, adicionar névoa…"
+                className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none
+                  focus:outline-none focus:border-brand-gold"
+              />
+            </div>
           )}
 
-          <button onClick={() => handleGerar(false)} disabled={gerando}
-            className="w-full py-4 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
-              hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
-            {gerando ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-                Gerando 4 opções de capa… pode levar ~1 minuto
-              </span>
-            ) : "Gerar capas com IA →"}
-          </button>
+          {erroForm && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{erroForm}</div>
+          )}
+
+          <div className="space-y-2">
+            {saldo !== null && (
+              <p className="text-xs text-zinc-400 text-center">
+                Você tem {saldo} crédito{saldo !== 1 ? "s" : ""}
+              </p>
+            )}
+            <button
+              onClick={handleConfirmar}
+              disabled={atmosfera.length === 0}
+              className="w-full py-4 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
+                hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
+              Gerar capas com IA →
+            </button>
+          </div>
         </>
-      ) : (
+      )}
+
+      {/* ── CONFIRMANDO ─────────────────────────────────────────────────────── */}
+      {fase === "confirmando" && (
+        <div className="space-y-4">
+          {frase ? (
+            <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
+              <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
+              <div className="flex gap-3">
+                <button onClick={() => setFase("briefing")}
+                  className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
+                    hover:border-zinc-300 transition-colors">
+                  Ajustar
+                </button>
+                <button onClick={handleGerar}
+                  className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
+                    hover:bg-brand-primary/90 transition-colors">
+                  Gerar 4 capas →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex items-center
+              justify-center h-32">
+              <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── GERANDO ─────────────────────────────────────────────────────────── */}
+      {fase === "gerando" && (
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex flex-col items-center
+          justify-center h-40 gap-3">
+          <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+          <p className="text-sm text-zinc-500">Gerando 4 opções… pode levar ~1 minuto</p>
+        </div>
+      )}
+
+      {/* ── ESCOLHA ─────────────────────────────────────────────────────────── */}
+      {fase === "escolha" && resultado && (
         <>
-          {/* Options grid */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">
               Escolha uma capa ({resultado.opcoes.length} opções geradas)
@@ -993,26 +1290,25 @@ function ModoIA({
           )}
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <button onClick={() => handleGerar(true)} disabled={gerando}
+            <button onClick={handleRegerar}
               className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-                hover:border-amber-300 transition-colors disabled:opacity-50">
-              {gerando && isRegen ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-3.5 h-3.5 rounded-full border-2 border-zinc-400 border-t-transparent animate-spin" />
-                  Regerando…
-                </span>
-              ) : (
-                <span>
-                  Gerar novamente <span className="text-amber-600 font-medium">(20 créditos)</span>
-                </span>
-              )}
+                hover:border-amber-300 transition-colors">
+              Gerar novamente{" "}
+              <span className="text-amber-600 font-medium">
+                ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
+              </span>
             </button>
             <button
-              onClick={() => escolhida && onSalvo(resultado, escolhida)}
-              disabled={!escolhida}
+              onClick={handleAceitar}
+              disabled={!escolhida || aceitando}
               className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
                 hover:bg-brand-gold/90 transition-colors disabled:opacity-50">
-              Aceitar esta capa →
+              {aceitando ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                  Salvando…
+                </span>
+              ) : "Aceitar esta capa →"}
             </button>
           </div>
         </>
@@ -1613,9 +1909,8 @@ export default function CapaPage() {
     router.push(`/dashboard/creditos/${id}`);
   }
 
-  function handleSalvoIA(result: CapaGeradaResult, escolhida: string) {
-    const saved = { ...result, url_escolhida: escolhida };
-    setDados(saved as unknown as Record<string, unknown>);
+  function handleSalvoIA(dadosServidor: CapaGeradaResult) {
+    setDados(dadosServidor as unknown as Record<string, unknown>);
   }
 
   function handleSalvoUpload(result: CapaUploadResult) {
@@ -1949,13 +2244,12 @@ export default function CapaPage() {
         ) : modo === "ia" ? (
           <ModoIA
             projectId={id}
-            formatoInicial={formatoGlobal}
             titulo={titulo}
             autor={autor}
             sinopse={sinopse}
             genero={genero}
             estimativaPaginas={estimativaPaginas}
-            onSalvo={(r, escolhida) => { handleSalvoIA(r, escolhida); setModo("escolha"); }}
+            onSalvo={(dados) => { handleSalvoIA(dados); setModo("escolha"); }}
             onVoltar={() => setModo("escolha")}
           />
         ) : null}
