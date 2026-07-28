@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { negarPorPlano } from "@/lib/supabase-helpers";
 import { anthropic, traceClaudeCall, isDev, isMock } from "@/lib/anthropic";
@@ -138,7 +139,8 @@ interface ContextoLivro {
 }
 
 async function carregarContexto(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
   projectId: string,
   userId: string,
   dev: boolean,
@@ -195,10 +197,15 @@ export async function POST(req: NextRequest) {
     const dev = isDev();
 
     let userId: string;
-    let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let supabase: SupabaseClient<any>;
     if (dev) {
+      // Admin client bypasses RLS — necessário para curl sem cookie de sessão.
       userId = "dev-user";
-      supabase = await createSupabaseServerClient();
+      supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
     } else {
       try {
         const auth = await requireAuth();
