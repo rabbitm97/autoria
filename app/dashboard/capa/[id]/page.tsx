@@ -1603,9 +1603,14 @@ function CapaIaStatusCard({
   if (escolhendoTrilha) {
     return (
       <div className="space-y-5">
-        <div>
-          <p className="font-heading text-xl text-brand-primary">Qual é a sua trilha de publicação?</p>
-          <p className="text-sm text-zinc-500 mt-1">Esta escolha orienta quais arquivos são gerados para você.</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-heading text-xl text-brand-primary">Qual é a sua trilha de publicação?</p>
+            <p className="text-sm text-zinc-500 mt-1">Esta escolha orienta quais arquivos são gerados para você.</p>
+          </div>
+          <button onClick={() => setEscolhendoTrilha(false)} className="text-xs text-zinc-400 hover:text-zinc-600 underline shrink-0 mt-1">
+            Cancelar
+          </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {([
@@ -1755,6 +1760,9 @@ export default function CapaPage() {
   // "pessoal"/"livrarias" são normalizados na leitura; qualquer valor ≠
   // "digital"/"completa" é tratado como indefinido.
   const [proposito, setProposito] = useState<PropositoPublicacao | null>(null);
+  // UI-only: true enquanto o autor está no fluxo de troca de trilha (sem anular
+  // o proposito local, que reflete o banco). Reseta quando confirma ou cancela.
+  const [trocandoTrilha, setTrocandoTrilha] = useState(false);
   // CapaGeradaResult a pré-carregar quando abre ModoIA em modo regeneração
   // a partir do CapaIaStatusCard.
   const [modoIaRegerarDe, setModoIaRegerarDe] = useState<CapaGeradaResult | null>(null);
@@ -2028,7 +2036,10 @@ export default function CapaPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ proposito: p }),
     });
-    if (res.ok) setProposito(p);
+    if (res.ok) {
+      setProposito(p);
+      setTrocandoTrilha(false);
+    }
   }
 
   // Zera dados_capa quando o autor está trocando de modo. Garante que
@@ -2103,7 +2114,7 @@ export default function CapaPage() {
                   {proposito === "digital" ? "Publicação digital" : "Publicação completa (digital + impressa)"}
                 </strong></span>
                 <span>·</span>
-                <button onClick={() => setProposito(null)} className="underline hover:text-zinc-700">
+                <button onClick={() => setTrocandoTrilha(true)} className="underline hover:text-zinc-700">
                   Trocar
                 </button>
               </div>
@@ -2190,40 +2201,56 @@ export default function CapaPage() {
 
             {formatoDefinido === true && (() => {
               const capaSalva = dados?.modo === "upload" || (dados?.source === "editor" && Boolean(dados?.confirmed_at));
-              if (proposito === null && !capaSalva) {
+              if ((proposito === null && !capaSalva) || trocandoTrilha) {
+                const trilhas = [
+                  { id: "digital" as const, emoji: "📱", label: "Publicação digital", sub: "Ebook (e-pub/PDF). Capa frente apenas, sem lombada impressa." },
+                  { id: "completa" as const, emoji: "📚", label: "Publicação completa", sub: "Digital + impressa. Capa panorâmica (frente + lombada + verso) e opção de orelhas." },
+                ];
                 return (
                   <div className="space-y-4">
-                    <div>
-                      <h2 className="text-base font-semibold text-brand-primary mb-1">Como você quer publicar?</h2>
-                      <p className="text-xs text-zinc-500">Escolha a trilha antes de criar a capa. Você pode trocar depois.</p>
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <h2 className="text-base font-semibold text-brand-primary mb-1">
+                          {trocandoTrilha ? "Trocar trilha de publicação" : "Como você quer publicar?"}
+                        </h2>
+                        <p className="text-xs text-zinc-500">
+                          {trocandoTrilha ? "Selecione a nova trilha. Você pode mudar de ideia a qualquer momento." : "Escolha a trilha antes de criar a capa. Você pode trocar depois."}
+                        </p>
+                      </div>
+                      {trocandoTrilha && (
+                        <button onClick={() => setTrocandoTrilha(false)} className="text-xs text-zinc-400 hover:text-zinc-600 underline shrink-0 ml-4">
+                          Cancelar
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <button
-                        onClick={() => void handleEscolherTrilha("digital")}
-                        className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200 hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center group-hover:bg-brand-gold/20 transition-colors">
-                          <span className="text-2xl">📱</span>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-brand-primary text-sm">Publicação digital</p>
-                          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">Ebook (e-pub/PDF). Capa frente apenas, sem lombada impressa.</p>
-                        </div>
-                        <span className="text-xs font-medium text-brand-gold mt-auto">Selecionar →</span>
-                      </button>
-                      <button
-                        onClick={() => void handleEscolherTrilha("completa")}
-                        className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200 hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
-                      >
-                        <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center group-hover:bg-brand-gold/20 transition-colors">
-                          <span className="text-2xl">📚</span>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-brand-primary text-sm">Publicação completa</p>
-                          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">Digital + impressa. Capa panorâmica (frente + lombada + verso) e opção de orelhas.</p>
-                        </div>
-                        <span className="text-xs font-medium text-brand-gold mt-auto">Selecionar →</span>
-                      </button>
+                      {trilhas.map(t => {
+                        const isAtual = trocandoTrilha && proposito === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            onClick={() => void handleEscolherTrilha(t.id)}
+                            className={`flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border transition-all text-left group
+                              ${isAtual
+                                ? "border-brand-gold ring-2 ring-brand-gold/30 shadow-sm"
+                                : "border-zinc-200 hover:border-brand-gold/60 hover:shadow-sm"}`}
+                          >
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors
+                              ${isAtual ? "bg-brand-gold/20" : "bg-brand-gold/10 group-hover:bg-brand-gold/20"}`}>
+                              <span className="text-2xl">{t.emoji}</span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-brand-primary text-sm">
+                                {t.label}{isAtual && <span className="ml-2 text-xs font-normal text-brand-gold">atual</span>}
+                              </p>
+                              <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t.sub}</p>
+                            </div>
+                            <span className="text-xs font-medium text-brand-gold mt-auto">
+                              {isAtual ? "Manter esta trilha →" : "Selecionar →"}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
