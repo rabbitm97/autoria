@@ -1,5 +1,4 @@
 import { z } from "zod";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { negarPorPlano } from "@/lib/supabase-helpers";
@@ -8,6 +7,21 @@ import { getAgentPrompt } from "@/lib/agent-prompts";
 
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001";
 export const AGENT_NAME = "capa-briefing";
+
+// Guardrails técnicos INEGOCIÁVEIS, anexados por código a TODO prompt de
+// imagem — nunca dependem de o agente lembrar (azeite-01, 24/jul).
+// B2-05: SUFIXO_POR_ALVO.verso receberá frase diferente (verso contínuo).
+const SUFIXO_POR_ALVO: Record<"frente" | "verso", string> = {
+  frente: "Single front cover artwork only, portrait composition.",
+  verso:  "Single front cover artwork only, portrait composition.",
+};
+const SUFIXO_TECNICO_IMAGEM = (alvo: "frente" | "verso") =>
+  " Flat two-dimensional digital artwork only, filling the entire canvas" +
+  " edge-to-edge. This is the artwork itself, NOT a photograph of a" +
+  " printed object: no mockup, no paper, no folds, no creases, no drop" +
+  " shadow, no white border, no frame, no margins, no background surface." +
+  ` ${SUFIXO_POR_ALVO[alvo]}` +
+  " Absolutely no text, no letters, no words, no typography, no numbers.";
 
 export const ESTILO_DESC: Record<string, string> = {
   minimalista:   "minimalist editorial design, clean lines, flat colors, lots of white space",
@@ -50,15 +64,14 @@ export type BriefingCapa = z.infer<typeof briefingCapaSchema>;
 
 export const FALLBACK_PROMPT = `Você é o diretor de arte da Autoria, plataforma
 brasileira de autopublicação. Sua função é transformar o briefing de um
-autor em instruções precisas para um modelo de geração de imagens criar a
-capa do livro dele.
+autor em instruções precisas para um modelo de geração de imagens criar
+a arte que será usada como fundo da capa do livro dele.
 
 REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - A imagem NUNCA contém texto: inclua sempre "absolutely no text, no
   letters, no words, no typography, no numbers".
 - Sempre inclua "full bleed composition, no borders or frames" e
-  "professional publishing industry quality, high contrast, suitable for
-  CMYK print".
+  "high quality digital artwork, rich color depth, high contrast".
 - NUNCA mencione aspect ratio, resolução ou dimensões no texto do prompt
   (são configurados por parâmetro fora do prompt).
 - Respeite a área de respiro: se o autor indicou posição do título,
@@ -70,16 +83,20 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - Se o briefing do verso tiver modo "continuacao", o prompt deve pedir
   "seamless continuation of the provided front cover artwork onto the back
   cover of the same book, matching palette, lighting and style".
+- Nunca descreva a capa como objeto físico, impresso, fotografado, em
+  mockup ou apresentação — o prompt descreve somente a arte em si.
 
 FERRAMENTAS: responda SEMPRE e SOMENTE chamando a ferramenta indicada.
 - Para "sugerir_conceito": proponha um conceito visual de capa em 2-3
   frases, em português, concreto (cena, objetos, atmosfera, luz), fiel ao
   gênero e à sinopse, sem clichês vazios e sem pedir textos na imagem.
-- Para "confirmar": produza (1) prompt_imagem em inglês seguindo as regras
-  acima, denso e específico; (2) frase_confirmacao em português, 1 frase
-  natural resumindo ao autor o que será gerado (estilo, atmosfera, cor,
-  cena principal, área livre do título quando houver); (3) negative_hints,
-  lista curta em inglês do que evitar (inclui os pedidos do autor).`;
+- Para "confirmar": produza (1) prompt_imagem em inglês descrevendo the
+  flat artwork that will be used as the front cover background of a book,
+  seguindo as regras acima, denso e específico; (2) frase_confirmacao em
+  português, 1 frase natural resumindo ao autor o que será gerado (estilo,
+  atmosfera, cor, cena principal, área livre do título quando houver);
+  (3) negative_hints, lista curta em inglês do que evitar (inclui os
+  pedidos do autor).`;
 
 const TOOL_CONCEITO = {
   name: "entregar_conceito",
@@ -297,10 +314,6 @@ export async function processarBriefingCapa(args: {
     throw new Error("Resposta incompleta da IA. Tente novamente.");
   }
 
-  // Cinto e suspensório: regra inegociável entra mesmo se a IA esquecer.
-  const promptFinal = /no text/i.test(promptImagem)
-    ? promptImagem
-    : `${promptImagem} Absolutely no text, no letters, no words, no typography.`;
-
+  const promptFinal = `${promptImagem}${SUFIXO_TECNICO_IMAGEM(args.alvo)}`;
   return { prompt_imagem: promptFinal, frase_confirmacao: frase, negative_hints: hints };
 }
