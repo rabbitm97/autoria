@@ -13,6 +13,7 @@ import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
+import type { PropositoPublicacao } from "@/lib/project-data";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -770,6 +771,7 @@ function ModoIA({
   autor,
   genero,
   estimativaPaginas: _estimativaPaginas,
+  regerarDe,
   onSalvo,
   onVoltar,
 }: {
@@ -779,6 +781,7 @@ function ModoIA({
   sinopse: string;
   genero: string;
   estimativaPaginas: number | null;
+  regerarDe?: CapaGeradaResult;
   onSalvo: (dadosServidor: CapaGeradaResult) => void;
   onVoltar: () => void;
 }) {
@@ -795,18 +798,23 @@ function ModoIA({
   // Máquina de estados: briefing → confirmando → gerando → escolha
   const [fase, setFase] = useState<"briefing" | "confirmando" | "gerando" | "escolha">("briefing");
 
-  // Briefing
-  const [estilo, setEstilo] = useState<EstiloCapa>("minimalista");
-  const [atmosfera, setAtmosfera] = useState<string[]>([]);
-  const [cor, setCor] = useState(CORES_PRESET[0].value);
-  const [corHex, setCorHex] = useState(CORES_PRESET[0].hex);
-  const [posicaoTitulo, setPosicaoTitulo] = useState<"topo" | "centro" | "base" | "sem_preferencia">("topo");
-  const [descricaoLivre, setDescricaoLivre] = useState("");
-  const [referenciasTexto, setReferenciasTexto] = useState("");
-  const [evitar, setEvitar] = useState("");
+  // Briefing — inicializado de regerarDe quando em modo regeneração
+  const presetCorInicial = regerarDe
+    ? (CORES_PRESET.find(c => c.value === regerarDe.cor_predominante) ?? null)
+    : null;
+  const [estilo, setEstilo] = useState<EstiloCapa>(regerarDe?.estilo ?? "minimalista");
+  const [atmosfera, setAtmosfera] = useState<string[]>(regerarDe ? [...regerarDe.atmosfera] : []);
+  const [cor, setCor] = useState(presetCorInicial?.value ?? (regerarDe?.cor_predominante ?? CORES_PRESET[0].value));
+  const [corHex, setCorHex] = useState(presetCorInicial?.hex ?? (regerarDe?.cor_predominante_hex ?? CORES_PRESET[0].hex));
+  const [posicaoTitulo, setPosicaoTitulo] = useState<"topo" | "centro" | "base" | "sem_preferencia">(
+    regerarDe?.posicao_titulo ?? "topo"
+  );
+  const [descricaoLivre, setDescricaoLivre] = useState(regerarDe?.descricao_livre ?? "");
+  const [referenciasTexto, setReferenciasTexto] = useState(regerarDe?.referencias_texto ?? "");
+  const [evitar, setEvitar] = useState(regerarDe?.evitar ?? "");
   const [imgRef, setImgRef] = useState<string | null>(null);
   const [imgRefIntencao, setImgRefIntencao] = useState<"estilo" | "conteudo">("estilo");
-  const [isRegen, setIsRegen] = useState(false);
+  const [isRegen, setIsRegen] = useState(!!regerarDe);
   const [deltaTexto, setDeltaTexto] = useState("");
   const [cobranca, setCobranca] = useState<{ gratis: boolean; custo: number; saldo: number | null } | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
@@ -826,8 +834,8 @@ function ModoIA({
   // Confirmação
   const [frase, setFrase] = useState("");
 
-  // Resultado / escolha
-  const [resultado, setResultado] = useState<CapaGeradaResult | null>(null);
+  // Resultado / escolha — pre-populado quando regerarDe fornecido
+  const [resultado, setResultado] = useState<CapaGeradaResult | null>(regerarDe ?? null);
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aceitando, setAceitando] = useState(false);
@@ -1559,7 +1567,127 @@ function RecomendacoesTecnicas({
   );
 }
 
-// ─── Result card ──────────────────────────────────────────────────────────────
+// ─── CapaIaStatusCard ────────────────────────────────────────────────────────
+// Substitui ResultadoCard para o modo IA. Caminho primário: editor. Sem
+// segundo step de confirmação (B2-04b).
+
+function CapaIaStatusCard({
+  dados,
+  proposito,
+  onAbrirEditor,
+  onGerarNovamente,
+  onEscolherTrilha,
+}: {
+  dados: Record<string, unknown>;
+  proposito: PropositoPublicacao | null;
+  onAbrirEditor: () => void;
+  onGerarNovamente: () => void;
+  onEscolherTrilha: (p: PropositoPublicacao) => Promise<void>;
+}) {
+  const url = dados.url_escolhida as string | undefined;
+  const [escolhendoTrilha, setEscolhendoTrilha] = useState(false);
+  const [salvandoTrilha, setSalvandoTrilha] = useState(false);
+
+  async function handleAbrirEditor() {
+    if (proposito !== null) { onAbrirEditor(); return; }
+    setEscolhendoTrilha(true);
+  }
+
+  async function handleEscolher(p: PropositoPublicacao) {
+    setSalvandoTrilha(true);
+    await onEscolherTrilha(p);
+    setSalvandoTrilha(false);
+    onAbrirEditor();
+  }
+
+  if (escolhendoTrilha) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <p className="font-heading text-xl text-brand-primary">Qual é a sua trilha de publicação?</p>
+          <p className="text-sm text-zinc-500 mt-1">Esta escolha orienta quais arquivos são gerados para você.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {([
+            { id: "digital" as const, label: "Publicação digital", sub: "EPUB para Amazon, Apple, Kobo, Google Play" },
+            { id: "completa" as const, label: "Publicação completa", sub: "Digital + PDF com sangria e marcas de corte para gráfica" },
+          ]).map(t => (
+            <button key={t.id} onClick={() => handleEscolher(t.id)}
+              disabled={salvandoTrilha}
+              className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
+                hover:border-brand-gold/60 hover:shadow-sm transition-all text-left disabled:opacity-50">
+              <div>
+                <p className="font-semibold text-brand-primary text-sm">{t.label}</p>
+                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{t.sub}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+            <CheckCircleIcon />
+          </div>
+          <div>
+            <p className="font-medium text-brand-primary text-sm">Capa gerada com IA</p>
+            <p className="text-xs text-zinc-400">
+              {dados.gerado_em ? new Date(dados.gerado_em as string).toLocaleString("pt-BR") : ""}
+            </p>
+          </div>
+        </div>
+        {url && (
+          <div className="flex justify-center">
+            <div className="relative w-32 aspect-[2/3] rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-50">
+              <Image src={url} alt="Capa" fill className="object-cover" />
+            </div>
+          </div>
+        )}
+        <p className="text-sm text-zinc-600 text-center">
+          Sua capa está no editor — adicione título, nome e textos por lá.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <button onClick={handleAbrirEditor}
+          className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
+            hover:bg-brand-primary/90 transition-colors">
+          Abrir no editor →
+        </button>
+        <button onClick={onGerarNovamente}
+          className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
+            hover:border-amber-300 transition-colors">
+          Gerar novas opções{" "}
+          <span className="text-amber-600 font-medium">
+            ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
+          </span>
+        </button>
+        <button onClick={onGerarNovamente}
+          className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2 text-center">
+          Usar outro modo (upload ou editor em branco)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CheckCircleIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className="text-emerald-600">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <polyline points="22 4 12 14.01 9 11.01"/>
+    </svg>
+  );
+}
+
+// ─── Result card (badges) ─────────────────────────────────────────────────────
 
 function AnaliseBadge({
   label,
@@ -1577,75 +1705,6 @@ function AnaliseBadge({
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${styles[variant]}`}>
       {label}
     </span>
-  );
-}
-
-function ResultadoCard({
-  dados,
-  onContinuar,
-  onRefazer,
-  onEditarEditor,
-}: {
-  dados: Record<string, unknown>;
-  onContinuar: () => void;
-  onRefazer: () => void;
-  onEditarEditor?: () => void;
-}) {
-  const modo = (dados.source === "editor" ? "editor" : dados.modo) as string;
-  const url = (dados.imagem_url ?? dados.url_escolhida ?? dados.url) as string | undefined;
-  const analise = dados.analise_tecnica as AnaliseTecnica | undefined;
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-            <CheckCircleIcon />
-          </div>
-          <div>
-            <p className="font-medium text-brand-primary text-sm">
-              {modo === "upload" ? "Capa enviada com sucesso" :
-               modo === "ia" ? "Capa gerada com IA" :
-               modo === "editor" ? "Capa criada no editor" :
-               "Capa registrada"}
-            </p>
-            <p className="text-xs text-zinc-400">
-              {dados.gerado_em ? new Date(dados.gerado_em as string).toLocaleString("pt-BR") : ""}
-            </p>
-          </div>
-        </div>
-
-        {url && (
-          <div className="flex justify-center mb-4">
-            <div className="relative w-full max-w-xl aspect-[16/5] rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-50">
-              <Image src={url} alt="Capa" fill className="object-contain" />
-            </div>
-          </div>
-        )}
-
-        <RecomendacoesTecnicas analise={analise} />
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3">
-        <button onClick={onRefazer}
-          className="px-6 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-            hover:border-brand-gold/30 transition-colors">
-          Refazer capa
-        </button>
-        {onEditarEditor && (
-          <button onClick={onEditarEditor}
-            className="px-6 py-3 rounded-xl border border-brand-gold/40 text-brand-primary text-sm
-              hover:bg-brand-gold/5 transition-colors">
-            Editar no editor
-          </button>
-        )}
-        <button onClick={onContinuar}
-          className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
-            hover:bg-brand-gold/90 transition-colors">
-          Aceito — Continuar para Créditos →
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -1691,13 +1750,21 @@ export default function CapaPage() {
   //   - "erro": chamada falhou, mostra CTA "Tentar de novo"
   const [analiseStatus, setAnaliseStatus] = useState<AnaliseStatus>("nao_analisada");
   const [analiseErro, setAnaliseErro] = useState<string | null>(null);
+  // Trilha de publicação — antecipada aqui para pré-selecionar Créditos.
+  // null = indefinida (mostra tela de escolha). Valores legados
+  // "pessoal"/"livrarias" são normalizados na leitura; qualquer valor ≠
+  // "digital"/"completa" é tratado como indefinido.
+  const [proposito, setProposito] = useState<PropositoPublicacao | null>(null);
+  // CapaGeradaResult a pré-carregar quando abre ModoIA em modo regeneração
+  // a partir do CapaIaStatusCard.
+  const [modoIaRegerarDe, setModoIaRegerarDe] = useState<CapaGeradaResult | null>(null);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await supabase
         .from("projects")
-        .select("dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("dados_elementos, dados_capa, dados_creditos, dados_miolo, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
 
@@ -1724,6 +1791,16 @@ export default function CapaPage() {
           setModo("upload");
         }
       }
+
+      // Extrair proposito de dados_creditos. Normaliza legados "pessoal"/
+      // "livrarias" tal como o dashboard de Créditos faz (restoreConfig).
+      const dc = data?.dados_creditos as { config?: { proposito?: string } } | null;
+      const propRaw = dc?.config?.proposito;
+      const propNorm: PropositoPublicacao | null =
+        propRaw === "completa" || propRaw === "livrarias" ? "completa"
+        : propRaw === "digital" || propRaw === "pessoal" ? "digital"
+        : null;
+      setProposito(propNorm);
 
       const fmtRes = await fetch(`/api/projects/${id}/formato`).then(r => r.ok ? r.json() : null);
       if (fmtRes?.formato) {
@@ -1762,9 +1839,12 @@ export default function CapaPage() {
       // bloquear a renderização inicial da UI (mostra dados antigos, e
       // troca silenciosamente quando a reanálise termina).
       const capaCarregada = data?.dados_capa as {
+        modo?: string;
         analise_tecnica?: { lombada_esperada_mm?: number };
       } | null;
-      const analiseSalva = capaCarregada?.analise_tecnica;
+      // Auto-reanálise só faz sentido para upload: capa IA não tem dimensões
+      // de arquivo para validar sangria/lombada/DPI.
+      const analiseSalva = capaCarregada?.modo === "upload" ? capaCarregada?.analise_tecnica : null;
       if (analiseSalva && miolo?.paginas_reais) {
         const lombadaEsperadaAtual = estimarLombadaCapaMm(miolo.paginas_reais);
         const lombadaEsperadaSalva = analiseSalva.lombada_esperada_mm ?? 0;
@@ -1806,10 +1886,10 @@ export default function CapaPage() {
   useEffect(() => { loadProject(); }, [loadProject]);
 
   // Ao carregar dados salvos (reload da página, navegação de volta),
-  // sincronizar analiseStatus com o que existe no banco. Fonte da verdade
-  // persistida = dados_capa.analise_tecnica; o status local só reflete.
+  // sincronizar analiseStatus com o que existe no banco. Análise só se
+  // aplica a capas de upload — IA não tem dimensões de arquivo.
   useEffect(() => {
-    if (!dados) return;
+    if (!dados || dados.modo !== "upload") return;
     if (dados.analise_tecnica) {
       setAnaliseStatus("concluida");
       setAnaliseErro(null);
@@ -1942,6 +2022,15 @@ export default function CapaPage() {
     // ModoUpload (implementado na Passada 2).
   }
 
+  async function handleEscolherTrilha(p: PropositoPublicacao): Promise<void> {
+    const res = await fetch(`/api/projects/${id}/proposito`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proposito: p }),
+    });
+    if (res.ok) setProposito(p);
+  }
+
   // Zera dados_capa quando o autor está trocando de modo. Garante que
   // "sempre a última escolha vale" — sem estados híbridos entre
   // Upload / IA / Editor.
@@ -1994,29 +2083,31 @@ export default function CapaPage() {
           </p>
         </div>
 
-        {/* Already has result — só a IA usa ResultadoCard. Upload é
-            renderizado pelo próprio ModoUpload (com preview + análise
-            inline). Editor confirmado usa card compacto no grid. */}
         {dados && modo === "escolha" && dados.modo === "ia" ? (
-          <ResultadoCard
+          <CapaIaStatusCard
             dados={dados}
-            onContinuar={handleContinuar}
-            onRefazer={async () => {
-              // Zera dados_capa no banco antes de limpar estado local. Sem
-              // isso, o editor abre "continuando" a capa anterior (background
-              // + elements persistidos em editor_data) em vez de em branco.
-              try {
-                await fetch(`/api/projects/${id}/capa/reset`, { method: "POST" });
-              } catch (err) {
-                console.error("[capa] falha ao resetar dados_capa (não-fatal):", err);
-              }
-              setDados(null);
-              setModo("escolha");
+            proposito={proposito}
+            onAbrirEditor={() => router.push(`/editor/capa/${id}`)}
+            onGerarNovamente={() => {
+              setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
+              setModo("ia");
             }}
-            onEditarEditor={() => router.push(`/editor/capa/${id}`)}
+            onEscolherTrilha={handleEscolherTrilha}
           />
         ) : modo === "escolha" ? (
           <div className="space-y-6">
+            {/* Linha discreta de trilha — aparece quando já definida */}
+            {proposito !== null && (
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <span>Trilha: <strong className="text-brand-primary">
+                  {proposito === "digital" ? "Publicação digital" : "Publicação completa (digital + impressa)"}
+                </strong></span>
+                <span>·</span>
+                <button onClick={() => setProposito(null)} className="underline hover:text-zinc-700">
+                  Trocar
+                </button>
+              </div>
+            )}
             {/* Format — read-only; defined in Elementos step */}
             <div className="bg-white rounded-2xl border border-zinc-100 p-5">
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
@@ -2098,6 +2189,45 @@ export default function CapaPage() {
             )}
 
             {formatoDefinido === true && (() => {
+              const capaSalva = dados?.modo === "upload" || (dados?.source === "editor" && Boolean(dados?.confirmed_at));
+              if (proposito === null && !capaSalva) {
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <h2 className="text-base font-semibold text-brand-primary mb-1">Como você quer publicar?</h2>
+                      <p className="text-xs text-zinc-500">Escolha a trilha antes de criar a capa. Você pode trocar depois.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <button
+                        onClick={() => void handleEscolherTrilha("digital")}
+                        className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200 hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center group-hover:bg-brand-gold/20 transition-colors">
+                          <span className="text-2xl">📱</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-brand-primary text-sm">Publicação digital</p>
+                          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">Ebook (e-pub/PDF). Capa frente apenas, sem lombada impressa.</p>
+                        </div>
+                        <span className="text-xs font-medium text-brand-gold mt-auto">Selecionar →</span>
+                      </button>
+                      <button
+                        onClick={() => void handleEscolherTrilha("completa")}
+                        className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200 hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center group-hover:bg-brand-gold/20 transition-colors">
+                          <span className="text-2xl">📚</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-brand-primary text-sm">Publicação completa</p>
+                          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">Digital + impressa. Capa panorâmica (frente + lombada + verso) e opção de orelhas.</p>
+                        </div>
+                        <span className="text-xs font-medium text-brand-gold mt-auto">Selecionar →</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
               const editorConfirmed = dados?.source === "editor" && dados?.confirmed_at;
               const editorThumbnail = editorConfirmed ? (dados?.imagem_url as string | undefined) : null;
               const editorConfirmedAt = editorConfirmed ? (dados?.confirmed_at as string) : null;
@@ -2265,8 +2395,16 @@ export default function CapaPage() {
             sinopse={sinopse}
             genero={genero}
             estimativaPaginas={estimativaPaginas}
-            onSalvo={(dados) => { handleSalvoIA(dados); setModo("escolha"); }}
-            onVoltar={() => setModo("escolha")}
+            regerarDe={modoIaRegerarDe ?? undefined}
+            onSalvo={(dadosServidor) => {
+              handleSalvoIA(dadosServidor);
+              setModoIaRegerarDe(null);
+              if (proposito !== null) {
+                router.push(`/editor/capa/${id}`);
+              }
+              setModo("escolha");
+            }}
+            onVoltar={() => { setModo("escolha"); setModoIaRegerarDe(null); }}
           />
         ) : null}
 
@@ -2309,13 +2447,3 @@ function PencilIcon() {
   );
 }
 
-function CheckCircleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      className="text-emerald-600">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-      <polyline points="22 4 12 14.01 9 11.01"/>
-    </svg>
-  );
-}
