@@ -198,17 +198,33 @@ export interface OpcaoCapa {
   storage_path: string;
 }
 
+export interface GaleriaCapaItem {
+  url: string;
+  storage_path: string;
+  tipo: "frente" | "verso";
+  gerado_em: string;
+}
+
 export interface CapaGeradaResult {
   project_id: string;
   modo: "ia";
+  briefing_versao: 2;
   estilo: EstiloCapa;
+  atmosfera: string[];
   cor_predominante: string;
-  quarta_capa_texto: string;
+  cor_predominante_hex: string;
+  posicao_titulo: "topo" | "centro" | "base" | "sem_preferencia";
+  descricao_livre?: string;
+  referencias_texto?: string;
+  evitar?: string;
   usar_orelhas: boolean;
   orelha_mm: number;
   prompt_usado: string;
+  frase_confirmacao?: string;
   opcoes: OpcaoCapa[];
+  galeria: GaleriaCapaItem[];
   url_escolhida: string | null;
+  verso: null;
   gerado_em: string;
   is_regeneracao: boolean;
   paginas_estimadas: number;
@@ -594,6 +610,13 @@ const fichaOficialCrbSchema = z.looseObject({
   declaracao_user_agent: z.string().nullish(),
 });
 
+const galeriaCapaItemSchema = z.looseObject({
+  url: z.string(),
+  storage_path: z.string(),
+  tipo: z.string(),
+  gerado_em: z.string(),
+});
+
 const opcaoCapaSchema = z.looseObject({
   url: z.string(),
   storage_path: z.string(),
@@ -631,14 +654,23 @@ const dadosCapaEditorSchema = z.looseObject({
 const dadosCapaIaSchema = z.looseObject({
   project_id: z.string(),
   modo: z.literal("ia"),
+  briefing_versao: z.number().nullish(),
   estilo: z.string(),
+  atmosfera: z.array(z.string()).nullish(),
   cor_predominante: z.string(),
-  quarta_capa_texto: z.string(),
+  cor_predominante_hex: z.string().nullish(),
+  posicao_titulo: z.string().nullish(),
+  descricao_livre: z.string().nullish(),
+  referencias_texto: z.string().nullish(),
+  evitar: z.string().nullish(),
   usar_orelhas: z.boolean(),
   orelha_mm: z.number(),
   prompt_usado: z.string(),
+  frase_confirmacao: z.string().nullish(),
   opcoes: z.array(opcaoCapaSchema),
+  galeria: z.array(galeriaCapaItemSchema).nullish(),
   url_escolhida: z.string().nullable(),
+  verso: z.null().nullish(),
   gerado_em: z.string(),
   is_regeneracao: z.boolean(),
   paginas_estimadas: z.number(),

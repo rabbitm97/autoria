@@ -1,53 +1,22 @@
 export const maxDuration = 120;
 
 import { GoogleGenAI, type Part } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { lockFormato } from "@/lib/projects";
 import { isDev } from "@/lib/anthropic";
 import { estimarLombadaCapaMm } from "@/lib/formatos";
-import { clampOrelhaMm, getOrelhaDefault, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 import { validarProjectData } from "@/lib/project-data";
-import type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
+import type { EstiloCapa, OpcaoCapa, CapaGeradaResult, GaleriaCapaItem } from "@/lib/project-data";
+import { briefingCapaSchema, processarBriefingCapa, type ContextoLivro } from "@/lib/capa-briefing";
+import { debitarCreditos, estornarCreditos, CUSTOS_CREDITOS } from "@/lib/creditos";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
+// Re-export types for consumers that import from this route path
 export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const ESTILO_DESC: Record<EstiloCapa, string> = {
-  minimalista:    "minimalist editorial design, clean lines, flat colors, lots of white space",
-  cartoon:        "cartoon illustration style, bold outlines, vibrant flat colors, playful feel",
-  aquarela:       "watercolor painting style, soft washes, organic edges, painterly texture",
-  fotorrealista:  "photorealistic digital art, cinematic lighting, high detail, professional photography feel",
-  abstrato:       "abstract art, geometric shapes, overlapping forms, expressive color fields",
-  vintage:        "vintage retro illustration, aged textures, muted palette, period-appropriate typography feel",
-  geometrico:     "geometric design, bold shapes, strong contrast, modern graphic style",
-};
-
-function buildPrompt(opts: {
-  titulo: string;
-  autor: string;
-  sinopse: string;
-  genero: string;
-  estilo: EstiloCapa;
-  cor_predominante: string;
-}): string {
-  return [
-    `Professional book cover design for "${opts.titulo}" by ${opts.autor}.`,
-    `Genre: ${opts.genero}.`,
-    `Story synopsis: ${opts.sinopse.slice(0, 250)}.`,
-    `Style: ${ESTILO_DESC[opts.estilo]}.`,
-    `Predominant color palette centered around ${opts.cor_predominante}.`,
-    "Portrait orientation (2:3 aspect ratio). No text, no letters, no words on the image.",
-    "High contrast, professional publishing industry quality, suitable for CMYK print.",
-    "Full bleed composition, no borders or frames.",
-  ].join(" ");
-}
 
 function buildContents(prompt: string, ref: string | undefined): Part[] {
   if (ref) {
@@ -62,18 +31,27 @@ function buildContents(prompt: string, ref: string | undefined): Part[] {
   return [{ text: prompt } as Part];
 }
 
-// ─── POST /api/agentes/gerar-capa ─────────────────────────────────────────────
+const gerarCapaBodySchema = z.object({
+  project_id: z.string().min(1),
+  briefing: briefingCapaSchema,
+  imagemRef: z.string().max(5_000_000).optional(),
+  is_regeneracao: z.boolean().optional().default(false),
+  qtd: z.number().int().min(1).max(4).optional().default(4),
+});
 
 export async function POST(req: NextRequest) {
   try {
   const dev = isDev();
 
   let userId: string;
-  let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let supabase: SupabaseClient<any>;
   if (dev) {
     userId = "dev-user";
-    supabase = await createSupabaseServerClient();
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
   } else {
     try {
       const auth = await requireAuth();
@@ -91,59 +69,36 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: {
-    project_id: string;
-    estilo?: EstiloCapa;
-    cor_predominante?: string;
-    usar_orelhas?: boolean;
-    orelha_mm?: number;
-    quarta_capa_texto?: string;
-    imagemRef?: string;
-    is_regeneracao?: boolean;
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
-  }
-
-  const {
-    project_id,
-    estilo = "minimalista",
-    cor_predominante = "azul escuro",
-    usar_orelhas = false,
-    orelha_mm: rawOrelhaMm,
-    imagemRef,
-    is_regeneracao = false,
-  } = body;
-
-  if (!project_id) {
-    return NextResponse.json({ error: "project_id é obrigatório" }, { status: 400 });
-  }
-
-  if (imagemRef && imagemRef.length > 5_000_000) {
+  const parsed = gerarCapaBodySchema.safeParse(await req.json());
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Imagem de referência muito grande (máx 5MB)" },
-      { status: 413 },
+      { error: "Payload inválido.", detalhes: parsed.error.issues },
+      { status: 400 },
     );
   }
+  const body = parsed.data;
+  const { project_id, is_regeneracao } = body;
 
-  // ── Fetch project + manuscripts from DB ───────────────────────────────────
+  // Fetch project — includes dados_capa for galeria merge
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, plano, creditos, formato, dados_elementos, dados_miolo, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)")
+    .select(
+      "id, user_id, plano, formato, dados_elementos, dados_miolo, dados_capa, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)",
+    )
     .eq("id", project_id)
-    .eq("user_id", userId)
     .single();
 
   if (projErr || !project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
+  if (!dev && (project as { user_id: string }).user_id !== userId) {
+    return NextResponse.json({ error: "Sem acesso a este projeto." }, { status: 403 });
+  }
 
   const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-capa");
   if (gate) return gate;
 
-  const ms = project.manuscripts as unknown as {
+  const ms = (project as Record<string, unknown>).manuscripts as {
     titulo?: string;
     subtitulo?: string;
     autor_primeiro_nome?: string;
@@ -151,30 +106,22 @@ export async function POST(req: NextRequest) {
     genero_principal?: string;
   } | null;
 
-  const dadosElementos = project.dados_elementos as {
+  const dadosElementos = (project as Record<string, unknown>).dados_elementos as {
     sinopse_curta?: string;
     sinopse_longa?: string;
+    palavras_chave?: string[];
   } | null;
 
   const titulo = ms?.titulo ?? "";
   const autor = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ") || "";
   const genero = ms?.genero_principal || "literatura";
-
   const sinopse = dadosElementos?.sinopse_longa || dadosElementos?.sinopse_curta || "";
 
-  const dadosMiolo = project.dados_miolo as { paginas_reais?: number; paginas_estimadas?: number } | null;
+  const dadosMiolo = (project as Record<string, unknown>).dados_miolo as {
+    paginas_reais?: number;
+    paginas_estimadas?: number;
+  } | null;
   const paginas = dadosMiolo?.paginas_reais ?? dadosMiolo?.paginas_estimadas ?? 200;
-
-  const formato: FormatKey = ((project as { formato?: string }).formato as FormatKey) ?? "padrao_br";
-  let orelha_mm = 0;
-  if (typeof rawOrelhaMm === "number" && Number.isFinite(rawOrelhaMm)) {
-    orelha_mm = clampOrelhaMm(formato, rawOrelhaMm);
-  } else if (typeof usar_orelhas === "boolean") {
-    orelha_mm = usar_orelhas ? getOrelhaDefault(formato) : 0;
-  }
-  const usar_orelhas_resolved = orelha_mm > 0;
-
-  const quarta_capa_texto = body.quarta_capa_texto ?? sinopse.slice(0, 500);
 
   if (!titulo) {
     return NextResponse.json(
@@ -190,106 +137,178 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Credit check for regeneration ────────────────────────────────────────
-  if (is_regeneracao && !dev) {
-    const creditos = (project as unknown as { creditos?: number }).creditos ?? 0;
-    if (creditos < 20) {
-      return NextResponse.json(
-        { error: "Créditos insuficientes. Regenerar capa custa 20 créditos." },
-        { status: 402 }
-      );
-    }
+  const storageClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
-    const { error: debitoErr } = await supabase
-      .from("projects")
-      .update({ creditos: creditos - 20 })
-      .eq("id", project_id);
-    if (debitoErr) {
-      console.error("[gerar-capa] Falha ao debitar créditos:", debitoErr.message);
+  const contexto: ContextoLivro = {
+    titulo,
+    subtitulo: ms?.subtitulo ?? "",
+    autor,
+    genero,
+    sinopse: sinopse.slice(0, 1200),
+    temas: JSON.stringify(dadosElementos?.palavras_chave ?? []).slice(0, 400),
+  };
+
+  // Prompt via agente intermediário (server-side — nunca do front)
+  let prompt_imagem: string;
+  let frase_confirmacao: string;
+  try {
+    const agente = await processarBriefingCapa({
+      contexto,
+      briefing: body.briefing,
+      alvo: "frente",
+      projectId: project_id,
+      userId,
+    });
+    prompt_imagem = agente.prompt_imagem;
+    frase_confirmacao = agente.frase_confirmacao;
+  } catch (err) {
+    console.error("[gerar-capa] agente briefing falhou:", err);
+    return NextResponse.json(
+      { error: "Não foi possível preparar a geração. Tente novamente." },
+      { status: 502 },
+    );
+  }
+
+  // Débito de créditos (após prompt, antes de imagem — falha de imagem → estorno)
+  if (is_regeneracao && !dev) {
+    const debito = await debitarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
+    if (!debito.ok) {
+      if (debito.erro === "saldo_insuficiente") {
+        return NextResponse.json(
+          {
+            error: `Créditos insuficientes. Regenerar capa custa ${CUSTOS_CREDITOS.regenerar_capa_frente} créditos.`,
+            saldo: debito.saldo,
+          },
+          { status: 402 },
+        );
+      }
       return NextResponse.json(
         { error: "Falha ao debitar créditos. Tente novamente." },
-        { status: 500 }
+        { status: 500 },
       );
     }
   }
 
-  const prompt = buildPrompt({ titulo, autor, sinopse, genero, estilo, cor_predominante });
-
-  // Service-role client for Storage uploads
-  const storageClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
-  const opcoes: OpcaoCapa[] = [];
+  const rodadaTs = Date.now();
 
-  // Nano Banana Pro gera 1 imagem por chamada — fazemos 4 chamadas sequenciais
-  // para obter as 4 opções de capa. A `imagemRef` (data URL) é injetada via
-  // `buildContents` como `inlineData`, permitindo controle de estilo nativo.
-  const NUM_OPCOES = 4;
-
-  for (let i = 0; i < NUM_OPCOES; i++) {
+  async function gerarUmaOpcao(i: number): Promise<OpcaoCapa | null> {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-image-preview",
-        contents: [{ role: "user", parts: buildContents(prompt, imagemRef) }],
+        contents: [{ role: "user", parts: buildContents(prompt_imagem, body.imagemRef) }],
         config: {
           responseModalities: ["IMAGE"],
-          imageConfig: { aspectRatio: "2:3", imageSize: "2K" },
+          imageConfig: { aspectRatio: "2:3", imageSize: "4K" },
         },
       });
-
       const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
       const imgPart = parts.find((p) => p.inlineData);
       if (!imgPart?.inlineData?.data) {
-        console.warn(`[gerar-capa] option ${i}: inlineData ausente`);
-        continue;
+        console.warn(`[gerar-capa] opção ${i}: inlineData ausente`);
+        return null;
       }
-
-      const base64 = imgPart.inlineData.data;
       const mimeType = imgPart.inlineData.mimeType ?? "image/png";
       const ext = mimeType.includes("png") ? "png" : "jpg";
-      const storagePath = `${userId}/${project_id}/capa_ia_${i}.${ext}`;
-      const buffer = Buffer.from(base64, "base64");
-
+      const storagePath = `${userId}/${project_id}/capa_ia_${rodadaTs}_${i}.${ext}`;
+      const buffer = Buffer.from(imgPart.inlineData.data, "base64");
+      console.log(`[DEBUG-B2] opção ${i}: ${buffer.length} bytes, mime ${mimeType}`);
       const { error: uploadError } = await storageClient.storage
         .from("capas")
-        .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
-
+        .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        console.error(`[gerar-capa] upload error (opção ${i}):`, uploadError.message);
-        continue;
+        console.error(`[gerar-capa] upload (opção ${i}):`, uploadError.message);
+        return null;
       }
-
       const { url: publicUrl, error: signErr } = await signedUrlCapas(storageClient, storagePath);
       if (signErr || !publicUrl) {
-        console.error(`[gerar-capa] signed URL failed (opção ${i}):`, signErr);
-        continue;
+        console.error(`[gerar-capa] signed URL (opção ${i}):`, signErr);
+        return null;
       }
-
-      opcoes.push({ url: publicUrl, storage_path: storagePath });
+      return { url: publicUrl, storage_path: storagePath };
     } catch (err) {
-      console.error(`[gerar-capa] generateContent failed (opção ${i}):`, err);
-      // Continua tentando as próximas opções — não aborta tudo se uma falhar
+      console.error(`[gerar-capa] generateContent (opção ${i}):`, err);
+      return null;
     }
   }
 
+  const resultados = await Promise.allSettled(
+    Array.from({ length: body.qtd }, (_, i) => gerarUmaOpcao(i)),
+  );
+  const opcoes: OpcaoCapa[] = resultados
+    .filter((r): r is PromiseFulfilledResult<OpcaoCapa | null> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((o): o is OpcaoCapa => o !== null);
+
   if (opcoes.length === 0) {
-    return NextResponse.json({ error: "Nenhuma imagem foi gerada" }, { status: 500 });
+    if (is_regeneracao && !dev) {
+      await estornarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
+    }
+    return NextResponse.json(
+      { error: "Nenhuma imagem foi gerada. Seus créditos não foram consumidos." },
+      { status: 502 },
+    );
+  }
+
+  // Galeria append-only, cap 24
+  const dadosCapaAtual = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
+  const galeriaAnterior: GaleriaCapaItem[] = Array.isArray(dadosCapaAtual?.galeria)
+    ? (dadosCapaAtual.galeria as GaleriaCapaItem[])
+    : [];
+
+  const novosItens: GaleriaCapaItem[] = opcoes.map((o) => ({
+    url: o.url,
+    storage_path: o.storage_path,
+    tipo: "frente" as const,
+    gerado_em: new Date().toISOString(),
+  }));
+
+  let galeria: GaleriaCapaItem[] = [...galeriaAnterior, ...novosItens];
+
+  if (galeria.length > 24) {
+    const toDelete = galeria.slice(0, galeria.length - 24);
+    galeria = galeria.slice(-24);
+    // Best-effort delete dos mais antigos
+    for (const item of toDelete) {
+      storageClient.storage
+        .from("capas")
+        .remove([item.storage_path])
+        .then(({ error }) => {
+          if (error) {
+            console.error("[gerar-capa] galeria: falha ao remover", item.storage_path, error.message);
+          } else {
+            console.log("[gerar-capa] galeria: item removido", item.storage_path);
+          }
+        })
+        .catch((err) => {
+          console.error("[gerar-capa] galeria: exception ao remover", item.storage_path, err);
+        });
+    }
   }
 
   const result: CapaGeradaResult = {
     project_id,
     modo: "ia",
-    estilo,
-    cor_predominante,
-    quarta_capa_texto,
-    usar_orelhas: usar_orelhas_resolved,
-    orelha_mm,
-    prompt_usado: prompt,
+    briefing_versao: 2,
+    estilo: body.briefing.estilo as EstiloCapa,
+    atmosfera: [...body.briefing.atmosfera],
+    cor_predominante: body.briefing.cor_predominante.nome,
+    cor_predominante_hex: body.briefing.cor_predominante.hex,
+    posicao_titulo: body.briefing.posicao_titulo,
+    descricao_livre: body.briefing.descricao_livre || undefined,
+    referencias_texto: body.briefing.referencias_texto || undefined,
+    evitar: body.briefing.evitar || undefined,
+    usar_orelhas: false,
+    orelha_mm: 0,
+    prompt_usado: prompt_imagem,
+    frase_confirmacao,
     opcoes,
+    galeria,
     url_escolhida: opcoes[0]?.url ?? null,
+    verso: null,
     gerado_em: new Date().toISOString(),
     is_regeneracao,
     paginas_estimadas: paginas,
@@ -307,7 +326,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { ok: capaOk } = await updateProject(supabase, project_id, userId, {
+  const updateUserId = dev ? null : userId;
+  const { ok: capaOk } = await updateProject(supabase, project_id, updateUserId, {
     dados_capa: result,
   }, "gerar-capa");
   if (!capaOk) {
@@ -317,8 +337,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // C5-03 (item #31): capa IA é dimensionada pro formato atual (lombada,
-  // proporção) — trava igual upload/montar. Idempotente.
   await lockFormato(project_id);
 
   return NextResponse.json(result);
