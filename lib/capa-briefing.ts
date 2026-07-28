@@ -71,13 +71,21 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - A imagem NUNCA contém texto: inclua sempre "absolutely no text, no
   letters, no words, no typography, no numbers".
 - Sempre inclua "full bleed composition, no borders or frames" e
-  "high quality digital artwork, rich color depth, high contrast".
+  "striking, gallery-quality digital artwork", "rich, deep, saturated
+  color palette", "dramatic lighting and strong tonal contrast".
 - NUNCA mencione aspect ratio, resolução ou dimensões no texto do prompt
   (são configurados por parâmetro fora do prompt).
-- Respeite a área de respiro: se o autor indicou posição do título,
-  descreva composição com essa região visualmente calma (ex.: "upper third
-  kept visually calm and uncluttered, minimal detail in that area, to
-  receive the title later").
+- Descreva uma imagem memorável e emocionalmente evocativa, não uma cena
+  literal — interprete o conceito com ambição de direção de arte.
+- Prefira composição com UM elemento visual dominante e hierarquia clara
+  (foco, não simetria decorativa); assimetria é bem-vinda.
+- A cor predominante do autor deve aparecer rica e profunda, nunca
+  desbotada ou acinzentada; use a luz para criar drama dentro dessa paleta.
+- Área de respiro do título = região visualmente calma, mas NUNCA um bloco
+  vazio ou faixa chapada; mantenha textura/gradiente sutil que pertença à
+  arte. Se o autor indicou posição do título, descreva a composição com
+  essa região calma (ex.: "upper third kept visually calm but with subtle
+  gradient texture, to receive the title later").
 - Incorpore o que o autor pediu para evitar como instruções negativas
   claras no próprio prompt.
 - Se o briefing do verso tiver modo "continuacao", o prompt deve pedir
