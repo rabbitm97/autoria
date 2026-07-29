@@ -10,7 +10,8 @@ import { avancarEtapa } from "@/lib/supabase-helpers";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult } from "@/app/api/agentes/upload-capa/route";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
-import { isEditorCapa } from "@/lib/capa-resolver";
+import { isEditorCapa, isUploadCapa } from "@/lib/capa-resolver";
+import { ColorPickerPopover } from "@/components/color-picker-popover";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
@@ -1335,27 +1336,22 @@ function ModoIA({
                   {c.label}
                 </button>
               ))}
-              {/* Swatch "Personalizar" — abre input nativo de cor. schema
-                  aceita qualquer hex; nome fica marcado como "personalizada"
-                  para o prompt saber que não é preset. */}
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs font-medium cursor-pointer transition-all
-                ${cor === "personalizada" ? "border-brand-gold" : "border-zinc-200 hover:border-zinc-300"}`}>
-                <span
-                  className="w-4 h-4 rounded-full border border-white/40 shrink-0"
-                  style={{
-                    background: cor === "personalizada"
-                      ? corHex
-                      : "conic-gradient(from 0deg, #ef4444, #f59e0b, #eab308, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)",
-                  }}
-                />
-                Personalizar
-                <input
-                  type="color"
-                  value={cor === "personalizada" ? corHex : "#c9a227"}
-                  onChange={e => { setCor("personalizada"); setCorHex(e.target.value); }}
-                  className="sr-only"
-                />
-              </label>
+              {/* Swatch "Personalizar" — mesmo picker do editor (paletas +
+                  hex + conta-gotas). schema aceita qualquer hex; nome fica
+                  marcado como "personalizada" para o prompt saber que não é
+                  preset. `allowRemove={false}` porque cor sempre existe no
+                  briefing IA. */}
+              <ColorPickerPopover
+                variant="swatch"
+                selected={cor === "personalizada"}
+                value={cor === "personalizada" ? corHex : null}
+                allowRemove={false}
+                onChange={(hex) => {
+                  if (!hex) return;
+                  setCor("personalizada");
+                  setCorHex(hex);
+                }}
+              />
             </div>
           </div>
 
@@ -1858,6 +1854,7 @@ function CapaExistenteCard({
   dados,
   editorConfirmed,
   proposito,
+  formato,
   onContinuarEditor,
   onAvancarCreditos,
   onVerOutrasGeracoes,
@@ -1868,6 +1865,7 @@ function CapaExistenteCard({
   dados: Record<string, unknown>;
   editorConfirmed: boolean;
   proposito: PropositoPublicacao | null;
+  formato: FormatoLivro;
   onContinuarEditor: () => void;
   onAvancarCreditos: () => void;
   onVerOutrasGeracoes: () => void;
@@ -1885,11 +1883,15 @@ function CapaExistenteCard({
   const temGeracoesIa =
     (Array.isArray(dados.opcoes) && (dados.opcoes as unknown[]).length > 0) ||
     (Array.isArray(dados.galeria) && (dados.galeria as unknown[]).length > 0);
+  // Análise técnica: SÓ faz sentido para origem upload (autor trouxe arquivo
+  // pronto — pode ter cor/sangria/DPI errados). Editor + IA passam pelo
+  // pipeline interno; badge de "Analisando..." fica órfão nesse caminho.
+  const mostrarAnalise = isUploadCapa(dados);
 
   const [escolhendoTrilha, setEscolhendoTrilha] = useState(false);
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
 
-  async function handleContinuar() {
+  async function handleAbrirEditor() {
     if (proposito !== null) { onContinuarEditor(); return; }
     setEscolhendoTrilha(true);
   }
@@ -1933,103 +1935,128 @@ function CapaExistenteCard({
     );
   }
 
-  const iconBg = editorConfirmed ? "bg-emerald-50" : "bg-amber-50";
-  const borderColor = editorConfirmed ? "border-emerald-200" : "border-amber-200";
-  const statusLabel = editorConfirmed ? "Capa confirmada" : "Capa em edição";
+  // Proporção da miniatura pelo formato (frente pura = width/height). Confirmada
+  // pode ser panorâmica ou frente-only — usa `object-contain` pra não cortar.
+  const fmtSpecs = getFormatoDef(formato).specs;
+  const aspectFrente = fmtSpecs.width_mm / fmtSpecs.height_mm;
+  const thumbHeightPx = 180;
+  const thumbWidthPx = Math.round(thumbHeightPx * aspectFrente);
+
+  const statusLabel = editorConfirmed ? "Capa confirmada" : "Falta confirmar no editor";
   const statusDetail = editorConfirmed && confirmedAt
     ? `Confirmada em ${new Date(confirmedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
-    : "Finalize e confirme no editor para virar capa final.";
+    : "Arte selecionada. Abra no editor para finalizar e virar capa final.";
 
   return (
-    <div className="space-y-6">
-      <div className={`bg-white rounded-2xl border ${borderColor} p-6 space-y-4`}>
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center`}>
-            {editorConfirmed ? <CheckCircleIcon /> : <PencilIcon />}
-          </div>
-          <div>
-            <p className="font-medium text-brand-primary text-sm">{statusLabel}</p>
-            <p className="text-xs text-zinc-500">{statusDetail}</p>
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+        <div className="flex flex-col sm:flex-row gap-6">
+          {/* Miniatura à esquerda — proporção do formato */}
+          {thumbUrl ? (
+            <div
+              className="relative shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 shadow-sm"
+              style={{
+                width: editorConfirmed ? "auto" : thumbWidthPx,
+                height: thumbHeightPx,
+                maxWidth: editorConfirmed ? 320 : thumbWidthPx,
+              }}
+            >
+              {editorConfirmed ? (
+                // Confirmada pode ser panorâmica — contain para não cortar.
+                <img src={thumbUrl} alt="Capa" className="h-full w-auto object-contain" />
+              ) : (
+                <Image src={thumbUrl} alt="Capa" fill className="object-cover" sizes="180px" />
+              )}
+            </div>
+          ) : (
+            <div
+              className="shrink-0 rounded-lg border border-dashed border-zinc-200 bg-zinc-50"
+              style={{ width: thumbWidthPx, height: thumbHeightPx }}
+            />
+          )}
+
+          {/* Info + CTAs à direita */}
+          <div className="flex flex-1 flex-col gap-4 min-w-0">
+            <div className="flex items-start gap-2">
+              {editorConfirmed
+                ? <span className="mt-0.5 shrink-0 text-emerald-600"><CheckCircleIcon /></span>
+                : <span className="mt-0.5 shrink-0 text-amber-500"><PencilIcon /></span>}
+              <div className="min-w-0">
+                <p className="font-medium text-brand-primary text-sm">{statusLabel}</p>
+                <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{statusDetail}</p>
+              </div>
+            </div>
+
+            {mostrarAnalise && (() => {
+              const analise = dados.analise_tecnica as AnaliseTecnica | undefined;
+              if (!analise) {
+                return (
+                  <p className="text-[11px] text-zinc-500 flex items-center gap-1.5">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-300 animate-pulse"></span>
+                    Analisando tecnicamente...
+                  </p>
+                );
+              }
+              return (
+                <div className="flex flex-wrap gap-1.5">
+                  <AnaliseBadge
+                    label={analise.colorspace === "cmyk" ? "CMYK ✓" : analise.colorspace === "srgb" ? "RGB" : analise.colorspace === "rgb16" ? "RGB 16" : "Cor?"}
+                    variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
+                  />
+                  <AnaliseBadge
+                    label={analise.sangria === "presente" ? "Sangria ✓" : analise.sangria === "ausente" ? "Sem sangria" : analise.sangria === "parcial" ? "Sangria parcial" : "Dimensões?"}
+                    variant={analise.sangria === "presente" ? "ok" : "aviso"}
+                  />
+                  <AnaliseBadge
+                    label={`${analise.dpi} DPI`}
+                    variant={analise.dpi >= 300 ? "ok" : "aviso"}
+                  />
+                </div>
+              );
+            })()}
+
+            {/* CTAs primários — dourado é o CTA principal. Sem verde. */}
+            <div className="flex flex-wrap gap-3 mt-auto pt-2">
+              {editorConfirmed ? (
+                <>
+                  <button onClick={onAvancarCreditos}
+                    className="px-5 py-2.5 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
+                      hover:bg-brand-primary/90 transition-colors">
+                    Avançar para Créditos →
+                  </button>
+                  <button onClick={handleAbrirEditor}
+                    className="px-5 py-2.5 rounded-xl border border-zinc-200 text-brand-primary font-medium text-sm
+                      hover:border-brand-gold/60 transition-colors">
+                    Continuar editando
+                  </button>
+                </>
+              ) : (
+                <button onClick={handleAbrirEditor}
+                  className="px-5 py-2.5 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
+                    hover:bg-brand-primary/90 transition-colors">
+                  Abrir no editor →
+                </button>
+              )}
+            </div>
           </div>
         </div>
-        {thumbUrl && (
-          <div className="flex justify-center">
-            {editorConfirmed ? (
-              // Confirmado: pode ser panorâmica ou frente-only — usa contain
-              // pra não cortar. Aspect flexível — máx 380px altura.
-              <div className="w-full max-w-lg rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50" style={{ maxHeight: 380 }}>
-                <img src={thumbUrl} alt="Capa" className="w-full h-full object-contain" style={{ maxHeight: 380 }} />
-              </div>
-            ) : (
-              // Em edição: arte IA = frente pura, 2/3.
-              <div className="relative w-32 aspect-[2/3] rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-50">
-                <Image src={thumbUrl} alt="Capa" fill className="object-cover" />
-              </div>
-            )}
-          </div>
-        )}
-        {editorConfirmed && (() => {
-          const analise = dados.analise_tecnica as AnaliseTecnica | undefined;
-          if (!analise) {
-            return (
-              <p className="text-[11px] text-zinc-500 flex items-center gap-1.5">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-300 animate-pulse"></span>
-                Analisando tecnicamente...
-              </p>
-            );
-          }
-          return (
-            <div className="flex flex-wrap gap-1.5">
-              <AnaliseBadge
-                label={analise.colorspace === "cmyk" ? "CMYK ✓" : analise.colorspace === "srgb" ? "RGB" : analise.colorspace === "rgb16" ? "RGB 16" : "Cor?"}
-                variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
-              />
-              <AnaliseBadge
-                label={analise.sangria === "presente" ? "Sangria ✓" : analise.sangria === "ausente" ? "Sem sangria" : analise.sangria === "parcial" ? "Sangria parcial" : "Dimensões?"}
-                variant={analise.sangria === "presente" ? "ok" : "aviso"}
-              />
-              <AnaliseBadge
-                label={`${analise.dpi} DPI`}
-                variant={analise.dpi >= 300 ? "ok" : "aviso"}
-              />
-            </div>
-          );
-        })()}
       </div>
 
-      <div className="flex flex-col gap-3">
-        <button onClick={handleContinuar}
-          className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
-            hover:bg-brand-primary/90 transition-colors">
-          Continuar editando →
-        </button>
-        {editorConfirmed && (
-          <button onClick={onAvancarCreditos}
-            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm
-              hover:bg-emerald-700 transition-colors">
-            Avançar para Créditos →
-          </button>
-        )}
+      {/* Ações terciárias — links discretos em linha */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 text-sm text-zinc-500">
         {temGeracoesIa && (
-          <button onClick={onVerOutrasGeracoes}
-            className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-              hover:border-zinc-300 transition-colors">
-            Ver e usar outras gerações
-          </button>
+          <>
+            <button onClick={onVerOutrasGeracoes} className="hover:text-zinc-700 hover:underline underline-offset-2">
+              Ver e usar outras gerações
+            </button>
+            <span className="text-zinc-300">·</span>
+          </>
         )}
-        <button onClick={onGerarNovasOpcoes}
-          className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-            hover:border-amber-300 transition-colors">
-          Gerar novas opções{" "}
-          <span className="text-amber-600 font-medium">
-            ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
-          </span>
+        <button onClick={onGerarNovasOpcoes} className="hover:text-zinc-700 hover:underline underline-offset-2">
+          Gerar novas opções ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
         </button>
-      </div>
-
-      <div className="text-center">
-        <button onClick={onTrocarModo}
-          className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2">
+        <span className="text-zinc-300">·</span>
+        <button onClick={onTrocarModo} className="hover:text-zinc-700 hover:underline underline-offset-2">
           Trocar por upload ou editor em branco
         </button>
       </div>
@@ -2576,6 +2603,7 @@ export default function CapaPage() {
             dados={dados}
             editorConfirmed={isEditorCapa(dados)}
             proposito={proposito}
+            formato={formatoGlobal}
             onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
             onAvancarCreditos={handleContinuar}
             onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}

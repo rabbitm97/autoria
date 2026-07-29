@@ -16,7 +16,7 @@ import { createSmartFieldElement, type SmartFieldContentMap } from "../lib/smart
 import { createImageElement, createLogoElement, createBarcodeElement, createShapeElement } from "../lib/elements";
 import type { ShapeKind } from "../lib/elements";
 import { getContrastColor } from "../lib/color-utils";
-import { ColorPickerPopover } from "./color-picker-popover";
+import { ColorPickerPopover } from "@/components/color-picker-popover";
 import { SmartFieldModal } from "./smart-field-modal";
 import { nanoid } from "nanoid";
 import type { ProjectData } from "../types";

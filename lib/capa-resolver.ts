@@ -173,7 +173,7 @@ function isIACapa(c: DadosCapa): c is Record<string, unknown> & {
   return !!c && (c as Record<string, unknown>).modo === "ia";
 }
 
-function isUploadCapa(c: DadosCapa): c is Record<string, unknown> & {
+export function isUploadCapa(c: DadosCapa): c is Record<string, unknown> & {
   modo: "upload";
   url?: string;
   url_area_util?: string;

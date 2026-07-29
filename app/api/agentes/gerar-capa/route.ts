@@ -322,6 +322,35 @@ export async function POST(req: NextRequest) {
     lombada_mm: estimarLombadaCapaMm(paginas),
   };
 
+  // ─── Preserva editor_data em regeneração ─────────────────────────────────
+  // Sem isso, o autor perde fills escolhidos, textos custom e ajustes de
+  // layout ao clicar "Gerar novas opções" — a nova capa volta em branco.
+  // Estratégia (espelha o endpoint de escolha):
+  //   (1) preserva editor_data existente, limpando `capaIaRemovida` (autor
+  //       pediu novas artes, quer ver de novo) e removendo o elemento
+  //       `capa-ia-frente` antigo — o editor reinjeta a arte escolhida na
+  //       próxima vez que abrir (id determinístico);
+  //   (2) fills, layout, orelhaMm, elementos custom sobrevivem;
+  //   (3) source/imagem_url/confirmed_at ficam obsoletos (arte nova ≠ arte
+  //       confirmada) — o objeto `result` já não os carrega, então nada a
+  //       fazer aqui (updateProject grava só o result novo).
+  const editorDataAtual = dadosCapaAtual?.editor_data as
+    | { elements?: Array<{ id?: unknown }>; capaIaRemovida?: boolean }
+    | null
+    | undefined;
+  if (editorDataAtual && typeof editorDataAtual === "object") {
+    const editorDataNovo: Record<string, unknown> = {
+      ...(editorDataAtual as Record<string, unknown>),
+    };
+    delete editorDataNovo.capaIaRemovida;
+    if (Array.isArray(editorDataAtual.elements)) {
+      editorDataNovo.elements = editorDataAtual.elements.filter(
+        (el) => (el as { id?: unknown })?.id !== "capa-ia-frente",
+      );
+    }
+    (result as unknown as Record<string, unknown>).editor_data = editorDataNovo;
+  }
+
   const vCapa = validarProjectData("dados_capa", result, {
     modo: "estrito", contexto: "gerar-capa",
   });
