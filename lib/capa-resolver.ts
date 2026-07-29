@@ -141,7 +141,7 @@ export interface CapaResolvida {
 
 type DadosCapa = Record<string, unknown> | null | undefined;
 
-function isEditorCapa(c: DadosCapa): c is Record<string, unknown> & {
+export function isEditorCapa(c: DadosCapa): c is Record<string, unknown> & {
   source: "editor";
   imagem_url?: string;
   editor_data?: {

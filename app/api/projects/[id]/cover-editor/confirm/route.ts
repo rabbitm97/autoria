@@ -158,16 +158,20 @@ export async function POST(
   // Dispara PDF gráfica em background (fire-and-forget). Não bloqueia a
   // resposta — se falhar, o autor pode tentar novamente pela tela de Prova.
   // Só faz sentido se o miolo já foi gerado; a rota lida com esse caso.
-  fetch(`${req.nextUrl.origin}/api/agentes/prova/preparar-capa-grafica`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      cookie: req.headers.get("cookie") ?? "",
-    },
-    body: JSON.stringify({ project_id: id }),
-  }).catch((err) => {
-    console.warn("[cover-editor/confirm] preparar-capa-grafica fire-and-forget falhou:", err);
-  });
+  // Em layout=frente (trilha digital) a capa não tem verso/lombada/sangria
+  // completa — não faz sentido gerar PDF de gráfica.
+  if (layoutValidado === "panoramica") {
+    fetch(`${req.nextUrl.origin}/api/agentes/prova/preparar-capa-grafica`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: req.headers.get("cookie") ?? "",
+      },
+      body: JSON.stringify({ project_id: id }),
+    }).catch((err) => {
+      console.warn("[cover-editor/confirm] preparar-capa-grafica fire-and-forget falhou:", err);
+    });
+  }
 
   // Fire-and-forget análise técnica (14.M.1). Detecta colorspace/sangria/DPI
   // da capa exportada pelo editor e persiste em dados_capa.analise_tecnica.

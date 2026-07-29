@@ -10,6 +10,7 @@ import { avancarEtapa } from "@/lib/supabase-helpers";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
 import type { CapaUploadResult } from "@/app/api/agentes/upload-capa/route";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
+import { isEditorCapa } from "@/lib/capa-resolver";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
@@ -2394,7 +2395,12 @@ export default function CapaPage() {
           </p>
         </div>
 
-        {dados && modo === "escolha" && dados.modo === "ia" && (!dados.url_escolhida || mostrandoGridPersistente) ? (
+        {/* Precedência (espelha capa-resolver): editor confirmado vence sobre IA.
+            Se o autor rodou IA e depois confirmou no editor, `dados.modo` continua
+            "ia" mas `source === "editor"` — o card de editor confirmado (dentro
+            do branch `modo === "escolha"` abaixo) deve renderizar, não a
+            grade/status de IA. */}
+        {dados && modo === "escolha" && !isEditorCapa(dados) && dados.modo === "ia" && (!dados.url_escolhida || mostrandoGridPersistente) ? (
           <div className="space-y-6">
             <div className="flex items-baseline justify-between">
               <div>
@@ -2447,7 +2453,7 @@ export default function CapaPage() {
               )}
             </div>
           </div>
-        ) : dados && modo === "escolha" && dados.modo === "ia" ? (
+        ) : dados && modo === "escolha" && !isEditorCapa(dados) && dados.modo === "ia" ? (
           <CapaIaStatusCard
             dados={dados}
             proposito={proposito}
@@ -2656,7 +2662,7 @@ export default function CapaPage() {
                     title="Gerar com IA"
                     desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
                     warning={!iaGated && hasCurrentCapa ? "Substituirá a capa atual." : undefined}
-                    badge={iaGated ? PLANO_LABEL.essencial : undefined}
+                    badge={iaGated ? `${PLANO_LABEL.essencial} e ${PLANO_LABEL.pro}` : undefined}
                     onClick={async () => {
                       if (iaGated) {
                         setMostrandoConversaoIa(true);

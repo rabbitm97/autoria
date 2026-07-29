@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useCoverExport } from "../lib/use-cover-export";
+import { useEditorStore } from "../lib/editor-store";
 import { CmykDisclaimerModal } from "./cmyk-disclaimer-modal";
 
 interface ExportDropdownProps {
@@ -11,6 +12,8 @@ interface ExportDropdownProps {
 export function ExportDropdown({ projectId }: ExportDropdownProps) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const layout = useEditorStore((s) => s.layout);
+  const isFrente = layout === "frente";
   const { states, isBusy, exportJpegCompleta, exportJpegEbook, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
 
   useEffect(() => {
@@ -75,51 +78,64 @@ export function ExportDropdown({ projectId }: ExportDropdownProps) {
             </div>
           </button>
 
-          <div className="mx-4 border-t border-[#e0ddd2]" />
+          {!isFrente && (
+            <>
+              <div className="mx-4 border-t border-[#e0ddd2]" />
 
-          <button
-            onClick={() => { exportJpegCompleta(); setOpen(false); }}
-            className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
-              <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
-            </svg>
-            <div>
-              <p className="text-xs font-medium text-[#1a1a2e]">Baixar JPEG capa completa 300dpi</p>
-              <p className="text-[10px] text-zinc-400">Panorâmica · marketing, redes sociais, referência</p>
-            </div>
-          </button>
+              <button
+                onClick={() => { exportJpegCompleta(); setOpen(false); }}
+                className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+                </svg>
+                <div>
+                  <p className="text-xs font-medium text-[#1a1a2e]">Baixar JPEG capa completa 300dpi</p>
+                  <p className="text-[10px] text-zinc-400">Panorâmica · marketing, redes sociais, referência</p>
+                </div>
+              </button>
 
-          <div className="mx-4 border-t border-[#e0ddd2]" />
+              <div className="mx-4 border-t border-[#e0ddd2]" />
 
-          <button
-            onClick={() => { exportPdf("grafica"); setOpen(false); }}
-            className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" />
-            </svg>
-            <div>
-              <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF gráfica CMYK</p>
-              <p className="text-[10px] text-zinc-400">Com sangria e marcas de corte · gráfica offset</p>
-            </div>
-          </button>
+              <button
+                onClick={() => { exportPdf("grafica"); setOpen(false); }}
+                className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" />
+                </svg>
+                <div>
+                  <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF gráfica CMYK</p>
+                  <p className="text-[10px] text-zinc-400">Com sangria e marcas de corte · gráfica offset</p>
+                </div>
+              </button>
 
-          <div className="mx-4 border-t border-[#e0ddd2]" />
+              <div className="mx-4 border-t border-[#e0ddd2]" />
 
-          <button
-            onClick={() => { exportPdf("grafica_rgb"); setOpen(false); }}
-            className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-              <circle cx="9" cy="13" r="1.5" fill="#1a1a2e" /><circle cx="13" cy="13" r="1.5" fill="#1a1a2e" /><circle cx="17" cy="13" r="1.5" fill="#1a1a2e" />
-            </svg>
-            <div>
-              <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF gráfica RGB</p>
-              <p className="text-[10px] text-zinc-400">Sem conversão CMYK · gráfica digital</p>
-            </div>
-          </button>
+              <button
+                onClick={() => { exportPdf("grafica_rgb"); setOpen(false); }}
+                className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="2" className="mt-0.5 shrink-0">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                  <circle cx="9" cy="13" r="1.5" fill="#1a1a2e" /><circle cx="13" cy="13" r="1.5" fill="#1a1a2e" /><circle cx="17" cy="13" r="1.5" fill="#1a1a2e" />
+                </svg>
+                <div>
+                  <p className="text-xs font-medium text-[#1a1a2e]">Baixar PDF gráfica RGB</p>
+                  <p className="text-[10px] text-zinc-400">Sem conversão CMYK · gráfica digital</p>
+                </div>
+              </button>
+            </>
+          )}
+
+          {isFrente && (
+            <>
+              <div className="mx-4 border-t border-[#e0ddd2]" />
+              <p className="px-4 py-3 text-[10px] italic text-zinc-400">
+                Exportações para gráfica exigem a capa completa (trilha impressa).
+              </p>
+            </>
+          )}
         </div>
       )}
 
