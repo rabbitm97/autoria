@@ -312,7 +312,9 @@ export async function POST(req: NextRequest) {
     frase_confirmacao,
     opcoes,
     galeria,
-    url_escolhida: opcoes[0]?.url ?? null,
+    // Escolha é ATO EXPLÍCITO — nunca implícita. Sem esta null-idade,
+    // F5 na tela de escolha fazia o sistema achar que opção 1 foi aceita.
+    url_escolhida: null,
     verso: null,
     gerado_em: new Date().toISOString(),
     is_regeneracao: ehRegeneracao,

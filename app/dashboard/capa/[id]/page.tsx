@@ -13,7 +13,7 @@ import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
-import type { PropositoPublicacao } from "@/lib/project-data";
+import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem } from "@/lib/project-data";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -763,6 +763,135 @@ function ModoUpload({
   );
 }
 
+// ─── IA: grid de escolha persistente (bank-sourced) ───────────────────────────
+
+/**
+ * Grid de escolha que renderiza a partir de `dados_capa` (fonte de verdade),
+ * não de estado em memória. Sobrevive a F5/Voltar. Reusado em dois pontos:
+ * a) quando `url_escolhida` ainda é null (escolha pendente), e b) dentro do
+ * `CapaIaStatusCard` quando o autor clica "Ver e usar outras gerações"
+ * (re-escolher é grátis).
+ */
+function IaEscolhaGrid({
+  opcoes,
+  galeria,
+  urlEscolhida,
+  onEscolher,
+  escolhendo,
+}: {
+  opcoes: OpcaoCapa[];
+  galeria: GaleriaCapaItem[];
+  urlEscolhida: string | null;
+  onEscolher: (url: string, storagePath: string) => Promise<void>;
+  escolhendo: string | null;
+}) {
+  const opcoesUrls = new Set(opcoes.map((o) => o.url));
+  const anteriores = galeria.filter((g) => !opcoesUrls.has(g.url));
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">
+          Escolha uma capa ({opcoes.length} opções desta rodada)
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {opcoes.map((op, i) => {
+            const isEsc = urlEscolhida === op.url;
+            const isLoad = escolhendo === op.url;
+            return (
+              <button
+                key={op.url}
+                disabled={escolhendo !== null}
+                onClick={() => void onEscolher(op.url, op.storage_path)}
+                className={`relative rounded-xl overflow-hidden border-2 transition-all aspect-[2/3]
+                  ${isEsc ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}
+                  ${escolhendo !== null && !isLoad ? "opacity-40" : ""}`}
+              >
+                <Image src={op.url} alt={`Opção ${i + 1}`} fill className="object-cover" />
+                {isEsc && !isLoad && (
+                  <div className="absolute inset-0 bg-brand-gold/10 flex items-center justify-center">
+                    <span className="bg-brand-gold text-brand-primary text-xs font-bold px-2 py-1 rounded-full">
+                      Selecionada
+                    </span>
+                  </div>
+                )}
+                {isLoad && (
+                  <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                    <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {anteriores.length > 0 && (
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+            Gerações anteriores ({anteriores.length})
+          </p>
+          <p className="text-xs text-zinc-400 mb-4">Re-escolher uma antiga é grátis.</p>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {anteriores.map((g, i) => {
+              const isEsc = urlEscolhida === g.url;
+              const isLoad = escolhendo === g.url;
+              return (
+                <button
+                  key={g.storage_path}
+                  disabled={escolhendo !== null}
+                  onClick={() => void onEscolher(g.url, g.storage_path)}
+                  className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-[2/3]
+                    ${isEsc ? "border-brand-gold" : "border-zinc-200 hover:border-zinc-300"}
+                    ${escolhendo !== null && !isLoad ? "opacity-40" : ""}`}
+                >
+                  <Image src={g.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
+                  {isLoad && (
+                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                      <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── IA: rascunho do briefing (localStorage) ──────────────────────────────────
+
+// Preserva o briefing enquanto o autor sai/volta da tela de IA sem gerar.
+// Servidor NÃO conhece — draft não vai a DB (ephemeral, sem custo de writes).
+// Precedência ao montar ModoIA: regerarDe > draft > default.
+type BriefingDraft = {
+  estilo?: EstiloCapa;
+  atmosfera?: string[];
+  cor?: string;
+  corHex?: string;
+  posicaoTitulo?: "topo" | "centro" | "base" | "sem_preferencia";
+  descricaoLivre?: string;
+  referenciasTexto?: string;
+  evitar?: string;
+};
+
+function draftKey(projectId: string): string {
+  return `autoria:capa-briefing-draft:${projectId}`;
+}
+
+function loadDraft(projectId: string): BriefingDraft {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(draftKey(projectId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    return (parsed && typeof parsed === "object") ? (parsed as BriefingDraft) : {};
+  } catch {
+    return {};
+  }
+}
+
 // ─── IA mode ──────────────────────────────────────────────────────────────────
 
 function ModoIA({
@@ -830,6 +959,77 @@ function ModoIA({
     });
   }
   useEffect(() => { refreshSaldo(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rascunho do briefing — restaura no mount (só quando NÃO é regeneração).
+  // Segue o padrão do modalVisto: valor default no useState + correção no
+  // useEffect para não quebrar hidratação (localStorage é client-only).
+  useEffect(() => {
+    if (regerarDe) return;
+    const d = loadDraft(projectId);
+    if (d.estilo) setEstilo(d.estilo);
+    if (Array.isArray(d.atmosfera)) setAtmosfera(d.atmosfera.slice(0, 2));
+    if (d.cor) setCor(d.cor);
+    if (d.corHex) setCorHex(d.corHex);
+    if (d.posicaoTitulo) setPosicaoTitulo(d.posicaoTitulo);
+    if (typeof d.descricaoLivre === "string") setDescricaoLivre(d.descricaoLivre);
+    if (typeof d.referenciasTexto === "string") setReferenciasTexto(d.referenciasTexto);
+    if (typeof d.evitar === "string") setEvitar(d.evitar);
+  }, [projectId, regerarDe]);
+
+  // Rascunho do briefing — salva com debounce a cada mudança de campo.
+  // Não limpa após gerar (inofensivo; útil se autor voltar para nova rodada).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = window.setTimeout(() => {
+      const draft: BriefingDraft = {
+        estilo, atmosfera, cor, corHex,
+        posicaoTitulo, descricaoLivre, referenciasTexto, evitar,
+      };
+      try {
+        window.localStorage.setItem(draftKey(projectId), JSON.stringify(draft));
+      } catch { /* quota / privacy mode — ignora */ }
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [projectId, estilo, atmosfera, cor, corHex, posicaoTitulo, descricaoLivre, referenciasTexto, evitar]);
+
+  // Galeria pré-briefing — pós-reset/troca de modo, se o autor já pagou por
+  // gerações antes, storage ainda tem os PNGs. Oferecemos reuso ANTES do
+  // briefing para não cobrar de novo. Fetch é best-effort (falha silenciosa).
+  const [galeriaPreBrief, setGaleriaPreBrief] = useState<GaleriaCapaItem[]>([]);
+  const [carregandoGaleria, setCarregandoGaleria] = useState(false);
+  const [escolhendoDaGaleria, setEscolhendoDaGaleria] = useState<string | null>(null);
+  useEffect(() => {
+    if (regerarDe) return;
+    let ativo = true;
+    setCarregandoGaleria(true);
+    fetch(`/api/projects/${projectId}/capa/galeria`)
+      .then(r => (r.ok ? r.json() : { itens: [] }))
+      .then((data: { itens?: GaleriaCapaItem[] }) => {
+        if (ativo && Array.isArray(data.itens)) setGaleriaPreBrief(data.itens);
+      })
+      .catch(() => { /* best-effort */ })
+      .finally(() => { if (ativo) setCarregandoGaleria(false); });
+    return () => { ativo = false; };
+  }, [projectId, regerarDe]);
+
+  async function handleUsarDaGaleria(item: GaleriaCapaItem) {
+    setEscolhendoDaGaleria(item.storage_path);
+    setError(null);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: item.url, storage_path: item.storage_path }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Erro ao usar geração anterior");
+      onSalvo(data as CapaGeradaResult);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao usar geração anterior");
+    } finally {
+      setEscolhendoDaGaleria(null);
+    }
+  }
 
   // Confirmação
   const [frase, setFrase] = useState("");
@@ -1013,6 +1213,51 @@ function ModoIA({
       <button onClick={onVoltar} className="text-xs text-zinc-400 hover:text-zinc-600 flex items-center gap-1">
         ← Voltar
       </button>
+
+      {/* ── GALERIA PRÉ-BRIEFING (pós-reset/troca de modo) ─────────────────── */}
+      {/* Só aparece em briefing "fresco" (sem regeneração) — se o autor já pagou
+          por gerações antes e resetou/trocou de modo, o storage guardou os PNGs.
+          Reusar uma delas é grátis; o servidor reconstrói `dados_capa` no
+          fallback do endpoint de escolha (B2-04d Mudança 3). */}
+      {fase === "briefing" && !regerarDe && galeriaPreBrief.length > 0 && (
+        <div className="bg-brand-gold/5 rounded-2xl border border-brand-gold/30 p-6 space-y-3">
+          <div>
+            <p className="font-medium text-brand-primary text-sm">
+              Você já tem {galeriaPreBrief.length} capa{galeriaPreBrief.length !== 1 ? "s" : ""} geradas antes
+            </p>
+            <p className="text-xs text-zinc-500 mt-1">
+              Reusar uma delas é grátis. Se preferir opções novas, siga com o briefing abaixo.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            {galeriaPreBrief.map((g, i) => {
+              const isLoad = escolhendoDaGaleria === g.storage_path;
+              return (
+                <button key={g.storage_path}
+                  disabled={escolhendoDaGaleria !== null}
+                  onClick={() => void handleUsarDaGaleria(g)}
+                  className={`relative rounded-lg overflow-hidden border-2 border-zinc-200 hover:border-brand-gold transition-all aspect-[2/3]
+                    ${escolhendoDaGaleria !== null && !isLoad ? "opacity-40" : ""}`}>
+                  <Image src={g.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
+                  {isLoad && (
+                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+                      <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {error && (
+            <p className="text-xs text-red-600">{error}</p>
+          )}
+        </div>
+      )}
+
+      {/* Indicador leve enquanto galeria carrega — evita "flash" caso haja itens */}
+      {fase === "briefing" && !regerarDe && carregandoGaleria && galeriaPreBrief.length === 0 && (
+        <p className="text-[11px] text-zinc-400">Verificando gerações anteriores…</p>
+      )}
 
       {/* ── BRIEFING ────────────────────────────────────────────────────────── */}
       {fase === "briefing" && (
@@ -1576,12 +1821,14 @@ function CapaIaStatusCard({
   proposito,
   onAbrirEditor,
   onGerarNovamente,
+  onVerOutrasGeracoes,
   onEscolherTrilha,
 }: {
   dados: Record<string, unknown>;
   proposito: PropositoPublicacao | null;
   onAbrirEditor: () => void;
   onGerarNovamente: () => void;
+  onVerOutrasGeracoes: () => void;
   onEscolherTrilha: (p: PropositoPublicacao) => Promise<void>;
 }) {
   const url = dados.url_escolhida as string | undefined;
@@ -1664,6 +1911,11 @@ function CapaIaStatusCard({
             hover:bg-brand-primary/90 transition-colors">
           Abrir no editor →
         </button>
+        <button onClick={onVerOutrasGeracoes}
+          className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
+            hover:border-zinc-300 transition-colors">
+          Ver e usar outras gerações
+        </button>
         <button onClick={onGerarNovamente}
           className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
             hover:border-amber-300 transition-colors">
@@ -1671,10 +1923,6 @@ function CapaIaStatusCard({
           <span className="text-amber-600 font-medium">
             ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
           </span>
-        </button>
-        <button onClick={onGerarNovamente}
-          className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2 text-center">
-          Usar outro modo (upload ou editor em branco)
         </button>
       </div>
     </div>
@@ -2042,6 +2290,34 @@ export default function CapaPage() {
     }
   }
 
+  // Chamado pelo IaEscolhaGrid — clique numa opção dispara o endpoint de
+  // escolha (grátis; regenerar é pago). Servidor devolve o dados_capa
+  // atualizado (com url_escolhida preenchida) — sincroniza o state local.
+  const [escolhendoUrl, setEscolhendoUrl] = useState<string | null>(null);
+  async function handleEscolherOpcao(url: string, storagePath: string): Promise<void> {
+    setEscolhendoUrl(url);
+    try {
+      const res = await fetch(`/api/projects/${id}/capa/escolha`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, storage_path: storagePath }),
+      });
+      if (!res.ok) {
+        console.error("[capa/escolha] falhou:", await res.text().catch(() => ""));
+        return;
+      }
+      const dadosNovos = await res.json();
+      setDados(dadosNovos);
+      setMostrandoGridPersistente(false);
+    } finally {
+      setEscolhendoUrl(null);
+    }
+  }
+  // Quando o autor está no CapaIaStatusCard e clica "Ver e usar outras
+  // gerações", entra neste modo — reusa IaEscolhaGrid com a escolhida
+  // destacada. Cancelar volta ao status card sem custo.
+  const [mostrandoGridPersistente, setMostrandoGridPersistente] = useState(false);
+
   // Zera dados_capa quando o autor está trocando de modo. Garante que
   // "sempre a última escolha vale" — sem estados híbridos entre
   // Upload / IA / Editor.
@@ -2094,7 +2370,60 @@ export default function CapaPage() {
           </p>
         </div>
 
-        {dados && modo === "escolha" && dados.modo === "ia" ? (
+        {dados && modo === "escolha" && dados.modo === "ia" && (!dados.url_escolhida || mostrandoGridPersistente) ? (
+          <div className="space-y-6">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <h2 className="font-heading text-xl text-brand-primary">
+                  {dados.url_escolhida ? "Trocar a capa escolhida" : "Escolha uma das capas geradas"}
+                </h2>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {dados.url_escolhida
+                    ? "Re-escolher é grátis. Regenerar novas opções custa créditos."
+                    : "Clicar seleciona e salva imediatamente. Você pode trocar depois."}
+                </p>
+              </div>
+              {mostrandoGridPersistente && typeof dados.url_escolhida === "string" && (
+                <button
+                  onClick={() => setMostrandoGridPersistente(false)}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 underline shrink-0 ml-4"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+            <IaEscolhaGrid
+              opcoes={Array.isArray(dados.opcoes) ? (dados.opcoes as OpcaoCapa[]) : []}
+              galeria={Array.isArray(dados.galeria) ? (dados.galeria as GaleriaCapaItem[]) : []}
+              urlEscolhida={typeof dados.url_escolhida === "string" ? (dados.url_escolhida as string) : null}
+              onEscolher={handleEscolherOpcao}
+              escolhendo={escolhendoUrl}
+            />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => {
+                  setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
+                  setMostrandoGridPersistente(false);
+                  setModo("ia");
+                }}
+                className="flex-1 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-amber-300 transition-colors"
+              >
+                Gerar novas opções{" "}
+                <span className="text-amber-600 font-medium">
+                  ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
+                </span>
+              </button>
+              {typeof dados.url_escolhida === "string" && (
+                <button
+                  onClick={() => router.push(`/editor/capa/${id}`)}
+                  className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors"
+                >
+                  Abrir no editor →
+                </button>
+              )}
+            </div>
+          </div>
+        ) : dados && modo === "escolha" && dados.modo === "ia" ? (
           <CapaIaStatusCard
             dados={dados}
             proposito={proposito}
@@ -2103,6 +2432,7 @@ export default function CapaPage() {
               setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
               setModo("ia");
             }}
+            onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}
             onEscolherTrilha={handleEscolherTrilha}
           />
         ) : modo === "escolha" ? (
