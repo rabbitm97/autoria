@@ -32,6 +32,12 @@ export interface ImageElement extends BaseElement {
   type: "image";
   src: string;
   objectFit: "fill" | "cover" | "contain";
+  /**
+   * Marca posicionamento manual (arraste ou transform pelo autor). Só usado
+   * pelo elemento `capa-ia-frente`: com `true`, a reancoragem automática em
+   * mudança de geometria (orelhas ligam/desligam, layout muda) é ignorada.
+   */
+  posicaoManual?: boolean;
 }
 
 export interface LogoElement extends BaseElement {

@@ -119,7 +119,30 @@ export async function POST(
       opcoes.some((o) => o.url === url) || galeria.some((g) => g.url === url);
 
     if (urlValida) {
-      const dadosNovos = { ...dadosCapa, url_escolhida: url };
+      // Trocar de arte da IA reseta o rascunho da IA no editor: (1) limpa a
+      // flag `capaIaRemovida` (o autor tá pedindo pra ver a arte de novo);
+      // (2) remove o elemento `capa-ia-frente` antigo do editor_data pra
+      // forçar reinjeção da nova arte no próximo load do editor. Não mexe
+      // em nada mais do editor_data — o resto do trabalho do autor sobrevive.
+      const editorDataAtual = dadosCapa.editor_data as
+        | { elements?: Array<{ id?: unknown }>; capaIaRemovida?: boolean }
+        | null
+        | undefined;
+      let editorDataNovo: Record<string, unknown> | undefined;
+      if (editorDataAtual && typeof editorDataAtual === "object") {
+        editorDataNovo = { ...(editorDataAtual as Record<string, unknown>) };
+        delete editorDataNovo.capaIaRemovida;
+        if (Array.isArray(editorDataAtual.elements)) {
+          editorDataNovo.elements = editorDataAtual.elements.filter(
+            (el) => (el as { id?: unknown })?.id !== "capa-ia-frente",
+          );
+        }
+      }
+      const dadosNovos = {
+        ...dadosCapa,
+        url_escolhida: url,
+        ...(editorDataNovo ? { editor_data: editorDataNovo } : {}),
+      };
       const vCapa = validarProjectData("dados_capa", dadosNovos, {
         modo: "estrito", contexto: "capa-escolha",
       });

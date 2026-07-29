@@ -39,6 +39,7 @@ import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget } from "../lib/keyboard-utils";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
 import { getFillRect } from "../lib/region-rects";
+import { CAPA_IA_FRENTE_ID } from "../lib/constants";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
 import { EditorZoomControls } from "./editor-zoom-controls";
@@ -438,7 +439,9 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     updateElement(elId, {
       x_mm: node.x() / MM_TO_PX - (isEllipse ? (el as ShapeElement).width_mm / 2 : 0),
       y_mm: node.y() / MM_TO_PX - (isEllipse ? (el as ShapeElement).height_mm / 2 : 0),
-    });
+      // Autor moveu a IA — trava o reanchor automático em mudanças de geometria.
+      ...(elId === CAPA_IA_FRENTE_ID ? { posicaoManual: true } : {}),
+    } as Partial<AnyElement>);
   }
 
   // Single transformer-level handler for resize/rotate (handles both single and multi-node)
@@ -489,7 +492,9 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           width_mm: newW,
           height_mm: newH,
           rotation_deg: node.rotation(),
-        });
+          // Autor redimensionou a IA — trava reanchor automático (geometria).
+          ...(elId === CAPA_IA_FRENTE_ID ? { posicaoManual: true } : {}),
+        } as Partial<AnyElement>);
       }
     });
   }

@@ -11,6 +11,7 @@ import {
   ZOOM_MAX,
   ZOOM_STEP,
   ZOOM_FIT_MARGIN,
+  CAPA_IA_FRENTE_ID,
 } from "./constants";
 import { FORMATS, SANGRIA_MM, MM_TO_PX, calcularLombada, clampOrelhaMm } from "./dimensions";
 import type { AnyElement, RegionFills, Region } from "./elements";
@@ -56,6 +57,11 @@ interface EditorState {
   // panorâmica. Nunca é editável, só descartável (usuário pode remover).
   backgroundUrl: string | null;
 
+  // Autor deletou o elemento `capa-ia-frente`. Persistido em editor_data para
+  // impedir reinjeção em loads futuros. Volta a `false` se o autor redefinir
+  // `url_escolhida` via "Ver e usar outras gerações" (novo projectId/hydrate).
+  capaIaRemovida: boolean;
+
   // Persistence
   saveStatus: SaveStatus;
   autosaveCount: number;
@@ -100,6 +106,7 @@ interface EditorState {
   // Project
   setIsbn: (isbn: string | null) => void;
   setBackgroundUrl: (url: string | null) => void;
+  setCapaIaRemovida: (removed: boolean) => void;
 
   // Persistence
   setSaveStatus: (status: SaveStatus) => void;
@@ -108,6 +115,7 @@ interface EditorState {
   hydrate: (
     data: Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl"> & {
       layout?: EditorLayout;
+      capaIaRemovida?: boolean;
     },
   ) => void;
 
@@ -137,6 +145,7 @@ const DEFAULT_STATE = {
   fills: {} as RegionFills,
   isbn: null as string | null,
   backgroundUrl: null as string | null,
+  capaIaRemovida: false,
   saveStatus: { kind: "idle" } as SaveStatus,
   autosaveCount: 0,
   confirmedSnapshot: null as ConfirmedSnapshot | null,
@@ -208,6 +217,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((s) => ({
       elements: s.elements.filter((e) => e.id !== id),
       selectedIds: s.selectedIds.filter((sid) => sid !== id),
+      // Se o autor deletou a arte da IA, marca a flag pra não reinjetar.
+      // O retorno é via "Ver e usar outras gerações" → nova url_escolhida.
+      capaIaRemovida: id === CAPA_IA_FRENTE_ID ? true : s.capaIaRemovida,
     })),
 
   duplicateElement: (id) =>
@@ -315,6 +327,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setBackgroundUrl: (url) => set({ backgroundUrl: url }),
 
+  setCapaIaRemovida: (removed) => set({ capaIaRemovida: removed }),
+
   setSaveStatus: (status) => set({ saveStatus: status }),
 
   setStageInstance: (stage) => set({ stageInstance: stage }),
@@ -334,6 +348,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         fills: data.fills ?? {},
         isbn: data.isbn ?? null,
         backgroundUrl: data.backgroundUrl ?? null,
+        capaIaRemovida: data.capaIaRemovida === true,
       };
     }),
 
@@ -393,6 +408,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       fills: {},
       isbn: null,
       backgroundUrl: null,
+      capaIaRemovida: false,
       legendasAtivas: false,
       saveStatus: { kind: "idle" },
       autosaveCount: 0,

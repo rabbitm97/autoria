@@ -29,6 +29,13 @@ export interface EditorData {
    * este campo continua carregando o link do PNG original.
    */
   backgroundUrl: string | null;
+  /**
+   * Autor deletou o elemento `capa-ia-frente`. Sinaliza que a arte da IA
+   * NÃO deve ser reinjetada em loads futuros — só volta se o autor
+   * explicitamente redefinir `url_escolhida` via "Ver e usar outras
+   * gerações" na página de capa.
+   */
+  capaIaRemovida?: boolean;
   meta: EditorMeta;
 }
 
@@ -45,6 +52,7 @@ export function serializeEditorState(state: {
   fills: RegionFills;
   isbn: string | null;
   backgroundUrl: string | null;
+  capaIaRemovida: boolean;
   autosaveCount: number;
 }): EditorData {
   return {
@@ -55,6 +63,7 @@ export function serializeEditorState(state: {
     fills: state.fills,
     isbn: state.isbn,
     backgroundUrl: state.backgroundUrl,
+    capaIaRemovida: state.capaIaRemovida,
     meta: {
       last_saved_at: new Date().toISOString(),
       last_saved_by: "",
@@ -66,7 +75,7 @@ export function serializeEditorState(state: {
 export function deserializeEditorState(
   data: unknown,
   format: FormatKey,
-): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl" | "layout"> | null {
+): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl" | "layout" | "capaIaRemovida"> | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.version !== 1) {
@@ -98,5 +107,6 @@ export function deserializeEditorState(
     fills: (d.fills as RegionFills) ?? {},
     isbn: typeof d.isbn === "string" ? d.isbn : null,
     backgroundUrl: typeof d.backgroundUrl === "string" ? d.backgroundUrl : null,
+    capaIaRemovida: d.capaIaRemovida === true ? true : undefined,
   };
 }

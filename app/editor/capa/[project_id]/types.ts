@@ -6,7 +6,7 @@ export type EditorLayout = SerializedLayout;
 
 export type HydratableEditorData = Pick<
   EditorData,
-  "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl" | "layout"
+  "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl" | "layout" | "capaIaRemovida"
 >;
 
 /**

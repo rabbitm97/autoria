@@ -10,55 +10,36 @@ import { serializeEditorState } from "./lib/editor-serializer";
 import { isEditableTarget } from "./lib/keyboard-utils";
 import { hashElements, hashFills } from "./lib/state-hash";
 import { createSmartFieldElement, type SmartFieldContentMap } from "./lib/smart-field-layout";
-import { createImageElement, type AnyElement } from "./lib/elements";
-import { FORMATS, SANGRIA_MM } from "./lib/dimensions";
-import { getFillRect } from "./lib/region-rects";
-import type { ProjectData } from "./types";
-
-const CAPA_IA_FRENTE_ID = "capa-ia-frente";
+import { createImageElement, type AnyElement, type Region } from "./lib/elements";
+import { getCapaIaAnchoredRect } from "./lib/region-rects";
+import { CAPA_IA_FRENTE_ID } from "./lib/constants";
+import type { CapaIaHandoff, EditorLayout, FormatKey, ProjectData } from "./types";
 
 /**
- * Injeta a arte da IA como ImageElement TRAVADO no rect da frente do livro.
- * Zerado zIndex + locked=true garantem que o elemento fica atrás de tudo e
- * não é acidentalmente arrastado/editado. Id determinístico permite trocar
- * a arte por outra opção da galeria no futuro sem duplicar.
- *
- * Em `layout="frente"` a arte ocupa o papel inteiro (bleed em todos os lados).
- * Em `layout="panoramica"` a arte é posicionada no rect canônico da região
- * "capa" com `orelhaMm=0`, que já se estende à borda direita do sangria.
+ * Injeta a arte da IA como ImageElement no rect da frente do livro com
+ * FIT COVER CENTRADO — metade do excedente cruza levemente sobre a lombada,
+ * metade sobre a sangria externa (o export clipa o que sai do papel).
+ * Id determinístico permite trocar a arte por outra opção da galeria sem
+ * duplicar. O elemento nasce no zIndex mais baixo (embaixo de tudo), mas
+ * NÃO é travado — o autor pode selecionar, mover, redimensionar e deletar
+ * como qualquer imagem.
  */
 function injectCapaIaFrente(
   url: string,
-  format: import("./types").FormatKey,
-  layout: import("./types").EditorLayout,
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
 ) {
-  const f = FORMATS[format];
-  let x_mm: number;
-  let y_mm: number;
-  let width_mm: number;
-  let height_mm: number;
-  if (layout === "frente") {
-    x_mm = 0;
-    y_mm = 0;
-    width_mm = f.width_mm + SANGRIA_MM * 2;
-    height_mm = f.height_mm + SANGRIA_MM * 2;
-  } else {
-    const rect = getFillRect("capa", format, 200, 0);
-    if (!rect) return;
-    x_mm = rect.x;
-    y_mm = rect.y;
-    width_mm = rect.width;
-    height_mm = rect.height;
-  }
+  const rect = getCapaIaAnchoredRect(format, pages, orelhaMm, layout);
   const iaEl = createImageElement({
     id: CAPA_IA_FRENTE_ID,
     src: url,
-    x_mm,
-    y_mm,
-    width_mm,
-    height_mm,
+    x_mm: rect.x,
+    y_mm: rect.y,
+    width_mm: rect.width,
+    height_mm: rect.height,
     objectFit: "cover",
-    locked: true,
     zIndex: 0,
   });
   // Bypassa addElement (que sempre reatribui zIndex = maxZ+1) — a IA precisa
@@ -69,6 +50,23 @@ function injectCapaIaFrente(
       ...s.elements.map((e) => ({ ...e, zIndex: e.zIndex + 1 })),
     ],
   }));
+}
+
+/**
+ * Aplica `cor_predominante_hex` como fill default de lombada, contracapa e
+ * orelhas SEMPRE que a região ainda não tem cor definida. Em `layout="frente"`
+ * não há dessas regiões, então noop.
+ *
+ * NUNCA sobrescreve fill escolhido explicitamente pelo autor.
+ */
+function applyCapaIaDefaultFills(handoff: CapaIaHandoff, layout: EditorLayout) {
+  const hex = handoff.corPredominanteHex;
+  if (!hex || layout !== "panoramica") return;
+  const store = useEditorStore.getState();
+  const regions: Region[] = ["lombada", "contracapa", "orelha_frente", "orelha_verso"];
+  regions.forEach((r) => {
+    if (!store.fills[r]) store.setFill(r, hex);
+  });
 }
 
 const EditorCanvas = dynamic(
@@ -110,6 +108,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         fills: state.fills,
         isbn: state.isbn,
         backgroundUrl: state.backgroundUrl,
+        capaIaRemovida: state.capaIaRemovida,
         autosaveCount: state.autosaveCount,
       });
     } catch (serErr) {
@@ -157,25 +156,39 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         fills: projectData.initialEditorData.fills,
         isbn: projectData.initialEditorData.isbn,
         backgroundUrl: projectData.initialEditorData.backgroundUrl,
+        capaIaRemovida: projectData.initialEditorData.capaIaRemovida,
       });
 
       // Re-injeta capa-ia-frente se o editor_data salvo perdeu esse elemento
-      // (autor deletou por engano) mas dados_capa ainda aponta pra IA.
+      // (autor deletou por engano) mas dados_capa ainda aponta pra IA — a
+      // não ser que a flag `capaIaRemovida` marque uma remoção intencional.
+      const jaTemIa = projectData.initialEditorData.elements.some(
+        (el) => el.id === CAPA_IA_FRENTE_ID,
+      );
       if (
         projectData.capaIaHandoff &&
-        !projectData.initialEditorData.elements.some((el) => el.id === CAPA_IA_FRENTE_ID)
+        !jaTemIa &&
+        projectData.initialEditorData.capaIaRemovida !== true
       ) {
+        const s = useEditorStore.getState();
         injectCapaIaFrente(
           projectData.capaIaHandoff.url,
           projectData.format,
-          projectData.layout,
+          projectData.pages,
+          s.orelhaMm,
+          s.layout,
         );
+      }
+      // Aplica fills default da IA sobre qualquer região sem cor definida.
+      // Preserva escolhas do autor (fill já não-vazio).
+      if (projectData.capaIaHandoff) {
+        applyCapaIaDefaultFills(projectData.capaIaHandoff, useEditorStore.getState().layout);
       }
     } else {
       // Primeira vez abrindo o editor para este projeto (sem editor_data
       // prévio no banco). Popular background (upload), injetar a arte da
-      // IA como ImageElement travado quando aplicável e pré-popular smart
-      // fields de título/subtítulo com o que o autor já definiu em
+      // IA como ImageElement selecionável quando aplicável e pré-popular
+      // smart fields de título/subtítulo com o que o autor já definiu em
       // Elementos Editoriais. Autor pode mover, editar ou deletar livremente —
       // se voltar depois, o autosave terá persistido a decisão dele e
       // caímos no ramo `if` acima (que não recria nada).
@@ -183,20 +196,20 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         useEditorStore.getState().setBackgroundUrl(projectData.backgroundUrl);
       }
 
-      // IA (B2-04c): injeta a arte da IA no rect da frente e pinta lombada/
-      // contracapa com a cor predominante do briefing. Elemento com id
-      // determinístico para futura troca por outra opção da galeria.
+      // IA (B2-04c): injeta a arte da IA no rect da frente com fit-cover
+      // centrado. Pinta lombada/contracapa/orelhas com a cor predominante do
+      // briefing sempre que a região não tem cor definida. Id determinístico
+      // para futura troca por outra opção da galeria.
       if (projectData.capaIaHandoff) {
+        const s = useEditorStore.getState();
         injectCapaIaFrente(
           projectData.capaIaHandoff.url,
           projectData.format,
-          projectData.layout,
+          projectData.pages,
+          s.orelhaMm,
+          s.layout,
         );
-        const hex = projectData.capaIaHandoff.corPredominanteHex;
-        if (hex && projectData.layout === "panoramica") {
-          useEditorStore.getState().setFill("lombada", hex);
-          useEditorStore.getState().setFill("contracapa", hex);
-        }
+        applyCapaIaDefaultFills(projectData.capaIaHandoff, s.layout);
       }
 
       // Só cria smart field quando manuscripts.titulo/subtitulo tem conteúdo.
@@ -284,13 +297,41 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         state.orelhaMm !== prev.orelhaMm ||
         state.elements !== prev.elements ||
         state.fills !== prev.fills ||
-        state.isbn !== prev.isbn
+        state.isbn !== prev.isbn ||
+        state.capaIaRemovida !== prev.capaIaRemovida
       ) {
         debouncedSave();
       }
     });
     return unsubscribe;
   }, [debouncedSave]);
+
+  // Reancoragem automática do elemento IA quando orelhas ligam/desligam ou
+  // layout muda. Só reancoraga se o autor NÃO moveu/redimensionou o elemento
+  // manualmente (flag `posicaoManual`). Preserva a decisão dele.
+  useEffect(() => {
+    const unsub = useEditorStore.subscribe((state, prev) => {
+      const geometriaMudou =
+        state.orelhaMm !== prev.orelhaMm || state.layout !== prev.layout;
+      if (!geometriaMudou) return;
+      const iaEl = state.elements.find((el) => el.id === CAPA_IA_FRENTE_ID);
+      if (!iaEl || iaEl.type !== "image") return;
+      if (iaEl.posicaoManual) return;
+      const rect = getCapaIaAnchoredRect(
+        state.format,
+        projectData.pages,
+        state.orelhaMm,
+        state.layout,
+      );
+      state.updateElement(CAPA_IA_FRENTE_ID, {
+        x_mm: rect.x,
+        y_mm: rect.y,
+        width_mm: rect.width,
+        height_mm: rect.height,
+      });
+    });
+    return unsub;
+  }, [projectData.pages]);
 
   // Keyboard shortcuts
   useEffect(() => {
