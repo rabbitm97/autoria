@@ -14,6 +14,8 @@ import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm,
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
 import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem } from "@/lib/project-data";
+import { PLANO_LABEL, planoAtende, type Plano } from "@/lib/planos";
+import { TelaConversaoPlano } from "@/components/plano-conversao";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -75,19 +77,26 @@ function ModoCard({
   desc,
   onClick,
   warning,
+  badge,
 }: {
   icon: React.ReactNode;
   title: string;
   desc: string;
   onClick: () => void;
   warning?: string;
+  badge?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
+      className="relative flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
         hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
     >
+      {badge && (
+        <span className="absolute top-3 right-3 bg-brand-gold/15 text-brand-primary text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full">
+          {badge}
+        </span>
+      )}
       <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center
         group-hover:bg-brand-gold/20 transition-colors">
         {icon}
@@ -2014,15 +2023,30 @@ export default function CapaPage() {
   // CapaGeradaResult a pré-carregar quando abre ModoIA em modo regeneração
   // a partir do CapaIaStatusCard.
   const [modoIaRegerarDe, setModoIaRegerarDe] = useState<CapaGeradaResult | null>(null);
+  // Plano do projeto — usado para gate do card "Gerar com IA" (D2-05).
+  // Default freemium = fail-closed: em caso de projeto sem coluna preenchida
+  // ou falha de leitura, tratamos como freemium e mostramos o paywall.
+  const [plano, setPlano] = useState<Plano>("freemium");
+  // UI-only: true quando freemium clicou em "Gerar com IA" e vê o paywall
+  // no lugar do grid de modos. Reseta ao voltar.
+  const [mostrandoConversaoIa, setMostrandoConversaoIa] = useState(false);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await supabase
         .from("projects")
-        .select("dados_elementos, dados_capa, dados_creditos, dados_miolo, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("dados_elementos, dados_capa, dados_creditos, dados_miolo, plano, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
+
+      // Plano — determina o gate do card "Gerar com IA" (D2-05).
+      const planoRaw = (data as { plano?: unknown } | null)?.plano;
+      setPlano(
+        planoRaw === "pro" || planoRaw === "essencial" || planoRaw === "freemium"
+          ? planoRaw
+          : "freemium",
+      );
 
       if (data?.dados_elementos) {
         const el = data.dados_elementos as Record<string, unknown>;
@@ -2585,6 +2609,22 @@ export default function CapaPage() {
                   </div>
                 );
               }
+              // D2-05: freemium clicou em "Gerar com IA" — trocar o grid pela
+              // tela de conversão de plano (mesmo padrão da Prova). Upload e
+              // Editor seguem livres para freemium.
+              if (mostrandoConversaoIa) {
+                return (
+                  <div className="space-y-4">
+                    <button
+                      onClick={() => setMostrandoConversaoIa(false)}
+                      className="text-xs text-zinc-400 hover:text-zinc-600 flex items-center gap-1"
+                    >
+                      ← Voltar
+                    </button>
+                    <TelaConversaoPlano />
+                  </div>
+                );
+              }
               const editorConfirmed = dados?.source === "editor" && dados?.confirmed_at;
               const editorThumbnail = editorConfirmed ? (dados?.imagem_url as string | undefined) : null;
               const editorConfirmedAt = editorConfirmed ? (dados?.confirmed_at as string) : null;
@@ -2596,6 +2636,9 @@ export default function CapaPage() {
                 Boolean(editorConfirmed) ||
                 dados?.modo === "upload" ||
                 dados?.modo === "ia";
+              // Gate do IA — freemium vê o paywall antes do briefing (D2-05).
+              // Upload e Editor não são gated: continuam livres.
+              const iaGated = !planoAtende(plano, "essencial");
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <ModoCard
@@ -2612,8 +2655,13 @@ export default function CapaPage() {
                     icon={<SparklesIcon />}
                     title="Gerar com IA"
                     desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
-                    warning={hasCurrentCapa ? "Substituirá a capa atual." : undefined}
+                    warning={!iaGated && hasCurrentCapa ? "Substituirá a capa atual." : undefined}
+                    badge={iaGated ? PLANO_LABEL.essencial : undefined}
                     onClick={async () => {
+                      if (iaGated) {
+                        setMostrandoConversaoIa(true);
+                        return;
+                      }
                       await resetIfDifferentMode("ia");
                       setModo("ia");
                     }}
