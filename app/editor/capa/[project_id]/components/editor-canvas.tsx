@@ -38,7 +38,7 @@ import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget } from "../lib/keyboard-utils";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
-import { getFillRect, getFrenteRect } from "../lib/region-rects";
+import { getFillRect, getCapaIaClipRect } from "../lib/region-rects";
 import { CAPA_IA_FRENTE_ID } from "../lib/constants";
 import { isReanchorTarget } from "../lib/reanchor";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
@@ -718,7 +718,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           {ALL_REGIONS.map((key) => {
             const color = fills[key];
             if (!color) return null;
-            const rect = getFillRect(key, format, pages, orelhaMm);
+            const rect = getFillRect(key, format, pages, orelhaMm, { overlap: true });
             if (!rect) return null;
             return (
               <Rect
@@ -795,7 +795,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
               // recalcula automaticamente quando `orelhaMm`/`layout` mudam
               // (a função depende do state, então re-renderiza).
               if (el.id === CAPA_IA_FRENTE_ID) {
-                const frenteRect = getFrenteRect(format, pages, orelhaMm, layout);
+                const frenteRect = getCapaIaClipRect(format, pages, orelhaMm, layout);
                 return (
                   <Group
                     key={el.id}

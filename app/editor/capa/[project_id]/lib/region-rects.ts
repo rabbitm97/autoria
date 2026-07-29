@@ -10,6 +10,57 @@ export interface RegionRect {
   height: number; // mm
 }
 
+// ─── Sobreposição anti-costura ────────────────────────────────────────────────
+// Sem overlap, os rects vizinhos compartilham uma borda exata. O rasterizador
+// aplica anti-aliasing nas duas faces dessa borda e o fundo do canvas (branco)
+// aparece como uma linha de 1px na costura. Expandindo cada lado interno em
+// fração de mm, os vizinhos se sobrepõem levemente e o pixel de fronteira
+// sempre carrega cor de uma das duas regiões — nunca branco. As bordas
+// externas do papel (que já mordem na sangria de 3mm) não são tocadas.
+//
+// Escolha dos valores: 300 DPI ⇒ 1 px ≈ 0,0847 mm. Fills usam ~1,5 px de
+// cada lado para máxima folga sem impacto visual perceptível (< 0,25 mm no
+// total). O clip da IA usa ~1 px — menor porque a arte já cobre e não
+// queremos deslocar visualmente a moldura.
+export const FILL_OVERLAP_MM = 0.13;
+export const CLIP_OVERLAP_MM = 0.09;
+
+/**
+ * Bordas laterais INTERNAS (que tocam outra região) para cada region na
+ * configuração dada. Bordas externas (que mordem no bleed) retornam false.
+ * Y é sempre externo (papel inteiro).
+ */
+function getInternalBorders(
+  region: Region,
+  temOrelhas: boolean,
+): { left: boolean; right: boolean } {
+  switch (region) {
+    case "orelha_verso":  return { left: false,      right: true };
+    case "contracapa":    return { left: temOrelhas, right: true };
+    case "lombada":       return { left: true,       right: true };
+    case "capa":          return { left: true,       right: temOrelhas };
+    case "orelha_frente": return { left: true,       right: false };
+  }
+}
+
+/**
+ * Aplica sobreposição em mm nas bordas indicadas. `y`/`height` intocados.
+ */
+function expandRectSides(
+  rect: RegionRect,
+  deltaMm: number,
+  sides: { left: boolean; right: boolean },
+): RegionRect {
+  const dl = sides.left ? deltaMm : 0;
+  const dr = sides.right ? deltaMm : 0;
+  return {
+    x: rect.x - dl,
+    y: rect.y,
+    width: rect.width + dl + dr,
+    height: rect.height,
+  };
+}
+
 /**
  * Returns the bleed-aware fill rectangle for a region.
  *
@@ -19,12 +70,19 @@ export interface RegionRect {
  *
  * Y always spans the full paper height (0 → height_mm + 2×sangria) so the
  * top and bottom bleeds are always covered.
+ *
+ * `options.overlap` (opcional): quando true, expande cada borda INTERNA
+ * em `FILL_OVERLAP_MM` para os vizinhos se sobreporem no render — evita
+ * costura branca de anti-aliasing entre regiões. Use no paint (canvas do
+ * editor e export). Não use no cálculo geométrico (reanchor, anchored
+ * rect, etc.) — esses precisam do rect canônico.
  */
 export function getFillRect(
   region: Region,
   format: FormatKey,
   pages: number,
   orelhaMm: number,
+  options?: { overlap?: boolean },
 ): RegionRect | null {
   const f = FORMATS[format];
   const lombada = calcularLombada(pages);
@@ -73,12 +131,15 @@ export function getFillRect(
     return null;
   }
 
-  return {
+  const base: RegionRect = {
     x: x_start,
     y: 0,
     width: x_end - x_start,
     height: alturaTotal,
   };
+  if (!options?.overlap) return base;
+  const sides = getInternalBorders(region, temOrelhas);
+  return expandRectSides(base, FILL_OVERLAP_MM, sides);
 }
 
 /**
@@ -127,6 +188,26 @@ export function getVersoRect(
 ): RegionRect | null {
   if (layout === "frente") return null;
   return getFillRect("contracapa", format, pages, orelhaMm);
+}
+
+/**
+ * Rect de CLIP do grupo capa-ia-frente. Idêntico ao rect canônico da frente,
+ * expandido em `CLIP_OVERLAP_MM` nas fronteiras INTERNAS (vinco da lombada e,
+ * se houver orelhas, vinco da orelha frontal) para a arte cobrir a costura
+ * de anti-aliasing entre regiões. Em `layout="frente"` não há vizinhos
+ * internos — retorna o rect base intacto.
+ */
+export function getCapaIaClipRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect {
+  const rect = getFrenteRect(format, pages, orelhaMm, layout);
+  if (layout === "frente") return rect;
+  const temOrelhas = orelhaMm > 0;
+  const sides = getInternalBorders("capa", temOrelhas);
+  return expandRectSides(rect, CLIP_OVERLAP_MM, sides);
 }
 
 /**
