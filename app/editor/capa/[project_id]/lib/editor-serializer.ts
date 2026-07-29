@@ -19,6 +19,14 @@ export interface EditorData {
    * `undefined` para o server component/cliente decidir o default.
    */
   layout?: SerializedLayout;
+  /**
+   * Páginas usadas para calcular a lombada (`calcularLombada(pages)`) quando
+   * os elementos foram salvos. Comparar com o valor atual em `projectData.pages`
+   * na hidratação detecta divergência de lombada (estimativa → paginas_reais
+   * pós-diagramação, ou qualquer alteração posterior) e dispara translação
+   * dos elementos ancorados na frente. Ausente em editor_data legado.
+   */
+  pages?: number;
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
@@ -48,6 +56,7 @@ export type SaveStatus =
 export function serializeEditorState(state: {
   orelhaMm: number;
   layout: SerializedLayout;
+  pages: number;
   elements: AnyElement[];
   fills: RegionFills;
   isbn: string | null;
@@ -59,6 +68,7 @@ export function serializeEditorState(state: {
     version: 1,
     orelhaMm: state.orelhaMm,
     layout: state.layout,
+    pages: state.pages,
     elements: state.elements,
     fills: state.fills,
     isbn: state.isbn,
@@ -75,7 +85,7 @@ export function serializeEditorState(state: {
 export function deserializeEditorState(
   data: unknown,
   format: FormatKey,
-): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl" | "layout" | "capaIaRemovida"> | null {
+): Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl" | "layout" | "capaIaRemovida" | "pages"> | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.version !== 1) {
@@ -93,9 +103,14 @@ export function deserializeEditorState(
     d.layout === "frente" || d.layout === "panoramica"
       ? (d.layout as SerializedLayout)
       : undefined;
+  const pages =
+    typeof d.pages === "number" && Number.isFinite(d.pages) && d.pages > 0
+      ? d.pages
+      : undefined;
   return {
     orelhaMm,
     layout,
+    pages,
     elements: Array.isArray(d.elements)
       ? (d.elements as AnyElement[]).map((el) => {
           if (el.type === "text" && typeof (el as any).lineHeight !== "number") {

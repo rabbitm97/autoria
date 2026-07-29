@@ -10,10 +10,10 @@ import { serializeEditorState } from "./lib/editor-serializer";
 import { isEditableTarget } from "./lib/keyboard-utils";
 import { hashElements, hashFills } from "./lib/state-hash";
 import { createSmartFieldElement, type SmartFieldContentMap } from "./lib/smart-field-layout";
-import { createImageElement, type AnyElement, type Region, type TextElement } from "./lib/elements";
+import { createImageElement, type AnyElement, type Region } from "./lib/elements";
 import { getCapaIaAnchoredRect } from "./lib/region-rects";
 import { CAPA_IA_FRENTE_ID } from "./lib/constants";
-import { SMART_FIELDS_REANCHOR } from "./lib/reanchor";
+import { reanchorFrenteElements } from "./lib/reanchor";
 import type { CapaIaHandoff, EditorLayout, FormatKey, ProjectData } from "./types";
 
 /**
@@ -116,6 +116,7 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
       snapshot = serializeEditorState({
         orelhaMm: state.orelhaMm,
         layout: state.layout,
+        pages: state.pages,
         elements: state.elements,
         fills: state.fills,
         isbn: state.isbn,
@@ -170,6 +171,33 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         backgroundUrl: projectData.initialEditorData.backgroundUrl,
         capaIaRemovida: projectData.initialEditorData.capaIaRemovida,
       });
+
+      // Divergência de lombada entre sessões: se `pages` no editor_data salvo
+      // difere do `projectData.pages` atual (estimativa → paginas_reais pós-
+      // diagramação, ou qualquer atualização subsequente), transladar os
+      // elementos da frente pelo delta da origem da região ANTES de qualquer
+      // interação — assim a reabertura preserva EXATAMENTE a posição visual
+      // dentro da frente com a lombada nova. Elementos com posicaoManual
+      // também transladam; a flag apenas impede o reset ao default.
+      const savedPages = projectData.initialEditorData.pages;
+      if (typeof savedPages === "number" && savedPages !== projectData.pages) {
+        const s = useEditorStore.getState();
+        reanchorFrenteElements(
+          { format: projectData.format, pages: savedPages, orelhaMm: s.orelhaMm, layout: s.layout },
+          { format: projectData.format, pages: projectData.pages, orelhaMm: s.orelhaMm, layout: s.layout },
+          {
+            title: projectData.title,
+            subtitle: projectData.subtitle,
+            posicaoTitulo: projectData.capaIaHandoff?.posicaoTitulo ?? "sem_preferencia",
+            fills: s.fills,
+          },
+          s.updateElement,
+          s.elements,
+        );
+        // Sincroniza store.pages com o valor atual — o delta já foi absorvido
+        // e o próximo autosave persiste a nova referência de `pages`.
+        useEditorStore.setState({ pages: projectData.pages });
+      }
 
       // Re-injeta capa-ia-frente se o editor_data salvo perdeu esse elemento
       // (autor deletou por engano) mas dados_capa ainda aponta pra IA — a
@@ -318,68 +346,34 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
     return unsubscribe;
   }, [debouncedSave]);
 
-  // Reancoragem automática quando orelhas ligam/desligam ou layout muda:
-  //  - `capa-ia-frente`: reposiciona/redimensiona no fit-cover da nova frente;
-  //  - smart fields título/subtítulo/autor: recalcula posição para a nova
-  //    região da frente via `createSmartFieldElement` (mantém id/conteúdo/estilo).
-  // Skippa elementos com `posicaoManual` — a decisão do autor prevalece.
+  // Reancoragem automática quando a geometria da frente muda (orelhas,
+  // layout, ou páginas/lombada). Delega para `reanchorFrenteElements`:
+  //  - elementos com âncora canônica (IA + smart fields título/subtítulo/autor)
+  //    resetam para o default calculado quando `posicaoManual = false`, ou
+  //    transladam pelo delta da origem da frente quando `posicaoManual = true`;
+  //  - demais elementos cujo centro cai na frente PRÉVIA sempre transladam.
   useEffect(() => {
     const unsub = useEditorStore.subscribe((state, prev) => {
       const geometriaMudou =
-        state.orelhaMm !== prev.orelhaMm || state.layout !== prev.layout;
+        state.orelhaMm !== prev.orelhaMm ||
+        state.layout !== prev.layout ||
+        state.pages !== prev.pages;
       if (!geometriaMudou) return;
-
-      // IA — reancora fit-cover centralizado no rect da frente.
-      const iaEl = state.elements.find((el) => el.id === CAPA_IA_FRENTE_ID);
-      if (iaEl && iaEl.type === "image" && !iaEl.posicaoManual) {
-        const rect = getCapaIaAnchoredRect(
-          state.format,
-          projectData.pages,
-          state.orelhaMm,
-          state.layout,
-        );
-        state.updateElement(CAPA_IA_FRENTE_ID, {
-          x_mm: rect.x,
-          y_mm: rect.y,
-          width_mm: rect.width,
-          height_mm: rect.height,
-        });
-      }
-
-      // Smart fields de título/subtítulo/autor — recalcula ancoragem canônica
-      // para a nova região da frente. Reuso do `createSmartFieldElement` mantém
-      // todas as regras (margens, posicaoTitulo, contraste com fill).
-      const contentMap: SmartFieldContentMap = {
-        titulo: projectData.title,
-        subtitulo: projectData.subtitle,
-      };
-      const posicao = projectData.capaIaHandoff?.posicaoTitulo ?? "sem_preferencia";
-      state.elements.forEach((el) => {
-        if (el.type !== "text") return;
-        const t = el as TextElement;
-        if (!t.smartField) return;
-        if (!(SMART_FIELDS_REANCHOR as readonly string[]).includes(t.smartField)) return;
-        if (t.posicaoManual) return;
-        const template = createSmartFieldElement(
-          t.smartField,
-          state.format,
-          projectData.pages,
-          state.orelhaMm,
-          state.fills,
-          contentMap,
-          t.zIndex,
-          { layout: state.layout, posicaoTitulo: posicao },
-        );
-        state.updateElement(t.id, {
-          x_mm: template.x_mm,
-          y_mm: template.y_mm,
-          width_mm: template.width_mm,
-          height_mm: template.height_mm,
-        });
-      });
+      reanchorFrenteElements(
+        { format: prev.format, pages: prev.pages, orelhaMm: prev.orelhaMm, layout: prev.layout },
+        { format: state.format, pages: state.pages, orelhaMm: state.orelhaMm, layout: state.layout },
+        {
+          title: projectData.title,
+          subtitle: projectData.subtitle,
+          posicaoTitulo: projectData.capaIaHandoff?.posicaoTitulo ?? "sem_preferencia",
+          fills: state.fills,
+        },
+        state.updateElement,
+        state.elements,
+      );
     });
     return unsub;
-  }, [projectData.pages, projectData.title, projectData.subtitle, projectData.capaIaHandoff]);
+  }, [projectData.title, projectData.subtitle, projectData.capaIaHandoff]);
 
   // Keyboard shortcuts
   useEffect(() => {
