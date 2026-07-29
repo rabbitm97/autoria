@@ -1335,6 +1335,27 @@ function ModoIA({
                   {c.label}
                 </button>
               ))}
+              {/* Swatch "Personalizar" — abre input nativo de cor. schema
+                  aceita qualquer hex; nome fica marcado como "personalizada"
+                  para o prompt saber que não é preset. */}
+              <label className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs font-medium cursor-pointer transition-all
+                ${cor === "personalizada" ? "border-brand-gold" : "border-zinc-200 hover:border-zinc-300"}`}>
+                <span
+                  className="w-4 h-4 rounded-full border border-white/40 shrink-0"
+                  style={{
+                    background: cor === "personalizada"
+                      ? corHex
+                      : "conic-gradient(from 0deg, #ef4444, #f59e0b, #eab308, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)",
+                  }}
+                />
+                Personalizar
+                <input
+                  type="color"
+                  value={cor === "personalizada" ? corHex : "#c9a227"}
+                  onChange={e => { setCor("personalizada"); setCorHex(e.target.value); }}
+                  className="sr-only"
+                />
+              </label>
             </div>
           </div>
 

@@ -10,9 +10,10 @@ import { serializeEditorState } from "./lib/editor-serializer";
 import { isEditableTarget } from "./lib/keyboard-utils";
 import { hashElements, hashFills } from "./lib/state-hash";
 import { createSmartFieldElement, type SmartFieldContentMap } from "./lib/smart-field-layout";
-import { createImageElement, type AnyElement, type Region } from "./lib/elements";
+import { createImageElement, type AnyElement, type Region, type TextElement } from "./lib/elements";
 import { getCapaIaAnchoredRect } from "./lib/region-rects";
 import { CAPA_IA_FRENTE_ID } from "./lib/constants";
+import { SMART_FIELDS_REANCHOR } from "./lib/reanchor";
 import type { CapaIaHandoff, EditorLayout, FormatKey, ProjectData } from "./types";
 
 /**
@@ -53,11 +54,22 @@ function injectCapaIaFrente(
 }
 
 /**
+ * Trata o BRANCO DEFAULT do sistema como ausência de cor: undefined, string
+ * vazia ou hex do branco (`#ffffff` / `#fff`, case-insensitive) contam como
+ * "não escolhida". Qualquer outra cor é decisão explícita do autor.
+ */
+function isFillDefaultBranco(color: string | undefined | null): boolean {
+  if (!color) return true;
+  const normalized = color.trim().toLowerCase();
+  return normalized === "" || normalized === "#ffffff" || normalized === "#fff";
+}
+
+/**
  * Aplica `cor_predominante_hex` como fill default de lombada, contracapa e
- * orelhas SEMPRE que a região ainda não tem cor definida. Em `layout="frente"`
- * não há dessas regiões, então noop.
+ * orelhas SEMPRE que a região ainda está no branco default (undefined ou
+ * `#ffffff`). Em `layout="frente"` não há dessas regiões, então noop.
  *
- * NUNCA sobrescreve fill escolhido explicitamente pelo autor.
+ * NUNCA sobrescreve fill não-default escolhido pelo autor.
  */
 function applyCapaIaDefaultFills(handoff: CapaIaHandoff, layout: EditorLayout) {
   const hex = handoff.corPredominanteHex;
@@ -65,7 +77,7 @@ function applyCapaIaDefaultFills(handoff: CapaIaHandoff, layout: EditorLayout) {
   const store = useEditorStore.getState();
   const regions: Region[] = ["lombada", "contracapa", "orelha_frente", "orelha_verso"];
   regions.forEach((r) => {
-    if (!store.fills[r]) store.setFill(r, hex);
+    if (isFillDefaultBranco(store.fills[r])) store.setFill(r, hex);
   });
 }
 
@@ -306,32 +318,68 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
     return unsubscribe;
   }, [debouncedSave]);
 
-  // Reancoragem automática do elemento IA quando orelhas ligam/desligam ou
-  // layout muda. Só reancoraga se o autor NÃO moveu/redimensionou o elemento
-  // manualmente (flag `posicaoManual`). Preserva a decisão dele.
+  // Reancoragem automática quando orelhas ligam/desligam ou layout muda:
+  //  - `capa-ia-frente`: reposiciona/redimensiona no fit-cover da nova frente;
+  //  - smart fields título/subtítulo/autor: recalcula posição para a nova
+  //    região da frente via `createSmartFieldElement` (mantém id/conteúdo/estilo).
+  // Skippa elementos com `posicaoManual` — a decisão do autor prevalece.
   useEffect(() => {
     const unsub = useEditorStore.subscribe((state, prev) => {
       const geometriaMudou =
         state.orelhaMm !== prev.orelhaMm || state.layout !== prev.layout;
       if (!geometriaMudou) return;
+
+      // IA — reancora fit-cover centralizado no rect da frente.
       const iaEl = state.elements.find((el) => el.id === CAPA_IA_FRENTE_ID);
-      if (!iaEl || iaEl.type !== "image") return;
-      if (iaEl.posicaoManual) return;
-      const rect = getCapaIaAnchoredRect(
-        state.format,
-        projectData.pages,
-        state.orelhaMm,
-        state.layout,
-      );
-      state.updateElement(CAPA_IA_FRENTE_ID, {
-        x_mm: rect.x,
-        y_mm: rect.y,
-        width_mm: rect.width,
-        height_mm: rect.height,
+      if (iaEl && iaEl.type === "image" && !iaEl.posicaoManual) {
+        const rect = getCapaIaAnchoredRect(
+          state.format,
+          projectData.pages,
+          state.orelhaMm,
+          state.layout,
+        );
+        state.updateElement(CAPA_IA_FRENTE_ID, {
+          x_mm: rect.x,
+          y_mm: rect.y,
+          width_mm: rect.width,
+          height_mm: rect.height,
+        });
+      }
+
+      // Smart fields de título/subtítulo/autor — recalcula ancoragem canônica
+      // para a nova região da frente. Reuso do `createSmartFieldElement` mantém
+      // todas as regras (margens, posicaoTitulo, contraste com fill).
+      const contentMap: SmartFieldContentMap = {
+        titulo: projectData.title,
+        subtitulo: projectData.subtitle,
+      };
+      const posicao = projectData.capaIaHandoff?.posicaoTitulo ?? "sem_preferencia";
+      state.elements.forEach((el) => {
+        if (el.type !== "text") return;
+        const t = el as TextElement;
+        if (!t.smartField) return;
+        if (!(SMART_FIELDS_REANCHOR as readonly string[]).includes(t.smartField)) return;
+        if (t.posicaoManual) return;
+        const template = createSmartFieldElement(
+          t.smartField,
+          state.format,
+          projectData.pages,
+          state.orelhaMm,
+          state.fills,
+          contentMap,
+          t.zIndex,
+          { layout: state.layout, posicaoTitulo: posicao },
+        );
+        state.updateElement(t.id, {
+          x_mm: template.x_mm,
+          y_mm: template.y_mm,
+          width_mm: template.width_mm,
+          height_mm: template.height_mm,
+        });
       });
     });
     return unsub;
-  }, [projectData.pages]);
+  }, [projectData.pages, projectData.title, projectData.subtitle, projectData.capaIaHandoff]);
 
   // Keyboard shortcuts
   useEffect(() => {

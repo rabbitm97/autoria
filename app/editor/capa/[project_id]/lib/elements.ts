@@ -13,6 +13,14 @@ export interface BaseElement {
   visible: boolean;
   locked: boolean;
   zIndex: number;
+  /**
+   * Marca posicionamento manual (drag/transform pelo autor). Usado para
+   * gate da reancoragem automática quando a geometria do papel muda
+   * (orelhas ligam/desligam, layout troca): elementos com `true` mantêm
+   * a posição/tamanho decidido pelo autor. Aplicado hoje ao `capa-ia-frente`
+   * e aos TextElement de smart fields (título/subtítulo/autor).
+   */
+  posicaoManual?: boolean;
 }
 
 export interface TextElement extends BaseElement {
@@ -32,12 +40,6 @@ export interface ImageElement extends BaseElement {
   type: "image";
   src: string;
   objectFit: "fill" | "cover" | "contain";
-  /**
-   * Marca posicionamento manual (arraste ou transform pelo autor). Só usado
-   * pelo elemento `capa-ia-frente`: com `true`, a reancoragem automática em
-   * mudança de geometria (orelhas ligam/desligam, layout muda) é ignorada.
-   */
-  posicaoManual?: boolean;
 }
 
 export interface LogoElement extends BaseElement {

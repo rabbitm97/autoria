@@ -38,8 +38,9 @@ import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget } from "../lib/keyboard-utils";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
-import { getFillRect } from "../lib/region-rects";
+import { getFillRect, getFrenteRect } from "../lib/region-rects";
 import { CAPA_IA_FRENTE_ID } from "../lib/constants";
+import { isReanchorTarget } from "../lib/reanchor";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
 import { EditorZoomControls } from "./editor-zoom-controls";
@@ -436,11 +437,14 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     const node = e.target;
     const el = elements.find((el) => el.id === elId);
     const isEllipse = el?.type === "shape" && (el as ShapeElement).shape === "ellipse";
+    // Autor moveu manualmente — trava a reancoragem automática em mudanças
+    // de geometria (orelhas/layout). Vale para o `capa-ia-frente` e para
+    // smart fields de título/subtítulo/autor.
+    const marcaManual = isReanchorTarget(el);
     updateElement(elId, {
       x_mm: node.x() / MM_TO_PX - (isEllipse ? (el as ShapeElement).width_mm / 2 : 0),
       y_mm: node.y() / MM_TO_PX - (isEllipse ? (el as ShapeElement).height_mm / 2 : 0),
-      // Autor moveu a IA — trava o reanchor automático em mudanças de geometria.
-      ...(elId === CAPA_IA_FRENTE_ID ? { posicaoManual: true } : {}),
+      ...(marcaManual ? { posicaoManual: true } : {}),
     } as Partial<AnyElement>);
   }
 
@@ -475,6 +479,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
       }
 
       const newW = Math.max(20, node.width() * scaleX) / MM_TO_PX;
+      const marcaManual = isReanchorTarget(el);
       if (el.type === "text") {
         const newFontSizePt = Math.max(6, (el as TextElement).fontSize_pt * scaleY);
         updateElement(elId, {
@@ -483,6 +488,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           width_mm: newW,
           fontSize_pt: newFontSizePt,
           rotation_deg: node.rotation(),
+          ...(marcaManual ? { posicaoManual: true } : {}),
         } as any);
       } else {
         const newH = Math.max(20, node.height() * scaleY) / MM_TO_PX;
@@ -492,8 +498,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
           width_mm: newW,
           height_mm: newH,
           rotation_deg: node.rotation(),
-          // Autor redimensionou a IA — trava reanchor automático (geometria).
-          ...(elId === CAPA_IA_FRENTE_ID ? { posicaoManual: true } : {}),
+          ...(marcaManual ? { posicaoManual: true } : {}),
         } as Partial<AnyElement>);
       }
     });
@@ -784,6 +789,34 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
             }
 
             if (el.type === "image") {
+              // A arte da IA vive dentro de um Group com clipFunc no rect da
+              // FRENTE — o excedente do fit-cover fica escondido, mesmo se o
+              // autor mover/redimensionar a imagem além dos vincos. O clip
+              // recalcula automaticamente quando `orelhaMm`/`layout` mudam
+              // (a função depende do state, então re-renderiza).
+              if (el.id === CAPA_IA_FRENTE_ID) {
+                const frenteRect = getFrenteRect(format, pages, orelhaMm, layout);
+                return (
+                  <Group
+                    key={el.id}
+                    clipFunc={(ctx) => {
+                      ctx.rect(
+                        frenteRect.x * MM_TO_PX,
+                        frenteRect.y * MM_TO_PX,
+                        frenteRect.width * MM_TO_PX,
+                        frenteRect.height * MM_TO_PX,
+                      );
+                    }}
+                  >
+                    <ImageNode
+                      el={el as ImageElement}
+                      selected={isSelected}
+                      onSelect={handleSelect}
+                      {...commonDragProps}
+                    />
+                  </Group>
+                );
+              }
               return (
                 <ImageNode
                   key={el.id}

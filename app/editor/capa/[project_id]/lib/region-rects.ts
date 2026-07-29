@@ -82,14 +82,60 @@ export function getFillRect(
 }
 
 /**
- * Rect da região onde a arte da IA deve ser posicionada com FIT COVER
- * centralizado sobre a frente:
+ * Rect da REGIÃO da FRENTE (área visível pintada, sem expansão para cover):
  *  - `layout="frente"`: papel inteiro (frente + sangria em todos os lados);
- *  - `layout="panoramica"`: rect canônico da região "capa" (frente + sangria
- *    externa quando não há orelhas).
- * O excedente do cover em relação ao aspecto 2:3 é distribuído igual em
- * ambos os lados (metade cruza a lombada / metade a sangria externa; ou
- * metade acima / metade abaixo). No export a área fora do papel é clipada.
+ *  - `layout="panoramica"`: rect canônico da região "capa" (com orelhas =
+ *    entre folds; sem orelhas = frente + sangria externa).
+ * Usado como base para (a) clip da arte da IA e (b) cálculo do anchored
+ * rect com fit-cover. B2-05 usará `getVersoRect` (contracapa) espelhando
+ * este contrato.
+ */
+export function getFrenteRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect {
+  const f = FORMATS[format];
+  if (layout === "frente") {
+    return {
+      x: 0,
+      y: 0,
+      width: f.width_mm + SANGRIA_MM * 2,
+      height: f.height_mm + SANGRIA_MM * 2,
+    };
+  }
+  const canonical = getFillRect("capa", format, pages, orelhaMm);
+  return canonical ?? {
+    x: SANGRIA_MM + f.width_mm + calcularLombada(pages),
+    y: 0,
+    width: f.width_mm + SANGRIA_MM,
+    height: f.height_mm + SANGRIA_MM * 2,
+  };
+}
+
+/**
+ * Rect da REGIÃO do VERSO (contracapa) para clip da arte de verso e reanchor
+ * de smart fields do verso. Panorâmica apenas — em `layout="frente"` não há
+ * contracapa (retorna null). Reserva o contrato do B2-05.
+ */
+export function getVersoRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect | null {
+  if (layout === "frente") return null;
+  return getFillRect("contracapa", format, pages, orelhaMm);
+}
+
+/**
+ * Rect da região onde a arte da IA deve ser posicionada com FIT COVER
+ * centralizado sobre a frente. O excedente do cover em relação ao aspecto
+ * 2:3 é distribuído igual em ambos os lados (metade cruza a lombada /
+ * metade a sangria externa; ou metade acima / metade abaixo). No render
+ * o Group clipa a região da frente e no export a área fora do papel é
+ * clipada.
  */
 export function getCapaIaAnchoredRect(
   format: FormatKey,
@@ -97,27 +143,7 @@ export function getCapaIaAnchoredRect(
   orelhaMm: number,
   layout: EditorLayout,
 ): RegionRect {
-  const f = FORMATS[format];
-  let rect: RegionRect;
-  if (layout === "frente") {
-    rect = {
-      x: 0,
-      y: 0,
-      width: f.width_mm + SANGRIA_MM * 2,
-      height: f.height_mm + SANGRIA_MM * 2,
-    };
-  } else {
-    // Em panorâmica, a arte cobre a região "capa" no rect canônico
-    // (largura depende de orelhas: com orelhas, entre folds; sem, frente + sangria).
-    const canonical = getFillRect("capa", format, pages, orelhaMm);
-    // "capa" sempre existe (independente de orelhas) — mas o TS não sabe.
-    rect = canonical ?? {
-      x: SANGRIA_MM + f.width_mm + calcularLombada(pages),
-      y: 0,
-      width: f.width_mm + SANGRIA_MM,
-      height: f.height_mm + SANGRIA_MM * 2,
-    };
-  }
+  const rect = getFrenteRect(format, pages, orelhaMm, layout);
   const imgAspect = CAPA_IA_ASPECT_W / CAPA_IA_ASPECT_H;
   const rectAspect = rect.width / rect.height;
   let coverW: number;
