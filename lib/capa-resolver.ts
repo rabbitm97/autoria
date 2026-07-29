@@ -149,6 +149,7 @@ function isEditorCapa(c: DadosCapa): c is Record<string, unknown> & {
     orelhaMm?: number;
     comOrelhas?: boolean;
     backgroundUrl?: string | null;
+    layout?: "frente" | "panoramica";
   };
   confirmed_at?: string;
 } {
@@ -212,19 +213,24 @@ export function resolveCapaCompleta(
   if (isEditorCapa(dados_capa)) {
     const imagemUrl = typeof dados_capa.imagem_url === "string" ? dados_capa.imagem_url : null;
     const fills = dados_capa.editor_data?.fills ?? null;
-    // Editor SEMPRE exporta panorâmica. Se url_completa existir (montar-capa
-    // foi rodado em cima), usa essa; senão usa imagem_url do Editor.
+    // Editor exporta panorâmica APENAS em layout=panoramica; em layout=frente
+    // (trilha digital) o PNG confirmado é somente a face frontal. `url_completa`
+    // (montar-capa) segue vencendo — quando existe, é sempre panorâmica.
+    const layout = dados_capa.editor_data?.layout;
+    const isFrente = layout === "frente";
     const urlPrincipal = urlCompleta ?? imagemUrl;
-    const orelha_mm = resolveOrelhaMm(
-      dados_capa.editor_data?.orelhaMm,
-      dados_capa.editor_data?.comOrelhas,
-      formato,
-    );
+    const orelha_mm = isFrente
+      ? 0
+      : resolveOrelhaMm(
+          dados_capa.editor_data?.orelhaMm,
+          dados_capa.editor_data?.comOrelhas,
+          formato,
+        );
     return {
       pronta: !!urlPrincipal && !!dados_capa.confirmed_at,
       origem: "editor",
       url_principal: urlPrincipal,
-      is_panoramica: true,
+      is_panoramica: urlCompleta ? true : !isFrente,
       fills,
       lombada_mm: null,
       largura_px: null,

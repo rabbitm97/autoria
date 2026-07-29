@@ -2,12 +2,19 @@ import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import { createTextElement } from "./elements";
 import type { TextElement, RegionFills } from "./elements";
 import type { SmartField } from "./elements";
-import type { FormatKey } from "../types";
+import type { EditorLayout, FormatKey } from "../types";
 import { nanoid } from "nanoid";
 import { getContrastColor } from "./color-utils";
 
 const MARGIN_MM = 8;
 const PT_TO_KONVA = 300 / 72;
+
+export type PosicaoTitulo = "topo" | "centro" | "base" | "sem_preferencia";
+
+export interface SmartFieldCreationOptions {
+  layout?: EditorLayout;
+  posicaoTitulo?: PosicaoTitulo;
+}
 
 interface SmartFieldConfig {
   smartField: SmartField;
@@ -91,13 +98,19 @@ export function createSmartFieldElement(
   fills: RegionFills,
   content: SmartFieldContentMap,
   existingZIndex: number,
+  options: SmartFieldCreationOptions = {},
 ): TextElement {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
   const temOrelhas = orelhaMm > 0;
+  const layout: EditorLayout = options.layout ?? "panoramica";
 
   const sangria = SANGRIA_MM;
-  const xCapaStart = sangria + orelhaMm + f.width_mm + lombadaMm;
+  // Em frente-only, a "frente" começa em sangria + 0 (não há orelha/contra/lombada
+  // à esquerda). Panoramica preserva o offset canônico.
+  const xCapaStart = layout === "frente"
+    ? sangria
+    : sangria + orelhaMm + f.width_mm + lombadaMm;
   const xContraStart = sangria + orelhaMm;
   const xOrelhaFrenteStart = xCapaStart + f.width_mm;
 
@@ -121,18 +134,42 @@ export function createSmartFieldElement(
   let width_mm: number;
   let height_mm: number;
 
+  // Posição vertical do bloco título/subtítulo derivada do briefing quando
+  // veio da IA. Fallback "sem_preferencia" trata como "topo". Todas as três
+  // opções mantêm a margem MARGIN_MM entre título e subtítulo, e reservam
+  // espaço no rodapé para o autor abaixo (fixo em `sangria+height-28`).
+  const posicaoTitulo: PosicaoTitulo = options.posicaoTitulo ?? "sem_preferencia";
+  const TITULO_H_MM = 40;
+  const SUBTITULO_H_MM = 20;
+  const GAP_MM = 7;
+  const BOTTOM_RESERVED_MM = 40;
+  let tituloY: number;
+  switch (posicaoTitulo) {
+    case "base":
+      tituloY = sangria + f.height_mm - BOTTOM_RESERVED_MM - TITULO_H_MM - SUBTITULO_H_MM - GAP_MM;
+      break;
+    case "centro":
+      tituloY = sangria + (f.height_mm - TITULO_H_MM - SUBTITULO_H_MM - GAP_MM) / 2;
+      break;
+    case "topo":
+    case "sem_preferencia":
+    default:
+      tituloY = sangria + 25;
+  }
+  const subtituloY = tituloY + TITULO_H_MM + GAP_MM;
+
   switch (field) {
     case "titulo":
       x_mm = xCapaStart + MARGIN_MM;
-      y_mm = sangria + 25;
+      y_mm = tituloY;
       width_mm = f.width_mm - MARGIN_MM * 2;
-      height_mm = 40;
+      height_mm = TITULO_H_MM;
       break;
     case "subtitulo":
       x_mm = xCapaStart + MARGIN_MM;
-      y_mm = sangria + 72;
+      y_mm = subtituloY;
       width_mm = f.width_mm - MARGIN_MM * 2;
-      height_mm = 20;
+      height_mm = SUBTITULO_H_MM;
       break;
     case "autor":
       x_mm = xCapaStart + MARGIN_MM;

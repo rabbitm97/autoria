@@ -68,12 +68,12 @@ export function useCoverExport(projectId: string) {
     const warning = validate();
     if (warning) { alert(warning); return; }
 
-    const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
+    const { stageInstance, format, pages, orelhaMm, layout } = useEditorStore.getState();
     if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
 
     setItem("jpeg-completa", { status: "busy" });
     try {
-      const dataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm);
+      const dataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm, 0.92, layout);
       downloadDataUrl(dataUrl, "capa-completa-300dpi.jpg");
       setItem("jpeg-completa", IDLE);
     } catch (err) {
@@ -85,13 +85,13 @@ export function useCoverExport(projectId: string) {
     const warning = validate();
     if (warning) { alert(warning); return; }
 
-    const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
+    const { stageInstance, format, pages, orelhaMm, layout } = useEditorStore.getState();
     if (!stageInstance) { alert("Canvas não pronto. Tente novamente."); return; }
 
     setItem("jpeg-ebook", { status: "busy" });
     try {
       // Extração 100% client-side da região da frente. Nenhuma chamada de rede.
-      const dataUrl = await captureFrontAsJpegDataUrl(stageInstance, format, pages, orelhaMm);
+      const dataUrl = await captureFrontAsJpegDataUrl(stageInstance, format, pages, orelhaMm, 0.92, layout);
       downloadDataUrl(dataUrl, "capa-ebook.jpg");
       setItem("jpeg-ebook", IDLE);
     } catch (err) {
@@ -108,12 +108,12 @@ export function useCoverExport(projectId: string) {
 
     try {
       const storeState = useEditorStore.getState();
-      const { stageInstance, format, pages, orelhaMm } = storeState;
+      const { stageInstance, format, pages, orelhaMm, layout } = storeState;
       if (!stageInstance) throw new Error("Canvas não pronto. Tente novamente.");
 
       const editorData = serializeEditorState(storeState);
 
-      const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm);
+      const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm, 0.92, layout);
       const jpegBlob = dataUrlToBlob(jpegDataUrl);
 
       const uploadRes = await fetch(`/api/projects/${projectId}/cover-editor/upload-cover-image`, {

@@ -240,6 +240,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     format,
     pages,
     orelhaMm,
+    layout,
     zoom,
     panX,
     panY,
@@ -258,6 +259,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
     selectElements,
     clearSelection,
   } = useEditorStore();
+  const isFrente = layout === "frente";
 
   const [backgroundImage] = useImage(backgroundUrl ?? "", "anonymous");
 
@@ -370,12 +372,14 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   // Dimensions
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
-  const temOrelhas = orelhaMm > 0;
+  const temOrelhas = !isFrente && orelhaMm > 0;
   const sangriaPx = SANGRIA_MM * MM_TO_PX;
-  const orelhaPx = orelhaMm * MM_TO_PX;
-  const lombadaPx = lombadaMm * MM_TO_PX;
+  const orelhaPx = temOrelhas ? orelhaMm * MM_TO_PX : 0;
+  const lombadaPx = isFrente ? 0 : lombadaMm * MM_TO_PX;
   const frontePx = f.width_mm * MM_TO_PX;
-  const totalWPx = f.width_mm * 2 * MM_TO_PX + lombadaPx + orelhaPx * 2 + sangriaPx * 2;
+  const totalWPx = isFrente
+    ? frontePx + sangriaPx * 2
+    : f.width_mm * 2 * MM_TO_PX + lombadaPx + orelhaPx * 2 + sangriaPx * 2;
   const totalHPx = f.height_mm * MM_TO_PX + sangriaPx * 2;
 
   const xSangriaR = totalWPx - sangriaPx;
@@ -387,13 +391,19 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   const xLombadaCenter = (xContraEnd + xLombadaEnd) / 2;
   const gs = 1.5 / zoom;
 
-  const ALL_REGIONS: Region[] = ["orelha_verso", "contracapa", "lombada", "capa", "orelha_frente"];
+  // Em frente-only só existe a região "capa" (que ocupa o papel inteiro).
+  const ALL_REGIONS: Region[] = isFrente
+    ? ["capa"]
+    : ["orelha_verso", "contracapa", "lombada", "capa", "orelha_frente"];
 
   function getRegionAt(xPaper: number, yPaper: number): { region: string; message: string } | null {
     if (!legendasAtivas) return null;
     const inSangria =
       xPaper < sangriaPx || xPaper > xSangriaR || yPaper < sangriaPx || yPaper > totalHPx - sangriaPx;
     if (inSangria) return { region: "SANGRIA", message: "3mm de margem de corte. Não coloque texto importante aqui." };
+    if (isFrente) {
+      return { region: "CAPA", message: "Frente do livro (digital). Aqui ficam título, autor e imagem principal." };
+    }
     const orelhaCm = Math.round(orelhaMm / 10);
     if (temOrelhas && xPaper >= sangriaPx && xPaper < xOrelhaVersoEnd) return { region: "ORELHA TRASEIRA", message: `Dobra de ${orelhaCm}cm. Outros livros do autor ou texto institucional.` };
     if (xPaper >= xOrelhaVersoEnd && xPaper < xContraEnd) return { region: "CONTRACAPA", message: "Verso. Sinopse, código de barras ISBN e logo da editora." };
@@ -897,13 +907,17 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
             dash={[5 / zoom, 4 / zoom]}
             fill="transparent"
           />
-          <Line points={[xContraEnd, 0, xContraEnd, totalHPx]} stroke={GUIDE_DOBRA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
-          <Line points={[xLombadaEnd, 0, xLombadaEnd, totalHPx]} stroke={GUIDE_DOBRA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
-          <Line points={[xLombadaCenter, 0, xLombadaCenter, totalHPx]} stroke={GUIDE_LOMBADA_CENTER_COLOR} strokeWidth={gs * 0.8} dash={[2 / zoom, 5 / zoom]} />
-          {temOrelhas && (
+          {!isFrente && (
             <>
-              <Line points={[xOrelhaVersoEnd, 0, xOrelhaVersoEnd, totalHPx]} stroke={GUIDE_ORELHA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
-              <Line points={[xFrenteEnd, 0, xFrenteEnd, totalHPx]} stroke={GUIDE_ORELHA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
+              <Line points={[xContraEnd, 0, xContraEnd, totalHPx]} stroke={GUIDE_DOBRA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
+              <Line points={[xLombadaEnd, 0, xLombadaEnd, totalHPx]} stroke={GUIDE_DOBRA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
+              <Line points={[xLombadaCenter, 0, xLombadaCenter, totalHPx]} stroke={GUIDE_LOMBADA_CENTER_COLOR} strokeWidth={gs * 0.8} dash={[2 / zoom, 5 / zoom]} />
+              {temOrelhas && (
+                <>
+                  <Line points={[xOrelhaVersoEnd, 0, xOrelhaVersoEnd, totalHPx]} stroke={GUIDE_ORELHA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
+                  <Line points={[xFrenteEnd, 0, xFrenteEnd, totalHPx]} stroke={GUIDE_ORELHA_COLOR} strokeWidth={gs} dash={[7 / zoom, 4 / zoom]} />
+                </>
+              )}
             </>
           )}
         </Layer>
@@ -911,6 +925,12 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
         {/* Region labels */}
         <Layer listening={false}>
           {(() => {
+            if (isFrente) {
+              // Só existe CAPA em frente-only. Ocupa o papel inteiro (sangria a sangria).
+              return shouldShowLabel(!!fills.capa, hasElementsInXRange(elements, 0, f.width_mm + SANGRIA_MM * 2), legendasAtivas) ? (
+                <KonvaText x={0} y={totalHPx / 2} width={totalWPx} align="center" offsetY={8 / zoom} text="CAPA" fontSize={14 / zoom} fill={GUIDE_LABEL_COLOR} fontFamily="serif" fontStyle="italic" />
+              ) : null;
+            }
             const xContracapaStartMm = SANGRIA_MM + orelhaMm;
             const xContracapaEndMm = xContracapaStartMm + f.width_mm;
             const xLombadaStartMm = xContracapaEndMm;

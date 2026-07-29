@@ -21,11 +21,19 @@ import type Konva from "konva";
 const CLIPBOARD_KEY_V2 = "autoria:clipboard:v2";
 const CLIPBOARD_KEY_V1 = "autoria:clipboard:v1"; // back-compat read
 
+export type EditorLayout = "frente" | "panoramica";
+
 interface EditorState {
   // Viewport
   format: FormatKey;
   pages: number;
   orelhaMm: number;
+  /**
+   * Layout do editor derivado do propósito da publicação:
+   *  - "frente":     digital (apenas frente do livro, sem orelhas/lombada/verso)
+   *  - "panoramica": completa (capa + lombada + contracapa + orelhas opcionais)
+   */
+  layout: EditorLayout;
   zoom: number;
   panX: number;
   panY: number;
@@ -60,6 +68,7 @@ interface EditorState {
 
   // Viewport actions
   setOrelhaMm: (v: number) => void;
+  setLayout: (l: EditorLayout) => void;
   setZoom: (z: number) => void;
   setPan: (x: number, y: number) => void;
   zoomIn: () => void;
@@ -96,7 +105,11 @@ interface EditorState {
   setSaveStatus: (status: SaveStatus) => void;
   setStageInstance: (stage: Konva.Stage | null) => void;
   setConfirmedSnapshot: (snap: ConfirmedSnapshot | null) => void;
-  hydrate: (data: Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl">) => void;
+  hydrate: (
+    data: Pick<EditorData, "orelhaMm" | "elements" | "fills" | "isbn" | "backgroundUrl"> & {
+      layout?: EditorLayout;
+    },
+  ) => void;
 
   // Clipboard (internal — persisted in localStorage v2)
   clipboard: AnyElement[] | null;
@@ -112,6 +125,7 @@ const DEFAULT_STATE = {
   format: "padrao_br" as FormatKey,
   pages: 200,
   orelhaMm: 0,
+  layout: "panoramica" as EditorLayout,
   zoom: 0.5,
   panX: 0,
   panY: 0,
@@ -134,6 +148,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   ...DEFAULT_STATE,
 
   setOrelhaMm: (v) => set((s) => ({ orelhaMm: clampOrelhaMm(s.format, v) })),
+  setLayout: (l) => set((s) => ({
+    layout: l,
+    // Frente mode nunca tem orelhas — zera para evitar totalWMm inconsistente.
+    orelhaMm: l === "frente" ? 0 : s.orelhaMm,
+  })),
   setZoom: (z) => set({ zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z)) }),
   setPan: (x, y) => set({ panX: x, panY: y }),
 
@@ -147,11 +166,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   fitToScreen: (containerW, containerH) => {
-    const { format, pages, orelhaMm } = get();
+    const { format, pages, orelhaMm, layout } = get();
     const f = FORMATS[format];
     const lombada = calcularLombada(pages);
     const orelhas = orelhaMm > 0 ? orelhaMm * 2 : 0;
-    const totalWMm = f.width_mm * 2 + lombada + orelhas + SANGRIA_MM * 2;
+    const totalWMm = layout === "frente"
+      ? f.width_mm + SANGRIA_MM * 2
+      : f.width_mm * 2 + lombada + orelhas + SANGRIA_MM * 2;
     const totalHMm = f.height_mm + SANGRIA_MM * 2;
     const totalWPx = totalWMm * MM_TO_PX;
     const totalHPx = totalHMm * MM_TO_PX;
@@ -301,13 +322,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setConfirmedSnapshot: (snap) => set({ confirmedSnapshot: snap }),
 
   hydrate: (data) =>
-    set((s) => ({
-      orelhaMm: clampOrelhaMm(s.format, typeof data.orelhaMm === "number" ? data.orelhaMm : 0),
-      elements: data.elements ?? [],
-      fills: data.fills ?? {},
-      isbn: data.isbn ?? null,
-      backgroundUrl: data.backgroundUrl ?? null,
-    })),
+    set((s) => {
+      const nextLayout: EditorLayout = data.layout ?? s.layout;
+      const nextOrelhaMm = nextLayout === "frente"
+        ? 0
+        : clampOrelhaMm(s.format, typeof data.orelhaMm === "number" ? data.orelhaMm : 0);
+      return {
+        layout: nextLayout,
+        orelhaMm: nextOrelhaMm,
+        elements: data.elements ?? [],
+        fills: data.fills ?? {},
+        isbn: data.isbn ?? null,
+        backgroundUrl: data.backgroundUrl ?? null,
+      };
+    }),
 
   copyElement: (els) => {
     try {

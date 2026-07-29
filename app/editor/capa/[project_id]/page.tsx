@@ -4,7 +4,7 @@ import { estimarPaginas, getFormatoDef } from "@/lib/formatos";
 import { EditorClient } from "./editor-client";
 import { FORMATS } from "./lib/dimensions";
 import { deserializeEditorState } from "./lib/editor-serializer";
-import type { FormatKey, HydratableEditorData, ProjectData } from "./types";
+import type { CapaIaHandoff, EditorLayout, FormatKey, HydratableEditorData, ProjectData } from "./types";
 
 export const metadata = {
   title: "Editor de Capa · Autoria",
@@ -31,7 +31,7 @@ export default async function EditorCapaPage({
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "formato, dados_elementos, dados_capa, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo, texto, texto_revisado)",
+      "formato, dados_elementos, dados_capa, dados_creditos, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo, texto, texto_revisado)",
     )
     .eq("id", project_id)
     .single();
@@ -43,6 +43,7 @@ export default async function EditorCapaPage({
 
   const elementos = project.dados_elementos as Record<string, unknown> | null;
   const capa = project.dados_capa as Record<string, unknown> | null;
+  const creditos = project.dados_creditos as Record<string, unknown> | null;
   const miolo = project.dados_miolo as {
     lombada_mm?: number;
     paginas_reais?: number;
@@ -98,29 +99,54 @@ export default async function EditorCapaPage({
     format,
   );
 
-  // Background do editor: reflete a regra dos 3 modos.
-  //  - Upload: NUNCA herda como background. O arquivo do autor é final,
-  //    não vai ser editado dentro da plataforma. O card "Editor
-  //    interativo" na tela /dashboard/capa/[id] chama reset antes de
-  //    navegar, então quando autor entra vindo daí o dados_capa está
-  //    limpo e nada é herdado.
-  //  - IA: HERDA como background quando o autor entra via botão "Editar
-  //    no editor" do ResultadoCard. O editor abre com a arte da IA como
-  //    camada travada zIndex 0, e o autor adiciona elementos por cima.
-  //  - Editor puro: sem background. Autor começa do zero.
-  //
-  // Retrocompat: initialEditorData?.backgroundUrl (design 14.I legado)
-  // ainda é respeitado. Projetos novos com upload não gravam isso mais.
+  // Background do editor (upload → PNG panorâmico atrás dos elementos).
+  //  - Upload: NUNCA herda automaticamente aqui — o card "Editor interativo"
+  //    da tela /dashboard/capa/[id] chama reset antes de navegar, então
+  //    dados_capa fica limpo. Se `editor_data.backgroundUrl` existe (edição
+  //    prévia), ele é respeitado.
+  //  - IA (B2-04c): NÃO é mais background esticado. Vira `capaIaHandoff` e
+  //    o cliente injeta um ImageElement travado no rect da frente + fills.
+  //  - Editor puro: sem background.
+  const backgroundUrl = initialEditorData?.backgroundUrl ?? null;
+
+  // Handoff da IA — só quando modo="ia" e temos url_escolhida.
   const iaUrl =
     capa?.modo === "ia" && typeof capa?.url_escolhida === "string"
       ? (capa.url_escolhida as string)
       : null;
-  const backgroundUrl = initialEditorData?.backgroundUrl ?? iaUrl;
+  const capaIaHandoff: CapaIaHandoff | null = iaUrl
+    ? {
+        url: iaUrl,
+        corPredominanteHex:
+          typeof capa?.cor_predominante_hex === "string"
+            ? (capa.cor_predominante_hex as string)
+            : "",
+        posicaoTitulo:
+          capa?.posicao_titulo === "topo" ||
+          capa?.posicao_titulo === "centro" ||
+          capa?.posicao_titulo === "base" ||
+          capa?.posicao_titulo === "sem_preferencia"
+            ? (capa.posicao_titulo as CapaIaHandoff["posicaoTitulo"])
+            : "sem_preferencia",
+      }
+    : null;
+
+  // Layout derivado do propósito da publicação (dados_creditos.config).
+  //  - digital  → frente  (sem lombada/verso/orelhas)
+  //  - completa → panoramica
+  //  - retrocompat sem creditos → panoramica (comportamento anterior)
+  // Layout salvo em editor_data vence sobre o derivado — respeita a
+  // decisão do autor caso ele já tenha começado a editar.
+  const creditosConfig = creditos?.config as { proposito?: string } | null | undefined;
+  const propositoDerivado: EditorLayout =
+    creditosConfig?.proposito === "digital" ? "frente" : "panoramica";
+  const layout: EditorLayout = initialEditorData?.layout ?? propositoDerivado;
 
   const projectData: ProjectData = {
     projectId: project_id,
     format,
     pages,
+    layout,
     title,
     subtitle,
     authorName,
@@ -132,6 +158,7 @@ export default async function EditorCapaPage({
     confirmedAt,
     confirmedImageUrl,
     backgroundUrl,
+    capaIaHandoff,
   };
 
   return <EditorClient projectData={projectData} />;

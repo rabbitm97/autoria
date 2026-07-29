@@ -30,34 +30,59 @@ export async function POST(
     }
   }
 
-  // Parse multipart form
-  const formData = await req.formData();
-  const pngFile = formData.get("png") as File | null;
-  if (!pngFile) {
-    return NextResponse.json({ error: "PNG obrigatório." }, { status: 400 });
+  // Body JSON compacto — { path, layout }. O PNG já foi enviado direto ao
+  // storage via signed URL (rota /upload-url), então o body aqui é < 1KB
+  // e evita o limite multipart de 4.5 MB do Vercel.
+  let body: { path?: string; layout?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
+
+  const { path, layout } = body;
+
+  // Path canônico — evita cliente injetar path arbitrário no dados_capa.
+  const expectedPath = `${userId}/${id}/cover-confirmed.png`;
+  if (path !== expectedPath) {
+    return NextResponse.json(
+      { error: "Path inválido para este projeto." },
+      { status: 400 },
+    );
+  }
+
+  const layoutValidado: "frente" | "panoramica" =
+    layout === "frente" ? "frente" : "panoramica";
 
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // Upload PNG thumbnail — path fixo, upsert sobrescreve versão anterior.
-  // BLOCO-02-B-housekeeping: sem timestamp, 1 arquivo por projeto.
-  const pngPath = `${userId}/${id}/cover-confirmed.png`;
-  const pngBuffer = Buffer.from(await pngFile.arrayBuffer());
-
-  const { error: pngUploadErr } = await storageClient.storage
-    .from("editor-assets")
-    .upload(pngPath, pngBuffer, { contentType: "image/png", upsert: true });
-
-  if (pngUploadErr) {
-    return NextResponse.json({ error: pngUploadErr.message }, { status: 500 });
+  // Verifica que o objeto realmente existe no storage antes de gravar signed URL.
+  // Em dev o cliente pula upload; nesse caso apenas confia no path.
+  if (!isDev()) {
+    const { data: listing, error: listErr } = await storageClient.storage
+      .from("editor-assets")
+      .list(`${userId}/${id}`, { search: "cover-confirmed.png" });
+    if (listErr) {
+      return NextResponse.json(
+        { error: `Falha ao verificar upload: ${listErr.message}` },
+        { status: 500 },
+      );
+    }
+    const encontrado = listing?.some((o) => o.name === "cover-confirmed.png");
+    if (!encontrado) {
+      return NextResponse.json(
+        { error: "Upload não encontrado no storage. Tente confirmar novamente." },
+        { status: 400 },
+      );
+    }
   }
 
   const { data: pngSigned } = await storageClient.storage
     .from("editor-assets")
-    .createSignedUrl(pngPath, 365 * 24 * 3600);
+    .createSignedUrl(path, 365 * 24 * 3600);
 
   const imagemUrl = pngSigned?.signedUrl ?? null;
 
@@ -82,12 +107,22 @@ export async function POST(
 
   // Decisão d (C.4): root `orelha_mm` é a fonte canônica. O confirm espelha
   // o rascunho do editor (editor_data.orelhaMm) pro root; se não houver
-  // rascunho numérico, preserva o root existente.
-  const editorOrelha = (currentCapa.editor_data as { orelhaMm?: unknown } | null | undefined)?.orelhaMm;
+  // rascunho numérico, preserva o root existente. Em layout=frente o valor
+  // canônico é 0 (sem orelhas).
+  const currentEditorData = (currentCapa.editor_data as Record<string, unknown> | null | undefined) ?? {};
+  const editorOrelha = (currentEditorData as { orelhaMm?: unknown }).orelhaMm;
   const orelhaRoot =
-    typeof editorOrelha === "number" && Number.isFinite(editorOrelha)
-      ? editorOrelha
-      : (currentCapa.orelha_mm as number | undefined) ?? 0;
+    layoutValidado === "frente"
+      ? 0
+      : typeof editorOrelha === "number" && Number.isFinite(editorOrelha)
+        ? editorOrelha
+        : (currentCapa.orelha_mm as number | undefined) ?? 0;
+
+  // Grava layout no editor_data também (fonte da verdade pra reabrir o editor).
+  const novoEditorData = {
+    ...currentEditorData,
+    layout: layoutValidado,
+  };
 
   const novoDadosCapa = {
     ...currentCapa,
@@ -95,6 +130,7 @@ export async function POST(
     source: "editor",
     confirmed_at: confirmedAt,
     orelha_mm: orelhaRoot,
+    editor_data: novoEditorData,
   };
 
   const vCapa = validarProjectData("dados_capa", novoDadosCapa, {

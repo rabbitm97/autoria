@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { useEditorStore } from "../lib/editor-store";
 import { captureStageAsBlob } from "../lib/png-export";
 import { serializeEditorState } from "../lib/editor-serializer";
@@ -19,7 +20,7 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
   async function handleConfirm() {
     // Read imperatively to guarantee we have the current store value at click time,
     // not a stale value from a previous render's closure
-    const { stageInstance, format, pages, orelhaMm } = useEditorStore.getState();
+    const { stageInstance, format, pages, orelhaMm, layout } = useEditorStore.getState();
     if (!stageInstance) {
       setState("error");
       setTimeout(() => setState("idle"), 3000);
@@ -28,7 +29,7 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
     setState("confirming");
 
     try {
-      // Ensure editor_data (including orelhaMm) is saved before confirming
+      // 1) autosave editor_data (inclui layout/orelhaMm) para não perder rascunho
       const currentState = useEditorStore.getState();
       const snapshot = serializeEditorState(currentState);
       await fetch(`/api/projects/${projectId}/cover-editor`, {
@@ -37,21 +38,51 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
         body: JSON.stringify(snapshot),
       });
 
-      const blob = await captureStageAsBlob(stageInstance, format, pages, orelhaMm);
-      const form = new FormData();
-      form.append("png", blob, "cover.png");
+      // 2) captura PNG panorâmico do canvas (layout-aware)
+      const blob = await captureStageAsBlob(stageInstance, format, pages, orelhaMm, layout);
 
+      // 3) pega signed upload URL — PNG 4K pode passar de 4.5 MB (limite
+      // multipart do Vercel), então sobe direto ao storage.
+      const presignRes = await fetch(`/api/projects/${projectId}/cover-editor/upload-url`, {
+        method: "POST",
+      });
+      if (!presignRes.ok) {
+        const j = await presignRes.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? "Falha ao obter URL de upload.");
+      }
+      const {
+        path,
+        signed_url: signedUrl,
+        token,
+      } = (await presignRes.json()) as {
+        path: string;
+        signed_url: string | null;
+        token: string | null;
+      };
+
+      // 4) upload direto (skip em dev — signed_url null)
+      if (signedUrl && token) {
+        const { error: uploadErr } = await supabase.storage
+          .from("editor-assets")
+          .uploadToSignedUrl(path, token, blob, { contentType: "image/png" });
+        if (uploadErr) {
+          throw new Error(`Falha no upload: ${uploadErr.message}`);
+        }
+      }
+
+      // 5) confirma com JSON compacto — { path, layout }
       const res = await fetch(`/api/projects/${projectId}/cover-editor/confirm`, {
         method: "POST",
-        body: form,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, layout }),
       });
 
       if (!res.ok && res.status !== 207) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as any).error ?? "Erro ao confirmar");
+        throw new Error((data as { error?: string }).error ?? "Erro ao confirmar");
       }
 
-      const data = await res.json() as { confirmed_at: string };
+      const data = (await res.json()) as { confirmed_at: string };
       const { elements, fills, setConfirmedSnapshot } = useEditorStore.getState();
       setConfirmedSnapshot({
         elementsHash: hashElements(elements),

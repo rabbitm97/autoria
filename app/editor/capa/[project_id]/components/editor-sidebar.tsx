@@ -69,12 +69,13 @@ function Section({
 
 // ── Seção 1: Formato e estrutura ──────────────────────────────────────────────
 function SectionFormato() {
-  const { format, pages, orelhaMm, setOrelhaMm } = useEditorStore();
+  const { format, pages, orelhaMm, setOrelhaMm, layout } = useEditorStore();
   const lombadaMm = calcularLombada(pages);
   const temOrelhas = orelhaMm > 0;
   const orelhaMinCm = ORELHA_MIN_MM / 10;
   const orelhaMaxCm = getOrelhaMax(format) / 10;
   const orelhaCm = temOrelhas ? Math.round(orelhaMm / 10) : 0;
+  const isFrente = layout === "frente";
 
   return (
     <Section title="Formato e estrutura">
@@ -95,77 +96,88 @@ function SectionFormato() {
           </div>
           <p className="mt-1 text-[10px] text-zinc-300">Definido nos Elementos Editoriais</p>
         </div>
-        <div>
-          <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>
-          <div className="rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2">
-            <span className="text-xs text-zinc-500">
-              {pages} págs · lombada {lombadaMm.toFixed(1)}mm
-            </span>
-          </div>
-        </div>
-        <div>
-          <label className="flex cursor-pointer items-center justify-between">
-            <span className="text-xs text-zinc-600">Orelhas</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={temOrelhas}
-              onClick={() => setOrelhaMm(temOrelhas ? 0 : getOrelhaDefault(format))}
-              className={`relative h-5 w-9 rounded-full border-2 transition-colors ${
-                temOrelhas ? "border-[#c9a84c] bg-[#c9a84c]" : "border-zinc-300 bg-zinc-200"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
-                  temOrelhas ? "left-4" : "left-0.5"
-                }`}
-              />
-            </button>
-          </label>
-          {temOrelhas && (
-            <div className="mt-2 space-y-1">
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={orelhaMinCm}
-                  max={orelhaMaxCm}
-                  step={1}
-                  value={orelhaCm}
-                  onChange={(e) => {
-                    const cm = Number(e.target.value);
-                    if (!Number.isFinite(cm)) return;
-                    setOrelhaMm(cm * 10);
-                  }}
-                  className="w-16 rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
-                />
-                <span className="text-[10px] text-zinc-400">
-                  cm (mín. {orelhaMinCm} · máx. {orelhaMaxCm})
-                </span>
-              </div>
-              <p className="text-[10px] text-zinc-400">+2 × {orelhaCm}cm laterais no canvas</p>
+        {!isFrente && (
+          <div>
+            <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>
+            <div className="rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2">
+              <span className="text-xs text-zinc-500">
+                {pages} págs · lombada {lombadaMm.toFixed(1)}mm
+              </span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+        {!isFrente && (
+          <div>
+            <label className="flex cursor-pointer items-center justify-between">
+              <span className="text-xs text-zinc-600">Orelhas</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={temOrelhas}
+                onClick={() => setOrelhaMm(temOrelhas ? 0 : getOrelhaDefault(format))}
+                className={`relative h-5 w-9 rounded-full border-2 transition-colors ${
+                  temOrelhas ? "border-[#c9a84c] bg-[#c9a84c]" : "border-zinc-300 bg-zinc-200"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${
+                    temOrelhas ? "left-4" : "left-0.5"
+                  }`}
+                />
+              </button>
+            </label>
+            {temOrelhas && (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={orelhaMinCm}
+                    max={orelhaMaxCm}
+                    step={1}
+                    value={orelhaCm}
+                    onChange={(e) => {
+                      const cm = Number(e.target.value);
+                      if (!Number.isFinite(cm)) return;
+                      setOrelhaMm(cm * 10);
+                    }}
+                    className="w-16 rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
+                  />
+                  <span className="text-[10px] text-zinc-400">
+                    cm (mín. {orelhaMinCm} · máx. {orelhaMaxCm})
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-400">+2 × {orelhaCm}cm laterais no canvas</p>
+              </div>
+            )}
+          </div>
+        )}
+        {isFrente && (
+          <p className="text-[10px] text-zinc-400">
+            Modo frente (digital): sem lombada, verso ou orelhas.
+          </p>
+        )}
       </div>
     </Section>
   );
 }
 
 // ── Seção 2: Cores de fundo ───────────────────────────────────────────────────
-function SectionCores({ temOrelhas }: { temOrelhas: boolean }) {
+function SectionCores({ temOrelhas, isFrente }: { temOrelhas: boolean; isFrente: boolean }) {
   const { fills, setFill } = useEditorStore();
 
-  const regions: { key: Region; label: string }[] = [
-    { key: "capa", label: "Capa (frente)" },
-    { key: "contracapa", label: "Contracapa" },
-    { key: "lombada", label: "Lombada" },
-    ...(temOrelhas
-      ? ([
-          { key: "orelha_frente" as Region, label: "Orelha frontal" },
-          { key: "orelha_verso" as Region, label: "Orelha traseira" },
-        ] as const)
-      : []),
-  ];
+  const regions: { key: Region; label: string }[] = isFrente
+    ? [{ key: "capa", label: "Capa (frente)" }]
+    : [
+        { key: "capa", label: "Capa (frente)" },
+        { key: "contracapa", label: "Contracapa" },
+        { key: "lombada", label: "Lombada" },
+        ...(temOrelhas
+          ? ([
+              { key: "orelha_frente" as Region, label: "Orelha frontal" },
+              { key: "orelha_verso" as Region, label: "Orelha traseira" },
+            ] as const)
+          : []),
+      ];
 
   return (
     <Section title="Cores de fundo" defaultOpen={false}>
@@ -185,7 +197,7 @@ function SectionCores({ temOrelhas }: { temOrelhas: boolean }) {
 
 // ── Seção 3: Texto (smart fields) ─────────────────────────────────────────────
 function SectionTexto({ projectData }: { projectData: ProjectData }) {
-  const { elements, fills, format, pages, orelhaMm, addElement } = useEditorStore();
+  const { elements, fills, format, pages, orelhaMm, layout, addElement } = useEditorStore();
   const [pendingField, setPendingField] = useState<SmartField | null>(null);
 
   const lombadaContent = [projectData.title, projectData.authorName]
@@ -221,6 +233,7 @@ function SectionTexto({ projectData }: { projectData: ProjectData }) {
       fills,
       resolvedContent,
       elements.length,
+      { layout },
     );
     addElement(el);
   }
@@ -679,7 +692,8 @@ function SectionCamadas() {
 
 // ── Main sidebar ──────────────────────────────────────────────────────────────
 export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
-  const { orelhaMm } = useEditorStore();
+  const { orelhaMm, layout } = useEditorStore();
+  const isFrente = layout === "frente";
 
   return (
     <div
@@ -687,7 +701,7 @@ export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
       style={{ width: 240, flexShrink: 0 }}
     >
       <SectionFormato />
-      <SectionCores temOrelhas={orelhaMm > 0} />
+      <SectionCores temOrelhas={!isFrente && orelhaMm > 0} isFrente={isFrente} />
       <SectionTexto projectData={projectData} />
       <SectionImagens projectId={projectData.projectId} />
       <SectionMarca projectData={projectData} />

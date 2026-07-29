@@ -1,6 +1,6 @@
 import type Konva from "konva";
 import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
-import type { FormatKey } from "../types";
+import type { EditorLayout, FormatKey } from "../types";
 
 async function captureStageRegion(
   stage: Konva.Stage,
@@ -9,11 +9,15 @@ async function captureStageRegion(
   orelhaMm: number,
   mimeType: "image/png" | "image/jpeg",
   quality: number,
+  layout: EditorLayout = "panoramica",
 ): Promise<string> {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
   const orelhas = orelhaMm > 0 ? orelhaMm * 2 : 0;
-  const totalWMm = f.width_mm * 2 + lombadaMm + orelhas + SANGRIA_MM * 2;
+  const totalWMm =
+    layout === "frente"
+      ? f.width_mm + SANGRIA_MM * 2
+      : f.width_mm * 2 + lombadaMm + orelhas + SANGRIA_MM * 2;
   const totalWPx = totalWMm * (300 / 25.4);
   const totalHPx = (f.height_mm + SANGRIA_MM * 2) * (300 / 25.4);
 
@@ -80,12 +84,18 @@ async function captureStageFrontRegion(
   orelhaMm: number,
   mimeType: "image/jpeg",
   quality: number,
+  layout: EditorLayout = "panoramica",
 ): Promise<string> {
   const f = FORMATS[format];
   const lombadaMm = calcularLombada(pages);
   const PX_PER_MM = 300 / 25.4;
 
-  const frenteXMm = SANGRIA_MM + orelhaMm + f.width_mm + lombadaMm;
+  // Em layout=frente a "frente" começa direto após a sangria (não há
+  // orelha_verso + contracapa + lombada à esquerda).
+  const frenteXMm =
+    layout === "frente"
+      ? SANGRIA_MM
+      : SANGRIA_MM + orelhaMm + f.width_mm + lombadaMm;
   const frenteYMm = SANGRIA_MM;
   const frenteWMm = f.width_mm;
   const frenteHMm = f.height_mm;
@@ -139,8 +149,9 @@ export async function captureFrontAsJpegDataUrl(
   pages: number,
   orelhaMm: number,
   quality = 0.92,
+  layout: EditorLayout = "panoramica",
 ): Promise<string> {
-  return captureStageFrontRegion(stage, format, pages, orelhaMm, "image/jpeg", quality);
+  return captureStageFrontRegion(stage, format, pages, orelhaMm, "image/jpeg", quality, layout);
 }
 
 // PNG for "Baixar PNG" download — lossless, client-side only
@@ -149,8 +160,9 @@ export async function captureStageAsDataUrl(
   format: FormatKey,
   pages: number,
   orelhaMm: number,
+  layout: EditorLayout = "panoramica",
 ): Promise<string> {
-  return captureStageRegion(stage, format, pages, orelhaMm, "image/png", 1);
+  return captureStageRegion(stage, format, pages, orelhaMm, "image/png", 1, layout);
 }
 
 // JPEG for server-bound PDF pipeline — substantially smaller than PNG
@@ -160,8 +172,9 @@ export async function captureStageAsJpegDataUrl(
   pages: number,
   orelhaMm: number,
   quality = 0.92,
+  layout: EditorLayout = "panoramica",
 ): Promise<string> {
-  return captureStageRegion(stage, format, pages, orelhaMm, "image/jpeg", quality);
+  return captureStageRegion(stage, format, pages, orelhaMm, "image/jpeg", quality, layout);
 }
 
 export function dataUrlToBlob(dataUrl: string): Blob {
@@ -178,7 +191,8 @@ export async function captureStageAsBlob(
   format: FormatKey,
   pages: number,
   orelhaMm: number,
+  layout: EditorLayout = "panoramica",
 ): Promise<Blob> {
-  const dataUrl = await captureStageAsDataUrl(stage, format, pages, orelhaMm);
+  const dataUrl = await captureStageAsDataUrl(stage, format, pages, orelhaMm, layout);
   return dataUrlToBlob(dataUrl);
 }
