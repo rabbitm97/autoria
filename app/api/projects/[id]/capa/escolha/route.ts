@@ -116,6 +116,12 @@ export async function POST(
 
   const dadosCapa = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
 
+  // No-op: escolher a MESMA arte que já está escolhida não deve tocar em
+  // nada (evita zerar editor_data por clique acidental na mesma opção).
+  if (dadosCapa && typeof dadosCapa.url_escolhida === "string" && dadosCapa.url_escolhida === url) {
+    return NextResponse.json(dadosCapa);
+  }
+
   const storageClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -158,47 +164,28 @@ export async function POST(
     storagePathIn ??
     "";
 
-  // ─── Preservação do editor_data ────────────────────────────────────────────
-  // Trocar de arte da IA reseta APENAS o rascunho da IA dentro do editor:
-  //   (1) limpa `capaIaRemovida` — o autor pediu pra ver a arte de novo;
-  //   (2) remove o elemento `capa-ia-frente` antigo, forçando o editor a
-  //       reinjetar a nova arte no próximo load (id determinístico).
-  // Fills, layout, orelhaMm, isbn, elementos custom do autor sobrevivem.
-  const editorDataAtual = dadosCapa?.editor_data as
-    | { elements?: Array<{ id?: unknown }>; capaIaRemovida?: boolean }
-    | null
-    | undefined;
-  let editorDataNovo: Record<string, unknown> | undefined;
-  if (editorDataAtual && typeof editorDataAtual === "object") {
-    editorDataNovo = { ...(editorDataAtual as Record<string, unknown>) };
-    delete editorDataNovo.capaIaRemovida;
-    if (Array.isArray(editorDataAtual.elements)) {
-      editorDataNovo.elements = editorDataAtual.elements.filter(
-        (el) => (el as { id?: unknown })?.id !== "capa-ia-frente",
-      );
-    }
-  }
-
-  // ─── Merge: preserva TUDO de dados_capa; sobrescreve só o necessário ──────
-  // Contrato desta rota:
-  //   - `dados_capa` existente é sempre merge, NUNCA rebuild;
-  //   - `editor_data` é preservado (com o ajuste acima do rascunho da IA);
-  //   - `url_escolhida` recebe a nova arte;
-  //   - `source: "editor"`, `imagem_url`, `confirmed_at` e `analise_tecnica`
-  //     são REMOVIDOS: arte nova ≠ arte confirmada. O PNG exportado, a data
-  //     de confirmação e a análise técnica do PNG antigo ficam obsoletos.
-  //     O autor precisa reabrir o editor e reconfirmar para essa nova arte
-  //     virar capa final. Sem essa remoção, `isEditorCapa` continua true e
-  //     a UI mostra o card "Confirmada" apontando pra imagem velha.
+  // ─── Merge: preserva campos ricos do briefing; RESETA rascunho do editor ──
+  // Contrato desta rota (decisão de produto 29/jul):
+  //   - ESCOLHER UMA NOVA ARTE = CAPA REFEITA. Estado final: "IA escolhida,
+  //     editor zerado". Na próxima abertura do editor cai no fluxo original
+  //     de primeira abertura (B2-04c): injeta capa-ia-frente clipado na
+  //     frente, pinta lombada/contracapa/orelhas com cor_predominante_hex
+  //     e cria smart fields de título/subtítulo pré-posicionados pela
+  //     posicao_titulo.
+  //   - `dados_capa` é MERGE: preserva estilo, atmosfera, cor_predominante
+  //     (+ hex), posicao_titulo, galeria, briefing_versao, opcoes, etc.
+  //   - `url_escolhida` recebe a nova arte; `modo` = "ia".
+  //   - REMOVE: `editor_data` (rascunho), `source`, `imagem_url`,
+  //     `confirmed_at`, `analise_tecnica` — arte nova ≠ arte confirmada.
   //   - Rebuild minimal só quando dados_capa é null (projeto novo ou post-
-  //     reset explícito) — nesse caso não há editor_data a preservar.
+  //     reset explícito) — nesse caso não há briefing a preservar.
   if (dadosCapa) {
     const dadosNovos: Record<string, unknown> = { ...dadosCapa };
 
     dadosNovos.url_escolhida = url;
     dadosNovos.modo = "ia";
-    if (editorDataNovo) dadosNovos.editor_data = editorDataNovo;
 
+    delete dadosNovos.editor_data;
     delete dadosNovos.source;
     delete dadosNovos.imagem_url;
     delete dadosNovos.confirmed_at;

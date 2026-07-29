@@ -322,36 +322,30 @@ export async function POST(req: NextRequest) {
     lombada_mm: estimarLombadaCapaMm(paginas),
   };
 
-  // ─── Preserva editor_data em regeneração ─────────────────────────────────
-  // Sem isso, o autor perde fills escolhidos, textos custom e ajustes de
-  // layout ao clicar "Gerar novas opções" — a nova capa volta em branco.
-  // Estratégia (espelha o endpoint de escolha):
-  //   (1) preserva editor_data existente, limpando `capaIaRemovida` (autor
-  //       pediu novas artes, quer ver de novo) e removendo o elemento
-  //       `capa-ia-frente` antigo — o editor reinjeta a arte escolhida na
-  //       próxima vez que abrir (id determinístico);
-  //   (2) fills, layout, orelhaMm, elementos custom sobrevivem;
-  //   (3) source/imagem_url/confirmed_at ficam obsoletos (arte nova ≠ arte
-  //       confirmada) — o objeto `result` já não os carrega, então nada a
-  //       fazer aqui (updateProject grava só o result novo).
-  const editorDataAtual = dadosCapaAtual?.editor_data as
-    | { elements?: Array<{ id?: unknown }>; capaIaRemovida?: boolean }
-    | null
-    | undefined;
-  if (editorDataAtual && typeof editorDataAtual === "object") {
-    const editorDataNovo: Record<string, unknown> = {
-      ...(editorDataAtual as Record<string, unknown>),
-    };
-    delete editorDataNovo.capaIaRemovida;
-    if (Array.isArray(editorDataAtual.elements)) {
-      editorDataNovo.elements = editorDataAtual.elements.filter(
-        (el) => (el as { id?: unknown })?.id !== "capa-ia-frente",
-      );
+  // Regeneração NÃO toca na capa atual — só a ESCOLHA reseta. Preserva
+  // o estado confirmado (source, imagem_url, confirmed_at, analise_tecnica),
+  // o rascunho do editor (editor_data) e a url já escolhida. Regen só
+  // adiciona novas `opcoes` + atualiza `galeria` + repõe o snapshot do
+  // briefing usado. Se o autor abandonar a regen sem escolher, a capa
+  // anterior continua valendo.
+  const dadosParaSalvar: Record<string, unknown> = { ...(result as unknown as Record<string, unknown>) };
+  if (dadosCapaAtual) {
+    const chavesPreservadas = [
+      "url_escolhida",
+      "editor_data",
+      "source",
+      "imagem_url",
+      "confirmed_at",
+      "analise_tecnica",
+    ] as const;
+    for (const k of chavesPreservadas) {
+      if (dadosCapaAtual[k] !== undefined) {
+        dadosParaSalvar[k] = dadosCapaAtual[k];
+      }
     }
-    (result as unknown as Record<string, unknown>).editor_data = editorDataNovo;
   }
 
-  const vCapa = validarProjectData("dados_capa", result, {
+  const vCapa = validarProjectData("dados_capa", dadosParaSalvar, {
     modo: "estrito", contexto: "gerar-capa",
   });
   if (!vCapa.ok) {
@@ -364,7 +358,7 @@ export async function POST(req: NextRequest) {
 
   const updateUserId = dev ? null : userId;
   const { ok: capaOk } = await updateProject(supabase, project_id, updateUserId, {
-    dados_capa: result,
+    dados_capa: dadosParaSalvar,
   }, "gerar-capa");
   if (!capaOk) {
     return NextResponse.json(

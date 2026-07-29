@@ -199,28 +199,13 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         useEditorStore.setState({ pages: projectData.pages });
       }
 
-      // Re-injeta capa-ia-frente se o editor_data salvo perdeu esse elemento
-      // (autor deletou por engano) mas dados_capa ainda aponta pra IA — a
-      // não ser que a flag `capaIaRemovida` marque uma remoção intencional.
-      const jaTemIa = projectData.initialEditorData.elements.some(
-        (el) => el.id === CAPA_IA_FRENTE_ID,
-      );
-      if (
-        projectData.capaIaHandoff &&
-        !jaTemIa &&
-        projectData.initialEditorData.capaIaRemovida !== true
-      ) {
-        const s = useEditorStore.getState();
-        injectCapaIaFrente(
-          projectData.capaIaHandoff.url,
-          projectData.format,
-          projectData.pages,
-          s.orelhaMm,
-          s.layout,
-        );
-      }
       // Aplica fills default da IA sobre qualquer região sem cor definida.
-      // Preserva escolhas do autor (fill já não-vazio).
+      // Preserva escolhas do autor (fill já não-vazio). Nada de re-injeção
+      // de capa-ia-frente aqui: com a semântica de 29/jul, trocar de arte
+      // reseta editor_data no server, e o autor cai no ramo `else` (primeira
+      // abertura). Se o autor deleta manualmente o elemento no editor, a
+      // flag `capaIaRemovida` já registra a intenção — respeitar essa
+      // decisão e não trazer a arte de volta sem novo pedido.
       if (projectData.capaIaHandoff) {
         applyCapaIaDefaultFills(projectData.capaIaHandoff, useEditorStore.getState().layout);
       }
