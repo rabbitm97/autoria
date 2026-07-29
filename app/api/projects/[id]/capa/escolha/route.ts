@@ -14,8 +14,9 @@ import { estimarLombadaCapaMm } from "@/lib/formatos";
 const NOME_CAPA_IA_REGEX = /^capa_ia_(\d+)_(\d+)\.(png|jpg)$/i;
 
 /**
- * Lista `capa_ia_*` do prefixo do projeto no bucket `capas`. Reusado pelo
- * fallback pós-reset — a fonte de verdade da galeria é o storage.
+ * Lista `capa_ia_*` do prefixo do projeto no bucket `capas`. Usado para
+ * confirmar que a URL escolhida pertence ao projeto quando a memória
+ * (opcoes/galeria em `dados_capa`) está vazia ou desatualizada.
  */
 async function listarGaleriaStorage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,13 +87,27 @@ export async function POST(
     return NextResponse.json({ error: "Campo 'url' obrigatório." }, { status: 400 });
   }
 
+  // Fiscal: leitura pré-merge. Falha transiente aqui + escrita depois
+  // apagaria `editor_data` inteiro (spread sobre `{}`). Distinguimos 404
+  // (projeto não existe) de 500 (erro de rede/BD) para não confundir o
+  // cliente com "não encontrado" quando é falha de infra.
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select("id, user_id, dados_capa, dados_miolo")
     .eq("id", projectId)
     .single();
 
-  if (projErr || !project) {
+  if (projErr) {
+    if ((projErr as { code?: string }).code === "PGRST116") {
+      return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
+    }
+    console.error("[capa-escolha] falha ao carregar dados_capa:", projErr.message);
+    return NextResponse.json(
+      { error: "Falha ao carregar a capa atual. Tente novamente." },
+      { status: 500 },
+    );
+  }
+  if (!project) {
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
   if (!dev && (project as { user_id: string }).user_id !== userId) {
@@ -106,92 +121,137 @@ export async function POST(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // ─── Caminho normal: dados_capa é IA e a url está em opcoes/galeria ────────
-  if (dadosCapa && dadosCapa.modo === "ia") {
-    const opcoes: OpcaoCapa[] = Array.isArray(dadosCapa.opcoes)
-      ? (dadosCapa.opcoes as OpcaoCapa[])
-      : [];
-    const galeria: GaleriaCapaItem[] = Array.isArray(dadosCapa.galeria)
-      ? (dadosCapa.galeria as GaleriaCapaItem[])
-      : [];
+  // ─── Legitimidade da URL: opcoes/galeria em memória OU storage ────────────
+  // Aceita a escolha se a URL bate com opcoes/galeria no `dados_capa` atual
+  // OU com a listagem `capa_ia_*` do storage (fonte de verdade — cobre
+  // pós-reset, galeria desatualizada, refresh de signed URL, etc.).
+  const opcoesMemory: OpcaoCapa[] = Array.isArray(dadosCapa?.opcoes)
+    ? (dadosCapa!.opcoes as OpcaoCapa[])
+    : [];
+  const galeriaMemory: GaleriaCapaItem[] = Array.isArray(dadosCapa?.galeria)
+    ? (dadosCapa!.galeria as GaleriaCapaItem[])
+    : [];
+  const opcaoEmMem = opcoesMemory.find((o) => o.url === url);
+  const galeriaEmMem = galeriaMemory.find((g) => g.url === url);
 
-    const urlValida =
-      opcoes.some((o) => o.url === url) || galeria.some((g) => g.url === url);
-
-    if (urlValida) {
-      // Trocar de arte da IA reseta o rascunho da IA no editor: (1) limpa a
-      // flag `capaIaRemovida` (o autor tá pedindo pra ver a arte de novo);
-      // (2) remove o elemento `capa-ia-frente` antigo do editor_data pra
-      // forçar reinjeção da nova arte no próximo load do editor. Não mexe
-      // em nada mais do editor_data — o resto do trabalho do autor sobrevive.
-      const editorDataAtual = dadosCapa.editor_data as
-        | { elements?: Array<{ id?: unknown }>; capaIaRemovida?: boolean }
-        | null
-        | undefined;
-      let editorDataNovo: Record<string, unknown> | undefined;
-      if (editorDataAtual && typeof editorDataAtual === "object") {
-        editorDataNovo = { ...(editorDataAtual as Record<string, unknown>) };
-        delete editorDataNovo.capaIaRemovida;
-        if (Array.isArray(editorDataAtual.elements)) {
-          editorDataNovo.elements = editorDataAtual.elements.filter(
-            (el) => (el as { id?: unknown })?.id !== "capa-ia-frente",
-          );
-        }
-      }
-      const dadosNovos = {
-        ...dadosCapa,
-        url_escolhida: url,
-        ...(editorDataNovo ? { editor_data: editorDataNovo } : {}),
-      };
-      const vCapa = validarProjectData("dados_capa", dadosNovos, {
-        modo: "estrito", contexto: "capa-escolha",
-      });
-      if (!vCapa.ok) {
-        console.error("[zod-reject][capa-escolha][dados_capa]", vCapa.issues.join(" | "));
-        return NextResponse.json(
-          { error: "Dados da capa falharam na validação.", issues: vCapa.issues },
-          { status: 500 },
-        );
-      }
-      const { ok } = await updateProject(supabase, projectId, dev ? null : userId, {
-        dados_capa: dadosNovos,
-      }, "capa-escolha");
-      if (!ok) {
-        return NextResponse.json(
-          { error: "Falha ao persistir escolha. Tente novamente." },
-          { status: 500 },
-        );
-      }
-      return NextResponse.json(dadosNovos);
+  // Só lista o storage se precisar validar contra a fonte de verdade
+  // (a listagem custa uma chamada por objeto pro signedUrl).
+  let galeriaStorage: GaleriaCapaItem[] | null = null;
+  let itemStorage: GaleriaCapaItem | undefined;
+  if (!opcaoEmMem && !galeriaEmMem) {
+    galeriaStorage = await listarGaleriaStorage(storageClient, userId, projectId);
+    itemStorage =
+      (storagePathIn ? galeriaStorage.find((g) => g.storage_path === storagePathIn) : undefined) ||
+      galeriaStorage.find((g) => g.url === url);
+    if (!itemStorage) {
+      return NextResponse.json(
+        { error: "URL não pertence a nenhuma geração deste projeto." },
+        { status: 422 },
+      );
     }
-    // URL não bate com opcoes/galeria em memória — cai no fallback abaixo,
-    // que confere contra a listagem do storage (fonte de verdade).
   }
 
-  // ─── Fallback pós-reset ────────────────────────────────────────────────────
-  // dados_capa é null, de outro modo, ou não conhece esta url (galeria
-  // desatualizada). Confere a listagem do storage `capa_ia_*` do projeto —
-  // se a url pertence à galeria real, reconstrói dados_capa como IA mínima.
-  const galeriaStorage = await listarGaleriaStorage(storageClient, userId, projectId);
-  const itemStorage =
-    (storagePathIn && galeriaStorage.find((g) => g.storage_path === storagePathIn)) ||
-    galeriaStorage.find((g) => g.url === url);
+  const storagePathResolvido =
+    opcaoEmMem?.storage_path ??
+    galeriaEmMem?.storage_path ??
+    itemStorage?.storage_path ??
+    storagePathIn ??
+    "";
 
-  if (!itemStorage) {
-    return NextResponse.json(
-      { error: "URL não pertence a nenhuma geração deste projeto." },
-      { status: 422 },
-    );
+  // ─── Preservação do editor_data ────────────────────────────────────────────
+  // Trocar de arte da IA reseta APENAS o rascunho da IA dentro do editor:
+  //   (1) limpa `capaIaRemovida` — o autor pediu pra ver a arte de novo;
+  //   (2) remove o elemento `capa-ia-frente` antigo, forçando o editor a
+  //       reinjetar a nova arte no próximo load (id determinístico).
+  // Fills, layout, orelhaMm, isbn, elementos custom do autor sobrevivem.
+  const editorDataAtual = dadosCapa?.editor_data as
+    | { elements?: Array<{ id?: unknown }>; capaIaRemovida?: boolean }
+    | null
+    | undefined;
+  let editorDataNovo: Record<string, unknown> | undefined;
+  if (editorDataAtual && typeof editorDataAtual === "object") {
+    editorDataNovo = { ...(editorDataAtual as Record<string, unknown>) };
+    delete editorDataNovo.capaIaRemovida;
+    if (Array.isArray(editorDataAtual.elements)) {
+      editorDataNovo.elements = editorDataAtual.elements.filter(
+        (el) => (el as { id?: unknown })?.id !== "capa-ia-frente",
+      );
+    }
   }
 
+  // ─── Merge: preserva TUDO de dados_capa; sobrescreve só o necessário ──────
+  // Contrato desta rota:
+  //   - `dados_capa` existente é sempre merge, NUNCA rebuild;
+  //   - `editor_data` é preservado (com o ajuste acima do rascunho da IA);
+  //   - `url_escolhida` recebe a nova arte;
+  //   - `source: "editor"`, `imagem_url`, `confirmed_at` e `analise_tecnica`
+  //     são REMOVIDOS: arte nova ≠ arte confirmada. O PNG exportado, a data
+  //     de confirmação e a análise técnica do PNG antigo ficam obsoletos.
+  //     O autor precisa reabrir o editor e reconfirmar para essa nova arte
+  //     virar capa final. Sem essa remoção, `isEditorCapa` continua true e
+  //     a UI mostra o card "Confirmada" apontando pra imagem velha.
+  //   - Rebuild minimal só quando dados_capa é null (projeto novo ou post-
+  //     reset explícito) — nesse caso não há editor_data a preservar.
+  if (dadosCapa) {
+    const dadosNovos: Record<string, unknown> = { ...dadosCapa };
+
+    dadosNovos.url_escolhida = url;
+    dadosNovos.modo = "ia";
+    if (editorDataNovo) dadosNovos.editor_data = editorDataNovo;
+
+    delete dadosNovos.source;
+    delete dadosNovos.imagem_url;
+    delete dadosNovos.confirmed_at;
+    delete dadosNovos.analise_tecnica;
+
+    // Se a URL veio só do storage (galeria em memória desatualizada),
+    // refresca a galeria com a listagem atual para futuros re-escolhas.
+    if (itemStorage && galeriaStorage) {
+      dadosNovos.galeria = galeriaStorage;
+    }
+
+    // Garante que `opcoes` contém pelo menos a URL escolhida (o schema IA
+    // exige opcoes não-vazio). Necessário quando o merge partiu de um
+    // dados_capa sem opcoes (upload puro, editor puro, etc.).
+    const opcoesAtuais = Array.isArray(dadosNovos.opcoes) ? (dadosNovos.opcoes as OpcaoCapa[]) : [];
+    if (opcoesAtuais.length === 0) {
+      dadosNovos.opcoes = [{ url, storage_path: storagePathResolvido }];
+    }
+
+    const vCapa = validarProjectData("dados_capa", dadosNovos, {
+      modo: "estrito", contexto: "capa-escolha",
+    });
+    if (!vCapa.ok) {
+      console.error("[zod-reject][capa-escolha][dados_capa]", vCapa.issues.join(" | "));
+      return NextResponse.json(
+        { error: "Dados da capa falharam na validação.", issues: vCapa.issues },
+        { status: 500 },
+      );
+    }
+    const { ok } = await updateProject(supabase, projectId, dev ? null : userId, {
+      dados_capa: dadosNovos,
+    }, "capa-escolha");
+    if (!ok) {
+      return NextResponse.json(
+        { error: "Falha ao persistir escolha. Tente novamente." },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(dadosNovos);
+  }
+
+  // ─── Fallback minimal: dados_capa é null ──────────────────────────────────
+  // Projeto sem capa alguma ou pós-reset explícito. Sem editor_data a
+  // preservar; monta uma IA mínima só com o essencial. Autor pode regenerar
+  // depois com briefing completo. Garantido `itemStorage` definido pelo
+  // guard 422 acima (dadosCapa null → opcoes/galeria memória vazios → sempre
+  // caiu no ramo de storage).
+  const item = itemStorage!;
   const dadosMiolo = (project as Record<string, unknown>).dados_miolo as
     | { paginas_reais?: number; paginas_estimadas?: number }
     | null;
   const paginas = dadosMiolo?.paginas_reais ?? dadosMiolo?.paginas_estimadas ?? 200;
 
-  // Estilo neutro documentado; campos preservam schema estrito sem inventar
-  // dados falsos (prompt_usado="" — houve prompt mas não temos; o autor
-  // pode regenerar depois com novo briefing).
   const reconstruida: CapaGeradaResult = {
     project_id: projectId,
     modo: "ia",
@@ -204,9 +264,9 @@ export async function POST(
     usar_orelhas: false,
     orelha_mm: 0,
     prompt_usado: "",
-    opcoes: [{ url: itemStorage.url, storage_path: itemStorage.storage_path }],
-    galeria: galeriaStorage,
-    url_escolhida: itemStorage.url,
+    opcoes: [{ url: item.url, storage_path: item.storage_path }],
+    galeria: galeriaStorage ?? [],
+    url_escolhida: item.url,
     verso: null,
     gerado_em: new Date().toISOString(),
     is_regeneracao: false,

@@ -1843,31 +1843,54 @@ function RecomendacoesTecnicas({
   );
 }
 
-// ─── CapaIaStatusCard ────────────────────────────────────────────────────────
-// Substitui ResultadoCard para o modo IA. Caminho primário: editor. Sem
-// segundo step de confirmação (B2-04b).
+// ─── CapaExistenteCard ───────────────────────────────────────────────────────
+// Cartão único que representa "capa existente" em dois estados:
+//   - Confirmada (isEditorCapa(dados) === true): PNG exportado do editor,
+//     `imagem_url` + `confirmed_at` presentes. Autor pode avançar pra Créditos.
+//   - Em edição (dados.modo === "ia" com url_escolhida sem confirm): a arte
+//     da IA está escolhida mas ainda não virou capa final — só o editor
+//     confirmando gera o PNG canônico. "Avançar" fica escondido.
+//
+// Substitui o antigo CapaIaStatusCard + o slot de capa confirmada dentro do
+// grid de 3 modos (evita duas UIs para o mesmo conceito de "já tem capa").
 
-function CapaIaStatusCard({
+function CapaExistenteCard({
   dados,
+  editorConfirmed,
   proposito,
-  onAbrirEditor,
-  onGerarNovamente,
+  onContinuarEditor,
+  onAvancarCreditos,
   onVerOutrasGeracoes,
+  onGerarNovasOpcoes,
+  onTrocarModo,
   onEscolherTrilha,
 }: {
   dados: Record<string, unknown>;
+  editorConfirmed: boolean;
   proposito: PropositoPublicacao | null;
-  onAbrirEditor: () => void;
-  onGerarNovamente: () => void;
+  onContinuarEditor: () => void;
+  onAvancarCreditos: () => void;
   onVerOutrasGeracoes: () => void;
+  onGerarNovasOpcoes: () => void;
+  onTrocarModo: () => void;
   onEscolherTrilha: (p: PropositoPublicacao) => Promise<void>;
 }) {
-  const url = dados.url_escolhida as string | undefined;
+  const thumbUrl = editorConfirmed
+    ? (dados.imagem_url as string | undefined)
+    : (dados.url_escolhida as string | undefined);
+  const confirmedAt = editorConfirmed ? (dados.confirmed_at as string | undefined) : undefined;
+  // Só mostra "Ver e usar outras gerações" quando de fato existem gerações
+  // (opcoes ou galeria de IA). Se o autor confirmou um editor sem passar por
+  // IA (start-from-blank), esse CTA é irrelevante.
+  const temGeracoesIa =
+    (Array.isArray(dados.opcoes) && (dados.opcoes as unknown[]).length > 0) ||
+    (Array.isArray(dados.galeria) && (dados.galeria as unknown[]).length > 0);
+
   const [escolhendoTrilha, setEscolhendoTrilha] = useState(false);
   const [salvandoTrilha, setSalvandoTrilha] = useState(false);
 
-  async function handleAbrirEditor() {
-    if (proposito !== null) { onAbrirEditor(); return; }
+  async function handleContinuar() {
+    if (proposito !== null) { onContinuarEditor(); return; }
     setEscolhendoTrilha(true);
   }
 
@@ -1875,7 +1898,7 @@ function CapaIaStatusCard({
     setSalvandoTrilha(true);
     await onEscolherTrilha(p);
     setSalvandoTrilha(false);
-    onAbrirEditor();
+    onContinuarEditor();
   }
 
   if (escolhendoTrilha) {
@@ -1910,50 +1933,104 @@ function CapaIaStatusCard({
     );
   }
 
+  const iconBg = editorConfirmed ? "bg-emerald-50" : "bg-amber-50";
+  const borderColor = editorConfirmed ? "border-emerald-200" : "border-amber-200";
+  const statusLabel = editorConfirmed ? "Capa confirmada" : "Capa em edição";
+  const statusDetail = editorConfirmed && confirmedAt
+    ? `Confirmada em ${new Date(confirmedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+    : "Finalize e confirme no editor para virar capa final.";
+
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+      <div className={`bg-white rounded-2xl border ${borderColor} p-6 space-y-4`}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-            <CheckCircleIcon />
+          <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center`}>
+            {editorConfirmed ? <CheckCircleIcon /> : <PencilIcon />}
           </div>
           <div>
-            <p className="font-medium text-brand-primary text-sm">Capa gerada com IA</p>
-            <p className="text-xs text-zinc-400">
-              {dados.gerado_em ? new Date(dados.gerado_em as string).toLocaleString("pt-BR") : ""}
-            </p>
+            <p className="font-medium text-brand-primary text-sm">{statusLabel}</p>
+            <p className="text-xs text-zinc-500">{statusDetail}</p>
           </div>
         </div>
-        {url && (
+        {thumbUrl && (
           <div className="flex justify-center">
-            <div className="relative w-32 aspect-[2/3] rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-50">
-              <Image src={url} alt="Capa" fill className="object-cover" />
-            </div>
+            {editorConfirmed ? (
+              // Confirmado: pode ser panorâmica ou frente-only — usa contain
+              // pra não cortar. Aspect flexível — máx 380px altura.
+              <div className="w-full max-w-lg rounded-xl overflow-hidden border border-zinc-200 bg-zinc-50" style={{ maxHeight: 380 }}>
+                <img src={thumbUrl} alt="Capa" className="w-full h-full object-contain" style={{ maxHeight: 380 }} />
+              </div>
+            ) : (
+              // Em edição: arte IA = frente pura, 2/3.
+              <div className="relative w-32 aspect-[2/3] rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-zinc-50">
+                <Image src={thumbUrl} alt="Capa" fill className="object-cover" />
+              </div>
+            )}
           </div>
         )}
-        <p className="text-sm text-zinc-600 text-center">
-          Sua capa está no editor — adicione título, nome e textos por lá.
-        </p>
+        {editorConfirmed && (() => {
+          const analise = dados.analise_tecnica as AnaliseTecnica | undefined;
+          if (!analise) {
+            return (
+              <p className="text-[11px] text-zinc-500 flex items-center gap-1.5">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-300 animate-pulse"></span>
+                Analisando tecnicamente...
+              </p>
+            );
+          }
+          return (
+            <div className="flex flex-wrap gap-1.5">
+              <AnaliseBadge
+                label={analise.colorspace === "cmyk" ? "CMYK ✓" : analise.colorspace === "srgb" ? "RGB" : analise.colorspace === "rgb16" ? "RGB 16" : "Cor?"}
+                variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
+              />
+              <AnaliseBadge
+                label={analise.sangria === "presente" ? "Sangria ✓" : analise.sangria === "ausente" ? "Sem sangria" : analise.sangria === "parcial" ? "Sangria parcial" : "Dimensões?"}
+                variant={analise.sangria === "presente" ? "ok" : "aviso"}
+              />
+              <AnaliseBadge
+                label={`${analise.dpi} DPI`}
+                variant={analise.dpi >= 300 ? "ok" : "aviso"}
+              />
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex flex-col gap-3">
-        <button onClick={handleAbrirEditor}
+        <button onClick={handleContinuar}
           className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
             hover:bg-brand-primary/90 transition-colors">
-          Abrir no editor →
+          Continuar editando →
         </button>
-        <button onClick={onVerOutrasGeracoes}
-          className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-            hover:border-zinc-300 transition-colors">
-          Ver e usar outras gerações
-        </button>
-        <button onClick={onGerarNovamente}
+        {editorConfirmed && (
+          <button onClick={onAvancarCreditos}
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm
+              hover:bg-emerald-700 transition-colors">
+            Avançar para Créditos →
+          </button>
+        )}
+        {temGeracoesIa && (
+          <button onClick={onVerOutrasGeracoes}
+            className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
+              hover:border-zinc-300 transition-colors">
+            Ver e usar outras gerações
+          </button>
+        )}
+        <button onClick={onGerarNovasOpcoes}
           className="w-full py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
             hover:border-amber-300 transition-colors">
           Gerar novas opções{" "}
           <span className="text-amber-600 font-medium">
             ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
           </span>
+        </button>
+      </div>
+
+      <div className="text-center">
+        <button onClick={onTrocarModo}
+          className="text-xs text-zinc-400 hover:text-zinc-600 underline underline-offset-2">
+          Trocar por upload ou editor em branco
         </button>
       </div>
     </div>
@@ -2359,10 +2436,16 @@ export default function CapaPage() {
       setEscolhendoUrl(null);
     }
   }
-  // Quando o autor está no CapaIaStatusCard e clica "Ver e usar outras
+  // Quando o autor está no CapaExistenteCard e clica "Ver e usar outras
   // gerações", entra neste modo — reusa IaEscolhaGrid com a escolhida
   // destacada. Cancelar volta ao status card sem custo.
   const [mostrandoGridPersistente, setMostrandoGridPersistente] = useState(false);
+
+  // Toggle para o link "Trocar por upload ou editor em branco" do
+  // CapaExistenteCard. Quando true, esconde o card unificado e mostra o
+  // grid dos 3 modos (Upload / IA / Editor em branco) — clicar num modo
+  // diferente dispara resetIfDifferentMode e limpa o rascunho atual.
+  const [trocandoModo, setTrocandoModo] = useState(false);
 
   // Zera dados_capa quando o autor está trocando de modo. Garante que
   // "sempre a última escolha vale" — sem estados híbridos entre
@@ -2416,12 +2499,23 @@ export default function CapaPage() {
           </p>
         </div>
 
-        {/* Precedência (espelha capa-resolver): editor confirmado vence sobre IA.
-            Se o autor rodou IA e depois confirmou no editor, `dados.modo` continua
-            "ia" mas `source === "editor"` — o card de editor confirmado (dentro
-            do branch `modo === "escolha"` abaixo) deve renderizar, não a
-            grade/status de IA. */}
-        {dados && modo === "escolha" && !isEditorCapa(dados) && dados.modo === "ia" && (!dados.url_escolhida || mostrandoGridPersistente) ? (
+        {/* Precedência de render em `modo === "escolha"`:
+            1. IaEscolhaGrid — mostra a grade de opções IA quando:
+               (a) IA sem escolha ainda (primeira vez); ou
+               (b) o autor clicou "Ver e usar outras gerações" no
+                   CapaExistenteCard (mostrandoGridPersistente=true), tanto
+                   em estado confirmado quanto em edição.
+            2. CapaExistenteCard — card único unificado ("capa existente"):
+               dois estados internos via `isEditorCapa(dados)` — confirmada
+               (source==='editor') ou em edição (IA com url_escolhida sem
+               confirm). Escondido quando o autor clicou "Trocar modo" ou
+               está vendo a grade persistente.
+            3. 3-card grid (Upload / IA / Editor em branco) — fallback e
+               também para quando `trocandoModo` está ligado. */}
+        {dados && modo === "escolha" && (
+          (dados.modo === "ia" && !isEditorCapa(dados) && !dados.url_escolhida) ||
+          mostrandoGridPersistente
+        ) ? (
           <div className="space-y-6">
             <div className="flex items-baseline justify-between">
               <div>
@@ -2434,7 +2528,7 @@ export default function CapaPage() {
                     : "Clicar seleciona e salva imediatamente. Você pode trocar depois."}
                 </p>
               </div>
-              {mostrandoGridPersistente && typeof dados.url_escolhida === "string" && (
+              {mostrandoGridPersistente && (
                 <button
                   onClick={() => setMostrandoGridPersistente(false)}
                   className="text-xs text-zinc-400 hover:text-zinc-600 underline shrink-0 ml-4"
@@ -2474,16 +2568,22 @@ export default function CapaPage() {
               )}
             </div>
           </div>
-        ) : dados && modo === "escolha" && !isEditorCapa(dados) && dados.modo === "ia" ? (
-          <CapaIaStatusCard
+        ) : dados && modo === "escolha" && !trocandoModo && (
+          isEditorCapa(dados) ||
+          (dados.modo === "ia" && typeof dados.url_escolhida === "string" && dados.url_escolhida.length > 0)
+        ) ? (
+          <CapaExistenteCard
             dados={dados}
+            editorConfirmed={isEditorCapa(dados)}
             proposito={proposito}
-            onAbrirEditor={() => router.push(`/editor/capa/${id}`)}
-            onGerarNovamente={() => {
+            onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
+            onAvancarCreditos={handleContinuar}
+            onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}
+            onGerarNovasOpcoes={() => {
               setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
               setModo("ia");
             }}
-            onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}
+            onTrocarModo={() => setTrocandoModo(true)}
             onEscolherTrilha={handleEscolherTrilha}
           />
         ) : modo === "escolha" ? (
@@ -2652,15 +2752,15 @@ export default function CapaPage() {
                   </div>
                 );
               }
-              const editorConfirmed = dados?.source === "editor" && dados?.confirmed_at;
-              const editorThumbnail = editorConfirmed ? (dados?.imagem_url as string | undefined) : null;
-              const editorConfirmedAt = editorConfirmed ? (dados?.confirmed_at as string) : null;
               // hasCurrentCapa = true quando existe qualquer capa salva
               // no banco (upload, IA ou editor). Usado para exibir aviso
               // "Substituirá a capa atual" nos cards que representam um
-              // modo diferente do atual.
+              // modo diferente do atual. Quando o autor está aqui via
+              // `trocandoModo`, o CapaExistenteCard já não está sendo
+              // mostrado — mas a capa ainda existe no banco e será
+              // substituída se ele escolher outro modo.
               const hasCurrentCapa =
-                Boolean(editorConfirmed) ||
+                (dados?.source === "editor" && Boolean(dados?.confirmed_at)) ||
                 dados?.modo === "upload" ||
                 dados?.modo === "ia";
               // Gate do IA — freemium vê o paywall antes do briefing (D2-05).
@@ -2693,95 +2793,36 @@ export default function CapaPage() {
                       setModo("ia");
                     }}
                   />
-                  {editorConfirmed ? (
-                    <div className="flex flex-col p-6 bg-white rounded-2xl border border-emerald-200 text-left">
-                      {editorThumbnail ? (
-                        <div className="mb-3 w-full aspect-[16/5] overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
-                          <img src={editorThumbnail} alt="Capa atual" className="h-full w-full object-contain" />
-                        </div>
-                      ) : (
-                        <div className="mb-3 w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center">
-                          <PencilIcon />
-                        </div>
-                      )}
-                      <p className="font-semibold text-brand-primary text-sm">
-                        Editor interativo{" "}
-                        <span className="text-xs font-normal text-emerald-600">✓ Capa confirmada</span>
-                      </p>
-                      {editorConfirmedAt && (
-                        <p className="text-xs text-zinc-400 mt-1">
-                          Confirmada em {new Date(editorConfirmedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}.
-                        </p>
-                      )}
-                      {(() => {
-                        const analise = dados?.analise_tecnica as AnaliseTecnica | undefined;
-                        if (!analise) {
-                          return (
-                            <p className="text-[11px] text-zinc-500 mt-2 flex items-center gap-1.5">
-                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-300 animate-pulse"></span>
-                              Analisando tecnicamente...
-                            </p>
-                          );
-                        }
-                        return (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            <AnaliseBadge
-                              label={analise.colorspace === "cmyk" ? "CMYK ✓" : analise.colorspace === "srgb" ? "RGB" : analise.colorspace === "rgb16" ? "RGB 16" : "Cor?"}
-                              variant={analise.colorspace === "cmyk" ? "ok" : "aviso"}
-                            />
-                            <AnaliseBadge
-                              label={analise.sangria === "presente" ? "Sangria ✓" : analise.sangria === "ausente" ? "Sem sangria" : analise.sangria === "parcial" ? "Sangria parcial" : "Dimensões?"}
-                              variant={analise.sangria === "presente" ? "ok" : "aviso"}
-                            />
-                            <AnaliseBadge
-                              label={`${analise.dpi} DPI`}
-                              variant={analise.dpi >= 300 ? "ok" : "aviso"}
-                            />
-                          </div>
-                        );
-                      })()}
-                      <div className="mt-auto pt-4 flex flex-col gap-2">
-                        <Link
-                          href={`/editor/capa/${id}`}
-                          className="text-xs font-medium text-brand-gold hover:underline"
-                        >
-                          Continuar editando →
-                        </Link>
-                        <button
-                          onClick={handleContinuar}
-                          className="text-xs font-medium text-emerald-600 hover:underline text-left"
-                        >
-                          Avançar para Créditos →
-                        </button>
-                      </div>
+                  {/* Sempre "editor em branco". O estado confirmado é
+                      mostrado pelo CapaExistenteCard no nível da página —
+                      chegamos aqui apenas quando `trocandoModo` está ligado
+                      ou não existe capa; em ambos os casos, o slot #3
+                      representa "começar um editor limpo". */}
+                  <button
+                    onClick={async () => {
+                      await resetIfDifferentMode("editor");
+                      router.push(`/editor/capa/${id}`);
+                    }}
+                    className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
+                      hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center
+                      group-hover:bg-brand-gold/20 transition-colors">
+                      <PencilIcon />
                     </div>
-                  ) : (
-                    <button
-                      onClick={async () => {
-                        await resetIfDifferentMode("editor");
-                        router.push(`/editor/capa/${id}`);
-                      }}
-                      className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
-                        hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center
-                        group-hover:bg-brand-gold/20 transition-colors">
-                        <PencilIcon />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-brand-primary text-sm">Editor interativo</p>
-                        <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                          Crie sua capa do zero com texto, imagens e elementos da marca em um editor visual fullscreen.
+                    <div>
+                      <p className="font-semibold text-brand-primary text-sm">Editor interativo</p>
+                      <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                        Crie sua capa do zero com texto, imagens e elementos da marca em um editor visual fullscreen.
+                      </p>
+                      {hasCurrentCapa && (
+                        <p className="text-xs text-amber-700 mt-2 leading-relaxed">
+                          Substituirá a capa atual.
                         </p>
-                        {hasCurrentCapa && (
-                          <p className="text-xs text-amber-700 mt-2 leading-relaxed">
-                            Substituirá a capa atual.
-                          </p>
-                        )}
-                      </div>
-                      <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
-                    </button>
-                  )}
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
+                  </button>
                 </div>
               );
             })()}
