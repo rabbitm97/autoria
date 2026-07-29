@@ -18,11 +18,20 @@ export interface RegionRect {
 // sempre carrega cor de uma das duas regiões — nunca branco. As bordas
 // externas do papel (que já mordem na sangria de 3mm) não são tocadas.
 //
-// Escolha dos valores: 300 DPI ⇒ 1 px ≈ 0,0847 mm. Fills usam ~1,5 px de
-// cada lado para máxima folga sem impacto visual perceptível (< 0,25 mm no
-// total). O clip da IA usa ~1 px — menor porque a arte já cobre e não
-// queremos deslocar visualmente a moldura.
+// Escolha dos valores: 300 DPI ⇒ 1 px ≈ 0,0847 mm.
+//  - Fills fill↔fill (contracapa/orelhas/lombada-verso): ~1,5 px de cada lado
+//    é suficiente porque os dois vizinhos são cores sólidas opacas.
+//  - Fill LOMBADA↔FRENTE: o vizinho da frente é a IMAGEM IA clipada, cujo
+//    AA nas bordas do clip é mais agressivo que o AA entre dois fills. A
+//    lombada expande ~3 px para dentro da frente por baixo da imagem —
+//    invisível (cor sólida por baixo de arte opaca) e cobre a costura.
+//  - Clip da imagem IA: expande apenas no lado da ORELHA FRENTE (~1 px),
+//    onde o vizinho também é fill sólido e o AA do clip precisa ser
+//    empurrado para fora. No lado da LOMBADA o clip volta ao vinco exato:
+//    o próprio fill sólido da lombada (expandido) cobre o AA da imagem,
+//    e evitamos fiapo de arte cruzando o vinco.
 export const FILL_OVERLAP_MM = 0.13;
+export const LOMBADA_FRENTE_OVERLAP_MM = 0.25;
 export const CLIP_OVERLAP_MM = 0.09;
 
 /**
@@ -44,19 +53,38 @@ function getInternalBorders(
 }
 
 /**
- * Aplica sobreposição em mm nas bordas indicadas. `y`/`height` intocados.
+ * Deltas de sobreposição (mm) por lado para o fill de cada região.
+ * Zero em lados externos. Assimétrico: a lombada usa `LOMBADA_FRENTE_OVERLAP_MM`
+ * (~3 px) no lado que toca a frente porque o vizinho ali é a imagem IA
+ * clipada — AA mais agressivo exige cobertura mais generosa por baixo da
+ * arte.
+ */
+function getFillDeltas(
+  region: Region,
+  temOrelhas: boolean,
+): { left: number; right: number } {
+  const borders = getInternalBorders(region, temOrelhas);
+  const left = borders.left ? FILL_OVERLAP_MM : 0;
+  const right = borders.right ? FILL_OVERLAP_MM : 0;
+  if (region === "lombada") {
+    // Lombada tem frente à direita e contracapa à esquerda. Só o lado da
+    // frente pede overlap ampliado (o outro é fill↔fill).
+    return { left, right: LOMBADA_FRENTE_OVERLAP_MM };
+  }
+  return { left, right };
+}
+
+/**
+ * Aplica sobreposição assimétrica em mm nas laterais. `y`/`height` intocados.
  */
 function expandRectSides(
   rect: RegionRect,
-  deltaMm: number,
-  sides: { left: boolean; right: boolean },
+  deltas: { left: number; right: number },
 ): RegionRect {
-  const dl = sides.left ? deltaMm : 0;
-  const dr = sides.right ? deltaMm : 0;
   return {
-    x: rect.x - dl,
+    x: rect.x - deltas.left,
     y: rect.y,
-    width: rect.width + dl + dr,
+    width: rect.width + deltas.left + deltas.right,
     height: rect.height,
   };
 }
@@ -138,8 +166,7 @@ export function getFillRect(
     height: alturaTotal,
   };
   if (!options?.overlap) return base;
-  const sides = getInternalBorders(region, temOrelhas);
-  return expandRectSides(base, FILL_OVERLAP_MM, sides);
+  return expandRectSides(base, getFillDeltas(region, temOrelhas));
 }
 
 /**
@@ -192,9 +219,10 @@ export function getVersoRect(
 
 /**
  * Rect de CLIP do grupo capa-ia-frente. Idêntico ao rect canônico da frente,
- * expandido em `CLIP_OVERLAP_MM` nas fronteiras INTERNAS (vinco da lombada e,
- * se houver orelhas, vinco da orelha frontal) para a arte cobrir a costura
- * de anti-aliasing entre regiões. Em `layout="frente"` não há vizinhos
+ * expandido em `CLIP_OVERLAP_MM` apenas no lado da ORELHA FRENTE (quando há
+ * orelhas). No lado da LOMBADA o clip fica no vinco exato — o fill sólido
+ * da lombada (expandido por baixo da imagem) cobre o AA da arte, e evitamos
+ * fiapos da imagem cruzando o vinco. Em `layout="frente"` não há vizinhos
  * internos — retorna o rect base intacto.
  */
 export function getCapaIaClipRect(
@@ -206,8 +234,10 @@ export function getCapaIaClipRect(
   const rect = getFrenteRect(format, pages, orelhaMm, layout);
   if (layout === "frente") return rect;
   const temOrelhas = orelhaMm > 0;
-  const sides = getInternalBorders("capa", temOrelhas);
-  return expandRectSides(rect, CLIP_OVERLAP_MM, sides);
+  return expandRectSides(rect, {
+    left: 0,
+    right: temOrelhas ? CLIP_OVERLAP_MM : 0,
+  });
 }
 
 /**
