@@ -25,11 +25,15 @@ export interface RegionRect {
 //    AA nas bordas do clip é mais agressivo que o AA entre dois fills. A
 //    lombada expande ~3 px para dentro da frente por baixo da imagem —
 //    invisível (cor sólida por baixo de arte opaca) e cobre a costura.
-//  - Clip da imagem IA: expande apenas no lado da ORELHA FRENTE (~1 px),
-//    onde o vizinho também é fill sólido e o AA do clip precisa ser
-//    empurrado para fora. No lado da LOMBADA o clip volta ao vinco exato:
-//    o próprio fill sólido da lombada (expandido) cobre o AA da imagem,
-//    e evitamos fiapo de arte cruzando o vinco.
+//  - Clip da imagem IA: expande em AMBOS os lados internos (orelha frente
+//    E lombada) por ~1 px. O clipFunc do Konva recorta com borda dura e a
+//    dependência do AA do clip varia por navegador — só a expansão do fill
+//    sob a imagem (LOMBADA_FRENTE_OVERLAP_MM) não bastou empiricamente.
+//    Somando arte por cima do vinco (0,09 mm ≈ 1 px) o pixel de costura
+//    fica sempre carregado por uma das duas fontes (fill sólido por baixo
+//    OU arte por cima), eliminando o branco residual. 0,09 mm de arte
+//    cruzando o vinco é invisível (o vinco dobra ali e a diferença de
+//    conteúdo entre arte e lombada é mínima nos ~1 px afetados).
 export const FILL_OVERLAP_MM = 0.13;
 export const LOMBADA_FRENTE_OVERLAP_MM = 0.25;
 export const CLIP_OVERLAP_MM = 0.09;
@@ -219,11 +223,14 @@ export function getVersoRect(
 
 /**
  * Rect de CLIP do grupo capa-ia-frente. Idêntico ao rect canônico da frente,
- * expandido em `CLIP_OVERLAP_MM` apenas no lado da ORELHA FRENTE (quando há
- * orelhas). No lado da LOMBADA o clip fica no vinco exato — o fill sólido
- * da lombada (expandido por baixo da imagem) cobre o AA da arte, e evitamos
- * fiapos da imagem cruzando o vinco. Em `layout="frente"` não há vizinhos
- * internos — retorna o rect base intacto.
+ * expandido em `CLIP_OVERLAP_MM` nos DOIS lados internos: ORELHA FRENTE
+ * (quando há orelhas) e LOMBADA (sempre em panorâmica). A lombada por baixo
+ * já expande sob a imagem via `LOMBADA_FRENTE_OVERLAP_MM`, mas empiricamente
+ * essa cobertura por baixo sozinha não elimina a costura em todos os
+ * browsers — o clipFunc do Konva usa borda dura e o AA varia. Somando arte
+ * por cima do vinco (~1 px), o pixel fica sempre coberto por uma das duas
+ * fontes (fill sólido embaixo OU arte por cima). Em `layout="frente"` não
+ * há vizinhos internos — retorna o rect base intacto.
  */
 export function getCapaIaClipRect(
   format: FormatKey,
@@ -235,7 +242,7 @@ export function getCapaIaClipRect(
   if (layout === "frente") return rect;
   const temOrelhas = orelhaMm > 0;
   return expandRectSides(rect, {
-    left: 0,
+    left: CLIP_OVERLAP_MM,
     right: temOrelhas ? CLIP_OVERLAP_MM : 0,
   });
 }
