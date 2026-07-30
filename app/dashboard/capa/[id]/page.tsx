@@ -903,6 +903,399 @@ function loadDraft(projectId: string): BriefingDraft {
   }
 }
 
+// ─── Verso IA — fluxo enxuto (B2-05a Mudança 2) ───────────────────────────────
+
+/**
+ * Painel de geração do VERSO. Vive na mesma tela do card unificado (não
+ * navega para ModoIA como pré-B2-05a). O briefing herda automaticamente
+ * estilo/atmosfera/cor/posição da FRENTE já escolhida — o autor só decide
+ * modo (cor sólida / continuação / independente) e ajustes opcionais.
+ *
+ * Fases:
+ *   cards       → 3 botões (cor sólida | continuação | independente)
+ *   continuacao → textarea única "ajustes" (curto) + confirmar
+ *   independente→ resumo de herança + descrição + evitar + confirmar
+ *   confirmando → frase do agente + cobrança + gerar
+ *   gerando     → spinner
+ *   escolha     → grid de 4 opções + aceitar / gerar novamente
+ *
+ * Continuação e Independente compartilham o mesmo backend (gerar-capa alvo=verso)
+ * — a diferença é o `verso.modo` no briefing e o texto do prompt.
+ */
+function PainelVersoIa({
+  projectId,
+  dadosFrente,
+  onSalvo,
+}: {
+  projectId: string;
+  dadosFrente: Record<string, unknown>;
+  onSalvo: (dadosServidor: Record<string, unknown>) => void;
+}) {
+  type Fase = "cards" | "continuacao" | "independente" | "confirmando" | "gerando" | "escolha";
+  const [fase, setFase] = useState<Fase>("cards");
+  const [salvandoCor, setSalvandoCor] = useState(false);
+  const [ajustes, setAjustes] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [evitar, setEvitar] = useState("");
+  const [modoVerso, setModoVerso] = useState<"continuacao" | "independente">("continuacao");
+  const [frase, setFrase] = useState("");
+  const [cobranca, setCobranca] = useState<{ gratis: boolean; custo: number; saldo: number | null } | null>(null);
+  const [resultado, setResultado] = useState<{ verso: DadosVersoIa } | null>(null);
+  const [escolhida, setEscolhida] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [aceitando, setAceitando] = useState(false);
+
+  // Herança da frente (valores fossos — o autor não edita aqui).
+  const estilo = (dadosFrente.estilo as EstiloCapa | undefined) ?? "minimalista";
+  const atmosfera = Array.isArray(dadosFrente.atmosfera)
+    ? (dadosFrente.atmosfera as string[])
+    : [];
+  const corNome = (dadosFrente.cor_predominante as string | undefined) ?? "";
+  const corHex = (dadosFrente.cor_predominante_hex as string | undefined) ?? "#000000";
+  const posicaoTitulo = ((): "topo" | "centro" | "base" | "sem_preferencia" => {
+    const p = dadosFrente.posicao_titulo;
+    return p === "topo" || p === "centro" || p === "base" || p === "sem_preferencia"
+      ? p
+      : "sem_preferencia";
+  })();
+
+  const heredityLine = [
+    ESTILOS.find(e => e.id === estilo)?.label ?? estilo,
+    atmosfera.length ? atmosfera.map(a => ATMOSFERAS_LABELS.find(x => x.id === a)?.label ?? a).join(" + ") : null,
+    corNome || null,
+    posicaoTitulo !== "sem_preferencia" ? `título ${posicaoTitulo}` : null,
+  ].filter(Boolean).join(" · ");
+
+  async function handleCor(): Promise<void> {
+    setSalvandoCor(true);
+    setErro(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/capa/verso`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modo: "cor" }),
+      });
+      if (!res.ok) {
+        setErro((await res.text().catch(() => "")) || "Falha ao salvar verso em cor sólida.");
+        return;
+      }
+      onSalvo(await res.json());
+    } finally {
+      setSalvandoCor(false);
+    }
+  }
+
+  function buildBriefing() {
+    const desc = modoVerso === "continuacao" ? ajustes : descricao;
+    return {
+      estilo,
+      atmosfera,
+      cor_predominante: { nome: corNome, hex: corHex },
+      posicao_titulo: posicaoTitulo,
+      descricao_livre: desc || undefined,
+      evitar: modoVerso === "independente" ? (evitar || undefined) : undefined,
+      verso: { modo: modoVerso, descricao: desc || undefined },
+    };
+  }
+
+  async function handleConfirmar() {
+    setErro(null);
+    setFrase("");
+    setFase("confirmando");
+    try {
+      const r = await fetch("/api/agentes/capa-briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing(), alvo: "verso" }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
+      setFrase(data.frase_confirmacao ?? "");
+      setCobranca(data.cobranca ?? null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
+      setFase(modoVerso);
+    }
+  }
+
+  async function handleGerar() {
+    setErro(null);
+    setFase("gerando");
+    try {
+      const r = await fetch("/api/agentes/gerar-capa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          qtd: 4,
+          alvo: "verso",
+          briefing: buildBriefing(),
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        const sufixo = r.status === 402 && data.saldo != null ? ` Saldo: ${data.saldo} créditos.` : "";
+        throw new Error((data.error ?? "Erro ao gerar") + sufixo);
+      }
+      const versoData = data as { verso: DadosVersoIa };
+      setResultado(versoData);
+      setEscolhida(versoData.verso.opcoes[0]?.url ?? null);
+      setFase("escolha");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro desconhecido");
+      setFase("confirmando");
+    }
+  }
+
+  async function handleAceitar() {
+    if (!escolhida) return;
+    setAceitando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: escolhida, alvo: "verso" }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Erro ao salvar escolha");
+      onSalvo(data);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar escolha");
+    } finally {
+      setAceitando(false);
+    }
+  }
+
+  function voltarCards() {
+    setFase("cards");
+    setFrase("");
+    setCobranca(null);
+    setResultado(null);
+    setEscolhida(null);
+    setErro(null);
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-brand-primary text-sm">Verso da capa</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            {fase === "cards"
+              ? "Escolha como a contracapa (parte de trás) deve ser preenchida."
+              : `Herdando da frente: ${heredityLine || "—"}`}
+          </p>
+        </div>
+        {fase !== "cards" && fase !== "gerando" && (
+          <button
+            onClick={voltarCards}
+            className="text-xs text-zinc-400 hover:text-zinc-600 shrink-0"
+          >
+            ← Voltar
+          </button>
+        )}
+      </div>
+
+      {fase === "cards" && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            type="button"
+            disabled={salvandoCor}
+            onClick={() => void handleCor()}
+            className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left disabled:opacity-50"
+          >
+            <span className="text-xl">🎨</span>
+            <p className="text-sm font-semibold text-brand-primary">Só cor sólida</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Sem gerar arte. O editor pinta com a cor predominante da frente.
+            </p>
+            <span className="text-xs font-medium text-emerald-600 mt-auto">
+              {salvandoCor ? "Salvando…" : "Grátis — escolher →"}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setModoVerso("continuacao"); setFase("continuacao"); }}
+            className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left"
+          >
+            <span className="text-xl">🖼️</span>
+            <p className="text-sm font-semibold text-brand-primary">Continuação da frente</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              A IA usa a arte da frente como referência e cria um verso que combina.
+            </p>
+            <span className="text-xs font-medium text-brand-gold mt-auto">1ª rodada grátis →</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setModoVerso("independente"); setFase("independente"); }}
+            className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left"
+          >
+            <span className="text-xl">✨</span>
+            <p className="text-sm font-semibold text-brand-primary">Arte independente</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Cena própria para o verso, ainda dentro da mesma família visual da frente.
+            </p>
+            <span className="text-xs font-medium text-brand-gold mt-auto">1ª rodada grátis →</span>
+          </button>
+        </div>
+      )}
+
+      {fase === "continuacao" && (
+        <div className="space-y-3">
+          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            Ajustes (opcional)
+          </label>
+          <textarea
+            value={ajustes}
+            onChange={(e) => setAjustes(e.target.value)}
+            rows={3}
+            placeholder="Ex.: menos elementos, área central mais calma para a sinopse, etc."
+            className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-brand-gold"
+          />
+          <button
+            onClick={handleConfirmar}
+            className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors"
+          >
+            Gerar verso →
+          </button>
+        </div>
+      )}
+
+      {fase === "independente" && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+              Descrição
+            </label>
+            <textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              rows={4}
+              placeholder="Descreva a cena que quer no verso — usaremos a mesma família visual da frente."
+              className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-brand-gold"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+              O que evitar (opcional)
+            </label>
+            <input
+              type="text"
+              value={evitar}
+              onChange={(e) => setEvitar(e.target.value)}
+              placeholder="Ex.: pessoas, fotos, tons frios…"
+              className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-gold"
+            />
+          </div>
+          <button
+            onClick={handleConfirmar}
+            disabled={descricao.trim().length === 0}
+            className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+          >
+            Gerar verso →
+          </button>
+        </div>
+      )}
+
+      {fase === "confirmando" && (
+        <div className="space-y-3">
+          {frase ? (
+            <>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
+              <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
+              {cobranca && (
+                <div className={`rounded-xl p-3 text-xs ${cobranca.gratis ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                  {cobranca.gratis
+                    ? "Esta geração está incluída — sem custo."
+                    : `Esta geração custará ${cobranca.custo} créditos. Seu saldo: ${cobranca.saldo ?? "—"}.`}
+                </div>
+              )}
+              {cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo && (
+                <p className="text-xs text-red-600 font-medium">Créditos insuficientes para gerar.</p>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setFase(modoVerso)} className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-zinc-300 transition-colors">
+                  Ajustar
+                </button>
+                <button
+                  onClick={handleGerar}
+                  disabled={!!(cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo)}
+                  className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+                >
+                  Gerar 4 opções →
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-32">
+              <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {fase === "gerando" && (
+        <div className="flex flex-col items-center justify-center h-40 gap-3">
+          <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+          <p className="text-sm text-zinc-500">Gerando 4 opções de verso… pode levar ~1 minuto</p>
+        </div>
+      )}
+
+      {fase === "escolha" && resultado && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+            Escolha um verso ({resultado.verso.opcoes.length} opções geradas)
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {resultado.verso.opcoes.map((op: OpcaoCapa, i: number) => (
+              <button key={op.url} onClick={() => setEscolhida(op.url)}
+                className={`relative rounded-xl overflow-hidden border-2 transition-all aspect-[2/3]
+                  ${escolhida === op.url ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}`}>
+                <Image src={op.url} alt={`Opção ${i + 1}`} fill className="object-cover" />
+                {escolhida === op.url && (
+                  <div className="absolute inset-0 bg-brand-gold/10 flex items-center justify-center">
+                    <span className="bg-brand-gold text-brand-primary text-xs font-bold px-2 py-1 rounded-full">
+                      Selecionada
+                    </span>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              onClick={() => { setResultado(null); setEscolhida(null); setFase(modoVerso); }}
+              className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-amber-300 transition-colors"
+            >
+              Gerar novamente{" "}
+              <span className="text-amber-600 font-medium">
+                ({CUSTOS_CREDITOS.regenerar_capa_verso} créditos)
+              </span>
+            </button>
+            <button
+              onClick={handleAceitar}
+              disabled={!escolhida || aceitando}
+              className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm hover:bg-brand-gold/90 transition-colors disabled:opacity-50"
+            >
+              {aceitando
+                ? <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                    Salvando…
+                  </span>
+                : "Aceitar este verso →"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {erro && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">{erro}</div>
+      )}
+    </div>
+  );
+}
+
 // ─── IA mode ──────────────────────────────────────────────────────────────────
 
 function ModoIA({
@@ -912,7 +1305,9 @@ function ModoIA({
   genero,
   estimativaPaginas: _estimativaPaginas,
   regerarDe,
-  alvo = "frente",
+  plano,
+  proposito,
+  coberturaSalva,
   onSalvo,
   onVoltar,
 }: {
@@ -924,15 +1319,20 @@ function ModoIA({
   estimativaPaginas: number | null;
   regerarDe?: CapaGeradaResult;
   /**
-   * Alvo da arte a gerar (B2-05). Determina qual imagem estamos gerando:
-   *  - "frente": capa retrato tradicional (fluxo padrão retrocompat).
-   *  - "verso": contracapa retrato. Backend usa a frente como referência
-   *    quando modo="continuacao"; independente gera livre.
-   *  - "unica": arte panorâmica que cobre verso+lombada+frente (Pro+completa).
-   * Determina qual fatia do dados_capa é atualizada e o custo da rodada
-   * (frente e verso têm 1 rodada grátis cada; unica consome ambas).
+   * Plano do projeto — gate do seletor de cobertura (só Pro tem arte única).
    */
-  alvo?: "frente" | "verso" | "unica";
+  plano: Plano;
+  /**
+   * Propósito da publicação — gate do seletor de cobertura (só completa tem
+   * verso/lombada impressos; digital é sempre frente).
+   */
+  proposito: PropositoPublicacao | null;
+  /**
+   * Cobertura já persistida em `dados_capa.cobertura`. Usada como valor
+   * inicial do seletor interno; permite o autor trocar unica↔frente_verso
+   * ao regerar sem precisar sair da ModoIA (B2-05a).
+   */
+  coberturaSalva?: "frente_verso" | "unica";
   onSalvo: (dadosServidor: CapaGeradaResult) => void;
   onVoltar: () => void;
 }) {
@@ -948,6 +1348,23 @@ function ModoIA({
 
   // Máquina de estados: briefing → confirmando → gerando → escolha
   const [fase, setFase] = useState<"briefing" | "confirmando" | "gerando" | "escolha">("briefing");
+
+  // B2-05a Mudança 1: cobertura vive DENTRO do ModoIA. Precede o briefing
+  // (é uma decisão sobre o que vai ser gerado). Inicial:
+  //   1º regerarDe.cobertura (regeneração respeita a decisão anterior)
+  //   2º coberturaSalva do banco (não-regen mas capa já existe)
+  //   3º "frente_verso" (default retrocompat)
+  // Alvo efetivo = "verso" quando painel externo assim decidiu; senão
+  // deriva de cobertura ("unica" gera arte panorâmica; "frente_verso"
+  // gera só a frente aqui — o verso é uma etapa separada depois).
+  const coberturaInicial: "frente_verso" | "unica" =
+    (regerarDe?.cobertura as "frente_verso" | "unica" | undefined) ??
+    coberturaSalva ??
+    "frente_verso";
+  const [cobertura, setCobertura] = useState<"frente_verso" | "unica">(coberturaInicial);
+  const podeUnica = plano === "pro" && proposito === "completa";
+  const alvoEfetivo: "frente" | "unica" =
+    podeUnica && cobertura === "unica" ? "unica" : "frente";
 
   // Briefing — inicializado de regerarDe quando em modo regeneração
   const presetCorInicial = regerarDe
@@ -1029,16 +1446,17 @@ function ModoIA({
       .then((data: { itens?: GaleriaCapaItem[] }) => {
         if (!ativo || !Array.isArray(data.itens)) return;
         // Filtra por alvo (B2-05): pré-brief só mostra gerações compatíveis
-        // com o alvo atual. Item legado (tipo indefinido) conta como frente.
+        // com o alvo efetivo (após seleção interna de cobertura). Item
+        // legado (tipo indefinido) conta como frente.
         const filtradas = data.itens.filter(
-          (g) => (g.tipo ?? "frente") === alvo,
+          (g) => (g.tipo ?? "frente") === alvoEfetivo,
         );
         setGaleriaPreBrief(filtradas);
       })
       .catch(() => { /* best-effort */ })
       .finally(() => { if (ativo) setCarregandoGaleria(false); });
     return () => { ativo = false; };
-  }, [projectId, regerarDe, alvo]);
+  }, [projectId, regerarDe, alvoEfetivo]);
 
   async function handleUsarDaGaleria(item: GaleriaCapaItem) {
     setEscolhendoDaGaleria(item.storage_path);
@@ -1047,7 +1465,7 @@ function ModoIA({
       const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: item.url, storage_path: item.storage_path, alvo }),
+        body: JSON.stringify({ url: item.url, storage_path: item.storage_path, alvo: alvoEfetivo }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro ao usar geração anterior");
@@ -1125,7 +1543,7 @@ function ModoIA({
       const r = await fetch("/api/agentes/capa-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing(), alvo }),
+        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing(), alvo: alvoEfetivo }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
@@ -1150,7 +1568,7 @@ function ModoIA({
         body: JSON.stringify({
           project_id: projectId,
           qtd: 4,
-          alvo,
+          alvo: alvoEfetivo,
           briefing: { ...buildBriefing(), descricao_livre: descFinal || undefined },
           imagemRef: imgRef ?? undefined,
           imagemRefIntencao: imgRef ? imgRefIntencao : undefined,
@@ -1196,7 +1614,7 @@ function ModoIA({
       const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: escolhida, alvo }),
+        body: JSON.stringify({ url: escolhida, alvo: alvoEfetivo }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro ao salvar escolha");
@@ -1294,6 +1712,34 @@ function ModoIA({
           <p className="text-xs text-zinc-400 flex items-center gap-1.5">
             <span>·</span> Usando o que sabemos do seu livro: título, gênero e sinopse
           </p>
+
+          {/* Cobertura (Pro + completa) — primeira decisão do briefing.
+              Vive DENTRO da ModoIA (B2-05a) para permitir troca em
+              regeneração e não perder o alvo no meio do fluxo. */}
+          {podeUnica && (
+            <div className="bg-white rounded-2xl border border-zinc-100 p-6">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                Cobertura da arte gerada
+              </p>
+              <p className="text-[11px] text-zinc-400 mb-3">
+                Escolha antes de gerar. Depois, o autor personaliza no editor.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <RadioBtn
+                  checked={cobertura === "frente_verso"}
+                  onChange={() => setCobertura("frente_verso")}
+                  label="Frente e verso (duas artes)"
+                  sub="Gera a frente agora; verso vira uma etapa depois (grátis a 1ª rodada de cada)."
+                />
+                <RadioBtn
+                  checked={cobertura === "unica"}
+                  onChange={() => setCobertura("unica")}
+                  label="Arte única panorâmica"
+                  sub="Uma única imagem cobre verso + lombada + frente. Consome as duas gratuidades."
+                />
+              </div>
+            </div>
+          )}
 
           {/* Estilo — TODO B2-06: default por família editorial + thumbnails */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
@@ -2172,27 +2618,6 @@ export default function CapaPage() {
   // no lugar do grid de modos. Reseta ao voltar.
   const [mostrandoConversaoIa, setMostrandoConversaoIa] = useState(false);
 
-  // B2-05: Alvo da próxima rodada de IA ("frente" | "verso" | "unica").
-  // Definido pelo autor:
-  //  - via toggle de cobertura (Pro+completa) antes do primeiro ModoIA
-  //  - via botão "Gerar verso com IA" após a frente escolhida
-  //  - default "frente" para todos os outros casos (retrocompat)
-  const [alvoIa, setAlvoIa] = useState<"frente" | "verso" | "unica">("frente");
-
-  // B2-05: Cobertura escolhida pelo autor antes de gerar. Persistida em
-  // dados_capa.cobertura pelo backend após a primeira escolha; enquanto
-  // não persistida, vive apenas neste state local (default "frente_verso"
-  // para retrocompat).
-  const [coberturaEscolhida, setCoberturaEscolhida] = useState<"frente_verso" | "unica">("frente_verso");
-
-  // Sincroniza cobertura local com a persistida no banco assim que dados_capa
-  // carrega — evita mostrar toggle com estado divergente ao voltar à página.
-  useEffect(() => {
-    const c = dados?.cobertura;
-    if (c === "unica" || c === "frente_verso") {
-      setCoberturaEscolhida(c);
-    }
-  }, [dados]);
 
   const loadProject = useCallback(async () => {
     setLoading(true);
@@ -2497,28 +2922,6 @@ export default function CapaPage() {
   // destacada. Cancelar volta ao status card sem custo.
   const [mostrandoGridPersistente, setMostrandoGridPersistente] = useState(false);
 
-  // B2-05: Verso "só cor" — POST /capa/verso sem custo; editor pinta a
-  // contracapa com cor_predominante_hex. Nada de arte gerada.
-  const [salvandoVersoCor, setSalvandoVersoCor] = useState(false);
-  async function handleVersoCor(): Promise<void> {
-    setSalvandoVersoCor(true);
-    try {
-      const res = await fetch(`/api/projects/${id}/capa/verso`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modo: "cor" }),
-      });
-      if (!res.ok) {
-        console.error("[capa/verso cor] falhou:", await res.text().catch(() => ""));
-        return;
-      }
-      const dadosNovos = await res.json();
-      setDados(dadosNovos);
-    } finally {
-      setSalvandoVersoCor(false);
-    }
-  }
-
   // Toggle para o link "Trocar por upload ou editor em branco" do
   // CapaExistenteCard. Quando true, esconde o card unificado e mostra o
   // grid dos 3 modos (Upload / IA / Editor em branco) — clicar num modo
@@ -2666,7 +3069,8 @@ export default function CapaPage() {
               onTrocarModo={() => setTrocandoModo(true)}
               onEscolherTrilha={handleEscolherTrilha}
             />
-            {/* B2-05: painel de verso — só faz sentido quando:
+            {/* B2-05a: painel de verso enxuto — herda estilo/cor/atmosfera
+                 da frente automaticamente. Só faz sentido quando:
                  • capa é de IA (upload/editor já trazem verso próprio)
                  • cobertura é frente_verso (unica cobre tudo com uma arte)
                  • Pro + trilha completa (verso impresso só existe nesse caso)
@@ -2685,73 +3089,11 @@ export default function CapaPage() {
                 !versoDecidido;
               if (!mostrarPainelVerso) return null;
               return (
-                <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
-                  <div>
-                    <p className="font-semibold text-brand-primary text-sm">Verso da capa</p>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Escolha como a contracapa (parte de trás) deve ser preenchida.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button
-                      type="button"
-                      disabled={salvandoVersoCor}
-                      onClick={() => void handleVersoCor()}
-                      className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left disabled:opacity-50"
-                    >
-                      <span className="text-xl">🎨</span>
-                      <p className="text-sm font-semibold text-brand-primary">
-                        Só cor sólida
-                      </p>
-                      <p className="text-xs text-zinc-500 leading-relaxed">
-                        Sem gerar arte. O editor pinta com a cor predominante da frente.
-                      </p>
-                      <span className="text-xs font-medium text-emerald-600 mt-auto">
-                        {salvandoVersoCor ? "Salvando…" : "Grátis — escolher →"}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAlvoIa("verso");
-                        setModoIaRegerarDe(null);
-                        setModo("ia");
-                      }}
-                      className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left"
-                    >
-                      <span className="text-xl">🖼️</span>
-                      <p className="text-sm font-semibold text-brand-primary">
-                        Continuação da frente
-                      </p>
-                      <p className="text-xs text-zinc-500 leading-relaxed">
-                        A IA usa a arte da frente como referência e cria um verso que combina.
-                      </p>
-                      <span className="text-xs font-medium text-brand-gold mt-auto">
-                        1ª rodada grátis →
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAlvoIa("verso");
-                        setModoIaRegerarDe(null);
-                        setModo("ia");
-                      }}
-                      className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left"
-                    >
-                      <span className="text-xl">✨</span>
-                      <p className="text-sm font-semibold text-brand-primary">
-                        Arte independente
-                      </p>
-                      <p className="text-xs text-zinc-500 leading-relaxed">
-                        Novo briefing só para o verso — livre, sem referência à frente.
-                      </p>
-                      <span className="text-xs font-medium text-brand-gold mt-auto">
-                        1ª rodada grátis →
-                      </span>
-                    </button>
-                  </div>
-                </div>
+                <PainelVersoIa
+                  projectId={id}
+                  dadosFrente={dados}
+                  onSalvo={(novo) => setDados(novo)}
+                />
               );
             })()}
           </div>
@@ -2891,36 +3233,7 @@ export default function CapaPage() {
               // Gate do IA — freemium vê o paywall antes do briefing (D2-05).
               // Upload e Editor não são gated: continuam livres.
               const iaGated = !planoAtende(plano, "essencial");
-              // B2-05: Cobertura só aparece para Pro+completa antes de gerar
-              // (não faz sentido depois de escolhida; nem para digital, que
-              // é sempre frente). Toggle vive próximo ao card "Gerar com IA".
-              const podeUnica = plano === "pro" && proposito === "completa" && !hasCurrentCapa;
               return (
-                <>
-                  {podeUnica && (
-                    <div className="bg-white rounded-2xl border border-zinc-100 p-5">
-                      <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
-                        Cobertura da arte gerada
-                      </p>
-                      <p className="text-[11px] text-zinc-400 mb-3">
-                        Escolha antes de gerar. Depois, o autor personaliza no editor.
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <RadioBtn
-                          checked={coberturaEscolhida === "frente_verso"}
-                          onChange={() => setCoberturaEscolhida("frente_verso")}
-                          label="Frente e verso (duas artes)"
-                          sub="Gera a frente agora; verso vira uma etapa depois (grátis a 1ª rodada de cada)."
-                        />
-                        <RadioBtn
-                          checked={coberturaEscolhida === "unica"}
-                          onChange={() => setCoberturaEscolhida("unica")}
-                          label="Arte única panorâmica"
-                          sub="Uma única imagem cobre verso + lombada + frente. Consome as duas gratuidades."
-                        />
-                      </div>
-                    </div>
-                  )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <ModoCard
                     icon={<UploadIcon />}
@@ -2944,9 +3257,9 @@ export default function CapaPage() {
                         return;
                       }
                       await resetIfDifferentMode("ia");
-                      // Pro+completa que escolheu "unica" no toggle entra na
-                      // ModoIA já em modo arte-única. Demais casos: frente.
-                      setAlvoIa(coberturaEscolhida === "unica" ? "unica" : "frente");
+                      // Verso vive fora da ModoIA (PainelVersoIa); a
+                      // decisão unica↔frente_verso vive DENTRO da ModoIA
+                      // via seletor de cobertura (B2-05a).
                       setModo("ia");
                     }}
                   />
@@ -2981,7 +3294,6 @@ export default function CapaPage() {
                     <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
                   </button>
                 </div>
-                </>
               );
             })()}
 
@@ -3027,23 +3339,27 @@ export default function CapaPage() {
             genero={genero}
             estimativaPaginas={estimativaPaginas}
             regerarDe={modoIaRegerarDe ?? undefined}
-            alvo={alvoIa}
+            plano={plano}
+            proposito={proposito}
+            coberturaSalva={
+              (dados?.cobertura === "unica" || dados?.cobertura === "frente_verso")
+                ? (dados.cobertura as "unica" | "frente_verso")
+                : undefined
+            }
             onSalvo={(dadosServidor) => {
               handleSalvoIA(dadosServidor);
               setModoIaRegerarDe(null);
-              // Verso NÃO leva ao editor sozinho: só a frente/unica encerra o
-              // fluxo com "abrir editor". Ao terminar verso, volta ao card
-              // unificado e o autor decide (avançar / continuar editor).
-              if (alvoIa !== "verso" && proposito !== null) {
+              // ModoIA só gera frente/unica (verso vive no PainelVersoIa).
+              // Quando trilha definida, abre editor direto para o autor
+              // finalizar textos; sem trilha, volta ao card unificado.
+              if (proposito !== null) {
                 router.push(`/editor/capa/${id}`);
               }
-              setAlvoIa("frente");
               setModo("escolha");
             }}
             onVoltar={() => {
               setModo("escolha");
               setModoIaRegerarDe(null);
-              setAlvoIa("frente");
             }}
           />
         ) : null}

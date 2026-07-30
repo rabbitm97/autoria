@@ -287,6 +287,14 @@ export async function processarBriefingCapa(args: {
   alvo: AlvoCapa;
   projectId: string;
   userId: string;
+  /**
+   * Arte da frente já gerada. Passado apenas quando `alvo === "verso"` —
+   * o verso pertence à MESMA capa, então o agente precisa enxergar o
+   * prompt da frente para produzir um resultado coerente (mesma técnica,
+   * paleta, tratamento). O modo do verso (continuacao × independente)
+   * decide o tom da instrução extra no userMsg.
+   */
+  frente?: { prompt_usado: string; estilo: string; frase?: string };
 }): Promise<{ prompt_imagem: string; frase_confirmacao: string; negative_hints: string[] }> {
   if (isMock()) {
     return {
@@ -307,6 +315,27 @@ export async function processarBriefingCapa(args: {
         ? `VERSO (modo: ${b.verso.modo})`
         : "FRENTE";
 
+  // Herança da frente para o verso (B2-05a Mudança 3): o verso pertence
+  // à MESMA capa; o agente precisa enxergar o prompt já usado para não
+  // produzir uma cena estranha à família visual.
+  const versoMode = args.alvo === "verso" ? b.verso?.modo : null;
+  const heredityBlock: string[] =
+    args.alvo === "verso" && args.frente
+      ? [
+          "",
+          "ARTE DA FRENTE (já gerada — o verso pertence à MESMA capa):",
+          `Prompt usado na frente: ${args.frente.prompt_usado}`,
+        ]
+      : [];
+  const versoInstruction: string | null =
+    args.alvo === "verso" && args.frente
+      ? versoMode === "continuacao"
+        ? "O prompt do verso deve ESTENDER a mesma arte: mesma técnica, paleta, luz e tratamento do prompt da frente acima, como continuação natural da cena para a contracapa."
+        : versoMode === "independente"
+          ? "O prompt do verso deve pertencer à MESMA FAMÍLIA VISUAL do prompt da frente acima (mesma técnica, paleta e tratamento), com a cena própria descrita pelo autor."
+          : null
+      : null;
+
   const userMsg = [
     `Ação: confirmar — gerar prompt para a ${alvoLabel} da capa.`,
     "",
@@ -322,6 +351,9 @@ export async function processarBriefingCapa(args: {
     b.referencias_texto && `Capas de referência citadas: ${b.referencias_texto}`,
     b.evitar && `Evitar: ${b.evitar}`,
     b.verso?.descricao && `Descrição do verso: ${b.verso.descricao}`,
+    ...heredityBlock,
+    versoInstruction && "",
+    versoInstruction,
   ]
     .filter(Boolean)
     .join("\n");

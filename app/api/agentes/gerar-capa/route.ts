@@ -242,6 +242,32 @@ export async function POST(req: NextRequest) {
     temas: JSON.stringify(dadosElementos?.palavras_chave ?? []).slice(0, 400),
   };
 
+  // B2-05a Mudança 4: verso herda a frente. Sem frente escolhida ainda,
+  // 409 — o cliente não deveria conseguir chegar aqui, mas defesa em
+  // profundidade (o botão "Continuação" no verso reconstrói o briefing
+  // da frente e assume que ela existe).
+  const dadosCapaAtual = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
+  let frenteHeredada: { prompt_usado: string; estilo: string; frase?: string } | undefined;
+  if (alvo === "verso") {
+    const promptUsado = typeof dadosCapaAtual?.prompt_usado === "string" ? dadosCapaAtual.prompt_usado : "";
+    const estiloFrente = typeof dadosCapaAtual?.estilo === "string" ? dadosCapaAtual.estilo : "";
+    const urlEscolhida = typeof dadosCapaAtual?.url_escolhida === "string" ? dadosCapaAtual.url_escolhida : "";
+    if (!promptUsado || !urlEscolhida) {
+      if (ehRegeneracao && !dev) {
+        await estornarCreditos(storageClient, userId, cobranca.acao, project_id);
+      }
+      return NextResponse.json(
+        { error: "Escolha a arte da capa (frente) antes de gerar o verso." },
+        { status: 409 },
+      );
+    }
+    frenteHeredada = {
+      prompt_usado: promptUsado,
+      estilo: estiloFrente,
+      frase: typeof dadosCapaAtual?.frase_confirmacao === "string" ? dadosCapaAtual.frase_confirmacao : undefined,
+    };
+  }
+
   // Prompt via agente intermediário (server-side — nunca do front)
   let prompt_imagem: string;
   let frase_confirmacao: string;
@@ -252,11 +278,15 @@ export async function POST(req: NextRequest) {
       alvo,
       projectId: project_id,
       userId,
+      frente: frenteHeredada,
     });
     prompt_imagem = agente.prompt_imagem;
     frase_confirmacao = agente.frase_confirmacao;
   } catch (err) {
     console.error("[gerar-capa] agente briefing falhou:", err);
+    if (ehRegeneracao && !dev) {
+      await estornarCreditos(storageClient, userId, cobranca.acao, project_id);
+    }
     return NextResponse.json(
       { error: "Não foi possível preparar a geração. Tente novamente." },
       { status: 502 },
@@ -266,7 +296,6 @@ export async function POST(req: NextRequest) {
   // Verso em modo "continuacao": se o front não mandou imagemRef, buscamos
   // a frente escolhida no storage e injetamos como referência de estilo.
   // Sem essa referência a continuidade fica muito frágil.
-  const dadosCapaAtual = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
   let imagemRef = body.imagemRef;
   let imagemRefIntencao: "estilo" | "conteudo" = body.imagemRefIntencao;
   if (

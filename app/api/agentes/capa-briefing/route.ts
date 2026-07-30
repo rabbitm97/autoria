@@ -95,12 +95,47 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // B2-05a Mudança 4: verso precisa herdar a frente. Carregamos o
+      // prompt/estilo da frente escolhida e passamos ao agente. Sem
+      // frente escolhida ainda, 409 — o cliente deve escolher a frente
+      // primeiro antes de briefar o verso.
+      let frente: { prompt_usado: string; estilo: string; frase?: string } | undefined;
+      if (body.alvo === "verso") {
+        const { data: proj, error: projErr } = await supabase
+          .from("projects")
+          .select("dados_capa")
+          .eq("id", body.project_id)
+          .single();
+        if (projErr) {
+          return NextResponse.json(
+            { error: "Projeto não encontrado." },
+            { status: 404 },
+          );
+        }
+        const dc = (proj?.dados_capa ?? null) as Record<string, unknown> | null;
+        const promptUsado = typeof dc?.prompt_usado === "string" ? dc.prompt_usado : "";
+        const estiloFrente = typeof dc?.estilo === "string" ? dc.estilo : "";
+        const urlEscolhida = typeof dc?.url_escolhida === "string" ? dc.url_escolhida : "";
+        if (!promptUsado || !urlEscolhida) {
+          return NextResponse.json(
+            { error: "Escolha a arte da capa (frente) antes de briefar o verso." },
+            { status: 409 },
+          );
+        }
+        frente = {
+          prompt_usado: promptUsado,
+          estilo: estiloFrente,
+          frase: typeof dc?.frase_confirmacao === "string" ? dc.frase_confirmacao : undefined,
+        };
+      }
+
       const result = await processarBriefingCapa({
         contexto,
         briefing: body.briefing,
         alvo: body.alvo,
         projectId: body.project_id,
         userId,
+        frente,
       });
       const admin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
