@@ -38,8 +38,17 @@ import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget } from "../lib/keyboard-utils";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
-import { getFillRect, getCapaIaClipRect } from "../lib/region-rects";
-import { CAPA_IA_FRENTE_ID } from "../lib/constants";
+import {
+  getFillRect,
+  getCapaIaClipRect,
+  getCapaIaVersoClipRect,
+  getCapaIaUnicaClipRect,
+} from "../lib/region-rects";
+import {
+  CAPA_IA_FRENTE_ID,
+  CAPA_IA_VERSO_ID,
+  CAPA_IA_UNICA_ID,
+} from "../lib/constants";
 import { isReanchorTarget } from "../lib/reanchor";
 import { EditorLegendTooltip, type TooltipInfo } from "./editor-legend-tooltip";
 import { EditorEmptyState } from "./editor-empty-state";
@@ -794,17 +803,28 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
               // autor mover/redimensionar a imagem além dos vincos. O clip
               // recalcula automaticamente quando `orelhaMm`/`layout` mudam
               // (a função depende do state, então re-renderiza).
-              if (el.id === CAPA_IA_FRENTE_ID) {
-                const frenteRect = getCapaIaClipRect(format, pages, orelhaMm, layout);
+              // Cada arte da IA vive dentro de um Group com clipFunc no rect
+              // correspondente. O excedente do fit-cover fica escondido,
+              // mesmo se o autor mover/redimensionar a imagem além dos vincos.
+              // O clip recalcula quando orelhaMm/layout mudam.
+              const clipRect =
+                el.id === CAPA_IA_FRENTE_ID
+                  ? getCapaIaClipRect(format, pages, orelhaMm, layout)
+                  : el.id === CAPA_IA_VERSO_ID
+                  ? getCapaIaVersoClipRect(format, pages, orelhaMm, layout)
+                  : el.id === CAPA_IA_UNICA_ID
+                  ? getCapaIaUnicaClipRect(format, pages, orelhaMm, layout)
+                  : null;
+              if (clipRect) {
                 return (
                   <Group
                     key={el.id}
                     clipFunc={(ctx) => {
                       ctx.rect(
-                        frenteRect.x * MM_TO_PX,
-                        frenteRect.y * MM_TO_PX,
-                        frenteRect.width * MM_TO_PX,
-                        frenteRect.height * MM_TO_PX,
+                        clipRect.x * MM_TO_PX,
+                        clipRect.y * MM_TO_PX,
+                        clipRect.width * MM_TO_PX,
+                        clipRect.height * MM_TO_PX,
                       );
                     }}
                   >

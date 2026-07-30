@@ -1,5 +1,6 @@
 import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import { CAPA_IA_ASPECT_H, CAPA_IA_ASPECT_W } from "./constants";
+import { getRatioArteUnica } from "@/lib/formatos";
 import type { Region } from "./elements";
 import type { EditorLayout, FormatKey } from "../types";
 
@@ -248,30 +249,43 @@ export function getCapaIaClipRect(
 }
 
 /**
- * Rect da região onde a arte da IA deve ser posicionada com FIT COVER
- * centralizado sobre a frente. O excedente do cover em relação ao aspecto
- * 2:3 é distribuído igual em ambos os lados (metade cruza a lombada /
- * metade a sangria externa; ou metade acima / metade abaixo). No render
- * o Group clipa a região da frente e no export a área fora do papel é
- * clipada.
+ * Rect de CLIP do grupo capa-ia-verso. Espelho do da frente: verso é a
+ * contracapa em layout panorâmico. Expande em `CLIP_OVERLAP_MM` nos lados
+ * internos — LOMBADA (à direita da contracapa) e ORELHA_VERSO (à esquerda,
+ * se houver orelhas). Em `layout="frente"` não existe verso (retorna null).
  */
-export function getCapaIaAnchoredRect(
+export function getCapaIaVersoClipRect(
   format: FormatKey,
   pages: number,
   orelhaMm: number,
   layout: EditorLayout,
-): RegionRect {
-  const rect = getFrenteRect(format, pages, orelhaMm, layout);
-  const imgAspect = CAPA_IA_ASPECT_W / CAPA_IA_ASPECT_H;
+): RegionRect | null {
+  if (layout === "frente") return null;
+  const rect = getVersoRect(format, pages, orelhaMm, layout);
+  if (!rect) return null;
+  const temOrelhas = orelhaMm > 0;
+  return expandRectSides(rect, {
+    left: temOrelhas ? CLIP_OVERLAP_MM : 0,
+    right: CLIP_OVERLAP_MM,
+  });
+}
+
+/**
+ * Fit-cover centralizado de uma imagem com aspect `imgAspect` (w/h) dentro
+ * do rect base. O excedente do cover é distribuído igual em ambos os lados
+ * (metade cruza os vizinhos / metade os bleeds). No render o Group clipa
+ * a região da frente/verso e no export a área fora do papel é clipada.
+ */
+function coverRect(rect: RegionRect, imgAspect: number): RegionRect {
   const rectAspect = rect.width / rect.height;
   let coverW: number;
   let coverH: number;
   if (imgAspect > rectAspect) {
-    // Imagem é mais larga que o rect: fixar altura, excedente horizontal.
+    // Imagem é mais larga: fixar altura, excedente horizontal.
     coverH = rect.height;
     coverW = coverH * imgAspect;
   } else {
-    // Imagem é mais estreita que o rect: fixar largura, excedente vertical.
+    // Imagem é mais estreita: fixar largura, excedente vertical.
     coverW = rect.width;
     coverH = coverW / imgAspect;
   }
@@ -281,4 +295,100 @@ export function getCapaIaAnchoredRect(
     width: coverW,
     height: coverH,
   };
+}
+
+/**
+ * Rect da região onde a arte da IA deve ser posicionada com FIT COVER
+ * centralizado sobre a frente. Aspecto 2:3.
+ */
+export function getCapaIaAnchoredRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect {
+  const rect = getFrenteRect(format, pages, orelhaMm, layout);
+  return coverRect(rect, CAPA_IA_ASPECT_W / CAPA_IA_ASPECT_H);
+}
+
+/**
+ * Rect da região onde a arte de verso deve ser posicionada com FIT COVER
+ * centralizado sobre a contracapa. Mesmo aspecto 2:3 da frente. Retorna
+ * null em `layout="frente"` (não há verso).
+ */
+export function getCapaIaVersoAnchoredRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect | null {
+  const rect = getVersoRect(format, pages, orelhaMm, layout);
+  if (!rect) return null;
+  return coverRect(rect, CAPA_IA_ASPECT_W / CAPA_IA_ASPECT_H);
+}
+
+/**
+ * Rect da REGIÃO ÚNICA (verso + lombada + capa) — arte panorâmica cobre
+ * as três regiões como UMA imagem contínua. Igual ao spread canônico sem
+ * orelhas (contracapa fold → capa fold), preservando as sangrias top/bottom.
+ * Em layout="frente" não há arte única (retorna null).
+ *
+ * As orelhas (quando existem) NÃO fazem parte da arte única — permanecem
+ * pintadas com a cor predominante. Isso é intencional: a IA gera 3-região
+ * (contracapa + lombada + capa) e as orelhas ficam como faixa auxiliar.
+ */
+export function getUnicaRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect | null {
+  if (layout === "frente") return null;
+  const f = FORMATS[format];
+  const lombada = calcularLombada(pages);
+  const temOrelhas = orelhaMm > 0;
+  const alturaTotal = f.height_mm + 2 * SANGRIA_MM;
+
+  // Início do rect: onde termina a orelha_verso + fold (se houver),
+  // ou o bleed esquerdo (se não houver). Mesmo raciocínio para o fim.
+  const x_start = temOrelhas ? SANGRIA_MM + orelhaMm : 0;
+  const largura = temOrelhas
+    ? 2 * f.width_mm + lombada
+    : 2 * f.width_mm + lombada + 2 * SANGRIA_MM;
+
+  return { x: x_start, y: 0, width: largura, height: alturaTotal };
+}
+
+/**
+ * Rect de CLIP do grupo capa-ia-unica. É o próprio spread — não há costura
+ * interna porque a imagem cobre as 3 regiões como UMA. Só clipa contra os
+ * bleeds externos / orelhas. Em `layout="frente"` não há unica (retorna null).
+ */
+export function getCapaIaUnicaClipRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect | null {
+  return getUnicaRect(format, pages, orelhaMm, layout);
+}
+
+/**
+ * Rect da posição fit-cover da arte única sobre o spread. O aspecto real
+ * do spread muda com o nº de páginas (lombada) e formato; o Gemini gera
+ * na proporção mais próxima suportada (3:2 ou 16:9). Ajustamos o cover
+ * pelo aspecto GERADO, não pelo real — a IA teria distorcido a arte para
+ * o real e o cover reintroduz o excedente pra fora do papel.
+ */
+export function getCapaIaUnicaAnchoredRect(
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+): RegionRect | null {
+  const rect = getUnicaRect(format, pages, orelhaMm, layout);
+  if (!rect) return null;
+  const ratioStr = getRatioArteUnica(format, pages);
+  const [w, h] = ratioStr.split(":").map(Number);
+  return coverRect(rect, w / h);
 }

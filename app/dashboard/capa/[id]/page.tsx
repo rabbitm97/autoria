@@ -15,7 +15,7 @@ import { ColorPickerPopover } from "@/components/color-picker-popover";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
-import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem } from "@/lib/project-data";
+import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem, DadosVersoIa } from "@/lib/project-data";
 import { PLANO_LABEL, planoAtende, type Plano } from "@/lib/planos";
 import { TelaConversaoPlano } from "@/components/plano-conversao";
 
@@ -912,6 +912,7 @@ function ModoIA({
   genero,
   estimativaPaginas: _estimativaPaginas,
   regerarDe,
+  alvo = "frente",
   onSalvo,
   onVoltar,
 }: {
@@ -922,6 +923,16 @@ function ModoIA({
   genero: string;
   estimativaPaginas: number | null;
   regerarDe?: CapaGeradaResult;
+  /**
+   * Alvo da arte a gerar (B2-05). Determina qual imagem estamos gerando:
+   *  - "frente": capa retrato tradicional (fluxo padrão retrocompat).
+   *  - "verso": contracapa retrato. Backend usa a frente como referência
+   *    quando modo="continuacao"; independente gera livre.
+   *  - "unica": arte panorâmica que cobre verso+lombada+frente (Pro+completa).
+   * Determina qual fatia do dados_capa é atualizada e o custo da rodada
+   * (frente e verso têm 1 rodada grátis cada; unica consome ambas).
+   */
+  alvo?: "frente" | "verso" | "unica";
   onSalvo: (dadosServidor: CapaGeradaResult) => void;
   onVoltar: () => void;
 }) {
@@ -1016,12 +1027,18 @@ function ModoIA({
     fetch(`/api/projects/${projectId}/capa/galeria`)
       .then(r => (r.ok ? r.json() : { itens: [] }))
       .then((data: { itens?: GaleriaCapaItem[] }) => {
-        if (ativo && Array.isArray(data.itens)) setGaleriaPreBrief(data.itens);
+        if (!ativo || !Array.isArray(data.itens)) return;
+        // Filtra por alvo (B2-05): pré-brief só mostra gerações compatíveis
+        // com o alvo atual. Item legado (tipo indefinido) conta como frente.
+        const filtradas = data.itens.filter(
+          (g) => (g.tipo ?? "frente") === alvo,
+        );
+        setGaleriaPreBrief(filtradas);
       })
       .catch(() => { /* best-effort */ })
       .finally(() => { if (ativo) setCarregandoGaleria(false); });
     return () => { ativo = false; };
-  }, [projectId, regerarDe]);
+  }, [projectId, regerarDe, alvo]);
 
   async function handleUsarDaGaleria(item: GaleriaCapaItem) {
     setEscolhendoDaGaleria(item.storage_path);
@@ -1030,7 +1047,7 @@ function ModoIA({
       const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: item.url, storage_path: item.storage_path }),
+        body: JSON.stringify({ url: item.url, storage_path: item.storage_path, alvo }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro ao usar geração anterior");
@@ -1108,7 +1125,7 @@ function ModoIA({
       const r = await fetch("/api/agentes/capa-briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing() }),
+        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing(), alvo }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
@@ -1133,6 +1150,7 @@ function ModoIA({
         body: JSON.stringify({
           project_id: projectId,
           qtd: 4,
+          alvo,
           briefing: { ...buildBriefing(), descricao_livre: descFinal || undefined },
           imagemRef: imgRef ?? undefined,
           imagemRefIntencao: imgRef ? imgRefIntencao : undefined,
@@ -1178,7 +1196,7 @@ function ModoIA({
       const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: escolhida }),
+        body: JSON.stringify({ url: escolhida, alvo }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro ao salvar escolha");
@@ -2157,6 +2175,28 @@ export default function CapaPage() {
   // no lugar do grid de modos. Reseta ao voltar.
   const [mostrandoConversaoIa, setMostrandoConversaoIa] = useState(false);
 
+  // B2-05: Alvo da próxima rodada de IA ("frente" | "verso" | "unica").
+  // Definido pelo autor:
+  //  - via toggle de cobertura (Pro+completa) antes do primeiro ModoIA
+  //  - via botão "Gerar verso com IA" após a frente escolhida
+  //  - default "frente" para todos os outros casos (retrocompat)
+  const [alvoIa, setAlvoIa] = useState<"frente" | "verso" | "unica">("frente");
+
+  // B2-05: Cobertura escolhida pelo autor antes de gerar. Persistida em
+  // dados_capa.cobertura pelo backend após a primeira escolha; enquanto
+  // não persistida, vive apenas neste state local (default "frente_verso"
+  // para retrocompat).
+  const [coberturaEscolhida, setCoberturaEscolhida] = useState<"frente_verso" | "unica">("frente_verso");
+
+  // Sincroniza cobertura local com a persistida no banco assim que dados_capa
+  // carrega — evita mostrar toggle com estado divergente ao voltar à página.
+  useEffect(() => {
+    const c = dados?.cobertura;
+    if (c === "unica" || c === "frente_verso") {
+      setCoberturaEscolhida(c);
+    }
+  }, [dados]);
+
   const loadProject = useCallback(async () => {
     setLoading(true);
     try {
@@ -2468,6 +2508,28 @@ export default function CapaPage() {
   // destacada. Cancelar volta ao status card sem custo.
   const [mostrandoGridPersistente, setMostrandoGridPersistente] = useState(false);
 
+  // B2-05: Verso "só cor" — POST /capa/verso sem custo; editor pinta a
+  // contracapa com cor_predominante_hex. Nada de arte gerada.
+  const [salvandoVersoCor, setSalvandoVersoCor] = useState(false);
+  async function handleVersoCor(): Promise<void> {
+    setSalvandoVersoCor(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/capa/verso`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modo: "cor" }),
+      });
+      if (!res.ok) {
+        console.error("[capa/verso cor] falhou:", await res.text().catch(() => ""));
+        return;
+      }
+      const dadosNovos = await res.json();
+      setDados(dadosNovos);
+    } finally {
+      setSalvandoVersoCor(false);
+    }
+  }
+
   // Toggle para o link "Trocar por upload ou editor em branco" do
   // CapaExistenteCard. Quando true, esconde o card unificado e mostra o
   // grid dos 3 modos (Upload / IA / Editor em branco) — clicar num modo
@@ -2599,21 +2661,111 @@ export default function CapaPage() {
           isEditorCapa(dados) ||
           (dados.modo === "ia" && typeof dados.url_escolhida === "string" && dados.url_escolhida.length > 0)
         ) ? (
-          <CapaExistenteCard
-            dados={dados}
-            editorConfirmed={isEditorCapa(dados)}
-            proposito={proposito}
-            formato={formatoGlobal}
-            onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
-            onAvancarCreditos={handleContinuar}
-            onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}
-            onGerarNovasOpcoes={() => {
-              setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
-              setModo("ia");
-            }}
-            onTrocarModo={() => setTrocandoModo(true)}
-            onEscolherTrilha={handleEscolherTrilha}
-          />
+          <div className="space-y-4">
+            <CapaExistenteCard
+              dados={dados}
+              editorConfirmed={isEditorCapa(dados)}
+              proposito={proposito}
+              formato={formatoGlobal}
+              onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
+              onAvancarCreditos={handleContinuar}
+              onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}
+              onGerarNovasOpcoes={() => {
+                setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
+                setModo("ia");
+              }}
+              onTrocarModo={() => setTrocandoModo(true)}
+              onEscolherTrilha={handleEscolherTrilha}
+            />
+            {/* B2-05: painel de verso — só faz sentido quando:
+                 • capa é de IA (upload/editor já trazem verso próprio)
+                 • cobertura é frente_verso (unica cobre tudo com uma arte)
+                 • Pro + trilha completa (verso impresso só existe nesse caso)
+                 • autor ainda não decidiu verso (nem cor, nem arte escolhida) */}
+            {(() => {
+              const cobertura = (dados.cobertura as string | undefined) ?? "frente_verso";
+              const verso = dados.verso as DadosVersoIa | null | undefined;
+              const versoDecidido =
+                !!verso &&
+                (verso.modo === "cor" || (typeof verso.url_escolhida === "string" && verso.url_escolhida.length > 0));
+              const mostrarPainelVerso =
+                dados.modo === "ia" &&
+                cobertura === "frente_verso" &&
+                plano === "pro" &&
+                proposito === "completa" &&
+                !versoDecidido;
+              if (!mostrarPainelVerso) return null;
+              return (
+                <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+                  <div>
+                    <p className="font-semibold text-brand-primary text-sm">Verso da capa</p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Escolha como a contracapa (parte de trás) deve ser preenchida.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      disabled={salvandoVersoCor}
+                      onClick={() => void handleVersoCor()}
+                      className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left disabled:opacity-50"
+                    >
+                      <span className="text-xl">🎨</span>
+                      <p className="text-sm font-semibold text-brand-primary">
+                        Só cor sólida
+                      </p>
+                      <p className="text-xs text-zinc-500 leading-relaxed">
+                        Sem gerar arte. O editor pinta com a cor predominante da frente.
+                      </p>
+                      <span className="text-xs font-medium text-emerald-600 mt-auto">
+                        {salvandoVersoCor ? "Salvando…" : "Grátis — escolher →"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAlvoIa("verso");
+                        setModoIaRegerarDe(null);
+                        setModo("ia");
+                      }}
+                      className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left"
+                    >
+                      <span className="text-xl">🖼️</span>
+                      <p className="text-sm font-semibold text-brand-primary">
+                        Continuação da frente
+                      </p>
+                      <p className="text-xs text-zinc-500 leading-relaxed">
+                        A IA usa a arte da frente como referência e cria um verso que combina.
+                      </p>
+                      <span className="text-xs font-medium text-brand-gold mt-auto">
+                        1ª rodada grátis →
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAlvoIa("verso");
+                        setModoIaRegerarDe(null);
+                        setModo("ia");
+                      }}
+                      className="flex flex-col items-start gap-2 p-4 rounded-xl border border-zinc-200 hover:border-brand-gold/60 transition-all text-left"
+                    >
+                      <span className="text-xl">✨</span>
+                      <p className="text-sm font-semibold text-brand-primary">
+                        Arte independente
+                      </p>
+                      <p className="text-xs text-zinc-500 leading-relaxed">
+                        Novo briefing só para o verso — livre, sem referência à frente.
+                      </p>
+                      <span className="text-xs font-medium text-brand-gold mt-auto">
+                        1ª rodada grátis →
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         ) : modo === "escolha" ? (
           <div className="space-y-6">
             {/* Linha discreta de trilha — aparece quando já definida */}
@@ -2794,7 +2946,36 @@ export default function CapaPage() {
               // Gate do IA — freemium vê o paywall antes do briefing (D2-05).
               // Upload e Editor não são gated: continuam livres.
               const iaGated = !planoAtende(plano, "essencial");
+              // B2-05: Cobertura só aparece para Pro+completa antes de gerar
+              // (não faz sentido depois de escolhida; nem para digital, que
+              // é sempre frente). Toggle vive próximo ao card "Gerar com IA".
+              const podeUnica = plano === "pro" && proposito === "completa" && !hasCurrentCapa;
               return (
+                <>
+                  {podeUnica && (
+                    <div className="bg-white rounded-2xl border border-zinc-100 p-5">
+                      <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                        Cobertura da arte gerada
+                      </p>
+                      <p className="text-[11px] text-zinc-400 mb-3">
+                        Escolha antes de gerar. Depois, o autor personaliza no editor.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <RadioBtn
+                          checked={coberturaEscolhida === "frente_verso"}
+                          onChange={() => setCoberturaEscolhida("frente_verso")}
+                          label="Frente e verso (duas artes)"
+                          sub="Gera a frente agora; verso vira uma etapa depois (grátis a 1ª rodada de cada)."
+                        />
+                        <RadioBtn
+                          checked={coberturaEscolhida === "unica"}
+                          onChange={() => setCoberturaEscolhida("unica")}
+                          label="Arte única panorâmica"
+                          sub="Uma única imagem cobre verso + lombada + frente. Consome as duas gratuidades."
+                        />
+                      </div>
+                    </div>
+                  )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <ModoCard
                     icon={<UploadIcon />}
@@ -2818,6 +2999,9 @@ export default function CapaPage() {
                         return;
                       }
                       await resetIfDifferentMode("ia");
+                      // Pro+completa que escolheu "unica" no toggle entra na
+                      // ModoIA já em modo arte-única. Demais casos: frente.
+                      setAlvoIa(coberturaEscolhida === "unica" ? "unica" : "frente");
                       setModo("ia");
                     }}
                   />
@@ -2852,6 +3036,7 @@ export default function CapaPage() {
                     <span className="text-xs font-medium text-brand-gold mt-auto">Abrir editor →</span>
                   </button>
                 </div>
+                </>
               );
             })()}
 
@@ -2897,15 +3082,24 @@ export default function CapaPage() {
             genero={genero}
             estimativaPaginas={estimativaPaginas}
             regerarDe={modoIaRegerarDe ?? undefined}
+            alvo={alvoIa}
             onSalvo={(dadosServidor) => {
               handleSalvoIA(dadosServidor);
               setModoIaRegerarDe(null);
-              if (proposito !== null) {
+              // Verso NÃO leva ao editor sozinho: só a frente/unica encerra o
+              // fluxo com "abrir editor". Ao terminar verso, volta ao card
+              // unificado e o autor decide (avançar / continuar editor).
+              if (alvoIa !== "verso" && proposito !== null) {
                 router.push(`/editor/capa/${id}`);
               }
+              setAlvoIa("frente");
               setModo("escolha");
             }}
-            onVoltar={() => { setModo("escolha"); setModoIaRegerarDe(null); }}
+            onVoltar={() => {
+              setModo("escolha");
+              setModoIaRegerarDe(null);
+              setAlvoIa("frente");
+            }}
           />
         ) : null}
 

@@ -1,6 +1,14 @@
 import type { AnyElement, RegionFills, SmartField, TextElement } from "./elements";
-import { CAPA_IA_FRENTE_ID } from "./constants";
-import { getFrenteRect, getCapaIaAnchoredRect, type RegionRect } from "./region-rects";
+import { CAPA_IA_FRENTE_ID, CAPA_IA_VERSO_ID, CAPA_IA_UNICA_ID } from "./constants";
+import {
+  getFrenteRect,
+  getVersoRect,
+  getUnicaRect,
+  getCapaIaAnchoredRect,
+  getCapaIaVersoAnchoredRect,
+  getCapaIaUnicaAnchoredRect,
+  type RegionRect,
+} from "./region-rects";
 import { createSmartFieldElement, type SmartFieldContentMap, type PosicaoTitulo } from "./smart-field-layout";
 import type { EditorLayout, FormatKey } from "../types";
 
@@ -22,7 +30,11 @@ export const SMART_FIELDS_REANCHOR: readonly SmartField[] = ["titulo", "subtitul
  */
 export function isReanchorTarget(el: AnyElement | undefined): boolean {
   if (!el) return false;
-  if (el.id === CAPA_IA_FRENTE_ID) return true;
+  if (
+    el.id === CAPA_IA_FRENTE_ID ||
+    el.id === CAPA_IA_VERSO_ID ||
+    el.id === CAPA_IA_UNICA_ID
+  ) return true;
   if (el.type === "text") {
     const smart = (el as TextElement).smartField;
     return smart !== null && (SMART_FIELDS_REANCHOR as readonly string[]).includes(smart);
@@ -106,8 +118,19 @@ export function reanchorFrenteElements(
     subtitulo: ctx.subtitle,
   };
 
+  // Deltas específicos por região para as artes de verso/unica (não usam
+  // o delta da frente — verso ancorou na contracapa, unica no spread).
+  const dvPrev = getVersoRect(prev.format, prev.pages, prev.orelhaMm, prev.layout);
+  const dvCurr = getVersoRect(curr.format, curr.pages, curr.orelhaMm, curr.layout);
+  const dvDx = dvPrev && dvCurr ? dvCurr.x - dvPrev.x : 0;
+  const dvDy = dvPrev && dvCurr ? dvCurr.y - dvPrev.y : 0;
+  const duPrev = getUnicaRect(prev.format, prev.pages, prev.orelhaMm, prev.layout);
+  const duCurr = getUnicaRect(curr.format, curr.pages, curr.orelhaMm, curr.layout);
+  const duDx = duPrev && duCurr ? duCurr.x - duPrev.x : 0;
+  const duDy = duPrev && duCurr ? duCurr.y - duPrev.y : 0;
+
   elements.forEach((el) => {
-    // IA — reset para fit-cover default se não manual; senão translada.
+    // IA frente — reset para fit-cover default se não manual; senão translada.
     if (el.id === CAPA_IA_FRENTE_ID && el.type === "image") {
       if (el.posicaoManual) {
         updateElement(el.id, { x_mm: el.x_mm + dx, y_mm: el.y_mm + dy });
@@ -119,6 +142,42 @@ export function reanchorFrenteElements(
           width_mm: rect.width,
           height_mm: rect.height,
         });
+      }
+      return;
+    }
+
+    // IA verso — mesmo protocolo, ancorado na contracapa.
+    if (el.id === CAPA_IA_VERSO_ID && el.type === "image") {
+      if (el.posicaoManual) {
+        updateElement(el.id, { x_mm: el.x_mm + dvDx, y_mm: el.y_mm + dvDy });
+      } else {
+        const rect = getCapaIaVersoAnchoredRect(curr.format, curr.pages, curr.orelhaMm, curr.layout);
+        if (rect) {
+          updateElement(el.id, {
+            x_mm: rect.x,
+            y_mm: rect.y,
+            width_mm: rect.width,
+            height_mm: rect.height,
+          });
+        }
+      }
+      return;
+    }
+
+    // IA unica — ancorada no spread (verso+lombada+capa).
+    if (el.id === CAPA_IA_UNICA_ID && el.type === "image") {
+      if (el.posicaoManual) {
+        updateElement(el.id, { x_mm: el.x_mm + duDx, y_mm: el.y_mm + duDy });
+      } else {
+        const rect = getCapaIaUnicaAnchoredRect(curr.format, curr.pages, curr.orelhaMm, curr.layout);
+        if (rect) {
+          updateElement(el.id, {
+            x_mm: rect.x,
+            y_mm: rect.y,
+            width_mm: rect.width,
+            height_mm: rect.height,
+          });
+        }
       }
       return;
     }

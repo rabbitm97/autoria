@@ -10,9 +10,11 @@ import {
   carregarContexto,
   sugerirConceitoCapa,
   processarBriefingCapa,
-  jaGerouCapaIa,
+  cobrancaCapa,
 } from "@/lib/capa-briefing";
-import { CUSTOS_CREDITOS, getSaldoCreditos } from "@/lib/creditos";
+import { getSaldoCreditos } from "@/lib/creditos";
+
+const alvoSchema = z.enum(["frente", "verso", "unica"]).default("frente");
 
 const bodySchema = z.discriminatedUnion("acao", [
   z.object({ acao: z.literal("sugerir_conceito"), project_id: z.string().min(1) }),
@@ -20,6 +22,7 @@ const bodySchema = z.discriminatedUnion("acao", [
     acao: z.literal("confirmar"),
     project_id: z.string().min(1),
     briefing: briefingCapaSchema,
+    alvo: alvoSchema,
   }),
 ]);
 
@@ -72,10 +75,30 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      // Modo "cor" no verso não passa pela IA — o editor pinta a região.
+      // A rota até pode ser chamada com esse briefing, mas devolvemos
+      // resposta trivial (sem prompt) para o cliente não gastar rodada.
+      if (body.alvo === "verso" && body.briefing.verso?.modo === "cor") {
+        const admin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        const saldo = dev ? null : await getSaldoCreditos(supabase, userId);
+        const { gratis, custo } = await cobrancaCapa(admin, body.project_id, "verso");
+        return NextResponse.json({
+          prompt_imagem: "",
+          frase_confirmacao:
+            "O verso será preenchido apenas com a cor predominante da capa — nada será gerado por IA.",
+          negative_hints: [],
+          modo_cor: true,
+          cobranca: { gratis, custo, saldo },
+        });
+      }
+
       const result = await processarBriefingCapa({
         contexto,
         briefing: body.briefing,
-        alvo: "frente",
+        alvo: body.alvo,
         projectId: body.project_id,
         userId,
       });
@@ -83,13 +106,11 @@ export async function POST(req: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
       );
-      const ehRegen = await jaGerouCapaIa(admin, body.project_id);
+      const { gratis, custo } = await cobrancaCapa(admin, body.project_id, body.alvo);
       const saldo = dev ? null : await getSaldoCreditos(supabase, userId);
       return NextResponse.json({
         ...result,
-        cobranca: ehRegen
-          ? { gratis: false, custo: CUSTOS_CREDITOS.regenerar_capa_frente, saldo }
-          : { gratis: true, custo: 0, saldo },
+        cobranca: { gratis, custo, saldo },
       });
     } catch (err) {
       return NextResponse.json(

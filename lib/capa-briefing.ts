@@ -4,18 +4,30 @@ import { NextResponse } from "next/server";
 import { negarPorPlano } from "@/lib/supabase-helpers";
 import { anthropic, traceClaudeCall, isMock } from "@/lib/anthropic";
 import { getAgentPrompt } from "@/lib/agent-prompts";
+import { CUSTOS_CREDITOS, getSaldoCreditos, type AcaoCredito } from "@/lib/creditos";
 
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001";
 export const AGENT_NAME = "capa-briefing";
 
+/**
+ * Alvo da geração da capa.
+ *  - "frente": arte da capa frontal (retrato) — modo padrão, único suporte
+ *              pré-B2-05.
+ *  - "verso":  arte da contracapa (retrato). Sempre acompanha uma frente já
+ *              escolhida — o autor decide continuação/independente.
+ *  - "unica":  UMA arte panorâmica landscape que cobre verso+lombada+frente.
+ *              O terço direito vira a frente no editor.
+ */
+export type AlvoCapa = "frente" | "verso" | "unica";
+
 // Guardrails técnicos INEGOCIÁVEIS, anexados por código a TODO prompt de
 // imagem — nunca dependem de o agente lembrar (azeite-01, 24/jul).
-// B2-05: SUFIXO_POR_ALVO.verso receberá frase diferente (verso contínuo).
-const SUFIXO_POR_ALVO: Record<"frente" | "verso", string> = {
+const SUFIXO_POR_ALVO: Record<AlvoCapa, string> = {
   frente: "Single front cover artwork only, portrait composition.",
-  verso:  "Single front cover artwork only, portrait composition.",
+  verso:  "Single back cover artwork only, portrait composition, meant to face the front cover on the opposite side of the same book.",
+  unica:  "One continuous landscape artwork spanning back cover + spine + front cover of the same book, no visible seams between regions, no printed spine text, no fold marks. The right third of the composition will become the front cover — keep it visually strong and self-sufficient, with the same story continuing across the other two thirds.",
 };
-const SUFIXO_TECNICO_IMAGEM = (alvo: "frente" | "verso") =>
+const SUFIXO_TECNICO_IMAGEM = (alvo: AlvoCapa) =>
   " Flat two-dimensional digital artwork only, filling the entire canvas" +
   " edge-to-edge. This is the artwork itself, NOT a photograph of a" +
   " printed object: no mockup, no paper, no folds, no creases, no drop" +
@@ -54,7 +66,10 @@ export const briefingCapaSchema = z.object({
   evitar: z.string().max(500).optional().default(""),
   verso: z
     .object({
-      modo: z.enum(["continuacao", "independente"]),
+      // "cor": não gera imagem — o editor apenas preenche com a cor
+      // predominante da frente. Mesmo assim vem no briefing para
+      // registrar a escolha do autor e habilitar mudança futura.
+      modo: z.enum(["cor", "continuacao", "independente"]),
       descricao: z.string().max(2000).optional().default(""),
     })
     .optional(),
@@ -100,6 +115,16 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - Se o briefing do verso tiver modo "continuacao", o prompt deve pedir
   "seamless continuation of the provided front cover artwork onto the back
   cover of the same book, matching palette, lighting and style".
+- Se o alvo for VERSO com modo "cor", NÃO gere prompt de imagem: esse
+  modo não usa IA — o editor apenas preenche a região com a cor
+  predominante da frente. Você não é chamado nesse caso.
+- Se o alvo for ARTE ÚNICA, o prompt descreve UMA única composição
+  landscape (proporção larga) contínua cobrindo verso + lombada + frente
+  do MESMO livro, sem costuras visíveis, sem texto de lombada e sem
+  marca de dobra. O terço direito vira a capa frontal e deve funcionar
+  sozinho — foco visual forte + área de respiro do título, com a mesma
+  história continuando para o resto da arte. Nunca descreva três cenas
+  distintas; é sempre UMA cena que atravessa a extensão inteira.
 - Nunca descreva a capa como objeto físico, impresso, fotografado, em
   mockup ou apresentação — o prompt descreve somente a arte em si.
 
@@ -259,7 +284,7 @@ export async function sugerirConceitoCapa(args: {
 export async function processarBriefingCapa(args: {
   contexto: ContextoLivro;
   briefing: BriefingCapa;
-  alvo: "frente" | "verso";
+  alvo: AlvoCapa;
   projectId: string;
   userId: string;
 }): Promise<{ prompt_imagem: string; frase_confirmacao: string; negative_hints: string[] }> {
@@ -275,9 +300,12 @@ export async function processarBriefingCapa(args: {
 
   const systemPrompt = await getAgentPrompt(AGENT_NAME, FALLBACK_PROMPT);
   const b = args.briefing;
-  const alvoLabel = args.alvo === "verso" && b.verso
-    ? `VERSO (modo: ${b.verso.modo})`
-    : "FRENTE";
+  const alvoLabel =
+    args.alvo === "unica"
+      ? "ARTE ÚNICA (landscape: verso + lombada + frente)"
+      : args.alvo === "verso" && b.verso
+        ? `VERSO (modo: ${b.verso.modo})`
+        : "FRENTE";
 
   const userMsg = [
     `Ação: confirmar — gerar prompt para a ${alvoLabel} da capa.`,
@@ -335,23 +363,77 @@ export async function processarBriefingCapa(args: {
   return { prompt_imagem: promptFinal, frase_confirmacao: frase, negative_hints: hints };
 }
 
-/** True se o projeto já teve alguma rodada de geração IA de frente
- *  bem-sucedida. Marcador vive em usage_logs — sobrevive a capa/reset
- *  (anti-vazamento, B2-04a). */
+/** True se o projeto já teve alguma rodada IA bem-sucedida para o alvo
+ *  informado. Marcador vive em usage_logs — sobrevive a capa/reset
+ *  (anti-vazamento, B2-04a).
+ *
+ *  Retrocompat: logs pré-B2-05 não têm metadata.alvo. São tratados como
+ *  "frente" (único alvo antigo), então:
+ *   - alvo "frente": conta qualquer log de gerar-capa (com ou sem alvo).
+ *   - alvo "verso"/"unica": conta apenas logs com metadata.alvo = alvo.
+ */
 export async function jaGerouCapaIa(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: SupabaseClient<any>,
   projectId: string,
+  alvo: AlvoCapa = "frente",
 ): Promise<boolean> {
-  const { data, error } = await admin
+  let q = admin
     .from("usage_logs")
-    .select("id")
+    .select("id, metadata")
     .eq("agent_name", "gerar-capa")
-    .eq("project_id", projectId)
-    .limit(1);
+    .eq("project_id", projectId);
+
+  if (alvo === "frente") {
+    // legado (metadata.alvo ausente) OU explicitamente "frente"
+    q = q.or("metadata->>alvo.is.null,metadata->>alvo.eq.frente");
+  } else {
+    q = q.eq("metadata->>alvo", alvo);
+  }
+
+  const { data, error } = await q.limit(1);
   if (error) {
     console.error("[capa-briefing] jaGerouCapaIa falhou:", error.message);
     return true; // fail-closed: na dúvida, cobra — nunca vaza de graça
   }
   return (data?.length ?? 0) > 0;
 }
+
+/** Decide se a próxima geração para `alvo` é grátis ou cobrada e devolve
+ *  a chave de custo. Regra B2-05:
+ *   - 1ª frente e 1ª verso grátis (independentes entre si).
+ *   - ÚNICA consome AMBAS as gratuidades — só é grátis se nem frente nem
+ *     verso já geraram; passa a ser cobrada assim que qualquer uma delas
+ *     tiver rodado.
+ *   - Todas as rodadas subsequentes cobram 20 créditos (CUSTOS_CREDITOS).
+ *  Fail-closed: qualquer erro de leitura tratado como "já rodou".
+ */
+export async function cobrancaCapa(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: SupabaseClient<any>,
+  projectId: string,
+  alvo: AlvoCapa,
+): Promise<{ gratis: boolean; custo: number; acao: AcaoCredito }> {
+  const acao: AcaoCredito =
+    alvo === "verso" ? "regenerar_capa_verso"
+    : alvo === "unica" ? "regenerar_capa_unica"
+    : "regenerar_capa_frente";
+  const custo = CUSTOS_CREDITOS[acao];
+
+  let gratis: boolean;
+  if (alvo === "unica") {
+    // ÚNICA é grátis apenas se nenhum dos dois lados já foi gerado.
+    const [f, v] = await Promise.all([
+      jaGerouCapaIa(admin, projectId, "frente"),
+      jaGerouCapaIa(admin, projectId, "verso"),
+    ]);
+    gratis = !f && !v;
+  } else {
+    gratis = !(await jaGerouCapaIa(admin, projectId, alvo));
+  }
+
+  return { gratis, custo, acao };
+}
+
+// Reexport para as rotas que precisam do saldo na resposta.
+export { getSaldoCreditos };

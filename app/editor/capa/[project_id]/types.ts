@@ -12,14 +12,26 @@ export type HydratableEditorData = Pick<
 /**
  * Vindo do gerar-capa (dados_capa.modo === "ia"): quando o autor abre o editor
  * sobre a capa da IA, o servidor entrega esses dados para que o cliente monte
- * um `ImageElement` travado (id determinístico `capa-ia-frente`) na região da
- * frente e defina as cores iniciais de lombada/contracapa. `null` nos demais
- * modos.
+ * ImageElements travados (ids determinísticos por alvo) e defina as cores
+ * iniciais de lombada/contracapa. `null` nos demais modos.
+ *
+ * cobertura:
+ *  - "frente_verso": duas artes independentes. `frenteUrl` sempre presente.
+ *    `versoUrl` presente se autor já escolheu uma arte para a contracapa;
+ *    `versoModoCor` = true se o autor escolheu apenas cor (sem imagem).
+ *  - "unica": uma arte panorâmica cobre verso+lombada+capa. `unicaUrl`
+ *    presente; `frenteUrl`/`versoUrl` são null (a arte única é a única
+ *    imagem que renderiza — verso/frente/lombada compartilham o mesmo
+ *    bitmap).
  */
 export interface CapaIaHandoff {
-  url: string;
+  cobertura: "frente_verso" | "unica";
   corPredominanteHex: string;
   posicaoTitulo: "topo" | "centro" | "base" | "sem_preferencia";
+  frenteUrl: string | null;
+  versoUrl: string | null;
+  versoModoCor: boolean;
+  unicaUrl: string | null;
 }
 
 export interface ProjectData {

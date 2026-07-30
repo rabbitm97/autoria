@@ -8,12 +8,32 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { lockFormato } from "@/lib/projects";
 import { isDev } from "@/lib/anthropic";
-import { estimarLombadaCapaMm, estimarPaginas, getFormatoDef, isFormatoValido } from "@/lib/formatos";
+import {
+  estimarLombadaCapaMm,
+  estimarPaginas,
+  getFormatoDef,
+  isFormatoValido,
+  getRatioArteUnica,
+  type ArteUnicaAspectRatio,
+} from "@/lib/formatos";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 import { validarProjectData } from "@/lib/project-data";
-import type { EstiloCapa, OpcaoCapa, CapaGeradaResult, GaleriaCapaItem } from "@/lib/project-data";
-import { briefingCapaSchema, processarBriefingCapa, jaGerouCapaIa, type ContextoLivro } from "@/lib/capa-briefing";
-import { debitarCreditos, estornarCreditos, CUSTOS_CREDITOS } from "@/lib/creditos";
+import type {
+  EstiloCapa,
+  OpcaoCapa,
+  CapaGeradaResult,
+  GaleriaCapaItem,
+  DadosVersoIa,
+  ModoVersoIa,
+} from "@/lib/project-data";
+import {
+  briefingCapaSchema,
+  processarBriefingCapa,
+  cobrancaCapa,
+  type ContextoLivro,
+  type AlvoCapa,
+} from "@/lib/capa-briefing";
+import { debitarCreditos, estornarCreditos } from "@/lib/creditos";
 
 // Re-export types for consumers that import from this route path
 export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
@@ -37,6 +57,11 @@ function buildContents(prompt: string, ref: string | undefined, intencao: "estil
 const gerarCapaBodySchema = z.object({
   project_id: z.string().min(1),
   briefing: briefingCapaSchema,
+  // B2-05: alvo triplo. Frente = capa frontal (retrato). Verso = contracapa
+  // (retrato, aceita continuação da frente como referência). Unica = UMA
+  // arte landscape cobrindo verso+lombada+frente; o terço direito vira a
+  // capa frontal no editor.
+  alvo: z.enum(["frente", "verso", "unica"]).optional().default("frente"),
   imagemRef: z.string().max(5_000_000).optional(),
   imagemRefIntencao: z.enum(["estilo", "conteudo"]).optional().default("estilo"),
   qtd: z.number().int().min(1).max(4).optional().default(4),
@@ -167,16 +192,35 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  // Decisão de cobrança server-side (B2-04a): marcador vive em usage_logs,
-  // sobrevive a capa/reset — fail-closed no erro de leitura.
-  const ehRegeneracao = await jaGerouCapaIa(storageClient, project_id);
+  const alvo: AlvoCapa = body.alvo;
+
+  // Modo "cor" no verso não passa por esta rota — o editor pinta a região
+  // com a cor da frente. Bloqueia por defesa (rota /capa/verso é a certa).
+  if (alvo === "verso" && body.briefing.verso?.modo === "cor") {
+    return NextResponse.json(
+      {
+        error:
+          "Modo 'cor' não gera imagem — use POST /api/projects/[id]/capa/verso.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Decisão de cobrança server-side (B2-04a estendido em B2-05):
+  //  - 1ª frente e 1ª verso grátis (independentes).
+  //  - ÚNICA consome AMBAS as gratuidades — só é grátis se nem frente nem
+  //    verso já rodaram; caso contrário cobra.
+  //  - Regen sempre cobra CUSTOS_CREDITOS[acao].
+  // Fail-closed no erro de leitura (dentro de cobrancaCapa).
+  const cobranca = await cobrancaCapa(storageClient, project_id, alvo);
+  const ehRegeneracao = !cobranca.gratis;
   if (ehRegeneracao && !dev) {
-    const debito = await debitarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
+    const debito = await debitarCreditos(storageClient, userId, cobranca.acao, project_id);
     if (!debito.ok) {
       if (debito.erro === "saldo_insuficiente") {
         return NextResponse.json(
           {
-            error: `Créditos insuficientes. Regenerar capa custa ${CUSTOS_CREDITOS.regenerar_capa_frente} créditos.`,
+            error: `Créditos insuficientes. Esta rodada custa ${cobranca.custo} créditos.`,
             saldo: debito.saldo,
           },
           { status: 402 },
@@ -205,7 +249,7 @@ export async function POST(req: NextRequest) {
     const agente = await processarBriefingCapa({
       contexto,
       briefing: body.briefing,
-      alvo: "frente",
+      alvo,
       projectId: project_id,
       userId,
     });
@@ -219,6 +263,57 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Verso em modo "continuacao": se o front não mandou imagemRef, buscamos
+  // a frente escolhida no storage e injetamos como referência de estilo.
+  // Sem essa referência a continuidade fica muito frágil.
+  const dadosCapaAtual = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
+  let imagemRef = body.imagemRef;
+  let imagemRefIntencao: "estilo" | "conteudo" = body.imagemRefIntencao;
+  if (
+    alvo === "verso" &&
+    body.briefing.verso?.modo === "continuacao" &&
+    !imagemRef
+  ) {
+    const frenteRef =
+      (dadosCapaAtual?.url_escolhida as string | null | undefined) ??
+      (dadosCapaAtual?.imagem_url as string | null | undefined) ??
+      null;
+    const frenteStoragePath = (() => {
+      // Preferimos storage_path (galeria) para leitura direta do bucket.
+      const galeria = Array.isArray(dadosCapaAtual?.galeria)
+        ? (dadosCapaAtual!.galeria as GaleriaCapaItem[])
+        : [];
+      const escolhida = galeria.find(
+        (g) => g.url === frenteRef && g.tipo === "frente",
+      );
+      return escolhida?.storage_path ?? null;
+    })();
+    if (frenteStoragePath) {
+      const { data: file, error: dlErr } = await storageClient.storage
+        .from("capas")
+        .download(frenteStoragePath);
+      if (!dlErr && file) {
+        const buf = Buffer.from(await file.arrayBuffer());
+        const mime = file.type || "image/png";
+        imagemRef = `data:${mime};base64,${buf.toString("base64")}`;
+        imagemRefIntencao = "estilo";
+      } else {
+        console.warn(
+          "[gerar-capa] verso continuacao: download da frente falhou —",
+          dlErr?.message,
+        );
+      }
+    }
+  }
+
+  const aspectRatio: "2:3" | ArteUnicaAspectRatio =
+    alvo === "unica"
+      ? getRatioArteUnica(
+          isFormatoValido(formatoDb) ? formatoDb : "padrao_br",
+          paginas,
+        )
+      : "2:3";
+
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
   const rodadaTs = Date.now();
 
@@ -226,10 +321,10 @@ export async function POST(req: NextRequest) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-image-preview",
-        contents: [{ role: "user", parts: buildContents(prompt_imagem, body.imagemRef, body.imagemRefIntencao) }],
+        contents: [{ role: "user", parts: buildContents(prompt_imagem, imagemRef, imagemRefIntencao) }],
         config: {
           responseModalities: ["IMAGE"],
-          imageConfig: { aspectRatio: "2:3", imageSize: "4K" },
+          imageConfig: { aspectRatio, imageSize: "4K" },
         },
       });
       const parts: Part[] = response.candidates?.[0]?.content?.parts ?? [];
@@ -240,9 +335,11 @@ export async function POST(req: NextRequest) {
       }
       const mimeType = imgPart.inlineData.mimeType ?? "image/png";
       const ext = mimeType.includes("png") ? "png" : "jpg";
-      const storagePath = `${userId}/${project_id}/capa_ia_${rodadaTs}_${i}.${ext}`;
+      // Naming por alvo permite auditar galeria por origem e evita colisão
+      // entre rodadas de frente/verso/unica dentro da mesma janela ts.
+      const storagePath = `${userId}/${project_id}/capa_ia_${alvo}_${rodadaTs}_${i}.${ext}`;
       const buffer = Buffer.from(imgPart.inlineData.data, "base64");
-      console.log(`[DEBUG-B2] opção ${i}: ${buffer.length} bytes, mime ${mimeType}`);
+      console.log(`[DEBUG-B2] opção ${i} (${alvo}): ${buffer.length} bytes, mime ${mimeType}`);
       const { error: uploadError } = await storageClient.storage
         .from("capas")
         .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
@@ -272,7 +369,7 @@ export async function POST(req: NextRequest) {
 
   if (opcoes.length === 0) {
     if (ehRegeneracao && !dev) {
-      await estornarCreditos(storageClient, userId, "regenerar_capa_frente", project_id);
+      await estornarCreditos(storageClient, userId, cobranca.acao, project_id);
     }
     return NextResponse.json(
       { error: "Nenhuma imagem foi gerada. Seus créditos não foram consumidos." },
@@ -281,15 +378,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Galeria append-only, cap 24
-  const dadosCapaAtual = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
   const galeriaAnterior: GaleriaCapaItem[] = Array.isArray(dadosCapaAtual?.galeria)
-    ? (dadosCapaAtual.galeria as GaleriaCapaItem[])
+    ? (dadosCapaAtual!.galeria as GaleriaCapaItem[])
     : [];
 
+  const tipoGaleria: GaleriaCapaItem["tipo"] = alvo;
   const novosItens: GaleriaCapaItem[] = opcoes.map((o) => ({
     url: o.url,
     storage_path: o.storage_path,
-    tipo: "frente" as const,
+    tipo: tipoGaleria,
     gerado_em: new Date().toISOString(),
   }));
 
@@ -316,55 +413,85 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const result: CapaGeradaResult = {
-    project_id,
-    modo: "ia",
-    briefing_versao: 2,
-    estilo: body.briefing.estilo as EstiloCapa,
-    atmosfera: [...body.briefing.atmosfera],
-    cor_predominante: body.briefing.cor_predominante.nome,
-    cor_predominante_hex: body.briefing.cor_predominante.hex,
-    posicao_titulo: body.briefing.posicao_titulo,
-    descricao_livre: body.briefing.descricao_livre || undefined,
-    referencias_texto: body.briefing.referencias_texto || undefined,
-    evitar: body.briefing.evitar || undefined,
-    usar_orelhas: false,
-    orelha_mm: 0,
-    prompt_usado: prompt_imagem,
-    frase_confirmacao,
-    opcoes,
-    galeria,
-    // Escolha é ATO EXPLÍCITO — nunca implícita. Sem esta null-idade,
-    // F5 na tela de escolha fazia o sistema achar que opção 1 foi aceita.
-    url_escolhida: null,
-    verso: null,
-    gerado_em: new Date().toISOString(),
-    is_regeneracao: ehRegeneracao,
-    paginas_estimadas: paginas,
-    lombada_mm: estimarLombadaCapaMm(paginas),
-  };
+  const agoraIso = new Date().toISOString();
 
-  // Regeneração NÃO toca na capa atual — só a ESCOLHA reseta. Preserva
-  // o estado confirmado (source, imagem_url, confirmed_at, analise_tecnica),
-  // o rascunho do editor (editor_data) e a url já escolhida. Regen só
-  // adiciona novas `opcoes` + atualiza `galeria` + repõe o snapshot do
-  // briefing usado. Se o autor abandonar a regen sem escolher, a capa
-  // anterior continua valendo.
-  const dadosParaSalvar: Record<string, unknown> = { ...(result as unknown as Record<string, unknown>) };
-  if (dadosCapaAtual) {
-    const chavesPreservadas = [
-      "url_escolhida",
-      "editor_data",
-      "source",
-      "imagem_url",
-      "confirmed_at",
-      "analise_tecnica",
-    ] as const;
-    for (const k of chavesPreservadas) {
-      if (dadosCapaAtual[k] !== undefined) {
-        dadosParaSalvar[k] = dadosCapaAtual[k];
+  // ─── Payload por alvo ─────────────────────────────────────────────────────
+  // frente/unica: reescrevem o "corpo" do dados_capa (briefing snapshot +
+  //   opções + galeria). Chaves de estado confirmado (source, imagem_url,
+  //   editor_data, url_escolhida, confirmed_at, analise_tecnica) são
+  //   PRESERVADAS — regeneração é ato de "propor novas opções", não de
+  //   apagar o que já foi confirmado. Só a ESCOLHA reseta essas chaves.
+  // verso: NÃO toca no corpo da frente. Grava só o subobjeto `verso`
+  //   (opções da contracapa + snapshot próprio). O url_escolhida do verso
+  //   é null até a escolha.
+  let dadosParaSalvar: Record<string, unknown>;
+  let result: CapaGeradaResult | { verso: DadosVersoIa; galeria: GaleriaCapaItem[] };
+
+  if (alvo === "verso") {
+    const versoResult: DadosVersoIa = {
+      modo: (body.briefing.verso?.modo ?? "independente") as ModoVersoIa,
+      descricao: body.briefing.verso?.descricao || undefined,
+      opcoes,
+      url_escolhida: null,
+      prompt_usado: prompt_imagem,
+      frase_confirmacao,
+      gerado_em: agoraIso,
+    };
+    dadosParaSalvar = {
+      ...(dadosCapaAtual ?? {}),
+      verso: versoResult,
+      galeria,
+    };
+    result = { verso: versoResult, galeria };
+  } else {
+    // frente ou unica
+    const capaResult: CapaGeradaResult = {
+      project_id,
+      modo: "ia",
+      briefing_versao: 2,
+      estilo: body.briefing.estilo as EstiloCapa,
+      atmosfera: [...body.briefing.atmosfera],
+      cor_predominante: body.briefing.cor_predominante.nome,
+      cor_predominante_hex: body.briefing.cor_predominante.hex,
+      posicao_titulo: body.briefing.posicao_titulo,
+      descricao_livre: body.briefing.descricao_livre || undefined,
+      referencias_texto: body.briefing.referencias_texto || undefined,
+      evitar: body.briefing.evitar || undefined,
+      usar_orelhas: false,
+      orelha_mm: 0,
+      prompt_usado: prompt_imagem,
+      frase_confirmacao,
+      opcoes,
+      galeria,
+      // Escolha é ATO EXPLÍCITO — nunca implícita. Sem esta null-idade,
+      // F5 na tela de escolha fazia o sistema achar que opção 1 foi aceita.
+      url_escolhida: null,
+      // Verso preservado do estado atual — nova frente/unica NÃO apaga
+      // um verso já gerado. (Cobertura decide se ele será usado.)
+      verso: (dadosCapaAtual?.verso as DadosVersoIa | null | undefined) ?? null,
+      cobertura: alvo === "unica" ? "unica" : "frente_verso",
+      gerado_em: agoraIso,
+      is_regeneracao: ehRegeneracao,
+      paginas_estimadas: paginas,
+      lombada_mm: estimarLombadaCapaMm(paginas),
+    };
+    dadosParaSalvar = { ...(capaResult as unknown as Record<string, unknown>) };
+    if (dadosCapaAtual) {
+      const chavesPreservadas = [
+        "url_escolhida",
+        "editor_data",
+        "source",
+        "imagem_url",
+        "confirmed_at",
+        "analise_tecnica",
+      ] as const;
+      for (const k of chavesPreservadas) {
+        if (dadosCapaAtual[k] !== undefined) {
+          dadosParaSalvar[k] = dadosCapaAtual[k];
+        }
       }
     }
+    result = capaResult;
   }
 
   const vCapa = validarProjectData("dados_capa", dadosParaSalvar, {
@@ -393,12 +520,15 @@ export async function POST(req: NextRequest) {
 
   // Marcador anti-vazamento: registrar APÓS rodada persistida com sucesso.
   // Rodada estornada (opcoes===0) não chega aqui — próxima tentativa fica grátis.
+  // B2-05: metadata.alvo é o que gate `cobrancaCapa` no próximo request lê;
+  // ausência (retrocompat) é tratada como "frente" na leitura.
   try {
     await storageClient.from("usage_logs").insert({
       agent_name: "gerar-capa",
       project_id,
       user_id: userId,
       metadata: {
+        alvo,
         opcoes_geradas: opcoes.length,
         qtd_pedida: body.qtd,
         regeneracao: ehRegeneracao,

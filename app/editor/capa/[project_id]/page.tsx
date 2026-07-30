@@ -109,14 +109,33 @@ export default async function EditorCapaPage({
   //  - Editor puro: sem background.
   const backgroundUrl = initialEditorData?.backgroundUrl ?? null;
 
-  // Handoff da IA — só quando modo="ia" e temos url_escolhida.
+  // Handoff da IA — só quando modo="ia" e temos url_escolhida (frente/unica).
+  // Cobertura decide o formato do handoff:
+  //  - "unica": url_escolhida é a arte panorâmica → vira unicaUrl, frenteUrl
+  //    e versoUrl são null (a arte única é a única imagem que renderiza).
+  //  - "frente_verso" (padrão retrocompat): url_escolhida é a frente.
+  //    verso.url_escolhida pode existir (imagem) ou verso.modo === "cor"
+  //    (só cor sem imagem).
   const iaUrl =
     capa?.modo === "ia" && typeof capa?.url_escolhida === "string"
       ? (capa.url_escolhida as string)
       : null;
+  const cobertura: "frente_verso" | "unica" =
+    capa?.cobertura === "unica" ? "unica" : "frente_verso";
+  const verso = capa?.verso as
+    | { modo?: string; url_escolhida?: string | null }
+    | null
+    | undefined;
+  const versoUrl =
+    cobertura === "frente_verso" && typeof verso?.url_escolhida === "string"
+      ? verso.url_escolhida
+      : null;
+  const versoModoCor =
+    cobertura === "frente_verso" && verso?.modo === "cor";
+
   const capaIaHandoff: CapaIaHandoff | null = iaUrl
     ? {
-        url: iaUrl,
+        cobertura,
         corPredominanteHex:
           typeof capa?.cor_predominante_hex === "string"
             ? (capa.cor_predominante_hex as string)
@@ -128,6 +147,10 @@ export default async function EditorCapaPage({
           capa?.posicao_titulo === "sem_preferencia"
             ? (capa.posicao_titulo as CapaIaHandoff["posicaoTitulo"])
             : "sem_preferencia",
+        frenteUrl: cobertura === "unica" ? null : iaUrl,
+        versoUrl,
+        versoModoCor,
+        unicaUrl: cobertura === "unica" ? iaUrl : null,
       }
     : null;
 

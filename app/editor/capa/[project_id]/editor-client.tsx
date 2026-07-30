@@ -11,46 +11,179 @@ import { isEditableTarget } from "./lib/keyboard-utils";
 import { hashElements, hashFills } from "./lib/state-hash";
 import { createSmartFieldElement, type SmartFieldContentMap } from "./lib/smart-field-layout";
 import { createImageElement, type AnyElement, type Region } from "./lib/elements";
-import { getCapaIaAnchoredRect } from "./lib/region-rects";
-import { CAPA_IA_FRENTE_ID } from "./lib/constants";
+import {
+  getCapaIaAnchoredRect,
+  getCapaIaVersoAnchoredRect,
+  getCapaIaUnicaAnchoredRect,
+} from "./lib/region-rects";
+import {
+  CAPA_IA_FRENTE_ID,
+  CAPA_IA_VERSO_ID,
+  CAPA_IA_UNICA_ID,
+} from "./lib/constants";
 import { reanchorFrenteElements } from "./lib/reanchor";
 import type { CapaIaHandoff, EditorLayout, FormatKey, ProjectData } from "./types";
 
+const CAPA_IA_IDS = [CAPA_IA_FRENTE_ID, CAPA_IA_VERSO_ID, CAPA_IA_UNICA_ID] as const;
+
 /**
- * Injeta a arte da IA como ImageElement no rect da frente do livro com
- * FIT COVER CENTRADO — metade do excedente cruza levemente sobre a lombada,
- * metade sobre a sangria externa (o export clipa o que sai do papel).
- * Id determinístico permite trocar a arte por outra opção da galeria sem
- * duplicar. O elemento nasce no zIndex mais baixo (embaixo de tudo), mas
- * NÃO é travado — o autor pode selecionar, mover, redimensionar e deletar
- * como qualquer imagem.
+ * Injeta as artes da IA como ImageElements travados por id determinístico.
+ * Cobertura decide quais entram:
+ *  - "unica": um único ImageElement id=capa-ia-unica no spread (verso+lombada+capa).
+ *  - "frente_verso": capa-ia-frente sobre a frente; capa-ia-verso sobre a
+ *    contracapa (quando o autor escolheu uma arte). Verso em modo "cor"
+ *    NÃO injeta imagem — a região é pintada por `applyCapaIaDefaultFills`.
+ *
+ * Elementos ficam no zIndex mais baixo (embaixo de tudo) mas NÃO são travados
+ * — o autor pode mover, redimensionar e deletar como qualquer imagem. Ids
+ * determinísticos permitem trocar a arte por outra opção da galeria sem
+ * duplicar (o `reconcile` na hidratação atualiza o `src`).
  */
-function injectCapaIaFrente(
-  url: string,
+function injectCapaIaElements(
+  handoff: CapaIaHandoff,
   format: FormatKey,
   pages: number,
   orelhaMm: number,
   layout: EditorLayout,
 ) {
-  const rect = getCapaIaAnchoredRect(format, pages, orelhaMm, layout);
-  const iaEl = createImageElement({
-    id: CAPA_IA_FRENTE_ID,
-    src: url,
-    x_mm: rect.x,
-    y_mm: rect.y,
-    width_mm: rect.width,
-    height_mm: rect.height,
-    objectFit: "cover",
-    zIndex: 0,
-  });
-  // Bypassa addElement (que sempre reatribui zIndex = maxZ+1) — a IA precisa
-  // ficar embaixo de tudo. Empurra os demais elementos +1 e insere a IA em 0.
+  const novos: AnyElement[] = [];
+
+  if (handoff.cobertura === "unica" && handoff.unicaUrl && layout === "panoramica") {
+    const rect = getCapaIaUnicaAnchoredRect(format, pages, orelhaMm, layout);
+    if (rect) {
+      novos.push(
+        createImageElement({
+          id: CAPA_IA_UNICA_ID,
+          src: handoff.unicaUrl,
+          x_mm: rect.x,
+          y_mm: rect.y,
+          width_mm: rect.width,
+          height_mm: rect.height,
+          objectFit: "cover",
+          zIndex: 0,
+        }),
+      );
+    }
+  } else if (handoff.cobertura === "frente_verso") {
+    if (handoff.frenteUrl) {
+      const rectF = getCapaIaAnchoredRect(format, pages, orelhaMm, layout);
+      novos.push(
+        createImageElement({
+          id: CAPA_IA_FRENTE_ID,
+          src: handoff.frenteUrl,
+          x_mm: rectF.x,
+          y_mm: rectF.y,
+          width_mm: rectF.width,
+          height_mm: rectF.height,
+          objectFit: "cover",
+          zIndex: 0,
+        }),
+      );
+    }
+    if (handoff.versoUrl && layout === "panoramica") {
+      const rectV = getCapaIaVersoAnchoredRect(format, pages, orelhaMm, layout);
+      if (rectV) {
+        novos.push(
+          createImageElement({
+            id: CAPA_IA_VERSO_ID,
+            src: handoff.versoUrl,
+            x_mm: rectV.x,
+            y_mm: rectV.y,
+            width_mm: rectV.width,
+            height_mm: rectV.height,
+            objectFit: "cover",
+            zIndex: 0,
+          }),
+        );
+      }
+    }
+  }
+
+  if (novos.length === 0) return;
   useEditorStore.setState((s) => ({
     elements: [
-      iaEl,
-      ...s.elements.map((e) => ({ ...e, zIndex: e.zIndex + 1 })),
+      ...novos,
+      ...s.elements.map((e) => ({ ...e, zIndex: e.zIndex + novos.length })),
     ],
   }));
+}
+
+/**
+ * Sincroniza os elementos capa-ia-* de um editor_data já hidratado com o
+ * handoff atual. Cobre o caso "usuário escolheu novo verso" — a rota de
+ * escolha NÃO reseta editor_data para verso, então o próximo open precisa
+ * reconciliar. Regras:
+ *  - handoff pede um id que não existe → injeta no rect default.
+ *  - handoff pede um id que existe com `src` diferente → substitui `src`
+ *    preservando posição/tamanho (respeita ajuste manual do autor).
+ *  - handoff NÃO pede um id que existe → deleta o elemento.
+ * `capaIaRemovida` só se aplica ao capa-ia-frente (retrocompat) — se true,
+ * não recria a frente.
+ */
+function reconcileCapaIaElements(
+  handoff: CapaIaHandoff | null,
+  format: FormatKey,
+  pages: number,
+  orelhaMm: number,
+  layout: EditorLayout,
+  capaIaRemovida: boolean,
+) {
+  const store = useEditorStore.getState();
+  const alvoDesejado: { id: string; url: string; rect: { x: number; y: number; width: number; height: number } | null }[] = [];
+
+  if (handoff) {
+    if (handoff.cobertura === "unica" && handoff.unicaUrl && layout === "panoramica") {
+      alvoDesejado.push({
+        id: CAPA_IA_UNICA_ID,
+        url: handoff.unicaUrl,
+        rect: getCapaIaUnicaAnchoredRect(format, pages, orelhaMm, layout),
+      });
+    } else if (handoff.cobertura === "frente_verso") {
+      if (handoff.frenteUrl && !capaIaRemovida) {
+        alvoDesejado.push({
+          id: CAPA_IA_FRENTE_ID,
+          url: handoff.frenteUrl,
+          rect: getCapaIaAnchoredRect(format, pages, orelhaMm, layout),
+        });
+      }
+      if (handoff.versoUrl && layout === "panoramica") {
+        alvoDesejado.push({
+          id: CAPA_IA_VERSO_ID,
+          url: handoff.versoUrl,
+          rect: getCapaIaVersoAnchoredRect(format, pages, orelhaMm, layout),
+        });
+      }
+    }
+  }
+
+  const idsDesejados = new Set(alvoDesejado.map((a) => a.id));
+  // Deletar capa-ia-* que não são mais desejados.
+  store.elements
+    .filter((e) => CAPA_IA_IDS.includes(e.id as typeof CAPA_IA_IDS[number]) && !idsDesejados.has(e.id))
+    .forEach((e) => store.deleteElement(e.id));
+
+  // Injetar novos / atualizar src existente.
+  for (const a of alvoDesejado) {
+    const existente = useEditorStore.getState().elements.find((e) => e.id === a.id);
+    if (!existente) {
+      if (!a.rect) continue;
+      const el = createImageElement({
+        id: a.id,
+        src: a.url,
+        x_mm: a.rect.x,
+        y_mm: a.rect.y,
+        width_mm: a.rect.width,
+        height_mm: a.rect.height,
+        objectFit: "cover",
+        zIndex: 0,
+      });
+      useEditorStore.setState((s) => ({
+        elements: [el, ...s.elements.map((e) => ({ ...e, zIndex: e.zIndex + 1 }))],
+      }));
+    } else if (existente.type === "image" && existente.src !== a.url) {
+      store.updateElement(a.id, { src: a.url });
+    }
+  }
 }
 
 /**
@@ -70,6 +203,14 @@ function isFillDefaultBranco(color: string | undefined | null): boolean {
  * `#ffffff`). Em `layout="frente"` não há dessas regiões, então noop.
  *
  * NUNCA sobrescreve fill não-default escolhido pelo autor.
+ *
+ * B2-05: em cobertura="unica" a arte cobre contracapa/lombada/capa — as
+ * fills embaixo não aparecem visualmente, mas ainda pintamos como safety
+ * net (export usa o fill se a imagem falhar). Orelhas sempre são pintadas
+ * porque a unica não as cobre.
+ * Em cobertura="frente_verso" com verso.modo="cor" (ou verso ainda não
+ * escolhido), a contracapa fica visível pintada. Com verso imagem escolhida,
+ * o capa-ia-verso cobre o fill.
  */
 function applyCapaIaDefaultFills(handoff: CapaIaHandoff, layout: EditorLayout) {
   const hex = handoff.corPredominanteHex;
@@ -200,14 +341,22 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
       }
 
       // Aplica fills default da IA sobre qualquer região sem cor definida.
-      // Preserva escolhas do autor (fill já não-vazio). Nada de re-injeção
-      // de capa-ia-frente aqui: com a semântica de 29/jul, trocar de arte
-      // reseta editor_data no server, e o autor cai no ramo `else` (primeira
-      // abertura). Se o autor deleta manualmente o elemento no editor, a
-      // flag `capaIaRemovida` já registra a intenção — respeitar essa
-      // decisão e não trazer a arte de volta sem novo pedido.
+      // Preserva escolhas do autor (fill já não-vazio). Escolher nova frente
+      // ou arte única reseta editor_data no server (cai no ramo `else`); MAS
+      // escolher verso NÃO reseta — reconciliação abaixo trata capa-ia-verso.
+      // Se o autor deleta capa-ia-frente manualmente, `capaIaRemovida` fica
+      // true e o reconcile respeita a decisão (não recria).
       if (projectData.capaIaHandoff) {
-        applyCapaIaDefaultFills(projectData.capaIaHandoff, useEditorStore.getState().layout);
+        const s = useEditorStore.getState();
+        applyCapaIaDefaultFills(projectData.capaIaHandoff, s.layout);
+        reconcileCapaIaElements(
+          projectData.capaIaHandoff,
+          projectData.format,
+          projectData.pages,
+          s.orelhaMm,
+          s.layout,
+          s.capaIaRemovida,
+        );
       }
     } else {
       // Primeira vez abrindo o editor para este projeto (sem editor_data
@@ -221,14 +370,17 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         useEditorStore.getState().setBackgroundUrl(projectData.backgroundUrl);
       }
 
-      // IA (B2-04c): injeta a arte da IA no rect da frente com fit-cover
-      // centrado. Pinta lombada/contracapa/orelhas com a cor predominante do
-      // briefing sempre que a região não tem cor definida. Id determinístico
-      // para futura troca por outra opção da galeria.
+      // IA (B2-04c estendido em B2-05): injeta a(s) arte(s) da IA com
+      // fit-cover centrado.
+      //  - cobertura="unica": capa-ia-unica no spread inteiro.
+      //  - cobertura="frente_verso": capa-ia-frente + (opcional) capa-ia-verso.
+      // Pinta lombada/contracapa/orelhas com a cor predominante do briefing
+      // sempre que a região não tem cor definida. Ids determinísticos para
+      // futura troca por outra opção da galeria.
       if (projectData.capaIaHandoff) {
         const s = useEditorStore.getState();
-        injectCapaIaFrente(
-          projectData.capaIaHandoff.url,
+        injectCapaIaElements(
+          projectData.capaIaHandoff,
           projectData.format,
           projectData.pages,
           s.orelhaMm,

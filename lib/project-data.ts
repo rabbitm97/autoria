@@ -201,7 +201,29 @@ export interface OpcaoCapa {
 export interface GaleriaCapaItem {
   url: string;
   storage_path: string;
-  tipo: "frente" | "verso";
+  tipo: "frente" | "verso" | "unica";
+  gerado_em: string;
+}
+
+/**
+ * Modo de composição do verso (contracapa). Só se aplica quando
+ * `cobertura === "frente_verso"` — arte única não tem verso separado.
+ *  - "cor": autor escolheu preencher com a cor predominante no editor;
+ *          nenhuma imagem é gerada pela IA.
+ *  - "continuacao": IA gera arte da contracapa em continuidade seamless
+ *          com a frente (mesmo prompt visual + referência da frente).
+ *  - "independente": IA gera arte com briefing próprio, alinhado ao estilo
+ *          e paleta mas independente da composição da frente.
+ */
+export type ModoVersoIa = "cor" | "continuacao" | "independente";
+
+export interface DadosVersoIa {
+  modo: ModoVersoIa;
+  descricao?: string;
+  opcoes: OpcaoCapa[];
+  url_escolhida: string | null;
+  prompt_usado?: string;
+  frase_confirmacao?: string;
   gerado_em: string;
 }
 
@@ -224,7 +246,23 @@ export interface CapaGeradaResult {
   opcoes: OpcaoCapa[];
   galeria: GaleriaCapaItem[];
   url_escolhida: string | null;
-  verso: null;
+  /**
+   * Estado do verso quando `cobertura === "frente_verso"`. Null durante o
+   * primeiro passo (só frente gerada) ou quando `cobertura === "unica"`
+   * (uma única arte cobre tudo).
+   */
+  verso: DadosVersoIa | null;
+  /**
+   * Composição escolhida pelo autor:
+   *  - "frente_verso": duas artes distintas (frente + verso). Verso pode
+   *    ser gerado por IA (continuacao/independente) ou preenchido com cor
+   *    pelo editor (modo:"cor"). Único modo disponível para trilha digital
+   *    ou plano < pro.
+   *  - "unica": uma imagem landscape cobre verso+lombada+frente. Só
+   *    disponível para plano Pro + trilha completa.
+   * Legados sem esse campo assumem "frente_verso".
+   */
+  cobertura?: "frente_verso" | "unica";
   gerado_em: string;
   is_regeneracao: boolean;
   paginas_estimadas: number;
@@ -651,6 +689,16 @@ const dadosCapaEditorSchema = z.looseObject({
   orelha_mm: z.number().nullish(),
 });
 
+const dadosVersoIaSchema = z.looseObject({
+  modo: z.string(),
+  descricao: z.string().nullish(),
+  opcoes: z.array(opcaoCapaSchema).nullish(),
+  url_escolhida: z.string().nullable(),
+  prompt_usado: z.string().nullish(),
+  frase_confirmacao: z.string().nullish(),
+  gerado_em: z.string(),
+});
+
 const dadosCapaIaSchema = z.looseObject({
   project_id: z.string(),
   modo: z.literal("ia"),
@@ -670,7 +718,10 @@ const dadosCapaIaSchema = z.looseObject({
   opcoes: z.array(opcaoCapaSchema),
   galeria: z.array(galeriaCapaItemSchema).nullish(),
   url_escolhida: z.string().nullable(),
-  verso: z.null().nullish(),
+  // B2-05: verso deixou de ser sempre null. Passa a ser um objeto quando
+  // cobertura === "frente_verso" e o autor gerou/escolheu arte de verso.
+  verso: z.union([dadosVersoIaSchema, z.null()]).nullish(),
+  cobertura: z.string().nullish(),
   gerado_em: z.string(),
   is_regeneracao: z.boolean(),
   paginas_estimadas: z.number(),

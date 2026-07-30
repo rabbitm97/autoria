@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const CUSTOS_CREDITOS = {
   regenerar_capa_frente: 20,
   regenerar_capa_verso: 20,
+  regenerar_capa_unica: 20,
 } as const;
 
 export type AcaoCredito = keyof typeof CUSTOS_CREDITOS;

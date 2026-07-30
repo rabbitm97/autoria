@@ -267,3 +267,65 @@ export function estimarLombadaCapaMm(
 ): number {
   return Math.max(LOMBADA_MIN_CAPA_MM, estimarLombadaMm(paginas, gramaturaGsm));
 }
+
+// ─── Arte única (panorâmica sem lombada visual dividindo) ────────────────────
+//
+// A arte única é UMA imagem landscape que cobre verso + lombada + frente do
+// livro. O terço direito da imagem VIRA a frente (o pipeline do editor recorta
+// visualmente). O modelo de imagem exige um aspectRatio válido; buscamos o
+// mais próximo do (largura_panoramica / altura) real do livro. Os supported
+// aspect ratios do Gemini Image são: "1:1", "3:2", "16:9", "4:3", etc. Aqui
+// usamos "3:2" e "16:9" (landscape) como candidatos — sempre landscape porque
+// a peça é panorâmica. O excedente horizontal é cortado nas laterais durante
+// o render (nunca no topo/base, para não amputar título).
+
+export const ARTE_UNICA_ASPECT_RATIOS = ["3:2", "16:9"] as const;
+export type ArteUnicaAspectRatio = (typeof ARTE_UNICA_ASPECT_RATIOS)[number];
+
+/**
+ * Razão da arte única (largura/altura) real do livro considerando frente +
+ * lombada + verso (sem orelhas e sem sangria — a IA gera puro; o editor
+ * completa com fills nas orelhas/sangria).
+ */
+function calcRatioArteUnicaReal(spec: FormatoSpecs, lombadaMm: number): number {
+  const largura = spec.width_mm * 2 + lombadaMm;
+  return largura / spec.height_mm;
+}
+
+/**
+ * Escolhe o aspectRatio suportado pelo modelo mais próximo do ratio real do
+ * livro. O modelo só aceita a lista `ARTE_UNICA_ASPECT_RATIOS`; quando o real
+ * cai entre dois, prefere o MAIS LARGO — o crop lateral é preferível ao
+ * vertical (preserva altura/título).
+ */
+export function getRatioArteUnica(
+  format: FormatoLivro,
+  paginas: number,
+): ArteUnicaAspectRatio {
+  const spec = getFormatoDef(format).specs;
+  const lombada = estimarLombadaCapaMm(paginas);
+  const real = calcRatioArteUnicaReal(spec, lombada);
+  let melhor: ArteUnicaAspectRatio = ARTE_UNICA_ASPECT_RATIOS[0];
+  let melhorDist = Infinity;
+  for (const ar of ARTE_UNICA_ASPECT_RATIOS) {
+    const [w, h] = ar.split(":").map(Number);
+    const ratio = w / h;
+    const dist = Math.abs(ratio - real);
+    if (dist < melhorDist || (dist === melhorDist && ratio > (Number(melhor.split(":")[0]) / Number(melhor.split(":")[1])))) {
+      melhorDist = dist;
+      melhor = ar;
+    }
+  }
+  return melhor;
+}
+
+/**
+ * Formatos onde a arte única é fortemente desencorajada porque o ratio real
+ * fica muito distante dos aspectRatios suportados — o crop lateral perde
+ * demais da imagem ou ela fica esticada. Hoje: `quadrado` (ratio real ~2:1
+ * na maioria dos livros) e `a4` (ratio real ~1.5:1 mas altura extrema deixa
+ * o crop feio). Continua PERMITIDO — só mostramos aviso na UI.
+ */
+export function isFormatoRuimParaUnica(format: FormatoLivro): boolean {
+  return format === "quadrado" || format === "a4";
+}
