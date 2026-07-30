@@ -101,8 +101,12 @@ export async function POST(req: NextRequest) {
 
   const parsed = gerarCapaBodySchema.safeParse(await req.json());
   if (!parsed.success) {
+    console.warn("[gerar-capa] payload inválido:", JSON.stringify(parsed.error.issues));
     return NextResponse.json(
-      { error: "Payload inválido.", detalhes: parsed.error.issues },
+      {
+        error: "Não foi possível preparar a geração. Tente novamente.",
+        detalhes: parsed.error.issues,
+      },
       { status: 400 },
     );
   }

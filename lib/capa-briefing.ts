@@ -56,7 +56,10 @@ export const briefingCapaSchema = z.object({
     "minimalista", "cartoon", "aquarela", "fotorrealista",
     "abstrato", "vintage", "geometrico",
   ]),
-  atmosfera: z.array(z.enum(ATMOSFERAS)).min(1).max(2),
+  // min(1) é regra da UI do briefing (validação client); o schema aceita
+  // vazio porque briefings HERDADOS (verso a partir de result mínimo do
+  // fallback da galeria, B2-04d) podem não ter atmosfera. (B2-05f)
+  atmosfera: z.array(z.enum(ATMOSFERAS)).max(2),
   cor_predominante: z.object({
     nome: z.string().max(40),
     hex: z.string().regex(/^#[0-9a-fA-F]{6}$/),
@@ -345,7 +348,7 @@ export async function processarBriefingCapa(args: {
     "",
     "BRIEFING DO AUTOR:",
     `Estilo: ${b.estilo} (${ESTILO_DESC[b.estilo]})`,
-    `Atmosfera: ${b.atmosfera.join(", ")}`,
+    b.atmosfera.length > 0 && `Atmosfera: ${b.atmosfera.join(", ")}`,
     `Cor predominante: ${b.cor_predominante.nome} (${b.cor_predominante.hex})`,
     `Posição do título: ${b.posicao_titulo}`,
     b.descricao_livre && `Descrição do autor: ${b.descricao_livre}`,
