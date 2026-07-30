@@ -16,7 +16,8 @@ import type { GaleriaCapaItem } from "@/lib/project-data";
  * vira cache de conveniência.
  *
  * Retorna itens ordenados do mais recente para o mais antigo (timestamp
- * derivado do nome do arquivo: `capa_ia_<rodadaTs>_<i>.<ext>`).
+ * derivado do nome do arquivo: `capa_ia_[<alvo>_]<rodadaTs>_<i>.<ext>` —
+ * naming antigo sem alvo e naming novo com alvo são ambos aceitos).
  */
 export async function GET(
   _req: NextRequest,
@@ -70,13 +71,15 @@ export async function GET(
     return NextResponse.json({ error: "Falha ao listar galeria." }, { status: 500 });
   }
 
-  // Nome canônico: `capa_ia_<rodadaTs>_<i>.<png|jpg>` — ver gerar-capa
-  const nomeRegex = /^capa_ia_(\d+)_(\d+)\.(png|jpg)$/i;
+  // Nomes canônicos aceitos (ambas as gerações de naming):
+  //   antigo: capa_ia_<rodadaTs>_<i>.<png|jpg>            → tipo "frente"
+  //   novo:   capa_ia_<alvo>_<rodadaTs>_<i>.<png|jpg>     → tipo do segmento
+  const nomeRegex = /^capa_ia_(?:(frente|verso|unica)_)?(\d+)_(\d+)\.(png|jpe?g)$/i;
   const iaFiles = (files ?? []).filter((f) => nomeRegex.test(f.name));
 
   iaFiles.sort((a, b) => {
-    const ta = Number(a.name.match(nomeRegex)?.[1] ?? "0");
-    const tb = Number(b.name.match(nomeRegex)?.[1] ?? "0");
+    const ta = Number(a.name.match(nomeRegex)?.[2] ?? "0");
+    const tb = Number(b.name.match(nomeRegex)?.[2] ?? "0");
     return tb - ta;
   });
 
@@ -88,11 +91,13 @@ export async function GET(
       console.warn("[capa/galeria] falha ao assinar", storagePath, signErr);
       continue;
     }
-    const ts = Number(f.name.match(nomeRegex)?.[1] ?? "0");
+    const match = f.name.match(nomeRegex);
+    const alvoSeg = match?.[1]?.toLowerCase();
+    const ts = Number(match?.[2] ?? "0");
     itens.push({
       url,
       storage_path: storagePath,
-      tipo: "frente",
+      tipo: alvoSeg === "verso" || alvoSeg === "unica" ? alvoSeg : "frente",
       gerado_em: ts > 0 ? new Date(ts).toISOString() : new Date().toISOString(),
     });
   }
