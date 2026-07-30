@@ -12,7 +12,7 @@ import type { CapaUploadResult } from "@/app/api/agentes/upload-capa/route";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { isEditorCapa, isUploadCapa } from "@/lib/capa-resolver";
 import { ColorPickerPopover } from "@/components/color-picker-popover";
-import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm, LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
+import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import { CUSTOS_CREDITOS } from "@/lib/creditos";
 import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem, DadosVersoIa } from "@/lib/project-data";
@@ -2144,9 +2144,6 @@ export default function CapaPage() {
   // Estimated pages from manuscript (or real pages if miolo already generated)
   const [estimativaPaginas, setEstimativaPaginas] = useState<number | null>(null);
   const [fonteEstimativa, setFonteEstimativa] = useState<"miolo_real" | "estimado" | null>(null);
-  // Lombada adjustment
-  const [ajusteDisponivel, setAjusteDisponivel] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
-  const [ajustando, setAjustando] = useState(false);
   // Status da análise técnica na sessão atual. Só existe em memória —
   // dados_capa.analise_tecnica no banco é a fonte da verdade persistida.
   // Estados:
@@ -2262,14 +2259,6 @@ export default function CapaPage() {
       if (miolo?.paginas_reais) {
         const lombadaRecalculada = estimarLombadaCapaMm(miolo.paginas_reais);
         setLombadaReal(lombadaRecalculada);
-        // Detect divergence with the lombada used when the IA cover was generated
-        const capaDados = data?.dados_capa as { lombada_mm?: number; modo?: string } | null;
-        if (capaDados?.modo === "ia" && capaDados?.lombada_mm) {
-          const diff = Math.abs(capaDados.lombada_mm - lombadaRecalculada);
-          setAjusteDisponivel(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: capaDados.lombada_mm, nova: lombadaRecalculada, diff } : null);
-        } else {
-          setAjusteDisponivel(null);
-        }
       }
 
       // ── Auto-reanálise quando análise técnica está desatualizada ─────
@@ -2815,50 +2804,6 @@ export default function CapaPage() {
                 </>
               )}
             </div>
-
-            {/* Lombada adjustment banner — shown when miolo is done and spine diverges */}
-            {ajusteDisponivel && (
-              <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl">
-                <h3 className="font-semibold text-amber-900 text-sm mb-1.5">
-                  Lombada da capa precisa de ajuste
-                </h3>
-                <p className="text-xs text-amber-800 leading-relaxed mb-3">
-                  O miolo ficou com <strong>{ajusteDisponivel.nova}mm</strong> de lombada, mas sua capa foi gerada
-                  com <strong>{ajusteDisponivel.anterior}mm</strong> (diferença de {ajusteDisponivel.diff.toFixed(1)}mm).
-                  Ajuste automático regenera só a lombada, sem custo de créditos.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      setAjustando(true);
-                      try {
-                        const res = await fetch("/api/agentes/ajustar-lombada", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ project_id: id }),
-                        });
-                        if (res.ok) {
-                          setAjusteDisponivel(null);
-                          await loadProject();
-                        }
-                      } finally {
-                        setAjustando(false);
-                      }
-                    }}
-                    disabled={ajustando}
-                    className="px-4 py-2 bg-amber-700 text-white rounded-lg text-xs font-medium hover:bg-amber-800 transition-colors disabled:opacity-50"
-                  >
-                    {ajustando ? "Ajustando…" : "Ajustar automaticamente"}
-                  </button>
-                  <button
-                    onClick={() => setAjusteDisponivel(null)}
-                    className="px-4 py-2 bg-transparent text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
-                  >
-                    Ignorar
-                  </button>
-                </div>
-              </div>
-            )}
 
             {formatoDefinido === true && (() => {
               const capaSalva = dados?.modo === "upload" || (dados?.source === "editor" && Boolean(dados?.confirmed_at));
