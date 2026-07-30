@@ -14,7 +14,6 @@ import { isEditorCapa, isUploadCapa } from "@/lib/capa-resolver";
 import { ColorPickerPopover } from "@/components/color-picker-popover";
 import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm } from "@/lib/formatos";
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
-import { CUSTOS_CREDITOS } from "@/lib/creditos";
 import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem, DadosVersoIa } from "@/lib/project-data";
 import { PLANO_LABEL, planoAtende, type Plano } from "@/lib/planos";
 import { TelaConversaoPlano } from "@/components/plano-conversao";
@@ -69,6 +68,143 @@ const ATMOSFERAS_LABELS = [
 
 function calcLombadaMm(paginas: number) {
   return estimarLombadaCapaMm(paginas);
+}
+
+// ─── Saldo de imagens (B2-05b) ────────────────────────────────────────────────
+// Contrato compartilhado entre ModoIA / PainelVersoIa e as rotas
+// /agentes/gerar-capa, /agentes/capa-briefing, /projects/:id/capa/comprar-imagens.
+
+type AlvoImagem = "frente" | "verso" | "unica";
+
+interface SaldoImagensCliente {
+  incluso: { frente: number; verso: number };
+  restante_frente: number;
+  restante_verso: number;
+  restante_pool: number;
+}
+
+function restanteDoAlvo(saldo: SaldoImagensCliente, alvo: AlvoImagem): number {
+  if (alvo === "frente") return saldo.restante_frente;
+  if (alvo === "verso") return saldo.restante_verso;
+  // Para arte única, contamos o menor lado — é o que limita.
+  return Math.min(saldo.restante_frente, saldo.restante_verso);
+}
+
+function labelAlvo(alvo: AlvoImagem): string {
+  if (alvo === "frente") return "frente";
+  if (alvo === "verso") return "verso";
+  return "arte única";
+}
+
+/**
+ * Bloco de compra de pacote de imagens extras (B2-05b). Aparece dentro do
+ * fluxo quando o saldo do alvo esgota. Duas opções fixas:
+ *  - 1 imagem por 10 créditos
+ *  - 4 imagens por 30 créditos
+ * Sucesso atualiza o saldo via callback do pai (que refetch dados do projeto).
+ */
+function ComprarImagensBloco({
+  projectId,
+  saldoCreditos,
+  onComprado,
+}: {
+  projectId: string;
+  saldoCreditos: number | null;
+  onComprado: (novoSaldo: SaldoImagensCliente, novosCreditos: number | null) => void;
+}) {
+  const [comprando, setComprando] = useState<"unitario" | "quadruplo" | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function comprar(pacote: "unitario" | "quadruplo") {
+    setErro(null);
+    setComprando(pacote);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/capa/comprar-imagens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pacote }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        throw new Error(data.error ?? "Falha ao comprar imagens.");
+      }
+      onComprado(data.saldo as SaldoImagensCliente, data.creditos_saldo ?? null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao comprar imagens.");
+    } finally {
+      setComprando(null);
+    }
+  }
+
+  const semCreditosPara = (custo: number) =>
+    saldoCreditos !== null && saldoCreditos < custo;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-amber-900">Comprar mais imagens</p>
+        <p className="text-xs text-amber-800/80 mt-0.5">
+          Você usou todas as imagens inclusas neste projeto. Compre mais para continuar
+          {saldoCreditos !== null && (
+            <> — saldo atual: <strong>{saldoCreditos} crédito{saldoCreditos !== 1 ? "s" : ""}</strong></>
+          )}
+          .
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => void comprar("unitario")}
+          disabled={comprando !== null || semCreditosPara(10)}
+          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-xs font-medium text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="block text-sm font-semibold">+1 imagem</span>
+          <span className="text-amber-700/80">10 créditos</span>
+          {comprando === "unitario" && <span className="ml-2 text-amber-500">…</span>}
+        </button>
+        <button
+          type="button"
+          onClick={() => void comprar("quadruplo")}
+          disabled={comprando !== null || semCreditosPara(30)}
+          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-xs font-medium text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="block text-sm font-semibold">+4 imagens</span>
+          <span className="text-amber-700/80">30 créditos (25% off)</span>
+          {comprando === "quadruplo" && <span className="ml-2 text-amber-500">…</span>}
+        </button>
+      </div>
+      {erro && <p className="text-xs text-red-600">{erro}</p>}
+      {saldoCreditos !== null && saldoCreditos < 10 && (
+        <p className="text-xs text-amber-800/80">
+          Créditos insuficientes.{" "}
+          <Link href="/dashboard/creditos" className="underline font-medium">
+            Recarregar
+          </Link>
+          .
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SaldoBadge({ saldo, alvo }: { saldo: SaldoImagensCliente; alvo: AlvoImagem }) {
+  const rest = restanteDoAlvo(saldo, alvo);
+  const pool = saldo.restante_pool;
+  if (rest <= 0 && pool <= 0) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-red-50 text-red-700 text-[11px] font-medium px-2 py-0.5">
+        Sem imagens de {labelAlvo(alvo)} — compre para continuar
+      </span>
+    );
+  }
+  const parts: string[] = [];
+  if (rest > 0) parts.push(`${rest} de ${labelAlvo(alvo)}`);
+  if (pool > 0) parts.push(`${pool} do pacote extra`);
+  return (
+    <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium px-2 py-0.5">
+      Restam {parts.join(" + ")}
+    </span>
+  );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -915,9 +1051,9 @@ function loadDraft(projectId: string): BriefingDraft {
  *   cards       → 3 botões (cor sólida | continuação | independente)
  *   continuacao → textarea única "ajustes" (curto) + confirmar
  *   independente→ resumo de herança + descrição + evitar + confirmar
- *   confirmando → frase do agente + cobrança + gerar
+ *   confirmando → frase do agente + saldo + gerar
  *   gerando     → spinner
- *   escolha     → grid de 4 opções + aceitar / gerar novamente
+ *   escolha     → imagem grande + miniaturas anteriores + 3 botões (aceitar / outra opção / mudar briefing)
  *
  * Continuação e Independente compartilham o mesmo backend (gerar-capa alvo=verso)
  * — a diferença é o `verso.modo` no briefing e o texto do prompt.
@@ -939,11 +1075,15 @@ function PainelVersoIa({
   const [evitar, setEvitar] = useState("");
   const [modoVerso, setModoVerso] = useState<"continuacao" | "independente">("continuacao");
   const [frase, setFrase] = useState("");
-  const [cobranca, setCobranca] = useState<{ gratis: boolean; custo: number; saldo: number | null } | null>(null);
+  // B2-05b: saldo incremental substitui cobrança por rodada.
+  const [saldo, setSaldo] = useState<SaldoImagensCliente | null>(null);
+  const [consumoOrigem, setConsumoOrigem] = useState<"incluso" | "pool" | "nenhum" | null>(null);
+  const [creditosSaldo, setCreditosSaldo] = useState<number | null>(null);
   const [resultado, setResultado] = useState<{ verso: DadosVersoIa } | null>(null);
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aceitando, setAceitando] = useState(false);
+  const [gerandoOutra, setGerandoOutra] = useState(false);
 
   // Herança da frente (valores fossos — o autor não edita aqui).
   const estilo = (dadosFrente.estilo as EstiloCapa | undefined) ?? "minimalista";
@@ -1011,40 +1151,72 @@ function PainelVersoIa({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
       setFrase(data.frase_confirmacao ?? "");
-      setCobranca(data.cobranca ?? null);
+      setSaldo(data.saldo ?? null);
+      setConsumoOrigem((data.consumo?.origem as "incluso" | "pool" | "nenhum" | undefined) ?? null);
+      setCreditosSaldo(data.creditos_saldo ?? null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
       setFase(modoVerso);
     }
   }
 
-  async function handleGerar() {
+  async function chamarGerar(manterOpcoes: boolean) {
     setErro(null);
+    const r = await fetch("/api/agentes/gerar-capa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: projectId,
+        alvo: "verso",
+        briefing: buildBriefing(),
+        manter_opcoes: manterOpcoes,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      const sufixo = r.status === 402 ? " Compre imagens extras para continuar." : "";
+      throw new Error((data.error ?? "Erro ao gerar") + sufixo);
+    }
+    return data as { verso: DadosVersoIa; saldo?: SaldoImagensCliente; creditos_saldo?: number | null };
+  }
+
+  async function handleGerar() {
     setFase("gerando");
     try {
-      const r = await fetch("/api/agentes/gerar-capa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: projectId,
-          qtd: 4,
-          alvo: "verso",
-          briefing: buildBriefing(),
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok) {
-        const sufixo = r.status === 402 && data.saldo != null ? ` Saldo: ${data.saldo} créditos.` : "";
-        throw new Error((data.error ?? "Erro ao gerar") + sufixo);
-      }
-      const versoData = data as { verso: DadosVersoIa };
-      setResultado(versoData);
-      setEscolhida(versoData.verso.opcoes[0]?.url ?? null);
+      const data = await chamarGerar(false);
+      setResultado({ verso: data.verso });
+      const ultima = data.verso.opcoes[data.verso.opcoes.length - 1]?.url ?? null;
+      setEscolhida(ultima);
+      if (data.saldo) setSaldo(data.saldo);
+      if (data.creditos_saldo !== undefined) setCreditosSaldo(data.creditos_saldo);
       setFase("escolha");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro desconhecido");
       setFase("confirmando");
     }
+  }
+
+  async function handleGerarOutra() {
+    setGerandoOutra(true);
+    try {
+      const data = await chamarGerar(true);
+      setResultado({ verso: data.verso });
+      const ultima = data.verso.opcoes[data.verso.opcoes.length - 1]?.url ?? null;
+      setEscolhida(ultima);
+      if (data.saldo) setSaldo(data.saldo);
+      if (data.creditos_saldo !== undefined) setCreditosSaldo(data.creditos_saldo);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setGerandoOutra(false);
+    }
+  }
+
+  function handleMudarBriefing() {
+    setErro(null);
+    setResultado(null);
+    setEscolhida(null);
+    setFase(modoVerso);
   }
 
   async function handleAceitar() {
@@ -1070,7 +1242,8 @@ function PainelVersoIa({
   function voltarCards() {
     setFase("cards");
     setFrase("");
-    setCobranca(null);
+    setSaldo(null);
+    setConsumoOrigem(null);
     setResultado(null);
     setEscolhida(null);
     setErro(null);
@@ -1124,7 +1297,7 @@ function PainelVersoIa({
             <p className="text-xs text-zinc-500 leading-relaxed">
               A IA usa a arte da frente como referência e cria um verso que combina.
             </p>
-            <span className="text-xs font-medium text-brand-gold mt-auto">1ª rodada grátis →</span>
+            <span className="text-xs font-medium text-brand-gold mt-auto">Usa 1 imagem do seu pacote →</span>
           </button>
           <button
             type="button"
@@ -1136,7 +1309,7 @@ function PainelVersoIa({
             <p className="text-xs text-zinc-500 leading-relaxed">
               Cena própria para o verso, ainda dentro da mesma família visual da frente.
             </p>
-            <span className="text-xs font-medium text-brand-gold mt-auto">1ª rodada grátis →</span>
+            <span className="text-xs font-medium text-brand-gold mt-auto">Usa 1 imagem do seu pacote →</span>
           </button>
         </div>
       )}
@@ -1204,15 +1377,27 @@ function PainelVersoIa({
             <>
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
               <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
-              {cobranca && (
-                <div className={`rounded-xl p-3 text-xs ${cobranca.gratis ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-                  {cobranca.gratis
-                    ? "Esta geração está incluída — sem custo."
-                    : `Esta geração custará ${cobranca.custo} créditos. Seu saldo: ${cobranca.saldo ?? "—"}.`}
+              {saldo && (
+                <div className="flex flex-col gap-1">
+                  <SaldoBadge saldo={saldo} alvo="verso" />
+                  <p className="text-[11px] text-zinc-500">
+                    {consumoOrigem === "incluso" && "Esta imagem sai do pacote incluso no seu plano."}
+                    {consumoOrigem === "pool" && "Esta imagem sai do pacote extra que você comprou."}
+                    {consumoOrigem === "nenhum" && "Saldo esgotado — compre imagens extras abaixo para continuar."}
+                  </p>
                 </div>
               )}
-              {cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo && (
-                <p className="text-xs text-red-600 font-medium">Créditos insuficientes para gerar.</p>
+              {consumoOrigem === "nenhum" && (
+                <ComprarImagensBloco
+                  projectId={projectId}
+                  saldoCreditos={creditosSaldo}
+                  onComprado={(novoSaldo, novosCred) => {
+                    setSaldo(novoSaldo);
+                    setCreditosSaldo(novosCred);
+                    // Re-avaliar origem local: se ganhou pool, agora sai de "pool"
+                    setConsumoOrigem(novoSaldo.restante_pool > 0 ? "pool" : "nenhum");
+                  }}
+                />
               )}
               <div className="flex gap-3">
                 <button onClick={() => setFase(modoVerso)} className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-zinc-300 transition-colors">
@@ -1220,10 +1405,10 @@ function PainelVersoIa({
                 </button>
                 <button
                   onClick={handleGerar}
-                  disabled={!!(cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo)}
+                  disabled={consumoOrigem === "nenhum"}
                   className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
                 >
-                  Gerar 4 opções →
+                  Gerar verso →
                 </button>
               </div>
             </>
@@ -1238,56 +1423,94 @@ function PainelVersoIa({
       {fase === "gerando" && (
         <div className="flex flex-col items-center justify-center h-40 gap-3">
           <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-          <p className="text-sm text-zinc-500">Gerando 4 opções de verso… pode levar ~1 minuto</p>
+          <p className="text-sm text-zinc-500">Gerando sua capa… ~15 segundos</p>
         </div>
       )}
 
-      {fase === "escolha" && resultado && (
-        <div className="space-y-3">
-          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-            Escolha um verso ({resultado.verso.opcoes.length} opções geradas)
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {resultado.verso.opcoes.map((op: OpcaoCapa, i: number) => (
-              <button key={op.url} onClick={() => setEscolhida(op.url)}
-                className={`relative rounded-xl overflow-hidden border-2 transition-all aspect-[2/3]
-                  ${escolhida === op.url ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}`}>
-                <Image src={op.url} alt={`Opção ${i + 1}`} fill className="object-cover" />
-                {escolhida === op.url && (
-                  <div className="absolute inset-0 bg-brand-gold/10 flex items-center justify-center">
-                    <span className="bg-brand-gold text-brand-primary text-xs font-bold px-2 py-1 rounded-full">
-                      Selecionada
-                    </span>
+      {fase === "escolha" && resultado && (() => {
+        const opcoesList = resultado.verso.opcoes;
+        const atual = opcoesList[opcoesList.length - 1];
+        const anteriores = opcoesList.slice(0, -1);
+        const semSaldo = !saldo || (restanteDoAlvo(saldo, "verso") <= 0 && saldo.restante_pool <= 0);
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                Sua última geração
+              </p>
+              {saldo && <SaldoBadge saldo={saldo} alvo="verso" />}
+            </div>
+            {atual && (
+              <div className="relative rounded-xl overflow-hidden border-2 border-brand-gold shadow-sm aspect-[2/3] max-w-sm mx-auto">
+                <Image src={atual.url} alt="Opção atual" fill className="object-cover" />
+                {gerandoOutra && (
+                  <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                    <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
                   </div>
                 )}
+              </div>
+            )}
+            {anteriores.length > 0 && (
+              <div>
+                <p className="text-[11px] text-zinc-400 mb-2">Anteriores desta sequência</p>
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                  {anteriores.map((op, i) => (
+                    <button
+                      key={op.url}
+                      onClick={() => setEscolhida(op.url)}
+                      className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-[2/3]
+                        ${escolhida === op.url ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}`}
+                    >
+                      <Image src={op.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {semSaldo && (
+              <ComprarImagensBloco
+                projectId={projectId}
+                saldoCreditos={creditosSaldo}
+                onComprado={(novoSaldo, novosCred) => {
+                  setSaldo(novoSaldo);
+                  setCreditosSaldo(novosCred);
+                }}
+              />
+            )}
+            {erro && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">{erro}</div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <button
+                onClick={handleMudarBriefing}
+                disabled={gerandoOutra || aceitando}
+                className="px-4 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-zinc-300 transition-colors disabled:opacity-50"
+              >
+                Mudar briefing
               </button>
-            ))}
+              <button
+                onClick={() => void handleGerarOutra()}
+                disabled={gerandoOutra || aceitando || semSaldo}
+                className="px-4 py-3 rounded-xl border border-brand-gold/40 text-brand-primary text-sm font-medium hover:border-brand-gold transition-colors disabled:opacity-50"
+              >
+                {gerandoOutra ? "Gerando outra…" : "Gerar outra opção (mesmo estilo)"}
+              </button>
+              <button
+                onClick={handleAceitar}
+                disabled={!escolhida || aceitando || gerandoOutra}
+                className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm hover:bg-brand-gold/90 transition-colors disabled:opacity-50"
+              >
+                {aceitando
+                  ? <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                      Salvando…
+                    </span>
+                  : "É essa que quero →"}
+              </button>
+            </div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <button
-              onClick={() => { setResultado(null); setEscolhida(null); setFase(modoVerso); }}
-              className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-amber-300 transition-colors"
-            >
-              Gerar novamente{" "}
-              <span className="text-amber-600 font-medium">
-                ({CUSTOS_CREDITOS.regenerar_capa_verso} créditos)
-              </span>
-            </button>
-            <button
-              onClick={handleAceitar}
-              disabled={!escolhida || aceitando}
-              className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm hover:bg-brand-gold/90 transition-colors disabled:opacity-50"
-            >
-              {aceitando
-                ? <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-                    Salvando…
-                  </span>
-                : "Aceitar este verso →"}
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {erro && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">{erro}</div>
@@ -1384,9 +1607,12 @@ function ModoIA({
   const [imgRefIntencao, setImgRefIntencao] = useState<"estilo" | "conteudo">("estilo");
   const [isRegen, setIsRegen] = useState(!!regerarDe);
   const [deltaTexto, setDeltaTexto] = useState("");
-  const [cobranca, setCobranca] = useState<{ gratis: boolean; custo: number; saldo: number | null } | null>(null);
+  // B2-05b: saldo incremental substitui cobrança por rodada.
+  const [saldoImagens, setSaldoImagens] = useState<SaldoImagensCliente | null>(null);
+  const [consumoOrigem, setConsumoOrigem] = useState<"incluso" | "pool" | "nenhum" | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
   const [sugerindo, setSugerindo] = useState(false);
+  const [gerandoOutra, setGerandoOutra] = useState(false);
 
   // Créditos
   const [saldo, setSaldo] = useState<number | null>(null);
@@ -1548,48 +1774,77 @@ function ModoIA({
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
       setFrase(data.frase_confirmacao);
-      setCobranca(data.cobranca ?? null);
+      setSaldoImagens(data.saldo ?? null);
+      setConsumoOrigem((data.consumo?.origem as "incluso" | "pool" | "nenhum" | undefined) ?? null);
+      if (data.creditos_saldo !== undefined && data.creditos_saldo !== null) setSaldo(data.creditos_saldo);
     } catch (e) {
       setErroForm(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
       setFase("briefing");
     }
   }
 
-  async function handleGerar() {
-    setFase("gerando");
-    setError(null);
+  async function chamarGerarModo(manterOpcoes: boolean) {
     const descFinal = isRegen && deltaTexto.trim()
       ? `${descricaoLivre}\n\nAJUSTE PEDIDO: ${deltaTexto.trim()}`
       : descricaoLivre;
+    const r = await fetch("/api/agentes/gerar-capa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: projectId,
+        alvo: alvoEfetivo,
+        briefing: { ...buildBriefing(), descricao_livre: descFinal || undefined },
+        imagemRef: imgRef ?? undefined,
+        imagemRefIntencao: imgRef ? imgRefIntencao : undefined,
+        manter_opcoes: manterOpcoes,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      const sufixo = r.status === 402 ? " Compre imagens extras para continuar." : "";
+      throw new Error((data.error ?? "Erro ao gerar") + sufixo);
+    }
+    return data as CapaGeradaResult & {
+      saldo?: SaldoImagensCliente;
+      creditos_saldo?: number | null;
+    };
+  }
+
+  async function handleGerar() {
+    setFase("gerando");
+    setError(null);
     try {
-      const r = await fetch("/api/agentes/gerar-capa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: projectId,
-          qtd: 4,
-          alvo: alvoEfetivo,
-          briefing: { ...buildBriefing(), descricao_livre: descFinal || undefined },
-          imagemRef: imgRef ?? undefined,
-          imagemRefIntencao: imgRef ? imgRefIntencao : undefined,
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok) {
-        const sufixo = r.status === 402 && data.saldo != null ? ` Saldo: ${data.saldo} créditos.` : "";
-        throw new Error((data.error ?? "Erro ao gerar") + sufixo);
-      }
-      setResultado(data as CapaGeradaResult);
-      setEscolhida((data as CapaGeradaResult).opcoes[0]?.url ?? null);
+      const data = await chamarGerarModo(false);
+      setResultado(data);
+      const ultima = data.opcoes[data.opcoes.length - 1]?.url ?? null;
+      setEscolhida(ultima);
+      if (data.saldo) setSaldoImagens(data.saldo);
+      if (data.creditos_saldo !== undefined && data.creditos_saldo !== null) setSaldo(data.creditos_saldo);
       setFase("escolha");
-      if (cobranca && !cobranca.gratis) refreshSaldo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido");
       setFase(resultado ? "escolha" : "briefing");
     }
   }
 
-  function handleRegerar() {
+  async function handleGerarOutra() {
+    setGerandoOutra(true);
+    setError(null);
+    try {
+      const data = await chamarGerarModo(true);
+      setResultado(data);
+      const ultima = data.opcoes[data.opcoes.length - 1]?.url ?? null;
+      setEscolhida(ultima);
+      if (data.saldo) setSaldoImagens(data.saldo);
+      if (data.creditos_saldo !== undefined && data.creditos_saldo !== null) setSaldo(data.creditos_saldo);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setGerandoOutra(false);
+    }
+  }
+
+  function handleMudarBriefing() {
     if (resultado) {
       setEstilo(resultado.estilo);
       setAtmosfera([...resultado.atmosfera]);
@@ -1638,7 +1893,7 @@ function ModoIA({
             <h2 className="text-lg font-semibold text-brand-primary">Como funciona a capa com IA</h2>
             <ol className="space-y-2 text-sm text-zinc-600">
               <li><span className="font-medium">1.</span> Você descreve estilo, atmosfera e cor</li>
-              <li><span className="font-medium">2.</span> Geramos 4 opções de arte</li>
+              <li><span className="font-medium">2.</span> Geramos a arte da sua capa — você pode pedir novas opções ou ajustar a descrição, imagem a imagem, dentro do pacote do seu plano</li>
               <li><span className="font-medium">3.</span> Você escolhe e personaliza no editor com títulos e textos</li>
             </ol>
             <p className="text-xs text-zinc-500 bg-zinc-50 rounded-xl p-3">
@@ -1646,7 +1901,7 @@ function ModoIA({
               adicionados por você no editor — isso garante tipografia perfeita.
             </p>
             <p className="text-xs text-amber-600">
-              Gerar de novo custa {CUSTOS_CREDITOS.regenerar_capa_frente} créditos.
+              Se esgotar o pacote, você pode comprar mais imagens com créditos.
             </p>
             <button onClick={fecharModal}
               className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
@@ -1729,13 +1984,13 @@ function ModoIA({
                   checked={cobertura === "frente_verso"}
                   onChange={() => setCobertura("frente_verso")}
                   label="Frente e verso (duas artes)"
-                  sub="Gera a frente agora; verso vira uma etapa depois (grátis a 1ª rodada de cada)."
+                  sub="Uma arte de cada vez; frente e verso têm pacotes separados."
                 />
                 <RadioBtn
                   checked={cobertura === "unica"}
                   onChange={() => setCobertura("unica")}
                   label="Arte única panorâmica"
-                  sub="Uma única imagem cobre verso + lombada + frente. Consome as duas gratuidades."
+                  sub="Cada imagem única consome 1 do pacote de frente e 1 do de verso."
                 />
               </div>
             </div>
@@ -1961,7 +2216,7 @@ function ModoIA({
               disabled={atmosfera.length === 0}
               className="w-full py-4 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                 hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
-              Gerar capas com IA →
+              Gerar capa com IA →
             </button>
           </div>
         </>
@@ -1974,19 +2229,28 @@ function ModoIA({
             <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
               <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
-              {cobranca && (
-                <div className={`rounded-xl p-3 text-xs ${
-                  cobranca.gratis
-                    ? "bg-green-50 text-green-700"
-                    : "bg-amber-50 text-amber-700"
-                }`}>
-                  {cobranca.gratis
-                    ? "Esta geração está incluída — sem custo."
-                    : `Esta geração custará ${cobranca.custo} créditos. Seu saldo: ${cobranca.saldo ?? "—"}.`}
+              {saldoImagens && (
+                <div className="flex flex-col gap-1">
+                  <SaldoBadge saldo={saldoImagens} alvo={alvoEfetivo} />
+                  <p className="text-[11px] text-zinc-500">
+                    {consumoOrigem === "incluso" && (alvoEfetivo === "unica"
+                      ? "Esta imagem única consome 1 do incluso de frente e 1 do incluso de verso."
+                      : "Esta imagem sai do pacote incluso no seu plano.")}
+                    {consumoOrigem === "pool" && "Esta imagem sai do pacote extra que você comprou."}
+                    {consumoOrigem === "nenhum" && "Saldo esgotado — compre imagens extras abaixo para continuar."}
+                  </p>
                 </div>
               )}
-              {cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo && (
-                <p className="text-xs text-red-600 font-medium">Créditos insuficientes para gerar.</p>
+              {consumoOrigem === "nenhum" && (
+                <ComprarImagensBloco
+                  projectId={projectId}
+                  saldoCreditos={saldo}
+                  onComprado={(novoSaldo, novosCred) => {
+                    setSaldoImagens(novoSaldo);
+                    if (novosCred !== null) setSaldo(novosCred);
+                    setConsumoOrigem(novoSaldo.restante_pool > 0 ? "pool" : "nenhum");
+                  }}
+                />
               )}
               <div className="flex gap-3">
                 <button onClick={() => setFase("briefing")}
@@ -1995,10 +2259,10 @@ function ModoIA({
                   Ajustar
                 </button>
                 <button onClick={handleGerar}
-                  disabled={!!(cobranca && !cobranca.gratis && cobranca.saldo !== null && cobranca.saldo < cobranca.custo)}
+                  disabled={consumoOrigem === "nenhum"}
                   className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                     hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
-                  Gerar 4 capas →
+                  Gerar capa →
                 </button>
               </div>
             </div>
@@ -2016,63 +2280,102 @@ function ModoIA({
         <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex flex-col items-center
           justify-center h-40 gap-3">
           <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-          <p className="text-sm text-zinc-500">Gerando 4 opções… pode levar ~1 minuto</p>
+          <p className="text-sm text-zinc-500">Gerando sua capa… ~15 segundos</p>
         </div>
       )}
 
       {/* ── ESCOLHA ─────────────────────────────────────────────────────────── */}
-      {fase === "escolha" && resultado && (
-        <>
-          <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">
-              Escolha uma capa ({resultado.opcoes.length} opções geradas)
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {resultado.opcoes.map((op, i) => (
-                <button key={op.url} onClick={() => setEscolhida(op.url)}
-                  className={`relative rounded-xl overflow-hidden border-2 transition-all aspect-[2/3]
-                    ${escolhida === op.url ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}`}>
-                  <Image src={op.url} alt={`Opção ${i + 1}`} fill className="object-cover" />
-                  {escolhida === op.url && (
-                    <div className="absolute inset-0 bg-brand-gold/10 flex items-center justify-center">
-                      <span className="bg-brand-gold text-brand-primary text-xs font-bold px-2 py-1 rounded-full">
-                        Selecionada
-                      </span>
+      {fase === "escolha" && resultado && (() => {
+        const opcoesList = resultado.opcoes;
+        const atual = opcoesList[opcoesList.length - 1];
+        const anteriores = opcoesList.slice(0, -1);
+        const semSaldo = !saldoImagens || (
+          restanteDoAlvo(saldoImagens, alvoEfetivo) <= 0 && saldoImagens.restante_pool <= 0
+        );
+        // Arte única mostra em landscape; frente em retrato.
+        const aspectClass = alvoEfetivo === "unica" ? "aspect-[3/2]" : "aspect-[2/3]";
+        return (
+          <>
+            <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                  Sua última geração
+                </p>
+                {saldoImagens && <SaldoBadge saldo={saldoImagens} alvo={alvoEfetivo} />}
+              </div>
+              {atual && (
+                <div className={`relative rounded-xl overflow-hidden border-2 border-brand-gold shadow-sm mx-auto ${aspectClass} ${alvoEfetivo === "unica" ? "w-full max-w-2xl" : "max-w-sm"}`}>
+                  <Image src={atual.url} alt="Capa atual" fill className="object-cover" />
+                  {gerandoOutra && (
+                    <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                      <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
                     </div>
                   )}
-                </button>
-              ))}
+                </div>
+              )}
+              {anteriores.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-zinc-400 mb-2">Anteriores desta sequência</p>
+                  <div className={`grid gap-2 ${alvoEfetivo === "unica" ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-4 sm:grid-cols-6"}`}>
+                    {anteriores.map((op, i) => (
+                      <button
+                        key={op.url}
+                        onClick={() => setEscolhida(op.url)}
+                        className={`relative rounded-lg overflow-hidden border-2 transition-all ${aspectClass}
+                          ${escolhida === op.url ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}`}
+                      >
+                        <Image src={op.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
-          )}
+            {semSaldo && (
+              <ComprarImagensBloco
+                projectId={projectId}
+                saldoCreditos={saldo}
+                onComprado={(novoSaldo, novosCred) => {
+                  setSaldoImagens(novoSaldo);
+                  if (novosCred !== null) setSaldo(novosCred);
+                }}
+              />
+            )}
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button onClick={handleRegerar}
-              className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-                hover:border-amber-300 transition-colors">
-              Gerar novamente{" "}
-              <span className="text-amber-600 font-medium">
-                ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
-              </span>
-            </button>
-            <button
-              onClick={handleAceitar}
-              disabled={!escolhida || aceitando}
-              className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
-                hover:bg-brand-gold/90 transition-colors disabled:opacity-50">
-              {aceitando ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-                  Salvando…
-                </span>
-              ) : "Aceitar esta capa →"}
-            </button>
-          </div>
-        </>
-      )}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button onClick={handleMudarBriefing}
+                disabled={gerandoOutra || aceitando}
+                className="px-4 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
+                  hover:border-zinc-300 transition-colors disabled:opacity-50">
+                Mudar briefing
+              </button>
+              <button onClick={() => void handleGerarOutra()}
+                disabled={gerandoOutra || aceitando || semSaldo}
+                className="px-4 py-3 rounded-xl border border-brand-gold/40 text-brand-primary text-sm font-medium
+                  hover:border-brand-gold transition-colors disabled:opacity-50">
+                {gerandoOutra ? "Gerando outra…" : "Gerar outra opção (mesmo estilo)"}
+              </button>
+              <button
+                onClick={handleAceitar}
+                disabled={!escolhida || aceitando || gerandoOutra}
+                className="flex-1 py-3 rounded-xl bg-brand-gold text-brand-primary font-medium text-sm
+                  hover:bg-brand-gold/90 transition-colors disabled:opacity-50">
+                {aceitando ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                    Salvando…
+                  </span>
+                ) : "É essa que quero →"}
+              </button>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -2517,7 +2820,7 @@ function CapaExistenteCard({
           </>
         )}
         <button onClick={onGerarNovasOpcoes} className="hover:text-zinc-700 hover:underline underline-offset-2">
-          Gerar novas opções ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
+          Gerar novas opções
         </button>
         <span className="text-zinc-300">·</span>
         <button onClick={onTrocarModo} className="hover:text-zinc-700 hover:underline underline-offset-2">
@@ -3034,10 +3337,7 @@ export default function CapaPage() {
                 }}
                 className="flex-1 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-amber-300 transition-colors"
               >
-                Gerar novas opções{" "}
-                <span className="text-amber-600 font-medium">
-                  ({CUSTOS_CREDITOS.regenerar_capa_frente} créditos)
-                </span>
+                Gerar novas opções
               </button>
               {typeof dados.url_escolhida === "string" && (
                 <button
@@ -3248,7 +3548,7 @@ export default function CapaPage() {
                   <ModoCard
                     icon={<SparklesIcon />}
                     title="Gerar com IA"
-                    desc="Escolha estilo, cor e referências. A IA cria 4 opções completas — frente, lombada, quarta capa e orelhas."
+                    desc="Descreva o que imagina e a IA cria a arte da capa. Você itera imagem a imagem até ficar do seu jeito — os textos você adiciona no editor."
                     warning={!iaGated && hasCurrentCapa ? "Substituirá a capa atual." : undefined}
                     badge={iaGated ? `${PLANO_LABEL.essencial} e ${PLANO_LABEL.pro}` : undefined}
                     onClick={async () => {

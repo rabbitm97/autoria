@@ -45,16 +45,29 @@ export const PLANO_TAGLINE: Record<Exclude<Plano, "freemium">, string> = {
 export const PLANO_DESTAQUES: Record<Exclude<Plano, "freemium">, string[]> = {
   essencial: [
     "Revisão gramatical e de estilo com IA",
-    "Capa (frente) com IA",
+    "Capa (frente) com IA — até 2 imagens inclusas",
     "EPUB pronto para as plataformas",
     "PDF digital sem limite e sem marca d'água",
   ],
   pro: [
     "Tudo do Essencial",
-    "Capa (frente e verso) com IA",
+    "Capa completa com IA (frente e verso ou arte única) — até 8 imagens inclusas",
     "PDF de impressão com sangria e marcas de corte",
     "Audiolivro com voz neural (em breve)",
   ],
+};
+
+/**
+ * Saldo de imagens de capa IA INCLUSO por projeto, por alvo (B2-05b).
+ * Cada geração produz 1 imagem e consome 1 do saldo do alvo correspondente.
+ * "Arte única" (Pro) consome 1 de FRENTE E 1 de VERSO por imagem.
+ * Esgotado o saldo, o autor compra imagens extras (10 créditos por 1,
+ * 30 créditos por 4). Freemium não gera capa IA.
+ */
+export const SALDO_IMAGENS_CAPA: Record<Plano, { frente: number; verso: number }> = {
+  freemium:  { frente: 0, verso: 0 },
+  essencial: { frente: 2, verso: 0 },
+  pro:       { frente: 4, verso: 4 },
 };
 
 export function formatarPrecoPlano(p: Exclude<Plano, "freemium">): string {

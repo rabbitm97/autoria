@@ -10,7 +10,7 @@ import {
   carregarContexto,
   sugerirConceitoCapa,
   processarBriefingCapa,
-  cobrancaCapa,
+  saldoImagensCapa,
 } from "@/lib/capa-briefing";
 import { getSaldoCreditos } from "@/lib/creditos";
 
@@ -79,19 +79,12 @@ export async function POST(req: NextRequest) {
       // A rota até pode ser chamada com esse briefing, mas devolvemos
       // resposta trivial (sem prompt) para o cliente não gastar rodada.
       if (body.alvo === "verso" && body.briefing.verso?.modo === "cor") {
-        const admin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        );
-        const saldo = dev ? null : await getSaldoCreditos(supabase, userId);
-        const { gratis, custo } = await cobrancaCapa(admin, body.project_id, "verso");
         return NextResponse.json({
           prompt_imagem: "",
           frase_confirmacao:
             "O verso será preenchido apenas com a cor predominante da capa — nada será gerado por IA.",
           negative_hints: [],
           modo_cor: true,
-          cobranca: { gratis, custo, saldo },
         });
       }
 
@@ -141,11 +134,31 @@ export async function POST(req: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
       );
-      const { gratis, custo } = await cobrancaCapa(admin, body.project_id, body.alvo);
-      const saldo = dev ? null : await getSaldoCreditos(supabase, userId);
+      // Snapshot de saldo pós-confirmação: o cliente mostra "1 imagem
+      // será consumida do incluso/pool" antes de disparar /gerar-capa.
+      const { data: proj } = await admin
+        .from("projects")
+        .select("plano")
+        .eq("id", body.project_id)
+        .single();
+      const saldoImagens = await saldoImagensCapa(admin, body.project_id, (proj as { plano?: unknown } | null)?.plano);
+      const saldoUsuario = dev ? null : await getSaldoCreditos(supabase, userId);
+      const origem = saldoImagens.origemProximoConsumo(body.alvo);
       return NextResponse.json({
         ...result,
-        cobranca: { gratis, custo, saldo },
+        consumo: {
+          alvo: body.alvo,
+          imagens: 1,
+          origem,
+        },
+        saldo: {
+          incluso: saldoImagens.incluso,
+          restante_frente: saldoImagens.restanteFrente,
+          restante_verso: saldoImagens.restanteVerso,
+          restante_pool: saldoImagens.restantePool,
+        },
+        compra_necessaria: origem === "nenhum",
+        creditos_saldo: saldoUsuario,
       });
     } catch (err) {
       return NextResponse.json(

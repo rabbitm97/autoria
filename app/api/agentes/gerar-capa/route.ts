@@ -29,11 +29,11 @@ import type {
 import {
   briefingCapaSchema,
   processarBriefingCapa,
-  cobrancaCapa,
+  saldoImagensCapa,
+  getSaldoCreditos,
   type ContextoLivro,
   type AlvoCapa,
 } from "@/lib/capa-briefing";
-import { debitarCreditos, estornarCreditos } from "@/lib/creditos";
 
 // Re-export types for consumers that import from this route path
 export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
@@ -64,7 +64,9 @@ const gerarCapaBodySchema = z.object({
   alvo: z.enum(["frente", "verso", "unica"]).optional().default("frente"),
   imagemRef: z.string().max(5_000_000).optional(),
   imagemRefIntencao: z.enum(["estilo", "conteudo"]).optional().default("estilo"),
-  qtd: z.number().int().min(1).max(4).optional().default(4),
+  // B2-05b: quando true, mantém as opções anteriores no mesmo alvo (append).
+  // Quando false (default), reseta as opções — briefing novo/mudou.
+  manter_opcoes: z.boolean().optional().default(false),
 });
 
 export async function POST(req: NextRequest) {
@@ -206,32 +208,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Decisão de cobrança server-side (B2-04a estendido em B2-05):
-  //  - 1ª frente e 1ª verso grátis (independentes).
-  //  - ÚNICA consome AMBAS as gratuidades — só é grátis se nem frente nem
-  //    verso já rodaram; caso contrário cobra.
-  //  - Regen sempre cobra CUSTOS_CREDITOS[acao].
-  // Fail-closed no erro de leitura (dentro de cobrancaCapa).
-  const cobranca = await cobrancaCapa(storageClient, project_id, alvo);
-  const ehRegeneracao = !cobranca.gratis;
-  if (ehRegeneracao && !dev) {
-    const debito = await debitarCreditos(storageClient, userId, cobranca.acao, project_id);
-    if (!debito.ok) {
-      if (debito.erro === "saldo_insuficiente") {
-        return NextResponse.json(
-          {
-            error: `Créditos insuficientes. Esta rodada custa ${cobranca.custo} créditos.`,
-            saldo: debito.saldo,
-          },
-          { status: 402 },
-        );
-      }
-      return NextResponse.json(
-        { error: "Falha ao debitar créditos. Tente novamente." },
-        { status: 500 },
-      );
-    }
+  // Saldo de imagens server-side (B2-05b): plano-incluso + pool comprado.
+  // Nenhum débito de créditos aqui — compra de pool é rota própria
+  // (/api/projects/[id]/capa/comprar-imagens). Cada geração consome 1 do
+  // alvo; arte única consome 1 de frente E 1 de verso.
+  // Fail-closed no erro de leitura (dentro de saldoImagensCapa).
+  const saldoAntes = await saldoImagensCapa(
+    storageClient,
+    project_id,
+    (project as { plano?: unknown }).plano,
+  );
+  if (!saldoAntes.disponivel(alvo)) {
+    return NextResponse.json(
+      {
+        error: "Saldo de imagens de capa esgotado. Compre imagens extras para continuar.",
+        saldo: {
+          incluso: saldoAntes.incluso,
+          restante_frente: saldoAntes.restanteFrente,
+          restante_verso: saldoAntes.restanteVerso,
+          restante_pool: saldoAntes.restantePool,
+        },
+      },
+      { status: 402 },
+    );
   }
+  // "Regeneração" agora é informacional (2ª+ imagem do alvo neste projeto).
+  const ehRegeneracao =
+    alvo === "verso"
+      ? saldoAntes.consumido.verso + saldoAntes.consumido.unica > 0
+      : alvo === "unica"
+        ? saldoAntes.consumido.unica + saldoAntes.consumido.frente + saldoAntes.consumido.verso > 0
+        : saldoAntes.consumido.frente + saldoAntes.consumido.unica > 0;
 
   const contexto: ContextoLivro = {
     titulo,
@@ -253,9 +260,6 @@ export async function POST(req: NextRequest) {
     const estiloFrente = typeof dadosCapaAtual?.estilo === "string" ? dadosCapaAtual.estilo : "";
     const urlEscolhida = typeof dadosCapaAtual?.url_escolhida === "string" ? dadosCapaAtual.url_escolhida : "";
     if (!promptUsado || !urlEscolhida) {
-      if (ehRegeneracao && !dev) {
-        await estornarCreditos(storageClient, userId, cobranca.acao, project_id);
-      }
       return NextResponse.json(
         { error: "Escolha a arte da capa (frente) antes de gerar o verso." },
         { status: 409 },
@@ -284,9 +288,6 @@ export async function POST(req: NextRequest) {
     frase_confirmacao = agente.frase_confirmacao;
   } catch (err) {
     console.error("[gerar-capa] agente briefing falhou:", err);
-    if (ehRegeneracao && !dev) {
-      await estornarCreditos(storageClient, userId, cobranca.acao, project_id);
-    }
     return NextResponse.json(
       { error: "Não foi possível preparar a geração. Tente novamente." },
       { status: 502 },
@@ -388,20 +389,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const resultados = await Promise.allSettled(
-    Array.from({ length: body.qtd }, (_, i) => gerarUmaOpcao(i)),
-  );
-  const opcoes: OpcaoCapa[] = resultados
-    .filter((r): r is PromiseFulfilledResult<OpcaoCapa | null> => r.status === "fulfilled")
-    .map((r) => r.value)
-    .filter((o): o is OpcaoCapa => o !== null);
+  // B2-05b: sempre 1 imagem por chamada. Falha = zero consumo (usage_logs
+  // só é escrito no sucesso), autor tenta de novo sem custo.
+  const opcaoUnica = await gerarUmaOpcao(0);
+  const opcoes: OpcaoCapa[] = opcaoUnica ? [opcaoUnica] : [];
 
   if (opcoes.length === 0) {
-    if (ehRegeneracao && !dev) {
-      await estornarCreditos(storageClient, userId, cobranca.acao, project_id);
-    }
     return NextResponse.json(
-      { error: "Nenhuma imagem foi gerada. Seus créditos não foram consumidos." },
+      { error: "A geração falhou. Nenhuma imagem foi consumida — tente novamente." },
       { status: 502 },
     );
   }
@@ -457,10 +452,15 @@ export async function POST(req: NextRequest) {
   let result: CapaGeradaResult | { verso: DadosVersoIa; galeria: GaleriaCapaItem[] };
 
   if (alvo === "verso") {
+    // B2-05b: manter_opcoes=true (mesma descrição, nova opção) → append às
+    // opções anteriores do verso. false (default) → reset das opções.
+    const versoAtual = (dadosCapaAtual?.verso as DadosVersoIa | null | undefined) ?? null;
+    const opcoesVerso =
+      body.manter_opcoes && versoAtual?.opcoes ? [...versoAtual.opcoes, ...opcoes] : opcoes;
     const versoResult: DadosVersoIa = {
       modo: (body.briefing.verso?.modo ?? "independente") as ModoVersoIa,
       descricao: body.briefing.verso?.descricao || undefined,
-      opcoes,
+      opcoes: opcoesVerso,
       url_escolhida: null,
       prompt_usado: prompt_imagem,
       frase_confirmacao,
@@ -473,7 +473,11 @@ export async function POST(req: NextRequest) {
     };
     result = { verso: versoResult, galeria };
   } else {
-    // frente ou unica
+    // frente ou unica — B2-05b: manter_opcoes=true append; false reseta.
+    const opcoesAnteriores = Array.isArray(dadosCapaAtual?.opcoes)
+      ? (dadosCapaAtual!.opcoes as OpcaoCapa[])
+      : [];
+    const opcoesFinais = body.manter_opcoes ? [...opcoesAnteriores, ...opcoes] : opcoes;
     const capaResult: CapaGeradaResult = {
       project_id,
       modo: "ia",
@@ -490,7 +494,7 @@ export async function POST(req: NextRequest) {
       orelha_mm: 0,
       prompt_usado: prompt_imagem,
       frase_confirmacao,
-      opcoes,
+      opcoes: opcoesFinais,
       galeria,
       // Escolha é ATO EXPLÍCITO — nunca implícita. Sem esta null-idade,
       // F5 na tela de escolha fazia o sistema achar que opção 1 foi aceita.
@@ -547,10 +551,10 @@ export async function POST(req: NextRequest) {
 
   await lockFormato(project_id);
 
-  // Marcador anti-vazamento: registrar APÓS rodada persistida com sucesso.
-  // Rodada estornada (opcoes===0) não chega aqui — próxima tentativa fica grátis.
-  // B2-05: metadata.alvo é o que gate `cobrancaCapa` no próximo request lê;
-  // ausência (retrocompat) é tratada como "frente" na leitura.
+  // Ledger de consumo (B2-05b). Só chega aqui em sucesso — falhas não
+  // debitam saldo. `saldoImagensCapa` no próximo request soma
+  // metadata.opcoes_geradas por metadata.alvo. Retrocompat: metadata.alvo
+  // ausente = "frente".
   try {
     await storageClient.from("usage_logs").insert({
       agent_name: "gerar-capa",
@@ -559,8 +563,8 @@ export async function POST(req: NextRequest) {
       metadata: {
         alvo,
         opcoes_geradas: opcoes.length,
-        qtd_pedida: body.qtd,
         regeneracao: ehRegeneracao,
+        manter_opcoes: body.manter_opcoes,
         estilo: body.briefing.estilo,
       },
     });
@@ -568,7 +572,25 @@ export async function POST(req: NextRequest) {
     console.error("[gerar-capa] log de rodada falhou:", e);
   }
 
-  return NextResponse.json(result);
+  // Anexa o saldo pós-consumo na resposta — o cliente atualiza contadores
+  // sem uma rodada extra de fetch.
+  const saldoDepois = await saldoImagensCapa(
+    storageClient,
+    project_id,
+    (project as { plano?: unknown }).plano,
+  );
+  const saldoUsuario = dev ? null : await getSaldoCreditos(supabase, userId);
+  const respostaFinal = {
+    ...(result as Record<string, unknown>),
+    saldo: {
+      incluso: saldoDepois.incluso,
+      restante_frente: saldoDepois.restanteFrente,
+      restante_verso: saldoDepois.restanteVerso,
+      restante_pool: saldoDepois.restantePool,
+    },
+    creditos_saldo: saldoUsuario,
+  };
+  return NextResponse.json(respostaFinal);
   } catch (err) {
     console.error("[gerar-capa] Erro não tratado no handler POST:", err);
     return NextResponse.json(

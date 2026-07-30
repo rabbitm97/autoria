@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { negarPorPlano } from "@/lib/supabase-helpers";
 import { anthropic, traceClaudeCall, isMock } from "@/lib/anthropic";
 import { getAgentPrompt } from "@/lib/agent-prompts";
-import { CUSTOS_CREDITOS, getSaldoCreditos, type AcaoCredito } from "@/lib/creditos";
+import { getSaldoCreditos } from "@/lib/creditos";
+import { SALDO_IMAGENS_CAPA, type Plano, isPlano } from "@/lib/planos";
 
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001";
 export const AGENT_NAME = "capa-briefing";
@@ -395,76 +396,127 @@ export async function processarBriefingCapa(args: {
   return { prompt_imagem: promptFinal, frase_confirmacao: frase, negative_hints: hints };
 }
 
-/** True se o projeto já teve alguma rodada IA bem-sucedida para o alvo
- *  informado. Marcador vive em usage_logs — sobrevive a capa/reset
- *  (anti-vazamento, B2-04a).
+/**
+ * Saldo de imagens de capa IA por projeto (B2-05b).
+ * Cada geração produz 1 imagem e consome do saldo do alvo. O saldo INCLUSO
+ * vem do plano (SALDO_IMAGENS_CAPA). Esgotado o incluso, cai no pool
+ * COMPRADO com créditos (10 pela unidade, 30 pelo pacote de 4). Arte
+ * ÚNICA consome 1 de FRENTE E 1 de VERSO por imagem.
  *
- *  Retrocompat: logs pré-B2-05 não têm metadata.alvo. São tratados como
- *  "frente" (único alvo antigo), então:
- *   - alvo "frente": conta qualquer log de gerar-capa (com ou sem alvo).
- *   - alvo "verso"/"unica": conta apenas logs com metadata.alvo = alvo.
+ * Ledger: usage_logs — nada de tabela nova.
+ *  - consumo: agent_name="gerar-capa", metadata.alvo, metadata.opcoes_geradas
+ *  - pool:    agent_name="creditos",   metadata.tipo="compra_imagens",
+ *             metadata.imagens (quantidade adicionada ao pool)
+ * Retrocompat: logs pré-B2-05 (sem metadata.alvo) contam como "frente".
+ * Retrocompat: rodadas antigas de 4 imagens somam 4 no consumo — aceitável
+ * (projetos de teste).
+ * Fail-closed: qualquer erro de leitura → tratamos como esgotado.
  */
-export async function jaGerouCapaIa(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  admin: SupabaseClient<any>,
-  projectId: string,
-  alvo: AlvoCapa = "frente",
-): Promise<boolean> {
-  let q = admin
-    .from("usage_logs")
-    .select("id, metadata")
-    .eq("agent_name", "gerar-capa")
-    .eq("project_id", projectId);
-
-  if (alvo === "frente") {
-    // legado (metadata.alvo ausente) OU explicitamente "frente"
-    q = q.or("metadata->>alvo.is.null,metadata->>alvo.eq.frente");
-  } else {
-    q = q.eq("metadata->>alvo", alvo);
-  }
-
-  const { data, error } = await q.limit(1);
-  if (error) {
-    console.error("[capa-briefing] jaGerouCapaIa falhou:", error.message);
-    return true; // fail-closed: na dúvida, cobra — nunca vaza de graça
-  }
-  return (data?.length ?? 0) > 0;
+export interface SaldoImagensCapa {
+  incluso: { frente: number; verso: number };
+  consumido: { frente: number; verso: number; unica: number };
+  poolComprado: number;
+  restanteFrente: number;
+  restanteVerso: number;
+  restantePool: number;
+  disponivel(alvo: AlvoCapa): boolean;
+  origemProximoConsumo(alvo: AlvoCapa): "incluso" | "pool" | "nenhum";
 }
 
-/** Decide se a próxima geração para `alvo` é grátis ou cobrada e devolve
- *  a chave de custo. Regra B2-05:
- *   - 1ª frente e 1ª verso grátis (independentes entre si).
- *   - ÚNICA consome AMBAS as gratuidades — só é grátis se nem frente nem
- *     verso já geraram; passa a ser cobrada assim que qualquer uma delas
- *     tiver rodado.
- *   - Todas as rodadas subsequentes cobram 20 créditos (CUSTOS_CREDITOS).
- *  Fail-closed: qualquer erro de leitura tratado como "já rodou".
- */
-export async function cobrancaCapa(
+interface UsageLogRow {
+  agent_name: string;
+  metadata: Record<string, unknown> | null;
+}
+
+function num(v: unknown, fallback = 0): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+export async function saldoImagensCapa(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   admin: SupabaseClient<any>,
   projectId: string,
-  alvo: AlvoCapa,
-): Promise<{ gratis: boolean; custo: number; acao: AcaoCredito }> {
-  const acao: AcaoCredito =
-    alvo === "verso" ? "regenerar_capa_verso"
-    : alvo === "unica" ? "regenerar_capa_unica"
-    : "regenerar_capa_frente";
-  const custo = CUSTOS_CREDITOS[acao];
+  plano: unknown,
+): Promise<SaldoImagensCapa> {
+  const planoNorm: Plano = isPlano(plano) ? plano : "freemium";
+  const incluso = SALDO_IMAGENS_CAPA[planoNorm];
 
-  let gratis: boolean;
-  if (alvo === "unica") {
-    // ÚNICA é grátis apenas se nenhum dos dois lados já foi gerado.
-    const [f, v] = await Promise.all([
-      jaGerouCapaIa(admin, projectId, "frente"),
-      jaGerouCapaIa(admin, projectId, "verso"),
-    ]);
-    gratis = !f && !v;
+  const consumido = { frente: 0, verso: 0, unica: 0 };
+  let poolComprado = 0;
+  let failClosed = false;
+
+  const { data, error } = await admin
+    .from("usage_logs")
+    .select("agent_name, metadata")
+    .eq("project_id", projectId)
+    .in("agent_name", ["gerar-capa", "creditos"]);
+
+  if (error) {
+    console.error("[capa-briefing] saldoImagensCapa leitura falhou:", error.message);
+    failClosed = true;
   } else {
-    gratis = !(await jaGerouCapaIa(admin, projectId, alvo));
+    for (const row of (data ?? []) as UsageLogRow[]) {
+      const meta = row.metadata ?? {};
+      if (row.agent_name === "gerar-capa") {
+        const alvoRaw = typeof meta.alvo === "string" ? meta.alvo : "frente";
+        const opcoes = num(meta.opcoes_geradas, 0);
+        if (opcoes <= 0) continue;
+        if (alvoRaw === "verso") consumido.verso += opcoes;
+        else if (alvoRaw === "unica") consumido.unica += opcoes;
+        else consumido.frente += opcoes;
+      } else if (row.agent_name === "creditos") {
+        if (meta.tipo === "compra_imagens" && meta.ok === true) {
+          poolComprado += num(meta.imagens, 0);
+        }
+      }
+    }
   }
 
-  return { gratis, custo, acao };
+  // Consumo efetivo por lado inclui a arte única (que ocupa ambos).
+  const consumoEfetivoFrente = consumido.frente + consumido.unica;
+  const consumoEfetivoVerso = consumido.verso + consumido.unica;
+  const excedenteFrente = Math.max(0, consumoEfetivoFrente - incluso.frente);
+  const excedenteVerso = Math.max(0, consumoEfetivoVerso - incluso.verso);
+  const excedenteTotal = excedenteFrente + excedenteVerso;
+
+  const restanteFrente = failClosed ? 0 : Math.max(0, incluso.frente - consumoEfetivoFrente);
+  const restanteVerso = failClosed ? 0 : Math.max(0, incluso.verso - consumoEfetivoVerso);
+  const restantePool = failClosed ? 0 : Math.max(0, poolComprado - excedenteTotal);
+
+  function disponivel(alvo: AlvoCapa): boolean {
+    if (failClosed) return false;
+    if (alvo === "frente") return restanteFrente > 0 || restantePool > 0;
+    if (alvo === "verso") return restanteVerso > 0 || restantePool > 0;
+    // única: precisa cobrir ambos os lados. Contamos quantos "slots" faltam:
+    // cada lado precisa de 1; se o incluso não cobre, o pool cobre.
+    const faltamFrente = restanteFrente > 0 ? 0 : 1;
+    const faltamVerso = restanteVerso > 0 ? 0 : 1;
+    return restantePool >= faltamFrente + faltamVerso;
+  }
+
+  function origemProximoConsumo(alvo: AlvoCapa): "incluso" | "pool" | "nenhum" {
+    if (!disponivel(alvo)) return "nenhum";
+    if (alvo === "frente") return restanteFrente > 0 ? "incluso" : "pool";
+    if (alvo === "verso") return restanteVerso > 0 ? "incluso" : "pool";
+    // única: se qualquer lado precisar do pool, marcamos "pool"
+    return restanteFrente > 0 && restanteVerso > 0 ? "incluso" : "pool";
+  }
+
+  return {
+    incluso,
+    consumido,
+    poolComprado,
+    restanteFrente,
+    restanteVerso,
+    restantePool,
+    disponivel,
+    origemProximoConsumo,
+  };
 }
 
 // Reexport para as rotas que precisam do saldo na resposta.
