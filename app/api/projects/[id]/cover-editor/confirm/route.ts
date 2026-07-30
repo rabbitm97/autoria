@@ -30,17 +30,34 @@ export async function POST(
     }
   }
 
-  // Body JSON compacto — { path, layout }. O PNG já foi enviado direto ao
-  // storage via signed URL (rota /upload-url), então o body aqui é < 1KB
-  // e evita o limite multipart de 4.5 MB do Vercel.
-  let body: { path?: string; layout?: string };
+  // Body JSON compacto — { path, layout, lombada_mm }. O PNG já foi enviado
+  // direto ao storage via signed URL (rota /upload-url), então o body aqui é
+  // < 1KB e evita o limite multipart de 4.5 MB do Vercel.
+  let body: { path?: string; layout?: string; lombada_mm?: number };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
 
-  const { path, layout } = body;
+  const { path, layout, lombada_mm } = body;
+
+  // B2-04e: `lombada_mm_confirm` é a assinatura que atesta a lombada com que
+  // a capa foi desenhada — usada pelo miolo/Prova para detectar divergência
+  // pós-diagramação. Faixa 0–60mm cobre livros mono-página até volumes
+  // grossos com folga. Layout=frente sempre grava 0 (não há lombada física).
+  if (
+    typeof lombada_mm !== "number" ||
+    !Number.isFinite(lombada_mm) ||
+    lombada_mm < 0 ||
+    lombada_mm > 60
+  ) {
+    return NextResponse.json(
+      { error: "Campo lombada_mm ausente ou fora da faixa (0–60mm)." },
+      { status: 400 },
+    );
+  }
+  const lombadaValidada = lombada_mm;
 
   // Path canônico — evita cliente injetar path arbitrário no dados_capa.
   const expectedPath = `${userId}/${id}/cover-confirmed.png`;
@@ -119,9 +136,12 @@ export async function POST(
         : (currentCapa.orelha_mm as number | undefined) ?? 0;
 
   // Grava layout no editor_data também (fonte da verdade pra reabrir o editor).
+  // `lombada_mm_confirm` é a assinatura de reconfirmação (B2-04e) — vive em
+  // editor_data (schema loose) e é preservada pelo autosave PUT.
   const novoEditorData = {
     ...currentEditorData,
     layout: layoutValidado,
+    lombada_mm_confirm: lombadaValidada,
   };
 
   const novoDadosCapa = {

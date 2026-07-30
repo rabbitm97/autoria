@@ -99,7 +99,15 @@ export async function PUT(
   const existingCapa = (project.dados_capa as Record<string, unknown>) ?? {};
   const savedAt = new Date().toISOString();
 
-  const newEditorData: EditorData = {
+  // B2-04e: preserva `lombada_mm_confirm` (assinatura da última reconfirmação
+  // no editor). O autosave não gera nova assinatura — só confirm atualiza —
+  // então precisamos merge para não perder o valor entre autosaves.
+  const existingEditorData =
+    (existingCapa.editor_data as Record<string, unknown> | null | undefined) ?? {};
+  const signaturePreservada =
+    (existingEditorData as { lombada_mm_confirm?: unknown }).lombada_mm_confirm;
+
+  const newEditorData: EditorData & { lombada_mm_confirm?: number } = {
     ...body,
     meta: {
       ...body.meta,
@@ -107,6 +115,9 @@ export async function PUT(
       last_saved_at: savedAt,
       autosave_count: (body.meta?.autosave_count ?? 0) + 1,
     },
+    ...(typeof signaturePreservada === "number" && Number.isFinite(signaturePreservada)
+      ? { lombada_mm_confirm: signaturePreservada }
+      : {}),
   };
 
   // Autosave sinaliza que o autor mexeu em algo depois de confirmar. Invalida

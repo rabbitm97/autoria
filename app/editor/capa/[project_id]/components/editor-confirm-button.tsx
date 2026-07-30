@@ -6,6 +6,7 @@ import { useEditorStore } from "../lib/editor-store";
 import { captureStageAsBlob } from "../lib/png-export";
 import { serializeEditorState } from "../lib/editor-serializer";
 import { hashElements, hashFills } from "../lib/state-hash";
+import { calcularLombada } from "../lib/dimensions";
 
 interface EditorConfirmButtonProps {
   projectId: string;
@@ -70,11 +71,15 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
         }
       }
 
-      // 5) confirma com JSON compacto — { path, layout }
+      // 5) confirma com JSON compacto — { path, layout, lombada_mm }.
+      // `lombada_mm` é a "assinatura" que atesta a lombada com que a capa foi
+      // desenhada no instante do export (mesmo `pages` que alimentou o
+      // captureStageAsBlob). Persistida em editor_data.lombada_mm_confirm.
+      const lombadaMm = layout === "frente" ? 0 : calcularLombada(pages);
       const res = await fetch(`/api/projects/${projectId}/cover-editor/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path, layout }),
+        body: JSON.stringify({ path, layout, lombada_mm: lombadaMm }),
       });
 
       if (!res.ok && res.status !== 207) {

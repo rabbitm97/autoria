@@ -170,11 +170,39 @@ export async function POST(req: NextRequest) {
       analiseTec.configuracao !== "desconhecida"
     : capaResolvida.is_panoramica;
 
-  // Lombada divergente: só faz sentido comparar quando a capa é
-  // estruturalmente apta E o analyzer conseguiu deduzir a lombada da capa
-  // (lombada_deduzida_mm) E o miolo já rodou gerar-pdf (lombada_mm real).
+  // B2-04e: capa vinda do editor traz uma assinatura confiável da lombada
+  // (`editor_data.lombada_mm_confirm` gravada no momento do export). Se o
+  // source for "editor", usamos essa assinatura em vez de re-medir a PNG
+  // pelo analyzer — a assinatura é o valor real com que a arte foi
+  // desenhada, imune a arredondamento/erro de bordas do analyzer. Sem
+  // assinatura (capa confirmada antes do B2-04e) alertamos por precaução.
+  const capaSource = (capa?.source as string | undefined) ?? undefined;
+  const editorData = (capa?.editor_data as { layout?: string; lombada_mm_confirm?: unknown } | null | undefined) ?? undefined;
+  const isEditorPanoramica = capaSource === "editor" && editorData?.layout === "panoramica";
+
+  let editorLombadaPendencia: { mensagem: string } | null = null;
+  if (isEditorPanoramica && miolo?.lombada_mm !== undefined) {
+    const conf = editorData?.lombada_mm_confirm;
+    if (typeof conf === "number" && Number.isFinite(conf)) {
+      const diff = Math.abs(conf - miolo.lombada_mm);
+      if (diff > LIMITE_DIVERGENCIA_LOMBADA_MM) {
+        editorLombadaPendencia = {
+          mensagem: `A capa foi confirmada com lombada de ${conf.toFixed(1)}mm, mas a lombada real do miolo é ${miolo.lombada_mm.toFixed(1)}mm (diferença de ${diff.toFixed(1)}mm). Reabra o editor e reconfirme para regravar a capa nas dimensões finais.`,
+        };
+      }
+    } else {
+      editorLombadaPendencia = {
+        mensagem: `A capa foi confirmada antes do cálculo final da lombada (${miolo.lombada_mm.toFixed(1)}mm) — não é possível verificar se está nas dimensões corretas. Reabra o editor e reconfirme para garantir a medida.`,
+      };
+    }
+  }
+
+  // Lombada divergente via analyzer — usada quando a capa NÃO veio do
+  // editor (upload/montar). Só faz sentido comparar quando estrutural OK
+  // E analyzer deduziu lombada E miolo tem lombada_mm real.
   let lombadaDivergente: { capa: number; miolo: number; diff: number } | null = null;
   if (
+    !isEditorPanoramica &&
     capaAptaEstrutural &&
     analiseTec !== undefined &&
     analiseTec.lombada_deduzida_mm !== null &&
@@ -197,6 +225,16 @@ export async function POST(req: NextRequest) {
       status: "erro",
       mensagem: montarMensagemCapaEstrutural(analiseTec),
       acao: { label: "Alterar capa", etapa: "__alterar_capa__" },
+    });
+  } else if (editorLombadaPendencia !== null) {
+    // Bloqueio por divergência de lombada — capa autoral do editor.
+    // Roteamos para o editor via mesmo sentinel `__alterar_capa__` (a
+    // página cliente resolve pra /editor/capa quando source === "editor").
+    itensImpressa.push({
+      categoria: "pdf_capa_grafica",
+      status: "erro",
+      mensagem: editorLombadaPendencia.mensagem,
+      acao: { label: "Revisar no editor", etapa: "__alterar_capa__" },
     });
   } else if (lombadaDivergente !== null) {
     // Bloqueio por lombada — capa vai sair torta na gráfica.

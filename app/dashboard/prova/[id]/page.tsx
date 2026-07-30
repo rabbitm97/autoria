@@ -671,10 +671,18 @@ function detectarArtefatosAusentes(
       // PDF do miolo com sangria é gerável sempre — útil mesmo em livro
       // só eBook (se autor eventualmente trocar a capa, já está pronto).
       missing.push({ tipo: "pdf_miolo_grafica", endpoint: "/api/agentes/gerar-pdf" });
-    } else if (p.categoria === "pdf_capa_grafica" && capaOrigem === "editor" && isPanoramic) {
-      // Só tenta gerar PDF da capa quando: veio do editor E é panorâmica.
-      // Se não é panorâmica, o item vem com etapa "__alterar_capa__" e
-      // exige decisão do autor.
+    } else if (
+      p.categoria === "pdf_capa_grafica" &&
+      capaOrigem === "editor" &&
+      isPanoramic &&
+      p.acao?.etapa !== "__alterar_capa__"
+    ) {
+      // Só tenta gerar PDF da capa quando: veio do editor E é panorâmica E
+      // a pendência é derivada (auto-preparação). Pendências com sentinel
+      // "__alterar_capa__" (bloqueio estrutural ou divergência de lombada
+      // do editor — B2-04e) exigem decisão do autor: reabrir o editor,
+      // ajustar/reconfirmar. Regenerar automaticamente só reproduziria o
+      // mesmo problema (mesma lombada errada, mesma configuração errada).
       missing.push({ tipo: "pdf_capa_grafica", endpoint: "/api/agentes/prova/preparar-capa-grafica" });
     }
   }

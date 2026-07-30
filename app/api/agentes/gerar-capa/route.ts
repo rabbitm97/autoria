@@ -8,7 +8,7 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { lockFormato } from "@/lib/projects";
 import { isDev } from "@/lib/anthropic";
-import { estimarLombadaCapaMm } from "@/lib/formatos";
+import { estimarLombadaCapaMm, estimarPaginas, getFormatoDef, isFormatoValido } from "@/lib/formatos";
 import { signedUrlCapas } from "@/lib/capa-signed-url";
 import { validarProjectData } from "@/lib/project-data";
 import type { EstiloCapa, OpcaoCapa, CapaGeradaResult, GaleriaCapaItem } from "@/lib/project-data";
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select(
-      "id, user_id, plano, formato, dados_elementos, dados_miolo, dados_capa, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)",
+      "id, user_id, plano, formato, dados_elementos, dados_miolo, dados_capa, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal, texto, texto_revisado)",
     )
     .eq("id", project_id)
     .single();
@@ -107,6 +107,8 @@ export async function POST(req: NextRequest) {
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
     genero_principal?: string;
+    texto?: string;
+    texto_revisado?: string;
   } | null;
 
   const dadosElementos = (project as Record<string, unknown>).dados_elementos as {
@@ -124,7 +126,27 @@ export async function POST(req: NextRequest) {
     paginas_reais?: number;
     paginas_estimadas?: number;
   } | null;
-  const paginas = dadosMiolo?.paginas_reais ?? dadosMiolo?.paginas_estimadas ?? 200;
+
+  // B2-04e: nada de fallback silencioso `?? 200`. O 200 falseava a lombada
+  // para livros longos/curtos que geravam capa antes do miolo. Se o miolo
+  // ainda não rodou, reusamos `estimarPaginas` (mesma métrica de todo o
+  // resto da stack) com o texto disponível. 200 só resta como último
+  // recurso se não houver miolo nem texto — projeto vazio, essencialmente.
+  const formatoDb = (project as { formato?: unknown }).formato;
+  const textoRevisadoTrim = ms?.texto_revisado?.trim() ?? "";
+  const textoBase = textoRevisadoTrim.length >= 50
+    ? textoRevisadoTrim
+    : (ms?.texto?.trim() ?? "");
+  let paginas: number;
+  if (typeof dadosMiolo?.paginas_reais === "number") {
+    paginas = dadosMiolo.paginas_reais;
+  } else if (typeof dadosMiolo?.paginas_estimadas === "number") {
+    paginas = dadosMiolo.paginas_estimadas;
+  } else if (isFormatoValido(formatoDb) && textoBase.length > 0) {
+    paginas = estimarPaginas(getFormatoDef(formatoDb).specs, undefined, textoBase.length);
+  } else {
+    paginas = 200;
+  }
 
   if (!titulo) {
     return NextResponse.json(
