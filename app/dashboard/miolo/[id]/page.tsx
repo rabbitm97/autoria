@@ -163,18 +163,16 @@ export default function MioloPage() {
   const [capitulosList, setCapitulosList] = useState<{ titulo: string; pos: number }[] | null>(null);
 
   // ── Lombada divergence state ─────────────────────────────────────────────────
+  // B2-04f: divergência de capas do editor migrou para a Prova (pendência
+  // server-side em `/api/agentes/prova`). Aqui só resta o aviso de upload
+  // — mensagem/ação distintas (autor precisa refazer o upload, não há
+  // "reconfirmar" possível pra um PNG entregue).
   const [dadosCapa, setDadosCapa] = useState<{
     lombada_mm?: number;
     lombada_mm_na_validacao?: number;
     modo?: string;
     source?: string;
-    editor_data?: { lombada_mm_confirm?: number; layout?: string } | null;
   } | null>(null);
-  // B2-04e: capa vinda do editor com divergência de lombada → autor precisa
-  // revisar no próprio editor (não há auto-ajuste pra capa autoral). Quando
-  // a assinatura `lombada_mm_confirm` está ausente (capa confirmada antes do
-  // fluxo B2-04e), `anterior` e `diff` vêm NaN — a mensagem cobre esse caso.
-  const [lombadaEditorRevisao, setLombadaEditorRevisao] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
   const [lombadaUploadAvisoAtivo, setLombadaUploadAvisoAtivo] = useState<{ anterior: number; nova: number; diff: number } | null>(null);
 
   // ── PDF sync state (auto-chain após gerar miolo) ────────────────────────────
@@ -217,7 +215,6 @@ export default function MioloPage() {
         lombada_mm_na_validacao?: number;
         modo?: string;
         source?: string;
-        editor_data?: { lombada_mm_confirm?: number; layout?: string } | null;
       } | null;
       setDadosCapa(capaData);
       const [fmtRes, aprRes] = await Promise.all([
@@ -350,22 +347,8 @@ export default function MioloPage() {
       setProcessingPct(100);
       setMiolo(data.miolo!);
 
-      // B2-04e: divergência de lombada. Três ramos NESTA ordem — source
-      // primeiro (espelha o resolver da Prova). Capa vinda do editor não
-      // tem auto-ajuste (a arte é autoral); autor precisa reabrir o editor
-      // e reconfirmar. Assinatura ausente => usar variante da mensagem.
       const lombadaMiolo = data.miolo!.lombada_mm;
-      if (dadosCapa?.source === "editor" && dadosCapa?.editor_data?.layout === "panoramica") {
-        const conf = dadosCapa.editor_data?.lombada_mm_confirm;
-        if (typeof conf === "number" && Number.isFinite(conf)) {
-          const diff = Math.abs(conf - lombadaMiolo);
-          setLombadaEditorRevisao(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: conf, nova: lombadaMiolo, diff } : null);
-        } else {
-          // Capa confirmada antes do fluxo B2-04e — não há assinatura pra
-          // comparar. Alertamos por precaução, sem valores numéricos.
-          setLombadaEditorRevisao({ anterior: NaN, nova: lombadaMiolo, diff: NaN });
-        }
-      } else if (dadosCapa?.modo === "upload" && dadosCapa?.lombada_mm_na_validacao) {
+      if (dadosCapa?.modo === "upload" && dadosCapa?.lombada_mm_na_validacao) {
         const diff = Math.abs(dadosCapa.lombada_mm_na_validacao - lombadaMiolo);
         setLombadaUploadAvisoAtivo(diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? { anterior: dadosCapa.lombada_mm_na_validacao, nova: lombadaMiolo, diff } : null);
       }
@@ -1226,48 +1209,6 @@ export default function MioloPage() {
               </div>
             </div>
           </div>
-
-          {/* B2-04e: capa vinda do editor com divergência de lombada.
-              Não há auto-ajuste — a arte é autoral. Autor precisa reabrir
-              o editor e reconfirmar (o export vai regravar `lombada_mm_confirm`
-              com o valor atual). Duas variantes: com/sem assinatura numérica. */}
-          {lombadaEditorRevisao && (
-            <div className="mx-6 mt-4 p-5 bg-amber-50 border border-amber-200 rounded-2xl">
-              <h3 className="font-semibold text-amber-900 text-sm mb-2">
-                Lombada da capa precisa ser revisada no editor
-              </h3>
-              <p className="text-xs text-amber-800 leading-relaxed mb-4">
-                {Number.isFinite(lombadaEditorRevisao.anterior) ? (
-                  <>
-                    O miolo final ficou com <strong>{lombadaEditorRevisao.nova}mm</strong> de lombada,
-                    mas sua capa foi confirmada com <strong>{lombadaEditorRevisao.anterior}mm</strong> (diferença
-                    de {lombadaEditorRevisao.diff.toFixed(1)}mm). Reabra o editor
-                    e reconfirme para regravar a capa nas dimensões finais.
-                  </>
-                ) : (
-                  <>
-                    O miolo final ficou com <strong>{lombadaEditorRevisao.nova}mm</strong> de lombada, mas
-                    sua capa foi confirmada antes do cálculo final da lombada — não é possível verificar
-                    se está nas dimensões corretas. Reabra o editor e reconfirme para garantir a medida.
-                  </>
-                )}
-              </p>
-              <div className="flex gap-2">
-                <a
-                  href={`/editor/capa/${projectId}`}
-                  className="inline-block px-4 py-2 bg-amber-700 text-white rounded-lg text-xs font-medium hover:bg-amber-800 transition-colors"
-                >
-                  Revisar no editor →
-                </a>
-                <button
-                  onClick={() => setLombadaEditorRevisao(null)}
-                  className="px-4 py-2 bg-transparent text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors"
-                >
-                  Ignorar
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Lombada divergence — upload cover: must re-upload */}
           {lombadaUploadAvisoAtivo && (
