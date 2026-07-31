@@ -62,7 +62,9 @@ export const briefingCapaSchema = z.object({
   atmosfera: z.array(z.enum(ATMOSFERAS)).max(2),
   cor_predominante: z.object({
     nome: z.string().max(40),
-    hex: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    // Herança de results mínimos pode vir vazia (B2-05g, mesmo princípio
+    // do 05f/atmosfera): aceita "" e a linha de cor é omitida do prompt.
+    hex: z.string().regex(/^#[0-9a-fA-F]{6}$/).or(z.literal("")),
   }),
   posicao_titulo: z.enum(["topo", "centro", "base", "sem_preferencia"]),
   descricao_livre: z.string().max(2000).optional().default(""),
@@ -349,7 +351,14 @@ export async function processarBriefingCapa(args: {
     "BRIEFING DO AUTOR:",
     `Estilo: ${b.estilo} (${ESTILO_DESC[b.estilo]})`,
     b.atmosfera.length > 0 && `Atmosfera: ${b.atmosfera.join(", ")}`,
-    `Cor predominante: ${b.cor_predominante.nome} (${b.cor_predominante.hex})`,
+    // Herança de results mínimos pode não ter cor (B2-05g); no verso por
+    // continuação a paleta já vem da FRENTE como referência visual.
+    (b.cor_predominante.nome || b.cor_predominante.hex) &&
+      `Cor predominante: ${
+        b.cor_predominante.nome && b.cor_predominante.hex
+          ? `${b.cor_predominante.nome} (${b.cor_predominante.hex})`
+          : b.cor_predominante.nome || b.cor_predominante.hex
+      }`,
     `Posição do título: ${b.posicao_titulo}`,
     b.descricao_livre && `Descrição do autor: ${b.descricao_livre}`,
     b.referencias_texto && `Capas de referência citadas: ${b.referencias_texto}`,

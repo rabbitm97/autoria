@@ -1091,7 +1091,11 @@ function PainelVersoIa({
     ? (dadosFrente.atmosfera as string[])
     : [];
   const corNome = (dadosFrente.cor_predominante as string | undefined) ?? "";
-  const corHex = (dadosFrente.cor_predominante_hex as string | undefined) ?? "#000000";
+  // B2-05g: sem default fabricado — herança do result mínimo do fallback
+  // (B2-04d) pode gravar hex="". `??` não cobre string vazia; validamos e
+  // colapsamos qualquer hex malformado em "" (o schema/prompt já toleram).
+  const corHexRaw = (dadosFrente.cor_predominante_hex as string | undefined) ?? "";
+  const corHex = /^#[0-9a-fA-F]{6}$/.test(corHexRaw) ? corHexRaw : "";
   const posicaoTitulo = ((): "topo" | "centro" | "base" | "sem_preferencia" => {
     const p = dadosFrente.posicao_titulo;
     return p === "topo" || p === "centro" || p === "base" || p === "sem_preferencia"
