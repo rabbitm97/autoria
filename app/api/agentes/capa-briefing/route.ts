@@ -113,17 +113,24 @@ export async function POST(req: NextRequest) {
         const promptUsado = typeof dc?.prompt_usado === "string" ? dc.prompt_usado : "";
         const estiloFrente = typeof dc?.estilo === "string" ? dc.estilo : "";
         const urlEscolhida = typeof dc?.url_escolhida === "string" ? dc.url_escolhida : "";
-        if (!promptUsado || !urlEscolhida) {
+        // B2-05h: o requisito real é a FRENTE ESCOLHIDA. `prompt_usado`
+        // enriquece a herança quando existe (briefing completo), mas o
+        // result mínimo do fallback da galeria (04d) grava "" — o guard
+        // não pode barrar por isso. Sem prompt, a continuidade visual vem
+        // da IMAGEM da frente enviada como referência.
+        if (!urlEscolhida) {
           return NextResponse.json(
             { error: "Escolha a arte da capa (frente) antes de briefar o verso." },
             { status: 409 },
           );
         }
-        frente = {
-          prompt_usado: promptUsado,
-          estilo: estiloFrente,
-          frase: typeof dc?.frase_confirmacao === "string" ? dc.frase_confirmacao : undefined,
-        };
+        const fraseFrente =
+          typeof dc?.frase_confirmacao === "string" ? dc.frase_confirmacao : undefined;
+        frente = promptUsado
+          ? { prompt_usado: promptUsado, estilo: estiloFrente, frase: fraseFrente }
+          : estiloFrente
+            ? { prompt_usado: "", estilo: estiloFrente, frase: fraseFrente }
+            : undefined;
       }
 
       const result = await processarBriefingCapa({

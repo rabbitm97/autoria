@@ -324,21 +324,31 @@ export async function processarBriefingCapa(args: {
   // Herança da frente para o verso (B2-05a Mudança 3): o verso pertence
   // à MESMA capa; o agente precisa enxergar o prompt já usado para não
   // produzir uma cena estranha à família visual.
+  // B2-05h: herança textual é BEST-EFFORT. Frente vinda do fallback da
+  // galeria (04d) grava prompt_usado="" — nesse caso as instruções por
+  // modo apontam para a IMAGEM de referência (continuação) ou herdam
+  // apenas do próprio briefing (independente). Sem cabeçalho órfão: o
+  // bloco só entra quando há prompt real.
   const versoMode = args.alvo === "verso" ? b.verso?.modo : null;
   const heredityBlock: string[] =
-    args.alvo === "verso" && args.frente
+    args.alvo === "verso" && args.frente && args.frente.prompt_usado
       ? [
           "",
           "ARTE DA FRENTE (já gerada — o verso pertence à MESMA capa):",
           `Prompt usado na frente: ${args.frente.prompt_usado}`,
         ]
       : [];
+  const temPromptFrente = Boolean(args.frente?.prompt_usado);
   const versoInstruction: string | null =
-    args.alvo === "verso" && args.frente
+    args.alvo === "verso"
       ? versoMode === "continuacao"
-        ? "O prompt do verso deve ESTENDER a mesma arte: mesma técnica, paleta, luz e tratamento do prompt da frente acima, como continuação natural da cena para a contracapa."
+        ? temPromptFrente
+          ? "O prompt do verso deve ESTENDER a mesma arte: mesma técnica, paleta, luz e tratamento do prompt da frente acima, como continuação natural da cena para a contracapa."
+          : "O prompt do verso deve ESTENDER a arte da frente enviada como imagem de referência: mesma técnica, paleta, luz e tratamento visíveis nela, como continuação natural da cena para a contracapa."
         : versoMode === "independente"
-          ? "O prompt do verso deve pertencer à MESMA FAMÍLIA VISUAL do prompt da frente acima (mesma técnica, paleta e tratamento), com a cena própria descrita pelo autor."
+          ? temPromptFrente
+            ? "O prompt do verso deve pertencer à MESMA FAMÍLIA VISUAL do prompt da frente acima (mesma técnica, paleta e tratamento), com a cena própria descrita pelo autor."
+            : "O prompt do verso deve pertencer à MESMA FAMÍLIA VISUAL da frente (mesma técnica, paleta e tratamento — herdados do estilo e da imagem de referência quando presente), com a cena própria descrita pelo autor."
           : null
       : null;
 

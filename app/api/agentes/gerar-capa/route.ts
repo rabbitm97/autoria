@@ -263,17 +263,22 @@ export async function POST(req: NextRequest) {
     const promptUsado = typeof dadosCapaAtual?.prompt_usado === "string" ? dadosCapaAtual.prompt_usado : "";
     const estiloFrente = typeof dadosCapaAtual?.estilo === "string" ? dadosCapaAtual.estilo : "";
     const urlEscolhida = typeof dadosCapaAtual?.url_escolhida === "string" ? dadosCapaAtual.url_escolhida : "";
-    if (!promptUsado || !urlEscolhida) {
+    // B2-05h: só url_escolhida é obrigatória. prompt_usado="" é estado
+    // legítimo (frente vinda do fallback da galeria, 04d) — a continuidade
+    // visual vem da imagem da frente enviada como referência.
+    if (!urlEscolhida) {
       return NextResponse.json(
         { error: "Escolha a arte da capa (frente) antes de gerar o verso." },
         { status: 409 },
       );
     }
-    frenteHeredada = {
-      prompt_usado: promptUsado,
-      estilo: estiloFrente,
-      frase: typeof dadosCapaAtual?.frase_confirmacao === "string" ? dadosCapaAtual.frase_confirmacao : undefined,
-    };
+    const fraseFrente =
+      typeof dadosCapaAtual?.frase_confirmacao === "string" ? dadosCapaAtual.frase_confirmacao : undefined;
+    frenteHeredada = promptUsado
+      ? { prompt_usado: promptUsado, estilo: estiloFrente, frase: fraseFrente }
+      : estiloFrente
+        ? { prompt_usado: "", estilo: estiloFrente, frase: fraseFrente }
+        : undefined;
   }
 
   // Prompt via agente intermediário (server-side — nunca do front)
