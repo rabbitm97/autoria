@@ -26,7 +26,7 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 const SUFIXO_POR_ALVO: Record<AlvoCapa, string> = {
   frente: "Single front cover artwork only, portrait composition.",
   verso:  "Single back cover artwork only, portrait composition, meant to face the front cover on the opposite side of the same book.",
-  unica:  "One continuous landscape artwork spanning back cover + spine + front cover of the same book, no visible seams between regions, no printed spine text, no fold marks. The right third of the composition will become the front cover — keep it visually strong and self-sufficient, with the same story continuing across the other two thirds. The hero/dominant subject must be placed INSIDE the right third of the canvas, facing or moving toward the left (into the composition). No centered composition, no subject in the left half.",
+  unica:  "One continuous landscape artwork spanning back cover + spine + front cover of the same book, no visible seams between regions, no printed spine text, no fold marks. The right third of the composition will become the front cover — keep it visually strong and self-sufficient, with the same story continuing across the other two thirds. The hero/dominant subject must be placed INSIDE the right third of the canvas, facing or moving toward the left (into the composition). No centered composition, no subject in the left half, no vertical seam or band at the center. The artwork must flow ABSOLUTELY CONTINUOUSLY through the horizontal center: no vertical band, no glow seam, no fold line, no lighting or texture change where the spine will be — the center must be indistinguishable from its surroundings.",
 };
 const SUFIXO_TECNICO_IMAGEM = (alvo: AlvoCapa) =>
   " Flat two-dimensional digital artwork only, filling the entire canvas" +
@@ -138,13 +138,31 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   e de baixo detalhe para receber o título depois; o volume maior de
   detalhes vive nos dois terços à esquerda. NUNCA descreva composição
   centralizada nem sujeito no lado esquerdo.
+  ANTI-FAIXA (obrigatório na ARTE ÚNICA): a arte precisa fluir de forma
+  ABSOLUTAMENTE CONTÍNUA pelo centro horizontal da composição — proíba
+  explicitamente qualquer faixa vertical, veio de luz, costura, linha de
+  dobra ou mudança de iluminação/textura na região onde a lombada cairá;
+  o centro horizontal deve ser indistinguível do entorno.
 - Nunca descreva a capa como objeto físico, impresso, fotografado, em
   mockup ou apresentação — o prompt descreve somente a arte em si.
 
+REGRAS DE PRECEDÊNCIA (INEGOCIÁVEIS):
+- Os campos estruturados do briefing (Estilo, Atmosfera, Cor predominante,
+  Posição do título) têm PRECEDÊNCIA ABSOLUTA sobre a Descrição do autor.
+  Se o autor descrever cor/estilo/atmosfera/posição na descrição livre e
+  isso conflitar com os campos estruturados, os CAMPOS vencem. A descrição
+  do autor serve apenas para enriquecer cena/assunto/objetos/atmosfera
+  narrativa — nunca para sobrescrever escolhas técnicas.
+
 FERRAMENTAS: responda SEMPRE e SOMENTE chamando a ferramenta indicada.
 - Para "sugerir_conceito": proponha um conceito visual de capa em 2-3
-  frases, em português, concreto (cena, objetos, atmosfera, luz), fiel ao
-  gênero e à sinopse, sem clichês vazios e sem pedir textos na imagem.
+  frases, em português, concreto e fiel ao gênero e à sinopse, sem clichês
+  vazios. O conceito descreve APENAS: assunto/cena, objetos, composição do
+  assunto, atmosfera emocional e qualidade de luz. É PROIBIDO mencionar:
+  cores ou paleta; posição do título, área de respiro ou espaço para
+  texto; estilo de arte (minimalista/aquarela/etc.); qualquer instrução
+  técnica de composição ou dimensão. Essas escolhas pertencem aos campos
+  estruturados do briefing e são aplicadas depois.
 - Para "confirmar": produza (1) prompt_imagem em inglês descrevendo the
   flat artwork that will be used as the front cover background of a book,
   seguindo as regras acima, denso e específico; (2) frase_confirmacao em
@@ -377,7 +395,8 @@ export async function processarBriefingCapa(args: {
           : b.cor_predominante.nome || b.cor_predominante.hex
       }`,
     `Posição do título: ${b.posicao_titulo}`,
-    b.descricao_livre && `Descrição do autor: ${b.descricao_livre}`,
+    b.descricao_livre &&
+      `Descrição do autor (usar apenas cena/assunto/atmosfera; os campos acima prevalecem): ${b.descricao_livre}`,
     b.referencias_texto && `Capas de referência citadas: ${b.referencias_texto}`,
     b.evitar && `Evitar: ${b.evitar}`,
     b.verso?.descricao && `Descrição do verso: ${b.verso.descricao}`,

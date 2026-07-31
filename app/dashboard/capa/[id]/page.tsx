@@ -162,38 +162,35 @@ function ComprarImagensBloco({
 
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
-      <div>
-        <p className="text-sm font-semibold text-amber-900">Comprar mais imagens</p>
-        <p className="text-xs text-amber-800/80 mt-0.5">
-          Você usou todas as imagens inclusas neste projeto. Compre mais para continuar
-          {saldoCreditos !== null && (
-            <> — saldo atual: <strong>{saldoCreditos} crédito{saldoCreditos !== 1 ? "s" : ""}</strong></>
-          )}
-          .
-        </p>
-      </div>
+      <p className="text-sm text-amber-900 leading-relaxed">
+        Você usou todas as gerações inclusas do seu plano para esta capa. Use uma
+        das imagens já geradas ou gere novas com créditos:
+      </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => void comprar("unitario")}
           disabled={comprando !== null || semCreditosPara(10)}
-          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-xs font-medium text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-center text-sm font-semibold text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="block text-sm font-semibold">+1 imagem</span>
-          <span className="text-amber-700/80">10 créditos</span>
+          +1 por 10
           {comprando === "unitario" && <span className="ml-2 text-amber-500">…</span>}
         </button>
         <button
           type="button"
           onClick={() => void comprar("quadruplo")}
           disabled={comprando !== null || semCreditosPara(30)}
-          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-xs font-medium text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-center text-sm font-semibold text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="block text-sm font-semibold">+4 imagens</span>
-          <span className="text-amber-700/80">30 créditos (25% off)</span>
+          +4 por 30
           {comprando === "quadruplo" && <span className="ml-2 text-amber-500">…</span>}
         </button>
       </div>
+      {saldoCreditos !== null && (
+        <p className="text-xs text-amber-800/80">
+          Seu saldo: <strong>{saldoCreditos} crédito{saldoCreditos !== 1 ? "s" : ""}</strong>
+        </p>
+      )}
       {erro && <p className="text-xs text-red-600">{erro}</p>}
       {saldoCreditos !== null && saldoCreditos < 10 && (
         <p className="text-xs text-amber-800/80">
@@ -206,6 +203,53 @@ function ComprarImagensBloco({
       )}
     </div>
   );
+}
+
+// ─── Rótulo dinâmico de consumo no botão de gerar (B2-05i M5d) ───────────────
+// Mostra ao autor, ANTES do clique, quanto vai custar a próxima geração e
+// quantas restam. Precondição: saldo já carregado (GET /capa/saldo no mount).
+// Retorna `null` enquanto saldo carrega — o caller usa label estático de
+// fallback nesse caso.
+function rotuloConsumo(
+  alvo: AlvoImagem,
+  saldo: SaldoImagensCliente | null,
+): string | null {
+  if (!saldo) return null;
+  if (alvo === "unica") {
+    // Arte única consome 1 de frente + 1 de verso por imagem. Mostramos
+    // ambos os saldos para não confundir o autor Pro/completa.
+    const rf = saldo.restante_frente;
+    const rv = saldo.restante_verso;
+    const pool = saldo.restante_pool;
+    if (rf > 0 && rv > 0) {
+      return `Gerar arte única — usa 1 de frente + 1 de verso (restam ${rf}/${saldo.incluso.frente} de frente, ${rv}/${saldo.incluso.verso} de verso)`;
+    }
+    // Precisa cobrir o(s) lado(s) faltante(s) com pool.
+    const faltamPool = (rf > 0 ? 0 : 1) + (rv > 0 ? 0 : 1);
+    if (pool >= faltamPool && faltamPool > 0) {
+      return `Gerar arte única — usa ${faltamPool} do pacote extra (restam ${pool})`;
+    }
+    return "Sem imagens — compre para continuar";
+  }
+  const restante = restanteDoAlvo(saldo, alvo);
+  const total = alvo === "verso" ? saldo.incluso.verso : saldo.incluso.frente;
+  if (restante > 0) {
+    return `Gerar capa — usa 1 imagem (restam ${restante} de ${total})`;
+  }
+  if (saldo.restante_pool > 0) {
+    return `Gerar capa — usa 1 do pacote extra (restam ${saldo.restante_pool})`;
+  }
+  return "Sem imagens — compre para continuar";
+}
+
+// Saldo esgotado para o alvo? Usado para gate do botão + render do bloco M5e.
+function saldoEsgotado(alvo: AlvoImagem, saldo: SaldoImagensCliente | null): boolean {
+  if (!saldo) return false;
+  if (alvo === "unica") {
+    const faltamPool = (saldo.restante_frente > 0 ? 0 : 1) + (saldo.restante_verso > 0 ? 0 : 1);
+    return saldo.restante_pool < faltamPool;
+  }
+  return restanteDoAlvo(saldo, alvo) <= 0 && saldo.restante_pool <= 0;
 }
 
 function SaldoBadge({ saldo, alvo }: { saldo: SaldoImagensCliente; alvo: AlvoImagem }) {
@@ -1109,23 +1153,42 @@ function PainelVersoIa({
   dadosFrente: Record<string, unknown>;
   onSalvo: (dadosServidor: Record<string, unknown>) => void;
 }) {
-  type Fase = "cards" | "continuacao" | "independente" | "confirmando" | "gerando" | "escolha";
+  // B2-05i M5c: fase "confirmando" removida — os botões de continuacao/
+  // independente disparam handleGerar direto. Rótulo do botão (M5d) mostra
+  // o custo antes do clique; bloco esgotado (M5e) aparece quando o saldo
+  // do verso zera.
+  type Fase = "cards" | "continuacao" | "independente" | "gerando" | "escolha";
   const [fase, setFase] = useState<Fase>("cards");
   const [salvandoCor, setSalvandoCor] = useState(false);
   const [ajustes, setAjustes] = useState("");
   const [descricao, setDescricao] = useState("");
   const [evitar, setEvitar] = useState("");
   const [modoVerso, setModoVerso] = useState<"continuacao" | "independente">("continuacao");
-  const [frase, setFrase] = useState("");
-  // B2-05b: saldo incremental substitui cobrança por rodada.
+  // B2-05b: saldo incremental substitui cobrança por rodada. Hidratado no
+  // mount via GET /api/projects/:id/capa/saldo (B2-05i M5a).
   const [saldo, setSaldo] = useState<SaldoImagensCliente | null>(null);
-  const [consumoOrigem, setConsumoOrigem] = useState<"incluso" | "pool" | "nenhum" | null>(null);
   const [creditosSaldo, setCreditosSaldo] = useState<number | null>(null);
   const [resultado, setResultado] = useState<{ verso: DadosVersoIa } | null>(null);
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aceitando, setAceitando] = useState(false);
   const [gerandoOutra, setGerandoOutra] = useState(false);
+
+  const refreshSaldo = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/projects/${projectId}/capa/saldo`);
+      if (!r.ok) return;
+      const data = await r.json() as {
+        saldo?: SaldoImagensCliente;
+        creditos_saldo?: number | null;
+      };
+      if (data.saldo) setSaldo(data.saldo);
+      if (data.creditos_saldo !== undefined) setCreditosSaldo(data.creditos_saldo);
+    } catch {
+      // best-effort — botão cai no rótulo estático
+    }
+  }, [projectId]);
+  useEffect(() => { void refreshSaldo(); }, [refreshSaldo]);
 
   // Herança da frente (valores fossos — o autor não edita aqui).
   const estilo = (dadosFrente.estilo as EstiloCapa | undefined) ?? "minimalista";
@@ -1184,28 +1247,6 @@ function PainelVersoIa({
     };
   }
 
-  async function handleConfirmar() {
-    setErro(null);
-    setFrase("");
-    setFase("confirmando");
-    try {
-      const r = await fetch("/api/agentes/capa-briefing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing(), alvo: "verso" }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
-      setFrase(data.frase_confirmacao ?? "");
-      setSaldo(data.saldo ?? null);
-      setConsumoOrigem((data.consumo?.origem as "incluso" | "pool" | "nenhum" | undefined) ?? null);
-      setCreditosSaldo(data.creditos_saldo ?? null);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
-      setFase(modoVerso);
-    }
-  }
-
   async function chamarGerar(manterOpcoes: boolean) {
     setErro(null);
     const r = await fetch("/api/agentes/gerar-capa", {
@@ -1227,6 +1268,7 @@ function PainelVersoIa({
   }
 
   async function handleGerar() {
+    setErro(null);
     setFase("gerando");
     try {
       const data = await chamarGerar(false);
@@ -1238,7 +1280,9 @@ function PainelVersoIa({
       setFase("escolha");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro desconhecido");
-      setFase("confirmando");
+      // Ao falhar, volta pro form do modo escolhido (continuacao/independente)
+      // — pré-B2-05i voltava para "confirmando", que não existe mais.
+      setFase(modoVerso);
     }
   }
 
@@ -1287,9 +1331,6 @@ function PainelVersoIa({
 
   function voltarCards() {
     setFase("cards");
-    setFrase("");
-    setSaldo(null);
-    setConsumoOrigem(null);
     setResultado(null);
     setEscolhida(null);
     setErro(null);
@@ -1360,109 +1401,73 @@ function PainelVersoIa({
         </div>
       )}
 
-      {fase === "continuacao" && (
+      {(fase === "continuacao" || fase === "independente") && (
         <div className="space-y-3">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-            Ajustes (opcional)
-          </label>
-          <textarea
-            value={ajustes}
-            onChange={(e) => setAjustes(e.target.value)}
-            rows={3}
-            placeholder="Ex.: menos elementos, área central mais calma para a sinopse, etc."
-            className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-brand-gold"
-          />
-          <button
-            onClick={handleConfirmar}
-            className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors"
-          >
-            Gerar verso →
-          </button>
-        </div>
-      )}
-
-      {fase === "independente" && (
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-              Descrição
-            </label>
-            <textarea
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              rows={4}
-              placeholder="Descreva a cena que quer no verso — usaremos a mesma família visual da frente."
-              className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-brand-gold"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
-              O que evitar (opcional)
-            </label>
-            <input
-              type="text"
-              value={evitar}
-              onChange={(e) => setEvitar(e.target.value)}
-              placeholder="Ex.: pessoas, fotos, tons frios…"
-              className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-gold"
-            />
-          </div>
-          <button
-            onClick={handleConfirmar}
-            disabled={descricao.trim().length === 0}
-            className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
-          >
-            Gerar verso →
-          </button>
-        </div>
-      )}
-
-      {fase === "confirmando" && (
-        <div className="space-y-3">
-          {frase ? (
+          {fase === "continuacao" && (
             <>
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
-              <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
-              {saldo && (
-                <div className="flex flex-col gap-1">
-                  <SaldoBadge saldo={saldo} alvo="verso" />
-                  <p className="text-[11px] text-zinc-500">
-                    {consumoOrigem === "incluso" && "Esta imagem sai do pacote incluso no seu plano."}
-                    {consumoOrigem === "pool" && "Esta imagem sai do pacote extra que você comprou."}
-                    {consumoOrigem === "nenhum" && "Saldo esgotado — compre imagens extras abaixo para continuar."}
-                  </p>
-                </div>
-              )}
-              {consumoOrigem === "nenhum" && (
-                <ComprarImagensBloco
-                  projectId={projectId}
-                  saldoCreditos={creditosSaldo}
-                  onComprado={(novoSaldo, novosCred) => {
-                    setSaldo(novoSaldo);
-                    setCreditosSaldo(novosCred);
-                    // Re-avaliar origem local: se ganhou pool, agora sai de "pool"
-                    setConsumoOrigem(novoSaldo.restante_pool > 0 ? "pool" : "nenhum");
-                  }}
+              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                Ajustes (opcional)
+              </label>
+              <textarea
+                value={ajustes}
+                onChange={(e) => setAjustes(e.target.value)}
+                rows={3}
+                placeholder="Ex.: menos elementos, área central mais calma para a sinopse, etc."
+                className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-brand-gold"
+              />
+            </>
+          )}
+          {fase === "independente" && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  Descrição
+                </label>
+                <textarea
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  rows={4}
+                  placeholder="Descreva a cena que quer no verso — usaremos a mesma família visual da frente."
+                  className="w-full border border-zinc-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-brand-gold"
                 />
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setFase(modoVerso)} className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-zinc-300 transition-colors">
-                  Ajustar
-                </button>
-                <button
-                  onClick={handleGerar}
-                  disabled={consumoOrigem === "nenhum"}
-                  className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
-                >
-                  Gerar verso →
-                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+                  O que evitar (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={evitar}
+                  onChange={(e) => setEvitar(e.target.value)}
+                  placeholder="Ex.: pessoas, fotos, tons frios…"
+                  className="w-full border border-zinc-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-gold"
+                />
               </div>
             </>
-          ) : (
-            <div className="flex items-center justify-center h-32">
-              <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-            </div>
           )}
+
+          {/* B2-05i M5e: bloco esgotado antes do botão. */}
+          {saldoEsgotado("verso", saldo) && (
+            <ComprarImagensBloco
+              projectId={projectId}
+              saldoCreditos={creditosSaldo}
+              onComprado={(novoSaldo, novosCred) => {
+                setSaldo(novoSaldo);
+                setCreditosSaldo(novosCred);
+              }}
+            />
+          )}
+
+          <button
+            onClick={() => void handleGerar()}
+            disabled={
+              (fase === "independente" && descricao.trim().length === 0) ||
+              saldoEsgotado("verso", saldo)
+            }
+            className="w-full py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-50"
+          >
+            {rotuloConsumo("verso", saldo) ?? "Gerar verso →"}
+          </button>
         </div>
       )}
 
@@ -1615,8 +1620,11 @@ function ModoIA({
     setModalVisto(true);
   }
 
-  // Máquina de estados: briefing → confirmando → gerando → escolha
-  const [fase, setFase] = useState<"briefing" | "confirmando" | "gerando" | "escolha">("briefing");
+  // Máquina de estados: briefing → gerando → escolha
+  // B2-05i M5c: removida a fase "confirmando" — o clique no botão de gerar
+  // dispara a geração direto. O rótulo do botão (M5d) já mostra ao autor
+  // o custo antes do clique.
+  const [fase, setFase] = useState<"briefing" | "gerando" | "escolha">("briefing");
 
   // B2-05a Mudança 1: cobertura vive DENTRO do ModoIA. Precede o briefing
   // (é uma decisão sobre o que vai ser gerado). Inicial:
@@ -1653,9 +1661,10 @@ function ModoIA({
   const [imgRefIntencao, setImgRefIntencao] = useState<"estilo" | "conteudo">("estilo");
   const [isRegen, setIsRegen] = useState(!!regerarDe);
   const [deltaTexto, setDeltaTexto] = useState("");
-  // B2-05b: saldo incremental substitui cobrança por rodada.
+  // B2-05b: saldo incremental substitui cobrança por rodada. B2-05i M5a:
+  // saldo é hidratado no mount via GET /api/projects/:id/capa/saldo para
+  // rotular o botão ANTES do clique (M5d) e gate do bloco esgotado (M5e).
   const [saldoImagens, setSaldoImagens] = useState<SaldoImagensCliente | null>(null);
-  const [consumoOrigem, setConsumoOrigem] = useState<"incluso" | "pool" | "nenhum" | null>(null);
   const [erroForm, setErroForm] = useState<string | null>(null);
   const [sugerindo, setSugerindo] = useState(false);
   const [gerandoOutra, setGerandoOutra] = useState(false);
@@ -1749,9 +1758,6 @@ function ModoIA({
     }
   }
 
-  // Confirmação
-  const [frase, setFrase] = useState("");
-
   // Resultado / escolha — pre-populado quando regerarDe fornecido
   const [resultado, setResultado] = useState<CapaGeradaResult | null>(regerarDe ?? null);
   const [escolhida, setEscolhida] = useState<string | null>(null);
@@ -1803,31 +1809,26 @@ function ModoIA({
     }
   }
 
-  async function handleConfirmar() {
-    if (atmosfera.length === 0) {
-      setErroForm("Escolha pelo menos 1 atmosfera antes de continuar.");
-      return;
-    }
-    setErroForm(null);
-    setFrase("");
-    setFase("confirmando");
+  // Refresh de saldo (imagens + créditos) — chamado no mount e após compras.
+  // Usa o GET leve criado em B2-05i M5a para não gastar rodada de briefing só
+  // para saber quantas restam.
+  const refreshSaldoImagens = useCallback(async () => {
     try {
-      const r = await fetch("/api/agentes/capa-briefing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao: "confirmar", project_id: projectId, briefing: buildBriefing(), alvo: alvoEfetivo }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Erro na confirmação");
-      setFrase(data.frase_confirmacao);
-      setSaldoImagens(data.saldo ?? null);
-      setConsumoOrigem((data.consumo?.origem as "incluso" | "pool" | "nenhum" | undefined) ?? null);
-      if (data.creditos_saldo !== undefined && data.creditos_saldo !== null) setSaldo(data.creditos_saldo);
-    } catch (e) {
-      setErroForm(e instanceof Error ? e.message : "Erro na confirmação. Tente novamente.");
-      setFase("briefing");
+      const r = await fetch(`/api/projects/${projectId}/capa/saldo`);
+      if (!r.ok) return;
+      const data = await r.json() as {
+        saldo?: SaldoImagensCliente;
+        creditos_saldo?: number | null;
+      };
+      if (data.saldo) setSaldoImagens(data.saldo);
+      if (data.creditos_saldo !== undefined && data.creditos_saldo !== null) {
+        setSaldo(data.creditos_saldo);
+      }
+    } catch {
+      // best-effort — se falhar, o botão cai no rótulo estático
     }
-  }
+  }, [projectId]);
+  useEffect(() => { void refreshSaldoImagens(); }, [refreshSaldoImagens]);
 
   async function chamarGerarModo(manterOpcoes: boolean) {
     const descFinal = isRegen && deltaTexto.trim()
@@ -1857,6 +1858,13 @@ function ModoIA({
   }
 
   async function handleGerar() {
+    // Gate de validação do briefing — atmosfera é obrigatória. Antes o gate
+    // vivia no handleConfirmar (removido em B2-05i M5c).
+    if (atmosfera.length === 0) {
+      setErroForm("Escolha pelo menos 1 atmosfera antes de continuar.");
+      return;
+    }
+    setErroForm(null);
     setFase("gerando");
     setError(null);
     try {
@@ -2251,74 +2259,30 @@ function ModoIA({
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{erroForm}</div>
           )}
 
+          {/* B2-05i M5e: bloco esgotado antes do botão. Aparece se o saldo do
+              alvo (frente/unica) já foi consumido — impede clique cego no
+              botão e oferece +1/+4 com créditos. */}
+          {saldoEsgotado(alvoEfetivo, saldoImagens) && (
+            <ComprarImagensBloco
+              projectId={projectId}
+              saldoCreditos={saldo}
+              onComprado={(novoSaldo, novosCred) => {
+                setSaldoImagens(novoSaldo);
+                if (novosCred !== null) setSaldo(novosCred);
+              }}
+            />
+          )}
+
           <div className="space-y-2">
-            {saldo !== null && (
-              <p className="text-xs text-zinc-400 text-center">
-                Você tem {saldo} crédito{saldo !== 1 ? "s" : ""}
-              </p>
-            )}
             <button
-              onClick={handleConfirmar}
-              disabled={atmosfera.length === 0}
+              onClick={() => void handleGerar()}
+              disabled={atmosfera.length === 0 || saldoEsgotado(alvoEfetivo, saldoImagens)}
               className="w-full py-4 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                 hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
-              Gerar capa com IA →
+              {rotuloConsumo(alvoEfetivo, saldoImagens) ?? "Gerar capa com IA →"}
             </button>
           </div>
         </>
-      )}
-
-      {/* ── CONFIRMANDO ─────────────────────────────────────────────────────── */}
-      {fase === "confirmando" && (
-        <div className="space-y-4">
-          {frase ? (
-            <div className="bg-white rounded-2xl border border-zinc-100 p-6 space-y-4">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Confirmação</p>
-              <p className="text-sm text-zinc-700 leading-relaxed">{frase}</p>
-              {saldoImagens && (
-                <div className="flex flex-col gap-1">
-                  <SaldoBadge saldo={saldoImagens} alvo={alvoEfetivo} />
-                  <p className="text-[11px] text-zinc-500">
-                    {consumoOrigem === "incluso" && (alvoEfetivo === "unica"
-                      ? "Esta imagem única consome 1 do incluso de frente e 1 do incluso de verso."
-                      : "Esta imagem sai do pacote incluso no seu plano.")}
-                    {consumoOrigem === "pool" && "Esta imagem sai do pacote extra que você comprou."}
-                    {consumoOrigem === "nenhum" && "Saldo esgotado — compre imagens extras abaixo para continuar."}
-                  </p>
-                </div>
-              )}
-              {consumoOrigem === "nenhum" && (
-                <ComprarImagensBloco
-                  projectId={projectId}
-                  saldoCreditos={saldo}
-                  onComprado={(novoSaldo, novosCred) => {
-                    setSaldoImagens(novoSaldo);
-                    if (novosCred !== null) setSaldo(novosCred);
-                    setConsumoOrigem(novoSaldo.restante_pool > 0 ? "pool" : "nenhum");
-                  }}
-                />
-              )}
-              <div className="flex gap-3">
-                <button onClick={() => setFase("briefing")}
-                  className="px-5 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm
-                    hover:border-zinc-300 transition-colors">
-                  Ajustar
-                </button>
-                <button onClick={handleGerar}
-                  disabled={consumoOrigem === "nenhum"}
-                  className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
-                    hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
-                  Gerar capa →
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex items-center
-              justify-center h-32">
-              <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-            </div>
-          )}
-        </div>
       )}
 
       {/* ── GERANDO ─────────────────────────────────────────────────────────── */}
