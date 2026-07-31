@@ -23,17 +23,52 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 
 // Guardrails técnicos INEGOCIÁVEIS, anexados por código a TODO prompt de
 // imagem — nunca dependem de o agente lembrar (azeite-01, 24/jul).
-const SUFIXO_POR_ALVO: Record<AlvoCapa, string> = {
-  frente: "Single front cover artwork only, portrait composition.",
-  verso:  "Single back cover artwork only, portrait composition, meant to face the front cover on the opposite side of the same book.",
-  unica:  "One continuous landscape artwork spanning back cover + spine + front cover of the same book, no visible seams between regions, no printed spine text, no fold marks. The right third of the composition will become the front cover — keep it visually strong and self-sufficient, with the same story continuing across the other two thirds. The hero/dominant subject must be placed INSIDE the right third of the canvas, facing or moving toward the left (into the composition). No centered composition, no subject in the left half, no vertical seam or band at the center. The artwork must flow ABSOLUTELY CONTINUOUSLY through the horizontal center: no vertical band, no glow seam, no fold line, no lighting or texture change where the spine will be — the center must be indistinguishable from its surroundings.",
+//
+// B2-05k M4 (anti-spine v3): para arte única, REMOVEMOS toda menção às peças
+// da capa (spine/fold/back cover/front cover). Hipótese: nomear a peça no
+// prompt sugere ao modelo desenhá-la; proibir depois de citar cria conflito.
+// Descrevemos apenas geometria e composição — nenhuma peça de livro é
+// nomeada. O terço direito é referido como "right third", não "front cover".
+const POSICAO_EM_INGLES: Record<"topo" | "centro" | "base" | "sem_preferencia", string> = {
+  topo: "top",
+  centro: "center",
+  base: "bottom",
+  sem_preferencia: "",
 };
-const SUFIXO_TECNICO_IMAGEM = (alvo: AlvoCapa) =>
+function sufixoUnica(posicao: "topo" | "centro" | "base" | "sem_preferencia"): string {
+  const zona = POSICAO_EM_INGLES[posicao];
+  const clausulaZona = zona
+    ? ` within the right third keep the ${zona} area calm and low-detail;`
+    : "";
+  return (
+    "One single wide continuous artwork in landscape orientation, filling" +
+    " the entire canvas edge-to-edge. The dominant subject lives INSIDE the" +
+    " right third, facing or moving toward the left;" + clausulaZona +
+    " the left two thirds are a quieter continuation of the same scene." +
+    " The artwork must be ONE uninterrupted field: absolutely no vertical" +
+    " band, seam, glow line, fold, lighting or texture change anywhere" +
+    " across the width — the horizontal center must be indistinguishable" +
+    " from its surroundings. Flat two-dimensional artwork only: no mockup," +
+    " no paper, no shadow, no border, no text."
+  );
+}
+const SUFIXO_POR_ALVO = (
+  alvo: AlvoCapa,
+  posicao: "topo" | "centro" | "base" | "sem_preferencia",
+): string => {
+  if (alvo === "frente") return "Single artwork only, portrait composition.";
+  if (alvo === "verso") return "Single artwork only, portrait composition, meant to pair with the front artwork of the same book.";
+  return sufixoUnica(posicao);
+};
+const SUFIXO_TECNICO_IMAGEM = (
+  alvo: AlvoCapa,
+  posicao: "topo" | "centro" | "base" | "sem_preferencia",
+) =>
   " Flat two-dimensional digital artwork only, filling the entire canvas" +
   " edge-to-edge. This is the artwork itself, NOT a photograph of a" +
   " printed object: no mockup, no paper, no folds, no creases, no drop" +
   " shadow, no white border, no frame, no margins, no background surface." +
-  ` ${SUFIXO_POR_ALVO[alvo]}` +
+  ` ${SUFIXO_POR_ALVO(alvo, posicao)}` +
   " Absolutely no text, no letters, no words, no typography, no numbers.";
 
 export const ESTILO_DESC: Record<string, string> = {
@@ -119,30 +154,29 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - Incorpore o que o autor pediu para evitar como instruções negativas
   claras no próprio prompt.
 - Se o briefing do verso tiver modo "continuacao", o prompt deve pedir
-  "seamless continuation of the provided front cover artwork onto the back
-  cover of the same book, matching palette, lighting and style".
+  "seamless continuation of the provided front artwork into the paired
+  back artwork of the same book, matching palette, lighting and style".
 - Se o alvo for VERSO com modo "cor", NÃO gere prompt de imagem: esse
   modo não usa IA — o editor apenas preenche a região com a cor
   predominante da frente. Você não é chamado nesse caso.
-- Se o alvo for ARTE ÚNICA, o prompt descreve UMA única composição
-  landscape (proporção larga) contínua cobrindo verso + lombada + frente
-  do MESMO livro, sem costuras visíveis, sem texto de lombada e sem
-  marca de dobra. O terço direito vira a capa frontal e deve funcionar
-  sozinho — foco visual forte + área de respiro do título, com a mesma
-  história continuando para o resto da arte. Nunca descreva três cenas
-  distintas; é sempre UMA cena que atravessa a extensão inteira.
-  Para ARTE ÚNICA, o sujeito/elemento dominante DEVE estar DENTRO do
-  terço direito da tela, orientado ou se movendo em direção à esquerda
-  (para dentro da composição). Dentro do terço direito, mantenha a área
-  correspondente à posição do título (topo/centro/base) visualmente calma
-  e de baixo detalhe para receber o título depois; o volume maior de
-  detalhes vive nos dois terços à esquerda. NUNCA descreva composição
-  centralizada nem sujeito no lado esquerdo.
-  ANTI-FAIXA (obrigatório na ARTE ÚNICA): a arte precisa fluir de forma
-  ABSOLUTAMENTE CONTÍNUA pelo centro horizontal da composição — proíba
-  explicitamente qualquer faixa vertical, veio de luz, costura, linha de
-  dobra ou mudança de iluminação/textura na região onde a lombada cairá;
-  o centro horizontal deve ser indistinguível do entorno.
+- Se o alvo for ARTE ÚNICA (B2-05k M4, anti-faixa v3): o prompt descreve
+  UMA única obra landscape (proporção larga) contínua, edge-to-edge,
+  como um quadro panorâmico. NUNCA nomeie as peças da capa — proibido
+  usar "spine", "lombada", "fold", "dobra", "back cover", "front cover",
+  "capa", "verso" ou "frente" como partes da composição no texto do
+  prompt. Descreva apenas GEOMETRIA e COMPOSIÇÃO: o sujeito/elemento
+  dominante DEVE viver DENTRO do terço direito da tela, orientado ou
+  se movendo em direção à esquerda (para dentro da composição). Dentro
+  do terço direito, mantenha a área correspondente à posição do título
+  (topo/centro/base) visualmente calma e de baixo detalhe; os dois
+  terços à esquerda são uma continuação mais quieta da MESMA cena.
+  NUNCA descreva composição centralizada nem sujeito no lado esquerdo,
+  nunca descreva três cenas distintas.
+  ANTI-FAIXA (obrigatório na ARTE ÚNICA): a arte precisa fluir como UM
+  campo ininterrupto pelo centro horizontal — proíba explicitamente
+  qualquer faixa vertical, veio de luz, costura, dobra ou mudança de
+  iluminação/textura em QUALQUER lugar ao longo da largura. O centro
+  horizontal deve ser indistinguível do entorno.
 - Nunca descreva a capa como objeto físico, impresso, fotografado, em
   mockup ou apresentação — o prompt descreve somente a arte em si.
 
@@ -163,9 +197,9 @@ FERRAMENTAS: responda SEMPRE e SOMENTE chamando a ferramenta indicada.
   texto; estilo de arte (minimalista/aquarela/etc.); qualquer instrução
   técnica de composição ou dimensão. Essas escolhas pertencem aos campos
   estruturados do briefing e são aplicadas depois.
-- Para "confirmar": produza (1) prompt_imagem em inglês descrevendo the
-  flat artwork that will be used as the front cover background of a book,
-  seguindo as regras acima, denso e específico; (2) frase_confirmacao em
+- Para "confirmar": produza (1) prompt_imagem em inglês descrevendo a
+  arte plana que servirá de fundo para a capa do livro, seguindo as
+  regras acima, denso e específico; (2) frase_confirmacao em
   português, 1 frase natural resumindo ao autor o que será gerado (estilo,
   atmosfera, cor, cena principal, área livre do título quando houver);
   (3) negative_hints, lista curta em inglês do que evitar (inclui os
@@ -341,7 +375,7 @@ export async function processarBriefingCapa(args: {
   const b = args.briefing;
   const alvoLabel =
     args.alvo === "unica"
-      ? "ARTE ÚNICA (landscape: verso + lombada + frente)"
+      ? "ARTE ÚNICA (landscape panorâmico contínuo — NÃO nomear peças de capa)"
       : args.alvo === "verso" && b.verso
         ? `VERSO (modo: ${b.verso.modo})`
         : "FRENTE";
@@ -441,30 +475,40 @@ export async function processarBriefingCapa(args: {
     throw new Error("Resposta incompleta da IA. Tente novamente.");
   }
 
-  const promptFinal = `${promptImagem}${SUFIXO_TECNICO_IMAGEM(args.alvo)}`;
+  const promptFinal = `${promptImagem}${SUFIXO_TECNICO_IMAGEM(args.alvo, b.posicao_titulo)}`;
   return { prompt_imagem: promptFinal, frase_confirmacao: frase, negative_hints: hints };
 }
 
 /**
- * Saldo de imagens de capa IA por projeto (B2-05b).
- * Cada geração produz 1 imagem e consome do saldo do alvo. O saldo INCLUSO
- * vem do plano (SALDO_IMAGENS_CAPA). Esgotado o incluso, cai no pool
- * COMPRADO com créditos (10 pela unidade, 30 pelo pacote de 4). Arte
- * ÚNICA consome 1 de FRENTE E 1 de VERSO por imagem.
+ * Saldo de imagens de capa IA por projeto (B2-05b, regra canônica B2-05k).
+ *
+ * REGRA CANÔNICA DO CONSUMO (substitui a fórmula de excedente do 05b):
+ * - Cada geração bem-sucedida consome de UMA origem decidida ANTES de gerar
+ *   e gravada na rodada como `metadata.origem_consumo`: "incluso" | "pool".
+ * - INCLUSO: frente/verso consomem 1 da própria partição; ÚNICA exige as DUAS
+ *   partições com sobra e consome 1 de CADA (2 no total — é a capa inteira).
+ * - POOL (comprado): TODA geração consome exatamente 1 — frente, verso OU
+ *   ÚNICA (decisão de negócio: custo real é 1 imagem = 10 créditos). Única
+ *   que não cabe integralmente no incluso vai INTEIRA para o pool (1), sem
+ *   tocar nas partições.
+ * - CONTAGEM DO POOL: `pool = imagens_compradas − rodadas com origem="pool"`.
+ *   Nada de fórmula derivada por partição — a origem gravada é a verdade.
  *
  * Ledger: usage_logs — nada de tabela nova.
- *  - consumo: agent_name="gerar-capa", metadata.alvo, metadata.opcoes_geradas
+ *  - consumo: agent_name="gerar-capa", metadata.alvo, metadata.origem_consumo,
+ *             metadata.opcoes_geradas
  *  - pool:    agent_name="creditos",   metadata.tipo="compra_imagens",
  *             metadata.imagens (quantidade adicionada ao pool)
+ * Retrocompat: rodadas sem `origem_consumo` = "incluso" (todas as anteriores
+ *   ao 05k eram inclusas — o pool era derivado pela fórmula agora extinta).
  * Retrocompat: logs pré-B2-05 (sem metadata.alvo) contam como "frente".
- * Retrocompat: rodadas antigas de 4 imagens somam 4 no consumo — aceitável
- * (projetos de teste).
  * Fail-closed: qualquer erro de leitura → tratamos como esgotado.
  */
 export interface SaldoImagensCapa {
   incluso: { frente: number; verso: number };
   consumido: { frente: number; verso: number; unica: number };
   poolComprado: number;
+  poolConsumido: number;
   restanteFrente: number;
   restanteVerso: number;
   restantePool: number;
@@ -495,8 +539,14 @@ export async function saldoImagensCapa(
   const planoNorm: Plano = isPlano(plano) ? plano : "freemium";
   const incluso = SALDO_IMAGENS_CAPA[planoNorm];
 
+  // Consumo INCLUSO por partição (regra canônica 05k): frente/verso incluso
+  // debitam a própria partição; unica incluso debita 1 de CADA. Rodadas com
+  // origem="pool" NÃO tocam nas partições, vão inteiras para o poolConsumido.
+  const inclusoConsumido = { frente: 0, verso: 0 };
+  // Consumo por alvo (para telemetria/depuração — inclui pool e incluso).
   const consumido = { frente: 0, verso: 0, unica: 0 };
   let poolComprado = 0;
+  let poolConsumido = 0;
   let failClosed = false;
 
   const { data, error } = await admin
@@ -515,9 +565,30 @@ export async function saldoImagensCapa(
         const alvoRaw = typeof meta.alvo === "string" ? meta.alvo : "frente";
         const opcoes = num(meta.opcoes_geradas, 0);
         if (opcoes <= 0) continue;
+        // Retrocompat: rodadas pré-05k sem `origem_consumo` = "incluso".
+        // Pré-05k não havia rodada pool — o pool era derivado por fórmula
+        // (agora extinta), então tudo era incluso na prática.
+        const origem: "incluso" | "pool" =
+          meta.origem_consumo === "pool" ? "pool" : "incluso";
+
         if (alvoRaw === "verso") consumido.verso += opcoes;
         else if (alvoRaw === "unica") consumido.unica += opcoes;
         else consumido.frente += opcoes;
+
+        if (origem === "pool") {
+          // Cada rodada pool consome exatamente 1 (frente, verso OU única).
+          poolConsumido += opcoes;
+        } else {
+          // Incluso: única debita ambas as partições; frente/verso a própria.
+          if (alvoRaw === "unica") {
+            inclusoConsumido.frente += opcoes;
+            inclusoConsumido.verso += opcoes;
+          } else if (alvoRaw === "verso") {
+            inclusoConsumido.verso += opcoes;
+          } else {
+            inclusoConsumido.frente += opcoes;
+          }
+        }
       } else if (row.agent_name === "creditos") {
         if (meta.tipo === "compra_imagens" && meta.ok === true) {
           poolComprado += num(meta.imagens, 0);
@@ -526,40 +597,38 @@ export async function saldoImagensCapa(
     }
   }
 
-  // Consumo efetivo por lado inclui a arte única (que ocupa ambos).
-  const consumoEfetivoFrente = consumido.frente + consumido.unica;
-  const consumoEfetivoVerso = consumido.verso + consumido.unica;
-  const excedenteFrente = Math.max(0, consumoEfetivoFrente - incluso.frente);
-  const excedenteVerso = Math.max(0, consumoEfetivoVerso - incluso.verso);
-  const excedenteTotal = excedenteFrente + excedenteVerso;
-
-  const restanteFrente = failClosed ? 0 : Math.max(0, incluso.frente - consumoEfetivoFrente);
-  const restanteVerso = failClosed ? 0 : Math.max(0, incluso.verso - consumoEfetivoVerso);
-  const restantePool = failClosed ? 0 : Math.max(0, poolComprado - excedenteTotal);
-
-  function disponivel(alvo: AlvoCapa): boolean {
-    if (failClosed) return false;
-    if (alvo === "frente") return restanteFrente > 0 || restantePool > 0;
-    if (alvo === "verso") return restanteVerso > 0 || restantePool > 0;
-    // única: precisa cobrir ambos os lados. Contamos quantos "slots" faltam:
-    // cada lado precisa de 1; se o incluso não cobre, o pool cobre.
-    const faltamFrente = restanteFrente > 0 ? 0 : 1;
-    const faltamVerso = restanteVerso > 0 ? 0 : 1;
-    return restantePool >= faltamFrente + faltamVerso;
-  }
+  const restanteFrente = failClosed ? 0 : Math.max(0, incluso.frente - inclusoConsumido.frente);
+  const restanteVerso = failClosed ? 0 : Math.max(0, incluso.verso - inclusoConsumido.verso);
+  const restantePool = failClosed ? 0 : Math.max(0, poolComprado - poolConsumido);
 
   function origemProximoConsumo(alvo: AlvoCapa): "incluso" | "pool" | "nenhum" {
-    if (!disponivel(alvo)) return "nenhum";
-    if (alvo === "frente") return restanteFrente > 0 ? "incluso" : "pool";
-    if (alvo === "verso") return restanteVerso > 0 ? "incluso" : "pool";
-    // única: se qualquer lado precisar do pool, marcamos "pool"
-    return restanteFrente > 0 && restanteVerso > 0 ? "incluso" : "pool";
+    if (failClosed) return "nenhum";
+    if (alvo === "frente") {
+      if (restanteFrente > 0) return "incluso";
+      if (restantePool > 0) return "pool";
+      return "nenhum";
+    }
+    if (alvo === "verso") {
+      if (restanteVerso > 0) return "incluso";
+      if (restantePool > 0) return "pool";
+      return "nenhum";
+    }
+    // Única: exige AMBAS as partições com sobra para "incluso"; senão pool
+    // (1 crédito de imagem cobre a única inteira). Sem pool → nenhum.
+    if (restanteFrente > 0 && restanteVerso > 0) return "incluso";
+    if (restantePool > 0) return "pool";
+    return "nenhum";
+  }
+
+  function disponivel(alvo: AlvoCapa): boolean {
+    return origemProximoConsumo(alvo) !== "nenhum";
   }
 
   return {
     incluso,
     consumido,
     poolComprado,
+    poolConsumido,
     restanteFrente,
     restanteVerso,
     restantePool,

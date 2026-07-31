@@ -11,8 +11,8 @@ import { saldoImagensCapa } from "@/lib/capa-briefing";
 // ─── POST /api/projects/[id]/capa/comprar-imagens ────────────────────────────
 // Compra pool de imagens de capa IA (B2-05b). Débito de créditos → pool
 // gravado em usage_logs como agent_name="creditos", metadata.tipo=
-// "compra_imagens", metadata.imagens=N. saldoImagensCapa lê o pool
-// somando essa métrica menos o excedente já consumido.
+// "compra_imagens", metadata.imagens=N. saldoImagensCapa (regra canônica
+// 05k) lê o pool somando essa métrica menos rodadas com origem="pool".
 
 const bodySchema = z.object({
   pacote: z.enum(["unitario", "quadruplo"]),

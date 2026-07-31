@@ -220,17 +220,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Saldo de imagens server-side (B2-05b): plano-incluso + pool comprado.
+  // Saldo de imagens server-side (B2-05b, regra canônica 05k).
   // Nenhum débito de créditos aqui — compra de pool é rota própria
-  // (/api/projects/[id]/capa/comprar-imagens). Cada geração consome 1 do
-  // alvo; arte única consome 1 de frente E 1 de verso.
+  // (/api/projects/[id]/capa/comprar-imagens). Cada rodada consome de UMA
+  // origem (incluso | pool) computada AGORA e gravada no metadata do log.
   // Fail-closed no erro de leitura (dentro de saldoImagensCapa).
   const saldoAntes = await saldoImagensCapa(
     storageClient,
     project_id,
     (project as { plano?: unknown }).plano,
   );
-  if (!saldoAntes.disponivel(alvo)) {
+  const origemConsumo = saldoAntes.origemProximoConsumo(alvo);
+  if (origemConsumo === "nenhum") {
     return NextResponse.json(
       {
         error: "Saldo de imagens de capa esgotado. Compre imagens extras para continuar.",
@@ -586,10 +587,11 @@ export async function POST(req: NextRequest) {
 
   await lockFormato(project_id);
 
-  // Ledger de consumo (B2-05b). Só chega aqui em sucesso — falhas não
-  // debitam saldo. `saldoImagensCapa` no próximo request soma
-  // metadata.opcoes_geradas por metadata.alvo. Retrocompat: metadata.alvo
-  // ausente = "frente".
+  // Ledger de consumo (B2-05b + regra canônica 05k). Só chega aqui em
+  // sucesso — falhas não debitam saldo. `saldoImagensCapa` no próximo
+  // request lê `origem_consumo` para contar pool vs incluso (fonte única
+  // de verdade). Retrocompat: metadata.alvo ausente = "frente";
+  // metadata.origem_consumo ausente = "incluso" (rodadas pré-05k).
   try {
     await storageClient.from("usage_logs").insert({
       agent_name: "gerar-capa",
@@ -597,6 +599,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       metadata: {
         alvo,
+        origem_consumo: origemConsumo,
         opcoes_geradas: opcoes.length,
         regeneracao: ehRegeneracao,
         manter_opcoes: body.manter_opcoes,
@@ -622,6 +625,13 @@ export async function POST(req: NextRequest) {
       restante_frente: saldoDepois.restanteFrente,
       restante_verso: saldoDepois.restanteVerso,
       restante_pool: saldoDepois.restantePool,
+      // B2-05k: cliente rotula o próximo consumo pela origem — sem
+      // reinventar a fórmula. Mesmo shape do GET /capa/saldo (M5a).
+      origem_proximo: {
+        frente: saldoDepois.origemProximoConsumo("frente"),
+        verso: saldoDepois.origemProximoConsumo("verso"),
+        unica: saldoDepois.origemProximoConsumo("unica"),
+      },
     },
     creditos_saldo: saldoUsuario,
   };

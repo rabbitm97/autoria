@@ -75,12 +75,21 @@ function calcLombadaMm(paginas: number) {
 // /agentes/gerar-capa, /agentes/capa-briefing, /projects/:id/capa/comprar-imagens.
 
 type AlvoImagem = "frente" | "verso" | "unica";
+type OrigemConsumo = "incluso" | "pool" | "nenhum";
 
 interface SaldoImagensCliente {
   incluso: { frente: number; verso: number };
   restante_frente: number;
   restante_verso: number;
   restante_pool: number;
+  // B2-05k M2: origem canônica do PRÓXIMO consumo por alvo, calculada pelo
+  // servidor a partir de saldoImagensCapa. Fonte única para rótulos e gates.
+  // Opcional para retrocompat com respostas antigas (fallback: cálculo local).
+  origem_proximo?: {
+    frente: OrigemConsumo;
+    verso: OrigemConsumo;
+    unica: OrigemConsumo;
+  };
 }
 
 function restanteDoAlvo(saldo: SaldoImagensCliente, alvo: AlvoImagem): number {
@@ -205,57 +214,65 @@ function ComprarImagensBloco({
   );
 }
 
-// ─── Rótulo dinâmico de consumo no botão de gerar (B2-05i M5d) ───────────────
-// Mostra ao autor, ANTES do clique, quanto vai custar a próxima geração e
-// quantas restam. Precondição: saldo já carregado (GET /capa/saldo no mount).
-// Retorna `null` enquanto saldo carrega — o caller usa label estático de
-// fallback nesse caso.
+// ─── Rótulo dinâmico de consumo no botão de gerar (B2-05k M2) ────────────────
+// Regra canônica: cada geração consome de UMA origem — incluso ou pool. O
+// servidor decide em `origem_proximo` (GET /capa/saldo e POST gerar-capa). O
+// cliente NÃO deriva sua própria fórmula: só formata rótulos a partir dessa
+// origem. Retrocompat: se `origem_proximo` não veio (saldo antigo em cache),
+// caímos num fallback local equivalente à regra do servidor.
+// Retorna `null` enquanto saldo carrega — o caller usa label estático de fallback.
+function origemProximoLocal(
+  alvo: AlvoImagem,
+  saldo: SaldoImagensCliente,
+): OrigemConsumo {
+  if (saldo.origem_proximo) return saldo.origem_proximo[alvo];
+  if (alvo === "unica") {
+    if (saldo.restante_frente > 0 && saldo.restante_verso > 0) return "incluso";
+    if (saldo.restante_pool > 0) return "pool";
+    return "nenhum";
+  }
+  const restante = alvo === "frente" ? saldo.restante_frente : saldo.restante_verso;
+  if (restante > 0) return "incluso";
+  if (saldo.restante_pool > 0) return "pool";
+  return "nenhum";
+}
+
 function rotuloConsumo(
   alvo: AlvoImagem,
   saldo: SaldoImagensCliente | null,
 ): string | null {
   if (!saldo) return null;
+  const origem = origemProximoLocal(alvo, saldo);
+  if (origem === "nenhum") return "Sem imagens — compre para continuar";
+  if (origem === "pool") {
+    // Custo real de uma imagem gerada = 1 (independe do alvo).
+    const acao = alvo === "unica" ? "Gerar arte única" : "Gerar capa";
+    return `${acao} — usa 1 do pacote extra (restam ${saldo.restante_pool})`;
+  }
+  // incluso
   if (alvo === "unica") {
-    // Arte única consome 1 de frente + 1 de verso por imagem. Mostramos
-    // ambos os saldos para não confundir o autor Pro/completa.
     const rf = saldo.restante_frente;
     const rv = saldo.restante_verso;
-    const pool = saldo.restante_pool;
-    if (rf > 0 && rv > 0) {
-      return `Gerar arte única — usa 1 de frente + 1 de verso (restam ${rf}/${saldo.incluso.frente} de frente, ${rv}/${saldo.incluso.verso} de verso)`;
-    }
-    // Precisa cobrir o(s) lado(s) faltante(s) com pool.
-    const faltamPool = (rf > 0 ? 0 : 1) + (rv > 0 ? 0 : 1);
-    if (pool >= faltamPool && faltamPool > 0) {
-      return `Gerar arte única — usa ${faltamPool} do pacote extra (restam ${pool})`;
-    }
-    return "Sem imagens — compre para continuar";
+    return `Gerar arte única — usa 1 de frente + 1 de verso (restam ${rf}/${saldo.incluso.frente} de frente, ${rv}/${saldo.incluso.verso} de verso)`;
   }
   const restante = restanteDoAlvo(saldo, alvo);
   const total = alvo === "verso" ? saldo.incluso.verso : saldo.incluso.frente;
-  if (restante > 0) {
-    return `Gerar capa — usa 1 imagem (restam ${restante} de ${total})`;
-  }
-  if (saldo.restante_pool > 0) {
-    return `Gerar capa — usa 1 do pacote extra (restam ${saldo.restante_pool})`;
-  }
-  return "Sem imagens — compre para continuar";
+  return `Gerar capa — usa 1 imagem (restam ${restante} de ${total})`;
 }
 
 // Saldo esgotado para o alvo? Usado para gate do botão + render do bloco M5e.
+// B2-05k M2: alinhado à origem canônica — esgotado ⇔ origem === "nenhum".
 function saldoEsgotado(alvo: AlvoImagem, saldo: SaldoImagensCliente | null): boolean {
   if (!saldo) return false;
-  if (alvo === "unica") {
-    const faltamPool = (saldo.restante_frente > 0 ? 0 : 1) + (saldo.restante_verso > 0 ? 0 : 1);
-    return saldo.restante_pool < faltamPool;
-  }
-  return restanteDoAlvo(saldo, alvo) <= 0 && saldo.restante_pool <= 0;
+  return origemProximoLocal(alvo, saldo) === "nenhum";
 }
 
 function SaldoBadge({ saldo, alvo }: { saldo: SaldoImagensCliente; alvo: AlvoImagem }) {
-  const rest = restanteDoAlvo(saldo, alvo);
-  const pool = saldo.restante_pool;
-  if (rest <= 0 && pool <= 0) {
+  // B2-05k M2: badge reflete a origem canônica do próximo consumo. Sempre
+  // mostramos o que sobra em CADA compartimento, mas o texto principal
+  // pontua a origem que vai ser usada na próxima geração.
+  const origem = origemProximoLocal(alvo, saldo);
+  if (origem === "nenhum") {
     return (
       <span className="inline-flex items-center rounded-full bg-red-50 text-red-700 text-[11px] font-medium px-2 py-0.5">
         Sem imagens de {labelAlvo(alvo)} — compre para continuar
@@ -263,8 +280,14 @@ function SaldoBadge({ saldo, alvo }: { saldo: SaldoImagensCliente; alvo: AlvoIma
     );
   }
   const parts: string[] = [];
-  if (rest > 0) parts.push(`${rest} de ${labelAlvo(alvo)}`);
-  if (pool > 0) parts.push(`${pool} do pacote extra`);
+  if (alvo === "unica") {
+    if (saldo.restante_frente > 0) parts.push(`${saldo.restante_frente} de frente`);
+    if (saldo.restante_verso > 0) parts.push(`${saldo.restante_verso} de verso`);
+  } else {
+    const rest = restanteDoAlvo(saldo, alvo);
+    if (rest > 0) parts.push(`${rest} de ${labelAlvo(alvo)}`);
+  }
+  if (saldo.restante_pool > 0) parts.push(`${saldo.restante_pool} do pacote extra`);
   return (
     <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium px-2 py-0.5">
       Restam {parts.join(" + ")}
@@ -1005,8 +1028,15 @@ function IaEscolhaGrid({
   cobertura?: "frente_verso" | "unica";
 }) {
   const opcoesUrls = new Set(opcoes.map((o) => o.url));
-  const anteriores = galeria.filter((g) => !opcoesUrls.has(g.url));
   const isUnica = cobertura === "unica";
+  // B2-05k M3: "Gerações anteriores" sob a rodada atual deve mostrar apenas
+  // itens da MESMA cobertura. Sob única, só tipo="unica"; sob frente_verso,
+  // excluímos únicas (itens sem tipo — legado — contam como frente).
+  const anteriores = galeria.filter((g) => {
+    if (opcoesUrls.has(g.url)) return false;
+    const tipo = g.tipo ?? "frente";
+    return isUnica ? tipo === "unica" : tipo !== "unica";
+  });
   const aspectClass = isUnica ? "aspect-[3/2]" : "aspect-[2/3]";
   const fitClass = isUnica ? "object-contain" : "object-cover";
   const bgClass = isUnica ? "bg-zinc-100" : "";
@@ -1482,7 +1512,8 @@ function PainelVersoIa({
         const opcoesList = resultado.verso.opcoes;
         const atual = opcoesList[opcoesList.length - 1];
         const anteriores = opcoesList.slice(0, -1);
-        const semSaldo = !saldo || (restanteDoAlvo(saldo, "verso") <= 0 && saldo.restante_pool <= 0);
+        // B2-05k M2: mesma origem canônica do gate do botão de gerar.
+        const semSaldo = saldoEsgotado("verso", saldo);
         return (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -2044,7 +2075,16 @@ function ModoIA({
                   checked={cobertura === "unica"}
                   onChange={() => setCobertura("unica")}
                   label="Arte única panorâmica"
-                  sub="Cada imagem única consome 1 do pacote de frente e 1 do de verso."
+                  sub={
+                    origemProximoLocal("unica", saldoImagens ?? {
+                      incluso: { frente: 0, verso: 0 },
+                      restante_frente: 0,
+                      restante_verso: 0,
+                      restante_pool: 0,
+                    }) === "pool"
+                      ? "Cada imagem única consome 1 do pacote extra."
+                      : "Cada imagem única consome 1 do pacote de frente e 1 do de verso."
+                  }
                 />
               </div>
             </div>
@@ -2299,9 +2339,8 @@ function ModoIA({
         const opcoesList = resultado.opcoes;
         const atual = opcoesList[opcoesList.length - 1];
         const anteriores = opcoesList.slice(0, -1);
-        const semSaldo = !saldoImagens || (
-          restanteDoAlvo(saldoImagens, alvoEfetivo) <= 0 && saldoImagens.restante_pool <= 0
-        );
+        // B2-05k M2: mesma fonte canônica do botão de gerar (origem_proximo).
+        const semSaldo = saldoEsgotado(alvoEfetivo, saldoImagens);
         // Arte única mostra em landscape; frente em retrato.
         const aspectClass = alvoEfetivo === "unica" ? "aspect-[3/2]" : "aspect-[2/3]";
         return (
