@@ -26,7 +26,7 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 const SUFIXO_POR_ALVO: Record<AlvoCapa, string> = {
   frente: "Single front cover artwork only, portrait composition.",
   verso:  "Single back cover artwork only, portrait composition, meant to face the front cover on the opposite side of the same book.",
-  unica:  "One continuous landscape artwork spanning back cover + spine + front cover of the same book, no visible seams between regions, no printed spine text, no fold marks. The right third of the composition will become the front cover — keep it visually strong and self-sufficient, with the same story continuing across the other two thirds.",
+  unica:  "One continuous landscape artwork spanning back cover + spine + front cover of the same book, no visible seams between regions, no printed spine text, no fold marks. The right third of the composition will become the front cover — keep it visually strong and self-sufficient, with the same story continuing across the other two thirds. The hero/dominant subject must be placed INSIDE the right third of the canvas, facing or moving toward the left (into the composition). No centered composition, no subject in the left half.",
 };
 const SUFIXO_TECNICO_IMAGEM = (alvo: AlvoCapa) =>
   " Flat two-dimensional digital artwork only, filling the entire canvas" +
@@ -131,6 +131,13 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   sozinho — foco visual forte + área de respiro do título, com a mesma
   história continuando para o resto da arte. Nunca descreva três cenas
   distintas; é sempre UMA cena que atravessa a extensão inteira.
+  Para ARTE ÚNICA, o sujeito/elemento dominante DEVE estar DENTRO do
+  terço direito da tela, orientado ou se movendo em direção à esquerda
+  (para dentro da composição). Dentro do terço direito, mantenha a área
+  correspondente à posição do título (topo/centro/base) visualmente calma
+  e de baixo detalhe para receber o título depois; o volume maior de
+  detalhes vive nos dois terços à esquerda. NUNCA descreva composição
+  centralizada nem sujeito no lado esquerdo.
 - Nunca descreva a capa como objeto físico, impresso, fotografado, em
   mockup ou apresentação — o prompt descreve somente a arte em si.
 

@@ -97,6 +97,27 @@ function labelAlvo(alvo: AlvoImagem): string {
 }
 
 /**
+ * Guia visual do terço direito de uma arte única panorâmica. O terço direito
+ * é o que vira a capa frontal no editor — mostrar essa fronteira ajuda o
+ * autor a julgar a composição antes de escolher. SÓ preview: nunca é
+ * exportado, persistido ou renderizado no editor.
+ */
+function GuiaFrenteDireita({ compacto = false }: { compacto?: boolean } = {}) {
+  return (
+    <div
+      className="pointer-events-none absolute inset-y-0 right-0 w-1/3 border-l-2 border-dashed border-white/80"
+      aria-hidden="true"
+    >
+      {!compacto && (
+        <span className="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">
+          frente
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * Bloco de compra de pacote de imagens extras (B2-05b). Aparece dentro do
  * fluxo quando o saldo do alvo esgota. Duas opções fixas:
  *  - 1 imagem por 10 créditos
@@ -925,22 +946,35 @@ function IaEscolhaGrid({
   urlEscolhida,
   onEscolher,
   escolhendo,
+  cobertura = "frente_verso",
 }: {
   opcoes: OpcaoCapa[];
   galeria: GaleriaCapaItem[];
   urlEscolhida: string | null;
   onEscolher: (url: string, storagePath: string) => Promise<void>;
   escolhendo: string | null;
+  /**
+   * Cobertura da rodada — arte única mostra landscape com guia do terço
+   * direito (a região que vira a capa frontal); frente_verso mostra retrato
+   * clássico. Default cobre grids legados sem essa dimensão.
+   */
+  cobertura?: "frente_verso" | "unica";
 }) {
   const opcoesUrls = new Set(opcoes.map((o) => o.url));
   const anteriores = galeria.filter((g) => !opcoesUrls.has(g.url));
+  const isUnica = cobertura === "unica";
+  const aspectClass = isUnica ? "aspect-[3/2]" : "aspect-[2/3]";
+  const fitClass = isUnica ? "object-contain" : "object-cover";
+  const bgClass = isUnica ? "bg-zinc-100" : "";
+  const opcoesGridCols = isUnica ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-4";
+  const anterioresGridCols = isUnica ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-3 sm:grid-cols-6";
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-zinc-100 p-6">
         <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">
           Escolha uma capa ({opcoes.length} opções desta rodada)
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className={`grid ${opcoesGridCols} gap-3`}>
           {opcoes.map((op, i) => {
             const isEsc = urlEscolhida === op.url;
             const isLoad = escolhendo === op.url;
@@ -949,11 +983,12 @@ function IaEscolhaGrid({
                 key={op.url}
                 disabled={escolhendo !== null}
                 onClick={() => void onEscolher(op.url, op.storage_path)}
-                className={`relative rounded-xl overflow-hidden border-2 transition-all aspect-[2/3]
+                className={`relative rounded-xl overflow-hidden border-2 transition-all ${aspectClass} ${bgClass}
                   ${isEsc ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}
                   ${escolhendo !== null && !isLoad ? "opacity-40" : ""}`}
               >
-                <Image src={op.url} alt={`Opção ${i + 1}`} fill className="object-cover" />
+                <Image src={op.url} alt={`Opção ${i + 1}`} fill className={fitClass} />
+                {isUnica && <GuiaFrenteDireita />}
                 {isEsc && !isLoad && (
                   <div className="absolute inset-0 bg-brand-gold/10 flex items-center justify-center">
                     <span className="bg-brand-gold text-brand-primary text-xs font-bold px-2 py-1 rounded-full">
@@ -978,20 +1013,27 @@ function IaEscolhaGrid({
             Gerações anteriores ({anteriores.length})
           </p>
           <p className="text-xs text-zinc-400 mb-4">Re-escolher uma antiga é grátis.</p>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          <div className={`grid ${anterioresGridCols} gap-2`}>
             {anteriores.map((g, i) => {
               const isEsc = urlEscolhida === g.url;
               const isLoad = escolhendo === g.url;
+              // Item legado sem tipo conta como frente — desenha em retrato
+              // pra não distorcer artes antigas quando a rodada atual é única.
+              const itemUnica = g.tipo === "unica";
+              const itemAspect = itemUnica ? "aspect-[3/2]" : "aspect-[2/3]";
+              const itemFit = itemUnica ? "object-contain" : "object-cover";
+              const itemBg = itemUnica ? "bg-zinc-100" : "";
               return (
                 <button
                   key={g.storage_path}
                   disabled={escolhendo !== null}
                   onClick={() => void onEscolher(g.url, g.storage_path)}
-                  className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-[2/3]
+                  className={`relative rounded-lg overflow-hidden border-2 transition-all ${itemAspect} ${itemBg}
                     ${isEsc ? "border-brand-gold" : "border-zinc-200 hover:border-zinc-300"}
                     ${escolhendo !== null && !isLoad ? "opacity-40" : ""}`}
                 >
-                  <Image src={g.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
+                  <Image src={g.url} alt={`Anterior ${i + 1}`} fill className={itemFit} />
+                  {itemUnica && <GuiaFrenteDireita compacto />}
                   {isLoad && (
                     <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
                       <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
@@ -2308,8 +2350,14 @@ function ModoIA({
                 {saldoImagens && <SaldoBadge saldo={saldoImagens} alvo={alvoEfetivo} />}
               </div>
               {atual && (
-                <div className={`relative rounded-xl overflow-hidden border-2 border-brand-gold shadow-sm mx-auto ${aspectClass} ${alvoEfetivo === "unica" ? "w-full max-w-2xl" : "max-w-sm"}`}>
-                  <Image src={atual.url} alt="Capa atual" fill className="object-cover" />
+                <div className={`relative rounded-xl overflow-hidden border-2 border-brand-gold shadow-sm mx-auto ${aspectClass} ${alvoEfetivo === "unica" ? "w-full max-w-2xl bg-zinc-100" : "max-w-sm"}`}>
+                  <Image
+                    src={atual.url}
+                    alt="Capa atual"
+                    fill
+                    className={alvoEfetivo === "unica" ? "object-contain" : "object-cover"}
+                  />
+                  {alvoEfetivo === "unica" && <GuiaFrenteDireita />}
                   {gerandoOutra && (
                     <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
                       <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
@@ -2326,9 +2374,16 @@ function ModoIA({
                         key={op.url}
                         onClick={() => setEscolhida(op.url)}
                         className={`relative rounded-lg overflow-hidden border-2 transition-all ${aspectClass}
+                          ${alvoEfetivo === "unica" ? "bg-zinc-100" : ""}
                           ${escolhida === op.url ? "border-brand-gold shadow-md" : "border-zinc-200 hover:border-zinc-300"}`}
                       >
-                        <Image src={op.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
+                        <Image
+                          src={op.url}
+                          alt={`Anterior ${i + 1}`}
+                          fill
+                          className={alvoEfetivo === "unica" ? "object-contain" : "object-cover"}
+                        />
+                        {alvoEfetivo === "unica" && <GuiaFrenteDireita compacto />}
                       </button>
                     ))}
                   </div>
@@ -3331,6 +3386,7 @@ export default function CapaPage() {
               urlEscolhida={typeof dados.url_escolhida === "string" ? (dados.url_escolhida as string) : null}
               onEscolher={handleEscolherOpcao}
               escolhendo={escolhendoUrl}
+              cobertura={dados.cobertura === "unica" ? "unica" : "frente_verso"}
             />
             <div className="flex flex-col sm:flex-row gap-3">
               <button
