@@ -35,21 +35,29 @@ const POSICAO_EM_INGLES: Record<"topo" | "centro" | "base" | "sem_preferencia", 
   base: "bottom",
   sem_preferencia: "",
 };
+// B2-05m (azeite v4): respiro dito como SUBSTANTIVO ("área calma") virou
+// faixa horizontal chapada em 3/3 gerações pós-05k. Reescrito como
+// QUALIDADE local da composição ("fewer elements, softer contrast,
+// achieved by the composition itself") + proibição explícita de faixas
+// em qualquer eixo. Padrão: instrução espacial como substantivo induz o
+// modelo a desenhar o substantivo; dita como qualidade da composição
+// induz o comportamento.
 function sufixoUnica(posicao: "topo" | "centro" | "base" | "sem_preferencia"): string {
   const zona = POSICAO_EM_INGLES[posicao];
   const clausulaZona = zona
-    ? ` within the right third keep the ${zona} area calm and low-detail;`
+    ? ` Inside the right third, let the ${zona} region be NATURALLY quieter — simply fewer elements and softer contrast THERE, achieved by the composition itself. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.`
     : "";
   return (
     "One single wide continuous artwork in landscape orientation, filling" +
     " the entire canvas edge-to-edge. The dominant subject lives INSIDE the" +
-    " right third, facing or moving toward the left;" + clausulaZona +
-    " the left two thirds are a quieter continuation of the same scene." +
-    " The artwork must be ONE uninterrupted field: absolutely no vertical" +
-    " band, seam, glow line, fold, lighting or texture change anywhere" +
-    " across the width — the horizontal center must be indistinguishable" +
-    " from its surroundings. Flat two-dimensional artwork only: no mockup," +
-    " no paper, no shadow, no border, no text."
+    " right third, facing or moving toward the left." + clausulaZona +
+    " The left two thirds are the same continuous scene extending outward," +
+    " painted with the same treatment. The entire canvas is ONE uniform," +
+    " continuous painting with a single consistent treatment throughout." +
+    " No horizontal or vertical bands, strips or panels of any kind," +
+    " anywhere; no seam, no glow line, no fold, no lighting or texture" +
+    " change across the width or the height. Flat two-dimensional artwork" +
+    " only: no mockup, no paper, no shadow, no border, no text."
   );
 }
 const SUFIXO_POR_ALVO = (
@@ -159,24 +167,30 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - Se o alvo for VERSO com modo "cor", NÃO gere prompt de imagem: esse
   modo não usa IA — o editor apenas preenche a região com a cor
   predominante da frente. Você não é chamado nesse caso.
-- Se o alvo for ARTE ÚNICA (B2-05k M4, anti-faixa v3): o prompt descreve
-  UMA única obra landscape (proporção larga) contínua, edge-to-edge,
-  como um quadro panorâmico. NUNCA nomeie as peças da capa — proibido
-  usar "spine", "lombada", "fold", "dobra", "back cover", "front cover",
+- Se o alvo for ARTE ÚNICA (B2-05m, azeite v4): o prompt descreve UMA
+  única obra landscape (proporção larga) contínua, edge-to-edge, como um
+  quadro panorâmico. NUNCA nomeie as peças da capa — proibido usar
+  "spine", "lombada", "fold", "dobra", "back cover", "front cover",
   "capa", "verso" ou "frente" como partes da composição no texto do
   prompt. Descreva apenas GEOMETRIA e COMPOSIÇÃO: o sujeito/elemento
-  dominante DEVE viver DENTRO do terço direito da tela, orientado ou
-  se movendo em direção à esquerda (para dentro da composição). Dentro
-  do terço direito, mantenha a área correspondente à posição do título
-  (topo/centro/base) visualmente calma e de baixo detalhe; os dois
-  terços à esquerda são uma continuação mais quieta da MESMA cena.
+  dominante DEVE viver DENTRO do terço direito da tela, orientado ou se
+  movendo em direção à esquerda (para dentro da composição). Os dois
+  terços à esquerda são a MESMA cena contínua se estendendo para fora,
+  com o MESMO tratamento — nunca uma continuação "mais quieta" ou
+  "diferente". A tela inteira é UMA pintura uniforme e contínua com um
+  único tratamento consistente do início ao fim.
+  RESPIRO (dentro do terço direito, quando houver posição de título): a
+  região correspondente (topo/centro/base) deve ser NATURALMENTE mais
+  quieta — simplesmente menos elementos e contraste mais suave ALI,
+  alcançado pela própria composição. Isso é uma QUALIDADE local da arte,
+  NÃO uma forma: nunca uma faixa, painel, caixa, overlay, barra de
+  gradiente ou bloco tonal, e nunca se estendendo além do terço direito.
+  ANTI-FAIXA (obrigatório na ARTE ÚNICA): proíba explicitamente qualquer
+  faixa horizontal ou vertical, painel, tira, costura, dobra, veio de
+  luz ou mudança de iluminação/textura em QUALQUER eixo e em QUALQUER
+  lugar da tela — a arte é UM campo pictórico único e ininterrupto.
   NUNCA descreva composição centralizada nem sujeito no lado esquerdo,
   nunca descreva três cenas distintas.
-  ANTI-FAIXA (obrigatório na ARTE ÚNICA): a arte precisa fluir como UM
-  campo ininterrupto pelo centro horizontal — proíba explicitamente
-  qualquer faixa vertical, veio de luz, costura, dobra ou mudança de
-  iluminação/textura em QUALQUER lugar ao longo da largura. O centro
-  horizontal deve ser indistinguível do entorno.
 - Nunca descreva a capa como objeto físico, impresso, fotografado, em
   mockup ou apresentação — o prompt descreve somente a arte em si.
 
