@@ -105,26 +105,28 @@ function labelAlvo(alvo: AlvoImagem): string {
   return "arte única";
 }
 
-/**
- * Guia visual do terço direito de uma arte única panorâmica. O terço direito
- * é o que vira a capa frontal no editor — mostrar essa fronteira ajuda o
- * autor a julgar a composição antes de escolher. SÓ preview: nunca é
- * exportado, persistido ou renderizado no editor.
- */
-function GuiaFrenteDireita({ compacto = false }: { compacto?: boolean } = {}) {
-  return (
-    <div
-      className="pointer-events-none absolute inset-y-0 right-0 w-1/3 border-l-2 border-dashed border-white/80"
-      aria-hidden="true"
-    >
-      {!compacto && (
-        <span className="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white">
-          frente
-        </span>
-      )}
-    </div>
-  );
+// B2-05l M1: itens da RODADA ATUAL (`OpcaoCapa`) não carregam `tipo` — só a
+// galeria carrega (derivado do nome do arquivo em 05e). Sem esse helper, a
+// UI padrão os tratava como "frente" e cortava artes panorâmicas em retrato.
+// A cobertura da rodada (ou o alvo dela) é a fonte da verdade para o tipo
+// de um item sem `tipo` explícito.
+type ItemComTipo = { tipo?: "frente" | "verso" | "unica" };
+interface ContextoTipoItem {
+  cobertura?: "frente_verso" | "unica";
+  alvo?: AlvoImagem;
 }
+function tipoDoItem(item: ItemComTipo, ctx: ContextoTipoItem): AlvoImagem {
+  if (item.tipo) return item.tipo;
+  if (ctx.cobertura === "unica") return "unica";
+  if (ctx.alvo) return ctx.alvo;
+  return "frente";
+}
+
+// B2-05l M3: legenda textual sob previews grandes de arte única. Substitui
+// o antigo guia tracejado (`GuiaFrenteDireita`), reprovado no uso real por
+// competir com a arte e ser lido como defeito.
+const LEGENDA_UNICA =
+  "O terço direito será a frente do livro; o restante cobre verso e lombada.";
 
 /**
  * Bloco de compra de pacote de imagens extras (B2-05b). Aparece dentro do
@@ -1021,20 +1023,19 @@ function IaEscolhaGrid({
   onEscolher: (url: string, storagePath: string) => Promise<void>;
   escolhendo: string | null;
   /**
-   * Cobertura da rodada — arte única mostra landscape com guia do terço
-   * direito (a região que vira a capa frontal); frente_verso mostra retrato
-   * clássico. Default cobre grids legados sem essa dimensão.
+   * Cobertura da rodada — define o tipo dos itens da rodada (sem `tipo`
+   * próprio) e o filtro/render das "gerações anteriores".
    */
   cobertura?: "frente_verso" | "unica";
 }) {
   const opcoesUrls = new Set(opcoes.map((o) => o.url));
   const isUnica = cobertura === "unica";
-  // B2-05k M3: "Gerações anteriores" sob a rodada atual deve mostrar apenas
-  // itens da MESMA cobertura. Sob única, só tipo="unica"; sob frente_verso,
-  // excluímos únicas (itens sem tipo — legado — contam como frente).
+  // B2-05k M3 + 05l M1: "Gerações anteriores" mostra apenas itens da MESMA
+  // cobertura. Filtro usa `tipoDoItem` — itens sem `tipo` (legado) caem para
+  // "frente" pelo contexto, e nunca poluem uma rodada única.
   const anteriores = galeria.filter((g) => {
     if (opcoesUrls.has(g.url)) return false;
-    const tipo = g.tipo ?? "frente";
+    const tipo = tipoDoItem(g, { cobertura });
     return isUnica ? tipo === "unica" : tipo !== "unica";
   });
   const aspectClass = isUnica ? "aspect-[3/2]" : "aspect-[2/3]";
@@ -1046,7 +1047,7 @@ function IaEscolhaGrid({
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-zinc-100 p-6">
         <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">
-          Escolha uma capa ({opcoes.length} opções desta rodada)
+          Escolha uma capa ({opcoes.length} {opcoes.length === 1 ? "opção" : "opções"} desta rodada)
         </p>
         <div className={`grid ${opcoesGridCols} gap-3`}>
           {opcoes.map((op, i) => {
@@ -1062,7 +1063,6 @@ function IaEscolhaGrid({
                   ${escolhendo !== null && !isLoad ? "opacity-40" : ""}`}
               >
                 <Image src={op.url} alt={`Opção ${i + 1}`} fill className={fitClass} />
-                {isUnica && <GuiaFrenteDireita />}
                 {isEsc && !isLoad && (
                   <div className="absolute inset-0 bg-brand-gold/10 flex items-center justify-center">
                     <span className="bg-brand-gold text-brand-primary text-xs font-bold px-2 py-1 rounded-full">
@@ -1079,21 +1079,25 @@ function IaEscolhaGrid({
             );
           })}
         </div>
+        {isUnica && (
+          <p className="text-xs text-zinc-400 mt-3">{LEGENDA_UNICA}</p>
+        )}
       </div>
 
       {anteriores.length > 0 && (
         <div className="bg-white rounded-2xl border border-zinc-100 p-6">
           <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-            Gerações anteriores ({anteriores.length})
+            {anteriores.length === 1 ? "Geração anterior" : "Gerações anteriores"} ({anteriores.length})
           </p>
           <p className="text-xs text-zinc-400 mb-4">Re-escolher uma antiga é grátis.</p>
           <div className={`grid ${anterioresGridCols} gap-2`}>
             {anteriores.map((g, i) => {
               const isEsc = urlEscolhida === g.url;
               const isLoad = escolhendo === g.url;
-              // Item legado sem tipo conta como frente — desenha em retrato
-              // pra não distorcer artes antigas quando a rodada atual é única.
-              const itemUnica = g.tipo === "unica";
+              // B2-05l M1: derivamos o tipo pelo helper — cobre item legado
+              // (sem tipo) e mantém consistência com a rodada atual.
+              const itemTipo = tipoDoItem(g, { cobertura });
+              const itemUnica = itemTipo === "unica";
               const itemAspect = itemUnica ? "aspect-[3/2]" : "aspect-[2/3]";
               const itemFit = itemUnica ? "object-contain" : "object-cover";
               const itemBg = itemUnica ? "bg-zinc-100" : "";
@@ -1107,7 +1111,6 @@ function IaEscolhaGrid({
                     ${escolhendo !== null && !isLoad ? "opacity-40" : ""}`}
                 >
                   <Image src={g.url} alt={`Anterior ${i + 1}`} fill className={itemFit} />
-                  {itemUnica && <GuiaFrenteDireita compacto />}
                   {isLoad && (
                     <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
                       <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
@@ -1534,7 +1537,9 @@ function PainelVersoIa({
             )}
             {anteriores.length > 0 && (
               <div>
-                <p className="text-[11px] text-zinc-400 mb-2">Anteriores desta sequência</p>
+                <p className="text-[11px] text-zinc-400 mb-2">
+                  {anteriores.length === 1 ? "Anterior desta sequência" : "Anteriores desta sequência"}
+                </p>
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {anteriores.map((op, i) => (
                     <button
@@ -2010,7 +2015,9 @@ function ModoIA({
         <div className="bg-brand-gold/5 rounded-2xl border border-brand-gold/30 p-6 space-y-3">
           <div>
             <p className="font-medium text-brand-primary text-sm">
-              Você já tem {galeriaPreBrief.length} capa{galeriaPreBrief.length !== 1 ? "s" : ""} geradas antes
+              {galeriaPreBrief.length === 1
+                ? "Você já tem 1 capa gerada antes"
+                : `Você já tem ${galeriaPreBrief.length} capas geradas antes`}
             </p>
             <p className="text-xs text-zinc-500 mt-1">
               Reusar uma delas é grátis. Se preferir opções novas, siga com o briefing abaixo.
@@ -2353,24 +2360,30 @@ function ModoIA({
                 {saldoImagens && <SaldoBadge saldo={saldoImagens} alvo={alvoEfetivo} />}
               </div>
               {atual && (
-                <div className={`relative rounded-xl overflow-hidden border-2 border-brand-gold shadow-sm mx-auto ${aspectClass} ${alvoEfetivo === "unica" ? "w-full max-w-2xl bg-zinc-100" : "max-w-sm"}`}>
-                  <Image
-                    src={atual.url}
-                    alt="Capa atual"
-                    fill
-                    className={alvoEfetivo === "unica" ? "object-contain" : "object-cover"}
-                  />
-                  {alvoEfetivo === "unica" && <GuiaFrenteDireita />}
-                  {gerandoOutra && (
-                    <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
-                      <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-                    </div>
+                <>
+                  <div className={`relative rounded-xl overflow-hidden border-2 border-brand-gold shadow-sm mx-auto ${aspectClass} ${alvoEfetivo === "unica" ? "w-full max-w-2xl bg-zinc-100" : "max-w-sm"}`}>
+                    <Image
+                      src={atual.url}
+                      alt="Capa atual"
+                      fill
+                      className={alvoEfetivo === "unica" ? "object-contain" : "object-cover"}
+                    />
+                    {gerandoOutra && (
+                      <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  {alvoEfetivo === "unica" && (
+                    <p className="text-xs text-zinc-400 text-center">{LEGENDA_UNICA}</p>
                   )}
-                </div>
+                </>
               )}
               {anteriores.length > 0 && (
                 <div>
-                  <p className="text-[11px] text-zinc-400 mb-2">Anteriores desta sequência</p>
+                  <p className="text-[11px] text-zinc-400 mb-2">
+                    {anteriores.length === 1 ? "Anterior desta sequência" : "Anteriores desta sequência"}
+                  </p>
                   <div className={`grid gap-2 ${alvoEfetivo === "unica" ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-4 sm:grid-cols-6"}`}>
                     {anteriores.map((op, i) => (
                       <button
@@ -2386,7 +2399,6 @@ function ModoIA({
                           fill
                           className={alvoEfetivo === "unica" ? "object-contain" : "object-cover"}
                         />
-                        {alvoEfetivo === "unica" && <GuiaFrenteDireita compacto />}
                       </button>
                     ))}
                   </div>
@@ -2770,6 +2782,10 @@ function CapaExistenteCard({
   const aspectFrente = fmtSpecs.width_mm / fmtSpecs.height_mm;
   const thumbHeightPx = 180;
   const thumbWidthPx = Math.round(thumbHeightPx * aspectFrente);
+  // B2-05l M2: quando a arte escolhida é ÚNICA (panorâmica pré-editor), a
+  // miniatura mostra o TERÇO DIREITO — a identidade do livro que aparece em
+  // Prova/lojas — via `object-cover object-right` numa caixa retrato.
+  const artePreEditorUnica = !editorConfirmed && dados.cobertura === "unica";
 
   const statusLabel = editorConfirmed ? "Capa confirmada" : "Falta confirmar no editor";
   const statusDetail = editorConfirmed && confirmedAt
@@ -2794,7 +2810,13 @@ function CapaExistenteCard({
                 // Confirmada pode ser panorâmica — contain para não cortar.
                 <img src={thumbUrl} alt="Capa" className="h-full w-auto object-contain" />
               ) : (
-                <Image src={thumbUrl} alt="Capa" fill className="object-cover" sizes="180px" />
+                <Image
+                  src={thumbUrl}
+                  alt="Capa"
+                  fill
+                  className={artePreEditorUnica ? "object-cover object-right" : "object-cover"}
+                  sizes="180px"
+                />
               )}
             </div>
           ) : (
