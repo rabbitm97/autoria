@@ -6,7 +6,6 @@ import {
   getUnicaRect,
   getCapaIaAnchoredRect,
   getCapaIaVersoAnchoredRect,
-  getCapaIaUnicaAnchoredRect,
   type RegionRect,
 } from "./region-rects";
 import { createSmartFieldElement, type SmartFieldContentMap, type PosicaoTitulo } from "./smart-field-layout";
@@ -164,12 +163,14 @@ export function reanchorFrenteElements(
       return;
     }
 
-    // IA unica — ancorada no spread (verso+lombada+capa).
+    // IA unica — ancorada no SPAN (contracapa+lombada+capa). Rect = span;
+    // o cover é determinístico no ImageNode com base no aspect real da
+    // imagem — não dependemos do ratio pedido/prometido ao modelo.
     if (el.id === CAPA_IA_UNICA_ID && el.type === "image") {
       if (el.posicaoManual) {
         updateElement(el.id, { x_mm: el.x_mm + duDx, y_mm: el.y_mm + duDy });
       } else {
-        const rect = getCapaIaUnicaAnchoredRect(curr.format, curr.pages, curr.orelhaMm, curr.layout);
+        const rect = getUnicaRect(curr.format, curr.pages, curr.orelhaMm, curr.layout);
         if (rect) {
           updateElement(el.id, {
             x_mm: rect.x,

@@ -2,6 +2,7 @@ export const maxDuration = 120;
 
 import { GoogleGenAI, type Part } from "@google/genai";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
@@ -38,13 +39,20 @@ import {
 // Re-export types for consumers that import from this route path
 export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
 
-function buildContents(prompt: string, ref: string | undefined, intencao: "estilo" | "conteudo" = "estilo"): Part[] {
+function buildContents(
+  prompt: string,
+  ref: string | undefined,
+  intencao: "estilo" | "conteudo" | "verso_continuacao" = "estilo",
+): Part[] {
   if (ref) {
     const match = ref.match(/^data:([^;]+);base64,(.+)$/);
     if (match) {
-      const instrucao = intencao === "conteudo"
-        ? " Incorporate the provided reference image as actual subject matter of the artwork — integrate it naturally into the composition while matching the requested style and palette."
-        : " Use the provided reference image as a style and mood guide only — do not copy it literally.";
+      const instrucao =
+        intencao === "conteudo"
+          ? " Incorporate the provided reference image as actual subject matter of the artwork — integrate it naturally into the composition while matching the requested style and palette."
+          : intencao === "verso_continuacao"
+            ? " This is the FRONT cover of the book. Generate the BACK cover that sits to its LEFT as a natural continuation of the same artwork: same world, palette, technique and lighting. Do NOT copy, mirror or repeat the front or its main subject — paint the surrounding/preceding region of the same scene, calmer and less dense, with generous quiet space for text."
+            : " Use the provided reference image as a style and mood guide only — do not copy it literally.";
       return [
         { text: prompt + instrucao } as Part,
         { inlineData: { mimeType: match[1], data: match[2] } } as Part,
@@ -307,7 +315,7 @@ export async function POST(req: NextRequest) {
   // a frente escolhida no storage e injetamos como referência de estilo.
   // Sem essa referência a continuidade fica muito frágil.
   let imagemRef = body.imagemRef;
-  let imagemRefIntencao: "estilo" | "conteudo" = body.imagemRefIntencao;
+  let imagemRefIntencao: "estilo" | "conteudo" | "verso_continuacao" = body.imagemRefIntencao;
   if (
     alvo === "verso" &&
     body.briefing.verso?.modo === "continuacao" &&
@@ -335,7 +343,9 @@ export async function POST(req: NextRequest) {
         const buf = Buffer.from(await file.arrayBuffer());
         const mime = file.type || "image/png";
         imagemRef = `data:${mime};base64,${buf.toString("base64")}`;
-        imagemRefIntencao = "estilo";
+        // B2-05j M3b: anti-cópia — a frente é referência de MUNDO, não de
+        // repetição. Instrução verbatim acompanha a imagemRef.
+        imagemRefIntencao = "verso_continuacao";
       } else {
         console.warn(
           "[gerar-capa] verso continuacao: download da frente falhou —",
@@ -379,6 +389,22 @@ export async function POST(req: NextRequest) {
       const storagePath = `${userId}/${project_id}/capa_ia_${alvo}_${rodadaTs}_${i}.${ext}`;
       const buffer = Buffer.from(imgPart.inlineData.data, "base64");
       console.log(`[DEBUG-B2] opção ${i} (${alvo}): ${buffer.length} bytes, mime ${mimeType}`);
+      // B2-05j M1d: telemetria do ratio real recebido vs pedido. NUNCA gate —
+      // a saída generativa é insumo de dimensão não-garantida; o encaixe
+      // visual (cover no ImageNode) é determinístico do nosso lado.
+      if (alvo === "unica") {
+        try {
+          const meta = await sharp(buffer).metadata();
+          const w = meta.width ?? 0;
+          const h = meta.height ?? 0;
+          const r = h > 0 ? (w / h).toFixed(3) : "?";
+          console.log(
+            `[DEBUG-B2] unica: pedido ${aspectRatio}, recebido ${w}x${h} (ratio ${r})`,
+          );
+        } catch (measureErr) {
+          console.warn(`[DEBUG-B2] unica: falha ao medir imagem`, measureErr);
+        }
+      }
       const { error: uploadError } = await storageClient.storage
         .from("capas")
         .upload(storagePath, buffer, { contentType: mimeType, upsert: false });

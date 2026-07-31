@@ -3674,9 +3674,26 @@ export default function CapaPage() {
               handleSalvoIA(dadosServidor);
               setModoIaRegerarDe(null);
               // ModoIA só gera frente/unica (verso vive no PainelVersoIa).
-              // Quando trilha definida, abre editor direto para o autor
-              // finalizar textos; sem trilha, volta ao card unificado.
-              if (proposito !== null) {
+              // B2-05j M2: aceite da FRENTE em pro+completa+frente_verso
+              // NÃO pode pular a etapa de verso. Precisa cair em modo="escolha"
+              // para o card unificado + PainelVersoIa renderizarem.
+              // Editor direto vale para: cobertura=unica (não tem verso),
+              // trilha=digital (sem verso) ou plano != pro (idem), ou verso
+              // já decidido em rodada anterior.
+              const cobertura =
+                (dadosServidor as { cobertura?: string })?.cobertura ?? "frente_verso";
+              const versoAtual = (dadosServidor as { verso?: DadosVersoIa | null })?.verso;
+              const versoDecidido =
+                !!versoAtual &&
+                (versoAtual.modo === "cor" ||
+                  (typeof versoAtual.url_escolhida === "string" &&
+                    versoAtual.url_escolhida.length > 0));
+              const precisaPainelVerso =
+                cobertura === "frente_verso" &&
+                plano === "pro" &&
+                proposito === "completa" &&
+                !versoDecidido;
+              if (proposito !== null && !precisaPainelVerso) {
                 router.push(`/editor/capa/${id}`);
               }
               setModo("escolha");

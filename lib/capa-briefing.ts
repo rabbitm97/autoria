@@ -364,12 +364,13 @@ export async function processarBriefingCapa(args: {
         ]
       : [];
   const temPromptFrente = Boolean(args.frente?.prompt_usado);
+  // B2-05j M3a: continuação = mesma família visual, NUNCA cópia/espelho/
+  // repetição do assunto principal da frente. O verso é o ENTORNO da mesma
+  // cena, com densidade menor e área calma para a sinopse. Texto verbatim.
   const versoInstruction: string | null =
     args.alvo === "verso"
       ? versoMode === "continuacao"
-        ? temPromptFrente
-          ? "O prompt do verso deve ESTENDER a mesma arte: mesma técnica, paleta, luz e tratamento do prompt da frente acima, como continuação natural da cena para a contracapa."
-          : "O prompt do verso deve ESTENDER a arte da frente enviada como imagem de referência: mesma técnica, paleta, luz e tratamento visíveis nela, como continuação natural da cena para a contracapa."
+        ? "O verso é a CONTINUAÇÃO da arte da frente para a página ESQUERDA de um livro aberto: mesmo mundo, mesma técnica, mesma paleta e luz — mas NUNCA uma cópia, espelho ou repetição do assunto principal da frente. O verso mostra o ENTORNO ou a extensão da mesma cena (o que está ao redor, atrás ou antes do momento da frente), com densidade menor e uma área ampla e calma para o texto da sinopse. PROIBIDO repetir o elemento dominante da frente."
         : versoMode === "independente"
           ? temPromptFrente
             ? "O prompt do verso deve pertencer à MESMA FAMÍLIA VISUAL do prompt da frente acima (mesma técnica, paleta e tratamento), com a cena própria descrita pelo autor."

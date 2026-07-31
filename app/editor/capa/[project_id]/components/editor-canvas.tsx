@@ -89,14 +89,35 @@ function ImageNode({
 }) {
   const [img] = useImage(el.src, "anonymous");
   if (!img) return null;
+  const w = el.width_mm * MM_TO_PX;
+  const h = el.height_mm * MM_TO_PX;
+  // objectFit="cover" determinístico do lado do render: usa o aspect ratio
+  // REAL da imagem (naturalWidth/naturalHeight) para cropar o source centrado
+  // preservando o rect de destino. Nunca depende do ratio pedido/prometido
+  // ao modelo — a saída generativa é insumo, o encaixe é nosso.
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+  let crop: { x: number; y: number; width: number; height: number } | undefined;
+  if (el.objectFit === "cover" && nw > 0 && nh > 0 && w > 0 && h > 0) {
+    const imgAspect = nw / nh;
+    const rectAspect = w / h;
+    if (imgAspect > rectAspect) {
+      const cropW = nh * rectAspect;
+      crop = { x: (nw - cropW) / 2, y: 0, width: cropW, height: nh };
+    } else {
+      const cropH = nw / rectAspect;
+      crop = { x: 0, y: (nh - cropH) / 2, width: nw, height: cropH };
+    }
+  }
   return (
     <KonvaImage
       id={el.id}
       image={img}
       x={el.x_mm * MM_TO_PX}
       y={el.y_mm * MM_TO_PX}
-      width={el.width_mm * MM_TO_PX}
-      height={el.height_mm * MM_TO_PX}
+      width={w}
+      height={h}
+      crop={crop}
       rotation={el.rotation_deg}
       opacity={el.opacity}
       visible={el.visible}

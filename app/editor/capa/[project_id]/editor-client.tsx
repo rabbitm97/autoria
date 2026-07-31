@@ -14,7 +14,7 @@ import { createImageElement, type AnyElement, type Region } from "./lib/elements
 import {
   getCapaIaAnchoredRect,
   getCapaIaVersoAnchoredRect,
-  getCapaIaUnicaAnchoredRect,
+  getUnicaRect,
 } from "./lib/region-rects";
 import {
   CAPA_IA_FRENTE_ID,
@@ -49,7 +49,10 @@ function injectCapaIaElements(
   const novos: AnyElement[] = [];
 
   if (handoff.cobertura === "unica" && handoff.unicaUrl && layout === "panoramica") {
-    const rect = getCapaIaUnicaAnchoredRect(format, pages, orelhaMm, layout);
+    // Rect do elemento = SPAN (contracapa+lombada+frente, sem orelhas). O
+    // cover determinístico acontece no ImageNode a partir do aspect real da
+    // imagem — nunca dependemos do ratio pedido/prometido ao modelo.
+    const rect = getUnicaRect(format, pages, orelhaMm, layout);
     if (rect) {
       novos.push(
         createImageElement({
@@ -136,7 +139,9 @@ function reconcileCapaIaElements(
       alvoDesejado.push({
         id: CAPA_IA_UNICA_ID,
         url: handoff.unicaUrl,
-        rect: getCapaIaUnicaAnchoredRect(format, pages, orelhaMm, layout),
+        // Rect = SPAN. Cover determinístico no render (ImageNode) usando
+        // o aspect real da imagem — não o ratio pedido ao modelo.
+        rect: getUnicaRect(format, pages, orelhaMm, layout),
       });
     } else if (handoff.cobertura === "frente_verso") {
       if (handoff.frenteUrl && !capaIaRemovida) {
