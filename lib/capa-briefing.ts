@@ -29,28 +29,29 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 // prompt sugere ao modelo desenhá-la; proibir depois de citar cria conflito.
 // Descrevemos apenas geometria e composição — nenhuma peça de livro é
 // nomeada. O terço direito é referido como "right third", não "front cover".
-const POSICAO_EM_INGLES: Record<"topo" | "centro" | "base" | "sem_preferencia", string> = {
-  topo: "top",
-  centro: "center",
-  base: "bottom",
-  sem_preferencia: "",
+// B2-05o (azeite v5): mapa determinístico posição-do-título → cláusula.
+// O v4 (05m) ensinou o respiro como QUALIDADE natural, mas o sujeito
+// continuava colidindo com a zona reservada ao título (evidência 01/ago:
+// única com centro → sujeito exatamente no meio vertical do terço
+// direito). O v5 acopla, por posição, a zona quieta À posição do
+// sujeito — mesma lição do centro da frente (azeite B2-04a) portada
+// para a única. sem_preferencia herda o comportamento de "topo".
+const CLAUSULA_POSICAO_UNICA: Record<"topo" | "centro" | "base" | "sem_preferencia", string> = {
+  topo:
+    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+  centro:
+    " Inside the right third, keep the MIDDLE naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper OR lower portion of that region — never vertically centered. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+  base:
+    " Inside the right third, keep the LOWER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+  sem_preferencia:
+    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
 };
-// B2-05m (azeite v4): respiro dito como SUBSTANTIVO ("área calma") virou
-// faixa horizontal chapada em 3/3 gerações pós-05k. Reescrito como
-// QUALIDADE local da composição ("fewer elements, softer contrast,
-// achieved by the composition itself") + proibição explícita de faixas
-// em qualquer eixo. Padrão: instrução espacial como substantivo induz o
-// modelo a desenhar o substantivo; dita como qualidade da composição
-// induz o comportamento.
 function sufixoUnica(posicao: "topo" | "centro" | "base" | "sem_preferencia"): string {
-  const zona = POSICAO_EM_INGLES[posicao];
-  const clausulaZona = zona
-    ? ` Inside the right third, let the ${zona} region be NATURALLY quieter — simply fewer elements and softer contrast THERE, achieved by the composition itself. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.`
-    : "";
   return (
     "One single wide continuous artwork in landscape orientation, filling" +
     " the entire canvas edge-to-edge. The dominant subject lives INSIDE the" +
-    " right third, facing or moving toward the left." + clausulaZona +
+    " right third, facing or moving toward the left." +
+    CLAUSULA_POSICAO_UNICA[posicao] +
     " The left two thirds are the same continuous scene extending outward," +
     " painted with the same treatment. The entire canvas is ONE uniform," +
     " continuous painting with a single consistent treatment throughout." +
@@ -179,12 +180,18 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   com o MESMO tratamento — nunca uma continuação "mais quieta" ou
   "diferente". A tela inteira é UMA pintura uniforme e contínua com um
   único tratamento consistente do início ao fim.
-  RESPIRO (dentro do terço direito, quando houver posição de título): a
-  região correspondente (topo/centro/base) deve ser NATURALMENTE mais
-  quieta — simplesmente menos elementos e contraste mais suave ALI,
-  alcançado pela própria composição. Isso é uma QUALIDADE local da arte,
-  NÃO uma forma: nunca uma faixa, painel, caixa, overlay, barra de
-  gradiente ou bloco tonal, e nunca se estendendo além do terço direito.
+  RESPIRO (dentro do terço direito): a região correspondente à posição
+  do título — TOPO, MEIO ou BASE — deve ser NATURALMENTE mais quieta,
+  simplesmente com menos elementos e contraste mais suave ALI, alcançado
+  pela própria composição. A posição do sujeito decorre da posição do
+  título — nunca centralize o sujeito quando o título for ao centro:
+  título no TOPO → sujeito nos dois terços inferiores do terço direito;
+  título no CENTRO → sujeito na porção superior OU inferior do terço
+  direito (nunca vertically centered); título na BASE → sujeito nos dois
+  terços superiores do terço direito. Isso é uma QUALIDADE local da
+  arte, NÃO uma forma: nunca uma faixa, painel, caixa, overlay, barra
+  de gradiente ou bloco tonal, e nunca se estendendo além do terço
+  direito.
   ANTI-FAIXA (obrigatório na ARTE ÚNICA): proíba explicitamente qualquer
   faixa horizontal ou vertical, painel, tira, costura, dobra, veio de
   luz ou mudança de iluminação/textura em QUALQUER eixo e em QUALQUER
