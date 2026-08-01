@@ -128,6 +128,34 @@ function tipoDoItem(item: ItemComTipo, ctx: ContextoTipoItem): AlvoImagem {
 const LEGENDA_UNICA =
   "O terço direito será a frente do livro; o restante cobre verso e lombada.";
 
+// B2-05n: slug do título para nome de download amigável.
+function slugTitulo(s: string): string {
+  const base = (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return base || "capa";
+}
+
+// B2-05n M3: força download da imagem via param `download` da signed URL
+// do Supabase (aceito nativamente pelo storage — só concatena query). O
+// nome amigável fica `{slug}-{tipo}-{n}.{ext}`. Se a URL for algo além
+// de HTTPS assinado, o browser ignora o param e faz download com o nome
+// original do bucket — degradação aceitável.
+function urlDeDownload(url: string, filename: string): string {
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}download=${encodeURIComponent(filename)}`;
+}
+
+const TIPO_LABEL: Record<"frente" | "verso" | "unica", string> = {
+  frente: "Frente",
+  verso: "Verso",
+  unica: "Arte única",
+};
+
 /**
  * Bloco de compra de pacote de imagens extras (B2-05b). Aparece dentro do
  * fluxo quando o saldo do alvo esgota. Duas opções fixas:
@@ -1618,6 +1646,8 @@ function ModoIA({
   plano,
   proposito,
   coberturaSalva,
+  galeriaCount,
+  onAbrirGaleria,
   onSalvo,
   onVoltar,
 }: {
@@ -1643,6 +1673,12 @@ function ModoIA({
    * ao regerar sem precisar sair da ModoIA (B2-05a).
    */
   coberturaSalva?: "frente_verso" | "unica";
+  /**
+   * B2-05n: contagem total da galeria do projeto (todos os alvos) —
+   * alimenta o card contextual pré-briefing que abre o modal universal.
+   */
+  galeriaCount: number;
+  onAbrirGaleria: () => void;
   onSalvo: (dadosServidor: CapaGeradaResult) => void;
   onVoltar: () => void;
 }) {
@@ -1747,52 +1783,6 @@ function ModoIA({
     }, 500);
     return () => window.clearTimeout(t);
   }, [projectId, estilo, atmosfera, cor, corHex, posicaoTitulo, descricaoLivre, referenciasTexto, evitar]);
-
-  // Galeria pré-briefing — pós-reset/troca de modo, se o autor já pagou por
-  // gerações antes, storage ainda tem os PNGs. Oferecemos reuso ANTES do
-  // briefing para não cobrar de novo. Fetch é best-effort (falha silenciosa).
-  const [galeriaPreBrief, setGaleriaPreBrief] = useState<GaleriaCapaItem[]>([]);
-  const [carregandoGaleria, setCarregandoGaleria] = useState(false);
-  const [escolhendoDaGaleria, setEscolhendoDaGaleria] = useState<string | null>(null);
-  useEffect(() => {
-    if (regerarDe) return;
-    let ativo = true;
-    setCarregandoGaleria(true);
-    fetch(`/api/projects/${projectId}/capa/galeria`)
-      .then(r => (r.ok ? r.json() : { itens: [] }))
-      .then((data: { itens?: GaleriaCapaItem[] }) => {
-        if (!ativo || !Array.isArray(data.itens)) return;
-        // Filtra por alvo (B2-05): pré-brief só mostra gerações compatíveis
-        // com o alvo efetivo (após seleção interna de cobertura). Item
-        // legado (tipo indefinido) conta como frente.
-        const filtradas = data.itens.filter(
-          (g) => (g.tipo ?? "frente") === alvoEfetivo,
-        );
-        setGaleriaPreBrief(filtradas);
-      })
-      .catch(() => { /* best-effort */ })
-      .finally(() => { if (ativo) setCarregandoGaleria(false); });
-    return () => { ativo = false; };
-  }, [projectId, regerarDe, alvoEfetivo]);
-
-  async function handleUsarDaGaleria(item: GaleriaCapaItem) {
-    setEscolhendoDaGaleria(item.storage_path);
-    setError(null);
-    try {
-      const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: item.url, storage_path: item.storage_path, alvo: alvoEfetivo }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Erro ao usar geração anterior");
-      onSalvo(data as CapaGeradaResult);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao usar geração anterior");
-    } finally {
-      setEscolhendoDaGaleria(null);
-    }
-  }
 
   // Resultado / escolha — pre-populado quando regerarDe fornecido
   const [resultado, setResultado] = useState<CapaGeradaResult | null>(regerarDe ?? null);
@@ -2007,50 +1997,29 @@ function ModoIA({
       </button>
 
       {/* ── GALERIA PRÉ-BRIEFING (pós-reset/troca de modo) ─────────────────── */}
-      {/* Só aparece em briefing "fresco" (sem regeneração) — se o autor já pagou
-          por gerações antes e resetou/trocou de modo, o storage guardou os PNGs.
-          Reusar uma delas é grátis; o servidor reconstrói `dados_capa` no
-          fallback do endpoint de escolha (B2-04d Mudança 3). */}
-      {fase === "briefing" && !regerarDe && galeriaPreBrief.length > 0 && (
-        <div className="bg-brand-gold/5 rounded-2xl border border-brand-gold/30 p-6 space-y-3">
-          <div>
+      {/* B2-05n: atalho contextual — quando há artes anteriores no projeto,
+          um call-out compacto convida a reusar via galeria universal. Grid
+          inline morreu (05n): um modal, um comportamento. */}
+      {fase === "briefing" && !regerarDe && galeriaCount > 0 && (
+        <div className="bg-brand-gold/5 rounded-2xl border border-brand-gold/30 p-4 flex items-center justify-between gap-4">
+          <div className="min-w-0">
             <p className="font-medium text-brand-primary text-sm">
-              {galeriaPreBrief.length === 1
-                ? "Você já tem 1 capa gerada antes"
-                : `Você já tem ${galeriaPreBrief.length} capas geradas antes`}
+              {galeriaCount === 1
+                ? "Você já tem 1 arte gerada neste projeto"
+                : `Você já tem ${galeriaCount} artes geradas neste projeto`}
             </p>
-            <p className="text-xs text-zinc-500 mt-1">
-              Reusar uma delas é grátis. Se preferir opções novas, siga com o briefing abaixo.
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Reusar uma delas é grátis. Se preferir opções novas, siga com o briefing.
             </p>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            {galeriaPreBrief.map((g, i) => {
-              const isLoad = escolhendoDaGaleria === g.storage_path;
-              return (
-                <button key={g.storage_path}
-                  disabled={escolhendoDaGaleria !== null}
-                  onClick={() => void handleUsarDaGaleria(g)}
-                  className={`relative rounded-lg overflow-hidden border-2 border-zinc-200 hover:border-brand-gold transition-all aspect-[2/3]
-                    ${escolhendoDaGaleria !== null && !isLoad ? "opacity-40" : ""}`}>
-                  <Image src={g.url} alt={`Anterior ${i + 1}`} fill className="object-cover" />
-                  {isLoad && (
-                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
-                      <span className="w-5 h-5 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {error && (
-            <p className="text-xs text-red-600">{error}</p>
-          )}
+          <button
+            type="button"
+            onClick={onAbrirGaleria}
+            className="shrink-0 rounded-xl bg-brand-primary text-brand-gold text-sm font-medium px-4 py-2 hover:bg-brand-primary/90"
+          >
+            Abrir galeria
+          </button>
         </div>
-      )}
-
-      {/* Indicador leve enquanto galeria carrega — evita "flash" caso haja itens */}
-      {fase === "briefing" && !regerarDe && carregandoGaleria && galeriaPreBrief.length === 0 && (
-        <p className="text-[11px] text-zinc-400">Verificando gerações anteriores…</p>
       )}
 
       {/* ── BRIEFING ────────────────────────────────────────────────────────── */}
@@ -2680,6 +2649,217 @@ function RecomendacoesTecnicas({
   );
 }
 
+// Modal universal com todas as artes IA do projeto (frente/verso/única),
+// montado fora do switch de modo para permanecer acessível em qualquer estado.
+function GaleriaCapaModal({
+  open,
+  onClose,
+  projectId,
+  tituloLivro,
+  dadosAtuais,
+  plano,
+  proposito,
+  onDadosNovos,
+}: {
+  open: boolean;
+  onClose: () => void;
+  projectId: string;
+  tituloLivro: string;
+  dadosAtuais: Record<string, unknown> | null;
+  plano: Plano;
+  proposito: PropositoPublicacao | null;
+  onDadosNovos: (dados: Record<string, unknown>) => void;
+}) {
+  const [itens, setItens] = useState<GaleriaCapaItem[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [acaoStorage, setAcaoStorage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let ativo = true;
+    setCarregando(true);
+    setErro(null);
+    setItens(null);
+    fetch(`/api/projects/${projectId}/capa/galeria`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<{ itens?: GaleriaCapaItem[] }>;
+      })
+      .then((data) => {
+        if (!ativo) return;
+        setItens(Array.isArray(data.itens) ? data.itens : []);
+      })
+      .catch(() => {
+        if (!ativo) return;
+        setErro("Falha ao carregar a galeria. Tente fechar e reabrir.");
+        setItens([]);
+      })
+      .finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  }, [open, projectId]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  async function usarComo(item: GaleriaCapaItem, alvo: "frente" | "verso" | "unica") {
+    setAcaoStorage(item.storage_path);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/capa/escolha`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: item.url, storage_path: item.storage_path, alvo }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Falha ao usar esta arte.");
+      onDadosNovos(data);
+      onClose();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao usar esta arte.");
+    } finally {
+      setAcaoStorage(null);
+    }
+  }
+
+  if (!open) return null;
+
+  // Cobertura atual do projeto — orienta rotulagem da ação "Usar como capa"
+  // (chama o alvo correto: unica se autor está em modo única, senão frente).
+  const coberturaAtual = dadosAtuais?.cobertura === "unica" ? "unica" : "frente_verso";
+  const versoAplicavel =
+    coberturaAtual === "frente_verso" &&
+    typeof dadosAtuais?.url_escolhida === "string" &&
+    (dadosAtuais.url_escolhida as string).length > 0 &&
+    plano === "pro" &&
+    proposito === "completa";
+
+  const slug = slugTitulo(tituloLivro);
+
+  // Numerador por tipo (mais recente = 1, para nome amigável).
+  const contagemPorTipo: Record<"frente" | "verso" | "unica", number> = {
+    frente: 0, verso: 0, unica: 0,
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-4xl my-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 p-5 border-b border-zinc-100">
+          <div>
+            <p className="font-heading text-lg text-brand-primary">Galeria do projeto</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Todas as artes geradas por IA — frente, verso e arte única. Reusar não custa créditos.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Fechar"
+            className="shrink-0 rounded-full p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5">
+          {carregando && (
+            <div className="flex items-center gap-2 text-sm text-zinc-500">
+              <span className="w-4 h-4 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
+              Carregando galeria…
+            </div>
+          )}
+          {!carregando && itens && itens.length === 0 && (
+            <p className="text-sm text-zinc-500">
+              Nenhuma arte gerada por IA ainda neste projeto. Gere sua primeira capa pelo modo &ldquo;Gerar com IA&rdquo;.
+            </p>
+          )}
+          {erro && (
+            <p className="text-xs text-red-600 mb-3">{erro}</p>
+          )}
+          {!carregando && itens && itens.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {itens.map((item) => {
+                const tipo = (item.tipo ?? "frente") as "frente" | "verso" | "unica";
+                contagemPorTipo[tipo] += 1;
+                const n = contagemPorTipo[tipo];
+                const isUnica = tipo === "unica";
+                const aspectClass = isUnica ? "aspect-[3/2]" : "aspect-[2/3]";
+                const fitClass = isUnica ? "object-contain bg-zinc-100" : "object-cover";
+                const ext = item.storage_path.split(".").pop()?.toLowerCase() || "jpg";
+                const filename = `${slug}-${tipo}-${n}.${ext}`;
+                const dataStr = item.gerado_em
+                  ? new Date(item.gerado_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+                  : "";
+                const carregandoEste = acaoStorage === item.storage_path;
+                const podeUsarComoCapa = tipo !== "verso";
+                const alvoUsar: "frente" | "unica" = tipo === "unica" ? "unica" : "frente";
+                const podeVerso = tipo === "verso" && versoAplicavel;
+                return (
+                  <div key={item.storage_path} className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col">
+                    <div className={`relative w-full ${aspectClass}`}>
+                      <Image src={item.url} alt={TIPO_LABEL[tipo]} fill className={fitClass} sizes="(min-width: 768px) 240px, 50vw" />
+                    </div>
+                    <div className="p-3 flex flex-col gap-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center rounded-full bg-brand-gold/10 text-brand-primary font-medium px-2 py-0.5">
+                          {TIPO_LABEL[tipo]}
+                        </span>
+                        <span className="text-zinc-400">{dataStr}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        <a
+                          href={urlDeDownload(item.url, filename)}
+                          download={filename}
+                          className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2.5 py-1 text-zinc-600 hover:border-zinc-300 hover:text-zinc-800"
+                        >
+                          Baixar
+                        </a>
+                        {podeUsarComoCapa && (
+                          <button
+                            type="button"
+                            disabled={acaoStorage !== null}
+                            onClick={() => void usarComo(item, alvoUsar)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-brand-primary text-brand-gold px-2.5 py-1 font-medium hover:bg-brand-primary/90 disabled:opacity-50"
+                          >
+                            {carregandoEste ? "Aplicando…" : "Usar como capa"}
+                          </button>
+                        )}
+                        {podeVerso && (
+                          <button
+                            type="button"
+                            disabled={acaoStorage !== null}
+                            onClick={() => void usarComo(item, "verso")}
+                            className="inline-flex items-center gap-1 rounded-lg border border-brand-gold text-brand-primary px-2.5 py-1 font-medium hover:bg-brand-gold/10 disabled:opacity-50"
+                          >
+                            {carregandoEste ? "Aplicando…" : "Usar como verso"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── CapaExistenteCard ───────────────────────────────────────────────────────
 // Cartão único que representa "capa existente" em dois estados:
 //   - Confirmada (isEditorCapa(dados) === true): PNG exportado do editor,
@@ -3005,6 +3185,13 @@ export default function CapaPage() {
   // no lugar do grid de modos. Reseta ao voltar.
   const [mostrandoConversaoIa, setMostrandoConversaoIa] = useState(false);
 
+  // B2-05n: modal universal da galeria + contagem para o link do header.
+  // A contagem é lida separado do modal (o modal recarrega sua própria lista
+  // ao abrir); o efeito abaixo refetch quando `dados` muda (proxy para
+  // gerou/escolheu/comprou algo).
+  const [galeriaModalOpen, setGaleriaModalOpen] = useState(false);
+  const [galeriaCount, setGaleriaCount] = useState<number>(0);
+
 
   const loadProject = useCallback(async () => {
     setLoading(true);
@@ -3131,6 +3318,22 @@ export default function CapaPage() {
   }, [id]);
 
   useEffect(() => { loadProject(); }, [loadProject]);
+
+  // B2-05n: contagem da galeria universal. Refetch quando `dados` muda —
+  // cobre generate/escolher/comprar sem precisar de callback específico.
+  // Best-effort; se falhar, link mostra 0 e o modal ao abrir mostra o
+  // estado real (ou seu próprio erro).
+  useEffect(() => {
+    if (!id) return;
+    let ativo = true;
+    fetch(`/api/projects/${id}/capa/galeria`)
+      .then((r) => (r.ok ? r.json() : { itens: [] }))
+      .then((data: { itens?: unknown[] }) => {
+        if (ativo && Array.isArray(data.itens)) setGaleriaCount(data.itens.length);
+      })
+      .catch(() => { /* best-effort */ });
+    return () => { ativo = false; };
+  }, [id, dados]);
 
   // Ao carregar dados salvos (reload da página, navegação de volta),
   // sincronizar analiseStatus com o que existe no banco. Análise só se
@@ -3299,15 +3502,10 @@ export default function CapaPage() {
       }
       const dadosNovos = await res.json();
       setDados(dadosNovos);
-      setMostrandoGridPersistente(false);
     } finally {
       setEscolhendoUrl(null);
     }
   }
-  // Quando o autor está no CapaExistenteCard e clica "Ver e usar outras
-  // gerações", entra neste modo — reusa IaEscolhaGrid com a escolhida
-  // destacada. Cancelar volta ao status card sem custo.
-  const [mostrandoGridPersistente, setMostrandoGridPersistente] = useState(false);
 
   // Toggle para o link "Trocar por upload ou editor em branco" do
   // CapaExistenteCard. Quando true, esconde o card unificado e mostra o
@@ -3357,53 +3555,50 @@ export default function CapaPage() {
       <EtapasProgress currentStep={3} projectId={id} />
       <main className="max-w-4xl mx-auto px-4 py-10">
 
-        <div className="mb-8">
-          <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
-            Passo 4 — Capa
-          </p>
-          <h1 className="font-heading text-3xl text-brand-primary">Criação da capa</h1>
-          <p className="text-zinc-500 mt-1.5 text-sm">
-            Envie uma capa pronta, gere com IA ou crie no editor interativo.
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
+              Passo 4 — Capa
+            </p>
+            <h1 className="font-heading text-3xl text-brand-primary">Criação da capa</h1>
+            <p className="text-zinc-500 mt-1.5 text-sm">
+              Envie uma capa pronta, gere com IA ou crie no editor interativo.
+            </p>
+          </div>
+          {/* B2-05n: link permanente para a galeria universal — sempre
+              visível em qualquer estado da etapa, some quando não há artes.
+              Fora da etapa: este componente não é montado, sem risco. */}
+          {galeriaCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setGaleriaModalOpen(true)}
+              className="shrink-0 text-sm text-zinc-500 hover:text-brand-primary hover:underline underline-offset-2 mt-1"
+            >
+              Galeria do projeto ({galeriaCount})
+            </button>
+          )}
         </div>
 
         {/* Precedência de render em `modo === "escolha"`:
-            1. IaEscolhaGrid — mostra a grade de opções IA quando:
-               (a) IA sem escolha ainda (primeira vez); ou
-               (b) o autor clicou "Ver e usar outras gerações" no
-                   CapaExistenteCard (mostrandoGridPersistente=true), tanto
-                   em estado confirmado quanto em edição.
+            1. IaEscolhaGrid — IA sem escolha ainda (primeira vez após gerar).
+               O caso "Ver outras gerações" migrou para o modal universal
+               (B2-05n), removendo o grid persistente aqui.
             2. CapaExistenteCard — card único unificado ("capa existente"):
                dois estados internos via `isEditorCapa(dados)` — confirmada
                (source==='editor') ou em edição (IA com url_escolhida sem
-               confirm). Escondido quando o autor clicou "Trocar modo" ou
-               está vendo a grade persistente.
+               confirm). Escondido quando o autor clicou "Trocar modo".
             3. 3-card grid (Upload / IA / Editor em branco) — fallback e
                também para quando `trocandoModo` está ligado. */}
-        {dados && modo === "escolha" && (
-          (dados.modo === "ia" && !isEditorCapa(dados) && !dados.url_escolhida) ||
-          mostrandoGridPersistente
-        ) ? (
+        {dados && modo === "escolha" &&
+          dados.modo === "ia" && !isEditorCapa(dados) && !dados.url_escolhida ? (
           <div className="space-y-6">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <h2 className="font-heading text-xl text-brand-primary">
-                  {dados.url_escolhida ? "Trocar a capa escolhida" : "Escolha uma das capas geradas"}
-                </h2>
-                <p className="text-xs text-zinc-500 mt-1">
-                  {dados.url_escolhida
-                    ? "Re-escolher é grátis. Regenerar novas opções custa créditos."
-                    : "Clicar seleciona e salva imediatamente. Você pode trocar depois."}
-                </p>
-              </div>
-              {mostrandoGridPersistente && (
-                <button
-                  onClick={() => setMostrandoGridPersistente(false)}
-                  className="text-xs text-zinc-400 hover:text-zinc-600 underline shrink-0 ml-4"
-                >
-                  Cancelar
-                </button>
-              )}
+            <div>
+              <h2 className="font-heading text-xl text-brand-primary">
+                Escolha uma das capas geradas
+              </h2>
+              <p className="text-xs text-zinc-500 mt-1">
+                Clicar seleciona e salva imediatamente. Você pode trocar depois.
+              </p>
             </div>
             <IaEscolhaGrid
               opcoes={Array.isArray(dados.opcoes) ? (dados.opcoes as OpcaoCapa[]) : []}
@@ -3417,21 +3612,12 @@ export default function CapaPage() {
               <button
                 onClick={() => {
                   setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
-                  setMostrandoGridPersistente(false);
                   setModo("ia");
                 }}
                 className="flex-1 py-3 rounded-xl border border-zinc-200 text-zinc-600 text-sm hover:border-amber-300 transition-colors"
               >
                 Gerar novas opções
               </button>
-              {typeof dados.url_escolhida === "string" && (
-                <button
-                  onClick={() => router.push(`/editor/capa/${id}`)}
-                  className="flex-1 py-3 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors"
-                >
-                  Abrir no editor →
-                </button>
-              )}
             </div>
           </div>
         ) : dados && modo === "escolha" && !trocandoModo && (
@@ -3446,7 +3632,7 @@ export default function CapaPage() {
               formato={formatoGlobal}
               onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
               onAvancarCreditos={handleContinuar}
-              onVerOutrasGeracoes={() => setMostrandoGridPersistente(true)}
+              onVerOutrasGeracoes={() => setGaleriaModalOpen(true)}
               onGerarNovasOpcoes={() => {
                 setModoIaRegerarDe(dados as unknown as CapaGeradaResult);
                 setModo("ia");
@@ -3731,6 +3917,8 @@ export default function CapaPage() {
                 ? (dados.cobertura as "unica" | "frente_verso")
                 : undefined
             }
+            galeriaCount={galeriaCount}
+            onAbrirGaleria={() => setGaleriaModalOpen(true)}
             onSalvo={(dadosServidor) => {
               handleSalvoIA(dadosServidor);
               setModoIaRegerarDe(null);
@@ -3767,6 +3955,23 @@ export default function CapaPage() {
         ) : null}
 
       </main>
+
+      {/* B2-05n: modal universal da galeria — vive fora do switch de modo
+          para permanecer acessível em QUALQUER estado (trilha, cards,
+          briefing, upload, editor-confirmado). */}
+      <GaleriaCapaModal
+        open={galeriaModalOpen}
+        onClose={() => setGaleriaModalOpen(false)}
+        projectId={id}
+        tituloLivro={titulo}
+        dadosAtuais={dados}
+        plano={plano}
+        proposito={proposito}
+        onDadosNovos={(dadosNovos) => {
+          setDados(dadosNovos);
+          setModo("escolha");
+        }}
+      />
     </div>
   );
 }
