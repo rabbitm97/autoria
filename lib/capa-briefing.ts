@@ -95,35 +95,57 @@ export const ATMOSFERAS = [
   "acolhedora", "epica", "tensa", "luminosa",
 ] as const;
 
-export const briefingCapaSchema = z.object({
-  estilo: z.enum([
-    "minimalista", "cartoon", "aquarela", "fotorrealista",
-    "abstrato", "vintage", "geometrico",
-  ]),
-  // min(1) é regra da UI do briefing (validação client); o schema aceita
-  // vazio porque briefings HERDADOS (verso a partir de result mínimo do
-  // fallback da galeria, B2-04d) podem não ter atmosfera. (B2-05f)
-  atmosfera: z.array(z.enum(ATMOSFERAS)).max(2),
-  cor_predominante: z.object({
-    nome: z.string().max(40),
-    // Herança de results mínimos pode vir vazia (B2-05g, mesmo princípio
-    // do 05f/atmosfera): aceita "" e a linha de cor é omitida do prompt.
-    hex: z.string().regex(/^#[0-9a-fA-F]{6}$/).or(z.literal("")),
-  }),
-  posicao_titulo: z.enum(["topo", "centro", "base", "sem_preferencia"]),
-  descricao_livre: z.string().max(2000).optional().default(""),
-  referencias_texto: z.string().max(1000).optional().default(""),
-  evitar: z.string().max(500).optional().default(""),
-  verso: z
-    .object({
-      // "cor": não gera imagem — o editor apenas preenche com a cor
-      // predominante da frente. Mesmo assim vem no briefing para
-      // registrar a escolha do autor e habilitar mudança futura.
-      modo: z.enum(["cor", "continuacao", "independente"]),
-      descricao: z.string().max(2000).optional().default(""),
-    })
-    .optional(),
-});
+export const briefingCapaSchema = z
+  .object({
+    // B2-05s: "personalizado" é o 8º estilo — visão própria do autor,
+    // definida em `estilo_personalizado`. É campo estruturado (mesmo
+    // status que os 7 presets), não descrição livre — a hierarquia
+    // 03/05d/05r assume que o que está aqui MANDA.
+    estilo: z.enum([
+      "minimalista", "cartoon", "aquarela", "fotorrealista",
+      "abstrato", "vintage", "geometrico", "personalizado",
+    ]),
+    estilo_personalizado: z.string().max(60).optional().default(""),
+    // min(1) é regra da UI do briefing (validação client); o schema aceita
+    // vazio porque briefings HERDADOS (verso a partir de result mínimo do
+    // fallback da galeria, B2-04d) podem não ter atmosfera. (B2-05f)
+    atmosfera: z.array(z.enum(ATMOSFERAS)).max(2),
+    // B2-05s: uma atmosfera personalizada (texto livre curto) conta como
+    // 1 das 2 na UI, mas o schema aceita qualquer combinação persistível.
+    // Sem refine: é aditiva; ausência é o default.
+    atmosfera_personalizada: z.string().max(60).optional().default(""),
+    cor_predominante: z.object({
+      nome: z.string().max(40),
+      // Herança de results mínimos pode vir vazia (B2-05g, mesmo princípio
+      // do 05f/atmosfera): aceita "" e a linha de cor é omitida do prompt.
+      hex: z.string().regex(/^#[0-9a-fA-F]{6}$/).or(z.literal("")),
+    }),
+    posicao_titulo: z.enum(["topo", "centro", "base", "sem_preferencia"]),
+    descricao_livre: z.string().max(2000).optional().default(""),
+    referencias_texto: z.string().max(1000).optional().default(""),
+    evitar: z.string().max(500).optional().default(""),
+    verso: z
+      .object({
+        // "cor": não gera imagem — o editor apenas preenche com a cor
+        // predominante da frente. Mesmo assim vem no briefing para
+        // registrar a escolha do autor e habilitar mudança futura.
+        modo: z.enum(["cor", "continuacao", "independente"]),
+        descricao: z.string().max(2000).optional().default(""),
+      })
+      .optional(),
+  })
+  // B2-05s: refine é a exceção CORRETA à regra da família 05f-h. Estados
+  // herdados legítimos são só os que o produto JÁ persistiu; "personalizado
+  // sem texto" nunca existirá persistido (rota de escrita força esse
+  // acoplamento). Exigi-lo aqui torna o erro de formulário visível.
+  .refine(
+    (b) => b.estilo !== "personalizado" || (b.estilo_personalizado?.trim().length ?? 0) > 0,
+    {
+      path: ["estilo_personalizado"],
+      message:
+        "Descreva o estilo personalizado (ex.: pixel art, óleo renascentista, colagem de papel).",
+    },
+  );
 
 export type BriefingCapa = z.infer<typeof briefingCapaSchema>;
 
@@ -389,7 +411,7 @@ export async function processarBriefingCapa(args: {
    * paleta, tratamento). O modo do verso (continuacao × independente)
    * decide o tom da instrução extra no userMsg.
    */
-  frente?: { prompt_usado: string; estilo: string; frase?: string };
+  frente?: { prompt_usado: string; estilo: string; estilo_personalizado?: string; frase?: string };
 }): Promise<{ prompt_imagem: string; frase_confirmacao: string; negative_hints: string[] }> {
   if (isMock()) {
     return {
@@ -449,8 +471,19 @@ export async function processarBriefingCapa(args: {
     buildContextoTxt(args.contexto),
     "",
     "BRIEFING DO AUTOR:",
-    `Estilo: ${b.estilo} (${ESTILO_DESC[b.estilo]})`,
-    b.atmosfera.length > 0 && `Atmosfera: ${b.atmosfera.join(", ")}`,
+    // B2-05s: estilo "personalizado" injeta o texto do autor como definição
+    // (ESTILO_DESC não ganha entrada — o texto do autor É a descrição).
+    b.estilo === "personalizado"
+      ? `Estilo: personalizado, definido pelo autor — "${b.estilo_personalizado}" (siga esta definição à risca)`
+      : `Estilo: ${b.estilo} (${ESTILO_DESC[b.estilo]})`,
+    // B2-05s: atmosfera personalizada (texto livre) entra na mesma linha,
+    // após os presets. Filtra vazias — sem atmosfera nenhuma, linha omitida.
+    (() => {
+      const atmoTodas = [...b.atmosfera, b.atmosfera_personalizada].filter(
+        (a): a is string => Boolean(a && String(a).trim()),
+      );
+      return atmoTodas.length > 0 && `Atmosfera: ${atmoTodas.join(", ")}`;
+    })(),
     // Herança de results mínimos pode não ter cor (B2-05g); no verso por
     // continuação a paleta já vem da FRENTE como referência visual.
     (b.cor_predominante.nome || b.cor_predominante.hex) &&

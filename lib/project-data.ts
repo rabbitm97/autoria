@@ -191,7 +191,8 @@ export type EstiloCapa =
   | "fotorrealista"
   | "abstrato"
   | "vintage"
-  | "geometrico";
+  | "geometrico"
+  | "personalizado";
 
 export interface OpcaoCapa {
   url: string;
@@ -232,7 +233,18 @@ export interface CapaGeradaResult {
   modo: "ia";
   briefing_versao: 2;
   estilo: EstiloCapa;
+  /**
+   * Texto do autor quando `estilo === "personalizado"` (B2-05s). Máx 60 chars.
+   * Nullish para retrocompat com results antigos — nunca populado sem estilo
+   * personalizado (contrato garantido pelo refine em briefingCapaSchema).
+   */
+  estilo_personalizado?: string;
   atmosfera: string[];
+  /**
+   * Atmosfera personalizada em texto livre (B2-05s). Conta como 1 das 2 na UI,
+   * mas o schema aceita qualquer combinação. Nullish para retrocompat.
+   */
+  atmosfera_personalizada?: string;
   cor_predominante: string;
   cor_predominante_hex: string;
   posicao_titulo: "topo" | "centro" | "base" | "sem_preferencia";
@@ -704,7 +716,10 @@ const dadosCapaIaSchema = z.looseObject({
   modo: z.literal("ia"),
   briefing_versao: z.number().nullish(),
   estilo: z.string(),
+  // B2-05s: retrocompat total — results antigos não têm esses campos.
+  estilo_personalizado: z.string().nullish(),
   atmosfera: z.array(z.string()).nullish(),
+  atmosfera_personalizada: z.string().nullish(),
   cor_predominante: z.string(),
   cor_predominante_hex: z.string().nullish(),
   posicao_titulo: z.string().nullish(),

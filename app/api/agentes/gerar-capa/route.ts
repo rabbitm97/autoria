@@ -289,10 +289,16 @@ export async function POST(req: NextRequest) {
   // profundidade (o botão "Continuação" no verso reconstrói o briefing
   // da frente e assume que ela existe).
   const dadosCapaAtual = (project as Record<string, unknown>).dados_capa as Record<string, unknown> | null;
-  let frenteHeredada: { prompt_usado: string; estilo: string; frase?: string } | undefined;
+  let frenteHeredada:
+    | { prompt_usado: string; estilo: string; estilo_personalizado?: string; frase?: string }
+    | undefined;
   if (alvo === "verso") {
     const promptUsado = typeof dadosCapaAtual?.prompt_usado === "string" ? dadosCapaAtual.prompt_usado : "";
     const estiloFrente = typeof dadosCapaAtual?.estilo === "string" ? dadosCapaAtual.estilo : "";
+    const estiloPersonalizadoFrente =
+      typeof dadosCapaAtual?.estilo_personalizado === "string"
+        ? dadosCapaAtual.estilo_personalizado
+        : "";
     const urlEscolhida = typeof dadosCapaAtual?.url_escolhida === "string" ? dadosCapaAtual.url_escolhida : "";
     // B2-05h: só url_escolhida é obrigatória. prompt_usado="" é estado
     // legítimo (frente vinda do fallback da galeria, 04d) — a continuidade
@@ -306,9 +312,19 @@ export async function POST(req: NextRequest) {
     const fraseFrente =
       typeof dadosCapaAtual?.frase_confirmacao === "string" ? dadosCapaAtual.frase_confirmacao : undefined;
     frenteHeredada = promptUsado
-      ? { prompt_usado: promptUsado, estilo: estiloFrente, frase: fraseFrente }
+      ? {
+          prompt_usado: promptUsado,
+          estilo: estiloFrente,
+          estilo_personalizado: estiloPersonalizadoFrente,
+          frase: fraseFrente,
+        }
       : estiloFrente
-        ? { prompt_usado: "", estilo: estiloFrente, frase: fraseFrente }
+        ? {
+            prompt_usado: "",
+            estilo: estiloFrente,
+            estilo_personalizado: estiloPersonalizadoFrente,
+            frase: fraseFrente,
+          }
         : undefined;
   }
 
@@ -583,7 +599,11 @@ export async function POST(req: NextRequest) {
       modo: "ia",
       briefing_versao: 2,
       estilo: body.briefing.estilo as EstiloCapa,
+      // B2-05s: espelha o texto do autor no result. undefined quando estilo !==
+      // "personalizado" (refine do briefing garante o acoplamento).
+      estilo_personalizado: body.briefing.estilo_personalizado || undefined,
       atmosfera: [...body.briefing.atmosfera],
+      atmosfera_personalizada: body.briefing.atmosfera_personalizada || undefined,
       cor_predominante: body.briefing.cor_predominante.nome,
       cor_predominante_hex: body.briefing.cor_predominante.hex,
       posicao_titulo: body.briefing.posicao_titulo,

@@ -42,6 +42,10 @@ const ESTILOS: { id: EstiloCapa; label: string; emoji: string }[] = [
   { id: "abstrato",      label: "Abstrato",      emoji: "🔷" },
   { id: "vintage",       label: "Vintage",       emoji: "📜" },
   { id: "geometrico",    label: "Geométrico",    emoji: "🔺" },
+  // B2-05s: 8º card — visão própria do autor em texto livre. Ícone fixo
+  // (lápis) em vez de thumbnail; o input aparece abaixo do grid quando
+  // este card está selecionado.
+  { id: "personalizado", label: "Personalizado", emoji: "✎" },
 ];
 
 const CORES_PRESET = [
@@ -1161,7 +1165,11 @@ function IaEscolhaGrid({
 // Precedência ao montar ModoIA: regerarDe > draft > default.
 type BriefingDraft = {
   estilo?: EstiloCapa;
+  // B2-05s: texto do autor quando estilo === "personalizado"; ignorado
+  // para os 7 presets.
+  estiloPersonalizado?: string;
   atmosfera?: string[];
+  atmosferaPersonalizada?: string;
   cor?: string;
   corHex?: string;
   posicaoTitulo?: "topo" | "centro" | "base" | "sem_preferencia";
@@ -1253,9 +1261,17 @@ function PainelVersoIa({
 
   // Herança da frente (valores fossos — o autor não edita aqui).
   const estilo = (dadosFrente.estilo as EstiloCapa | undefined) ?? "minimalista";
+  // B2-05s: quando frente é personalizada, propagamos o texto do autor
+  // para o verso — o refine do schema exige o par (estilo, texto).
+  const estiloPersonalizadoFrente =
+    typeof dadosFrente.estilo_personalizado === "string" ? dadosFrente.estilo_personalizado : "";
   const atmosfera = Array.isArray(dadosFrente.atmosfera)
     ? (dadosFrente.atmosfera as string[])
     : [];
+  const atmosferaPersonalizadaFrente =
+    typeof dadosFrente.atmosfera_personalizada === "string"
+      ? dadosFrente.atmosfera_personalizada
+      : "";
   const corNome = (dadosFrente.cor_predominante as string | undefined) ?? "";
   // B2-05g: sem default fabricado — herança do result mínimo do fallback
   // (B2-04d) pode gravar hex="". `??` não cobre string vazia; validamos e
@@ -1279,8 +1295,18 @@ function PainelVersoIa({
   const heredityLine = dadosFrente.prompt_usado === ""
     ? "a própria arte escolhida"
     : [
-        ESTILOS.find(e => e.id === estilo)?.label ?? estilo,
-        atmosfera.length ? atmosfera.map(a => ATMOSFERAS_LABELS.find(x => x.id === a)?.label ?? a).join(" + ") : null,
+        // B2-05s: estilo personalizado herda o TEXTO do autor, não a palavra
+        // "personalizado". Fallback para o label do preset ou o id cru.
+        estilo === "personalizado" && estiloPersonalizadoFrente
+          ? estiloPersonalizadoFrente
+          : (ESTILOS.find(e => e.id === estilo)?.label ?? estilo),
+        (() => {
+          const atmoTodas = [
+            ...atmosfera.map(a => ATMOSFERAS_LABELS.find(x => x.id === a)?.label ?? a),
+            atmosferaPersonalizadaFrente.trim() || null,
+          ].filter((x): x is string => Boolean(x));
+          return atmoTodas.length ? atmoTodas.join(" + ") : null;
+        })(),
         corNome || null,
         posicaoTitulo !== "sem_preferencia" ? `título ${posicaoTitulo}` : null,
       ].filter(Boolean).join(" · ");
@@ -1308,7 +1334,12 @@ function PainelVersoIa({
     const desc = modoVerso === "continuacao" ? ajustes : descricao;
     return {
       estilo,
+      // B2-05s: quando frente é personalizada, propaga o texto ao verso
+      // (refine do schema exige o par).
+      estilo_personalizado:
+        estilo === "personalizado" ? estiloPersonalizadoFrente : undefined,
       atmosfera,
+      atmosfera_personalizada: atmosferaPersonalizadaFrente || undefined,
       cor_predominante: { nome: corNome, hex: corHex },
       posicao_titulo: posicaoTitulo,
       descricao_livre: desc || undefined,
@@ -1729,7 +1760,13 @@ function ModoIA({
     ? (CORES_PRESET.find(c => c.value === regerarDe.cor_predominante) ?? null)
     : null;
   const [estilo, setEstilo] = useState<EstiloCapa>(regerarDe?.estilo ?? "minimalista");
+  const [estiloPersonalizado, setEstiloPersonalizado] = useState<string>(
+    regerarDe?.estilo_personalizado ?? "",
+  );
   const [atmosfera, setAtmosfera] = useState<string[]>(regerarDe ? [...regerarDe.atmosfera] : []);
+  const [atmosferaPersonalizada, setAtmosferaPersonalizada] = useState<string>(
+    regerarDe?.atmosfera_personalizada ?? "",
+  );
   const [cor, setCor] = useState(presetCorInicial?.value ?? (regerarDe?.cor_predominante ?? CORES_PRESET[0].value));
   const [corHex, setCorHex] = useState(presetCorInicial?.hex ?? (regerarDe?.cor_predominante_hex ?? CORES_PRESET[0].hex));
   const [posicaoTitulo, setPosicaoTitulo] = useState<"topo" | "centro" | "base" | "sem_preferencia">(
@@ -1768,7 +1805,9 @@ function ModoIA({
     if (regerarDe) return;
     const d = loadDraft(projectId);
     if (d.estilo) setEstilo(d.estilo);
+    if (typeof d.estiloPersonalizado === "string") setEstiloPersonalizado(d.estiloPersonalizado);
     if (Array.isArray(d.atmosfera)) setAtmosfera(d.atmosfera.slice(0, 2));
+    if (typeof d.atmosferaPersonalizada === "string") setAtmosferaPersonalizada(d.atmosferaPersonalizada);
     if (d.cor) setCor(d.cor);
     if (d.corHex) setCorHex(d.corHex);
     if (d.posicaoTitulo) setPosicaoTitulo(d.posicaoTitulo);
@@ -1783,7 +1822,8 @@ function ModoIA({
     if (typeof window === "undefined") return;
     const t = window.setTimeout(() => {
       const draft: BriefingDraft = {
-        estilo, atmosfera, cor, corHex,
+        estilo, estiloPersonalizado, atmosfera, atmosferaPersonalizada,
+        cor, corHex,
         posicaoTitulo, descricaoLivre, referenciasTexto, evitar,
       };
       try {
@@ -1791,7 +1831,7 @@ function ModoIA({
       } catch { /* quota / privacy mode — ignora */ }
     }, 500);
     return () => window.clearTimeout(t);
-  }, [projectId, estilo, atmosfera, cor, corHex, posicaoTitulo, descricaoLivre, referenciasTexto, evitar]);
+  }, [projectId, estilo, estiloPersonalizado, atmosfera, atmosferaPersonalizada, cor, corHex, posicaoTitulo, descricaoLivre, referenciasTexto, evitar]);
 
   // Resultado / escolha — pre-populado quando regerarDe fornecido
   const [resultado, setResultado] = useState<CapaGeradaResult | null>(regerarDe ?? null);
@@ -1802,7 +1842,11 @@ function ModoIA({
   function buildBriefing() {
     return {
       estilo,
+      // B2-05s: só envia o texto quando estilo é personalizado (o schema
+      // aceita "" para os presets, mas evitamos ruído).
+      estilo_personalizado: estilo === "personalizado" ? estiloPersonalizado : undefined,
       atmosfera,
+      atmosfera_personalizada: atmosferaPersonalizada || undefined,
       cor_predominante: { nome: cor, hex: corHex },
       posicao_titulo: posicaoTitulo,
       descricao_livre: descricaoLivre || undefined,
@@ -1811,10 +1855,16 @@ function ModoIA({
     };
   }
 
+  // B2-05s: personalizada conta como 1 das 2. Sem essa conta, autor podia
+  // marcar 2 presets + escrever personalizada e ultrapassar o limite ao
+  // salvar. O gate visual dos chips (`bloq`) segue a mesma soma.
+  const personalizadaAtiva = atmosferaPersonalizada.trim().length > 0;
+  const totalAtmosferas = atmosfera.length + (personalizadaAtiva ? 1 : 0);
   function toggleAtmosfera(a: string) {
     setAtmosfera(prev => {
       if (prev.includes(a)) return prev.filter(x => x !== a);
-      if (prev.length >= 2) return prev;
+      const jaCheio = prev.length + (personalizadaAtiva ? 1 : 0) >= 2;
+      if (jaCheio) return prev;
       return [...prev, a];
     });
   }
@@ -1895,8 +1945,15 @@ function ModoIA({
   async function handleGerar() {
     // Gate de validação do briefing — atmosfera é obrigatória. Antes o gate
     // vivia no handleConfirmar (removido em B2-05i M5c).
-    if (atmosfera.length === 0) {
+    // B2-05s: personalizada conta como 1 das (até 2) atmosferas.
+    const totalAtmosfera = atmosfera.length + (atmosferaPersonalizada.trim() ? 1 : 0);
+    if (totalAtmosfera === 0) {
       setErroForm("Escolha pelo menos 1 atmosfera antes de continuar.");
+      return;
+    }
+    // B2-05s: estilo personalizado sem texto — bloqueia antes do 400 do refine.
+    if (estilo === "personalizado" && !estiloPersonalizado.trim()) {
+      setErroForm("Descreva o estilo personalizado (ex.: pixel art, óleo renascentista).");
       return;
     }
     setErroForm(null);
@@ -1936,7 +1993,9 @@ function ModoIA({
   function handleMudarBriefing() {
     if (resultado) {
       setEstilo(resultado.estilo);
+      setEstiloPersonalizado(resultado.estilo_personalizado ?? "");
       setAtmosfera([...resultado.atmosfera]);
+      setAtmosferaPersonalizada(resultado.atmosfera_personalizada ?? "");
       const presetCor = CORES_PRESET.find(c => c.value === resultado.cor_predominante);
       if (presetCor) { setCor(presetCor.value); setCorHex(presetCor.hex); }
       else { setCor(resultado.cor_predominante); setCorHex(resultado.cor_predominante_hex); }
@@ -2090,6 +2149,21 @@ function ModoIA({
                 </button>
               ))}
             </div>
+            {estilo === "personalizado" && (
+              <div className="mt-3">
+                <input
+                  type="text"
+                  value={estiloPersonalizado}
+                  onChange={(e) => setEstiloPersonalizado(e.target.value.slice(0, 60))}
+                  maxLength={60}
+                  placeholder="Ex.: pixel art, óleo renascentista, colagem de papel…"
+                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-brand-gold"
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  O agente segue esta definição à risca — descreva a técnica visual do jeito que preferir.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Atmosfera */}
@@ -2100,7 +2174,7 @@ function ModoIA({
             <div className="flex flex-wrap gap-2">
               {ATMOSFERAS_LABELS.map(a => {
                 const sel = atmosfera.includes(a.id);
-                const bloq = !sel && atmosfera.length >= 2;
+                const bloq = !sel && totalAtmosferas >= 2;
                 return (
                   <button key={a.id} type="button"
                     onClick={() => { if (!bloq) toggleAtmosfera(a.id); }}
@@ -2112,8 +2186,42 @@ function ModoIA({
                   </button>
                 );
               })}
+              {/* B2-05s: chip "Personalizada ✎" — clique ativa/desativa o
+                  input. Ao ativar sem espaço (2 presets já marcados), o
+                  clique não abre; ao desativar limpa o texto. Conta como
+                  1 das 2 no `totalAtmosferas`. */}
+              {(() => {
+                const podeAtivar = personalizadaAtiva || atmosfera.length < 2;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (personalizadaAtiva) setAtmosferaPersonalizada("");
+                      else if (podeAtivar) setAtmosferaPersonalizada(" ");
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                      ${personalizadaAtiva ? "border-brand-gold bg-brand-gold/10 text-brand-primary" :
+                        !podeAtivar ? "border-zinc-100 text-zinc-300 cursor-not-allowed" :
+                        "border-zinc-200 text-zinc-600 hover:border-zinc-300"}`}
+                  >
+                    Personalizada ✎
+                  </button>
+                );
+              })()}
             </div>
-            {atmosfera.length >= 2 && (
+            {personalizadaAtiva && (
+              <div className="mt-3">
+                <input
+                  type="text"
+                  value={atmosferaPersonalizada.trimStart()}
+                  onChange={(e) => setAtmosferaPersonalizada(e.target.value.slice(0, 60))}
+                  maxLength={60}
+                  placeholder="Ex.: nostálgica de infância…"
+                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-lg focus:outline-none focus:border-brand-gold"
+                />
+              </div>
+            )}
+            {totalAtmosferas >= 2 && (
               <p className="text-[11px] text-zinc-400 mt-2">Máximo 2 atmosferas.</p>
             )}
           </div>
@@ -2301,7 +2409,7 @@ function ModoIA({
           <div className="space-y-2">
             <button
               onClick={() => void handleGerar()}
-              disabled={atmosfera.length === 0 || saldoEsgotado(alvoEfetivo, saldoImagens)}
+              disabled={totalAtmosferas === 0 || saldoEsgotado(alvoEfetivo, saldoImagens)}
               className="w-full py-4 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                 hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
               {rotuloConsumo(alvoEfetivo, saldoImagens) ?? "Gerar capa com IA →"}
