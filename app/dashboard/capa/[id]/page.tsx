@@ -2668,7 +2668,7 @@ function GaleriaCapaModal({
   dadosAtuais: Record<string, unknown> | null;
   plano: Plano;
   proposito: PropositoPublicacao | null;
-  onDadosNovos: (dados: Record<string, unknown>) => void;
+  onDadosNovos: (dados: Record<string, unknown>, alvo: "frente" | "verso" | "unica") => void;
 }) {
   const [itens, setItens] = useState<GaleriaCapaItem[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -2719,7 +2719,7 @@ function GaleriaCapaModal({
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Falha ao usar esta arte.");
-      onDadosNovos(data);
+      onDadosNovos(data, alvo);
       onClose();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao usar esta arte.");
@@ -3455,8 +3455,38 @@ export default function CapaPage() {
     router.push(`/dashboard/creditos/${id}`);
   }
 
-  function handleSalvoIA(dadosServidor: CapaGeradaResult) {
-    setDados(dadosServidor as unknown as Record<string, unknown>);
+  // B2-05p: roteador único pós-escolha de arte. Implementa o mapa da
+  // esteira (05i): a única decisão condicional depois de uma escolha de
+  // frente/única é "cai na etapa de verso ou vai direto pro editor".
+  // TODO call site que finalize escolha de FRENTE ou ÚNICA chama esta
+  // função — jamais decide destino localmente. Verso tem fluxo próprio
+  // (permanece na etapa), não roteia por aqui.
+  function rotearPosEscolha(dadosServidor: unknown): void {
+    const d = dadosServidor as Record<string, unknown>;
+    setDados(d);
+    setModoIaRegerarDe(null);
+
+    const cobertura = typeof d.cobertura === "string" ? d.cobertura : "frente_verso";
+    const versoAtual = (d.verso as DadosVersoIa | null | undefined) ?? null;
+    const versoDecidido =
+      !!versoAtual &&
+      (versoAtual.modo === "cor" ||
+        (typeof versoAtual.url_escolhida === "string" &&
+          versoAtual.url_escolhida.length > 0));
+    const precisaPainelVerso =
+      plano === "pro" &&
+      proposito === "completa" &&
+      cobertura === "frente_verso" &&
+      !versoDecidido;
+
+    if (precisaPainelVerso) {
+      // Estado C do mapa: mesma tela do fluxo normal — o CapaExistenteCard
+      // + PainelVersoIa já renderizam sob modo="escolha" quando o verso
+      // ainda está pendente.
+      setModo("escolha");
+      return;
+    }
+    router.push(`/editor/capa/${id}`);
   }
 
   function handleSalvoUpload(result: CapaUploadResult) {
@@ -3485,8 +3515,9 @@ export default function CapaPage() {
   }
 
   // Chamado pelo IaEscolhaGrid — clique numa opção dispara o endpoint de
-  // escolha (grátis; regenerar é pago). Servidor devolve o dados_capa
-  // atualizado (com url_escolhida preenchida) — sincroniza o state local.
+  // escolha (grátis; regenerar é pago). Roteamento pós-escolha decide se
+  // o autor cai na etapa de verso (pro+completa+frente_verso pendente)
+  // ou vai direto pro editor — via rotearPosEscolha.
   const [escolhendoUrl, setEscolhendoUrl] = useState<string | null>(null);
   async function handleEscolherOpcao(url: string, storagePath: string): Promise<void> {
     setEscolhendoUrl(url);
@@ -3500,8 +3531,7 @@ export default function CapaPage() {
         console.error("[capa/escolha] falhou:", await res.text().catch(() => ""));
         return;
       }
-      const dadosNovos = await res.json();
-      setDados(dadosNovos);
+      rotearPosEscolha(await res.json());
     } finally {
       setEscolhendoUrl(null);
     }
@@ -3919,34 +3949,7 @@ export default function CapaPage() {
             }
             galeriaCount={galeriaCount}
             onAbrirGaleria={() => setGaleriaModalOpen(true)}
-            onSalvo={(dadosServidor) => {
-              handleSalvoIA(dadosServidor);
-              setModoIaRegerarDe(null);
-              // ModoIA só gera frente/unica (verso vive no PainelVersoIa).
-              // B2-05j M2: aceite da FRENTE em pro+completa+frente_verso
-              // NÃO pode pular a etapa de verso. Precisa cair em modo="escolha"
-              // para o card unificado + PainelVersoIa renderizarem.
-              // Editor direto vale para: cobertura=unica (não tem verso),
-              // trilha=digital (sem verso) ou plano != pro (idem), ou verso
-              // já decidido em rodada anterior.
-              const cobertura =
-                (dadosServidor as { cobertura?: string })?.cobertura ?? "frente_verso";
-              const versoAtual = (dadosServidor as { verso?: DadosVersoIa | null })?.verso;
-              const versoDecidido =
-                !!versoAtual &&
-                (versoAtual.modo === "cor" ||
-                  (typeof versoAtual.url_escolhida === "string" &&
-                    versoAtual.url_escolhida.length > 0));
-              const precisaPainelVerso =
-                cobertura === "frente_verso" &&
-                plano === "pro" &&
-                proposito === "completa" &&
-                !versoDecidido;
-              if (proposito !== null && !precisaPainelVerso) {
-                router.push(`/editor/capa/${id}`);
-              }
-              setModo("escolha");
-            }}
+            onSalvo={(dadosServidor) => rotearPosEscolha(dadosServidor)}
             onVoltar={() => {
               setModo("escolha");
               setModoIaRegerarDe(null);
@@ -3967,9 +3970,15 @@ export default function CapaPage() {
         dadosAtuais={dados}
         plano={plano}
         proposito={proposito}
-        onDadosNovos={(dadosNovos) => {
-          setDados(dadosNovos);
-          setModo("escolha");
+        onDadosNovos={(dadosNovos, alvo) => {
+          if (alvo === "verso") {
+            // Verso escolhido pela galeria: card unificado permanece
+            // na tela (autor decide continuar/editar). Sem roteamento.
+            setDados(dadosNovos);
+            setModo("escolha");
+            return;
+          }
+          rotearPosEscolha(dadosNovos);
         }}
       />
     </div>

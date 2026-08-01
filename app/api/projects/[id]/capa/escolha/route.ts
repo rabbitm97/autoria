@@ -245,6 +245,11 @@ export async function POST(
       delete dadosNovos.imagem_url;
       delete dadosNovos.confirmed_at;
       delete dadosNovos.analise_tecnica;
+      // B2-05p M3: verso anterior pertencia à frente anterior; imagens
+      // seguem na galeria e podem ser re-escolhidas. Limpar aqui faz o
+      // roteador pós-escolha (page-level) reabrir a etapa de verso
+      // naturalmente em pro+completa+frente_verso.
+      delete dadosNovos.verso;
 
       if (itemStorage && galeriaStorage) {
         // Preserva outros alvos, refresca fatia deste alvo.
