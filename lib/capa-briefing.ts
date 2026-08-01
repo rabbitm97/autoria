@@ -169,6 +169,11 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   acompanha o prompt como referência); NÃO reafirme o estilo nomeado do
   briefing se ele conflitar com a arte da frente — descreva o CONTEÚDO
   do verso e diga que a técnica e a paleta seguem a arte da frente.
+  Quando existir "O VERSO DEVE MOSTRAR", o CONTEÚDO do prompt do verso
+  é essa instrução, executada na técnica/paleta da frente (que acompanha
+  como imagem); a descrição da frente é só contexto do mundo. Sem essa
+  instrução: continuação = entorno/extensão da cena da frente;
+  independente = a descrição do verso é obrigatória e é o conteúdo.
 - Se o alvo for VERSO com modo "cor", NÃO gere prompt de imagem: esse
   modo não usa IA — o editor apenas preenche a região com a cor
   predominante da frente. Você não é chamado nesse caso.
@@ -455,11 +460,23 @@ export async function processarBriefingCapa(args: {
           : b.cor_predominante.nome || b.cor_predominante.hex
       }`,
     `Posição do título: ${b.posicao_titulo}`,
+    // B2-05r: no verso, a descrição livre é da FRENTE (herdada) — vira
+    // CONTEXTO do mundo, não conteúdo. O conteúdo é o que vier em
+    // `verso.descricao`, sinalizado logo abaixo como prioridade máxima.
     b.descricao_livre &&
-      `Descrição do autor (usar apenas cena/assunto/atmosfera; os campos acima prevalecem): ${b.descricao_livre}`,
+      (args.alvo === "verso"
+        ? `Descrição da FRENTE (apenas contexto do mundo — NÃO é o conteúdo do verso): ${b.descricao_livre}`
+        : `Descrição do autor (usar apenas cena/assunto/atmosfera; os campos acima prevalecem): ${b.descricao_livre}`),
     b.referencias_texto && `Capas de referência citadas: ${b.referencias_texto}`,
     b.evitar && `Evitar: ${b.evitar}`,
-    b.verso?.descricao && `Descrição do verso: ${b.verso.descricao}`,
+    // B2-05r: no verso, a descrição do autor É o conteúdo — sobe de status
+    // (rótulo de prioridade máxima) e de posição (linha em branco antes,
+    // colada ao bloco de herança/instruções que a segue). Fora do verso o
+    // rótulo antigo permanece.
+    b.verso?.descricao &&
+      (args.alvo === "verso"
+        ? `\nO VERSO DEVE MOSTRAR (prioridade máxima — se conflitar com qualquer descrição acima, ESTA manda): ${b.verso.descricao}`
+        : `Descrição do verso: ${b.verso.descricao}`),
     ...heredityBlock,
     versoInstruction && "",
     versoInstruction,
