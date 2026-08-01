@@ -165,6 +165,10 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
 - Se o briefing do verso tiver modo "continuacao", o prompt deve pedir
   "seamless continuation of the provided front artwork into the paired
   back artwork of the same book, matching palette, lighting and style".
+  Na continuação, a técnica e a paleta REAIS vêm da IMAGEM da frente (que
+  acompanha o prompt como referência); NÃO reafirme o estilo nomeado do
+  briefing se ele conflitar com a arte da frente — descreva o CONTEÚDO
+  do verso e diga que a técnica e a paleta seguem a arte da frente.
 - Se o alvo for VERSO com modo "cor", NÃO gere prompt de imagem: esse
   modo não usa IA — o editor apenas preenche a região com a cor
   predominante da frente. Você não é chamado nesse caso.
@@ -425,7 +429,7 @@ export async function processarBriefingCapa(args: {
   const versoInstruction: string | null =
     args.alvo === "verso"
       ? versoMode === "continuacao"
-        ? "O verso é a CONTINUAÇÃO da arte da frente para a página ESQUERDA de um livro aberto: mesmo mundo, mesma técnica, mesma paleta e luz — mas NUNCA uma cópia, espelho ou repetição do assunto principal da frente. O verso mostra o ENTORNO ou a extensão da mesma cena (o que está ao redor, atrás ou antes do momento da frente), com densidade menor e uma área ampla e calma para o texto da sinopse. PROIBIDO repetir o elemento dominante da frente."
+        ? "O verso é a CONTINUAÇÃO da arte da frente para a página ESQUERDA de um livro aberto: mesmo mundo, mesma técnica, mesma paleta e luz — mas NUNCA uma cópia, espelho ou repetição do assunto principal da frente. O verso mostra o ENTORNO ou a extensão da mesma cena (o que está ao redor, atrás ou antes do momento da frente), com densidade menor e uma área ampla e calma para o texto da sinopse. PROIBIDO repetir o elemento dominante da frente. A técnica e a paleta REAIS vêm da IMAGEM da frente (que acompanha o prompt como referência); NÃO reafirme o estilo nomeado do briefing se ele conflitar com a arte da frente — descreva o CONTEÚDO do verso e diga que a técnica e a paleta seguem a arte da frente."
         : versoMode === "independente"
           ? temPromptFrente
             ? "O prompt do verso deve pertencer à MESMA FAMÍLIA VISUAL do prompt da frente acima (mesma técnica, paleta e tratamento), com a cena própria descrita pelo autor."

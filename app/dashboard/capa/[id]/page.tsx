@@ -1269,12 +1269,21 @@ function PainelVersoIa({
       : "sem_preferencia";
   })();
 
-  const heredityLine = [
-    ESTILOS.find(e => e.id === estilo)?.label ?? estilo,
-    atmosfera.length ? atmosfera.map(a => ATMOSFERAS_LABELS.find(x => x.id === a)?.label ?? a).join(" + ") : null,
-    corNome || null,
-    posicaoTitulo !== "sem_preferencia" ? `título ${posicaoTitulo}` : null,
-  ].filter(Boolean).join(" · ");
+  // B2-05q M4: quando a frente veio do fallback da galeria (04d), o briefing
+  // gravado é o do modo IA que NÃO foi aceito — o autor escolheu uma arte
+  // que pode ter estilo/paleta completamente diferentes do briefing. Nesse
+  // caso o rótulo "Herdando da frente: minimalista · terroso" mente. A
+  // marca canônica desse estado é `prompt_usado === ""` (B2-05h). Aí a
+  // herança HONESTA é: "a própria arte escolhida" — que de fato guia a
+  // continuação como imagem de referência (server-side).
+  const heredityLine = dadosFrente.prompt_usado === ""
+    ? "a própria arte escolhida"
+    : [
+        ESTILOS.find(e => e.id === estilo)?.label ?? estilo,
+        atmosfera.length ? atmosfera.map(a => ATMOSFERAS_LABELS.find(x => x.id === a)?.label ?? a).join(" + ") : null,
+        corNome || null,
+        posicaoTitulo !== "sem_preferencia" ? `título ${posicaoTitulo}` : null,
+      ].filter(Boolean).join(" · ");
 
   async function handleCor(): Promise<void> {
     setSalvandoCor(true);

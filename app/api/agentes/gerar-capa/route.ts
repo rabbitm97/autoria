@@ -17,7 +17,7 @@ import {
   getRatioArteUnica,
   type ArteUnicaAspectRatio,
 } from "@/lib/formatos";
-import { signedUrlCapas } from "@/lib/capa-signed-url";
+import { signedUrlCapas, storagePathDaUrl } from "@/lib/capa-signed-url";
 import { validarProjectData } from "@/lib/project-data";
 import type {
   EstiloCapa,
@@ -39,27 +39,49 @@ import {
 // Re-export types for consumers that import from this route path
 export type { EstiloCapa, OpcaoCapa, CapaGeradaResult } from "@/lib/project-data";
 
+/**
+ * Monta o payload de `parts` para o Gemini. Aceita uma LISTA de referências
+ * (no máximo 2 hoje: frente + verso anterior na iteração da continuação).
+ * A intenção diz ao modelo o papel da PRIMEIRA referência; a segunda, quando
+ * presente na continuação, é sempre "improve on previous attempt" — texto
+ * verbatim para não deixar o modelo confundir com estilo.
+ *
+ * B2-05q M2: 2ª referência = verso anterior. Sem ela, o autor "regenera" e
+ * a IA não tem de quê iterar — o resultado é uma nova tentativa aleatória.
+ */
 function buildContents(
   prompt: string,
-  ref: string | undefined,
+  refs: string[],
   intencao: "estilo" | "conteudo" | "verso_continuacao" = "estilo",
 ): Part[] {
-  if (ref) {
-    const match = ref.match(/^data:([^;]+);base64,(.+)$/);
-    if (match) {
-      const instrucao =
-        intencao === "conteudo"
-          ? " Incorporate the provided reference image as actual subject matter of the artwork — integrate it naturally into the composition while matching the requested style and palette."
-          : intencao === "verso_continuacao"
-            ? " This is the FRONT cover of the book. Generate the BACK cover that sits to its LEFT as a natural continuation of the same artwork: same world, palette, technique and lighting. Do NOT copy, mirror or repeat the front or its main subject — paint the surrounding/preceding region of the same scene, calmer and less dense, with generous quiet space for text."
-            : " Use the provided reference image as a style and mood guide only — do not copy it literally.";
-      return [
-        { text: prompt + instrucao } as Part,
-        { inlineData: { mimeType: match[1], data: match[2] } } as Part,
-      ];
-    }
+  const parsedRefs = refs
+    .slice(0, 2)
+    .map((r) => r.match(/^data:([^;]+);base64,(.+)$/))
+    .filter((m): m is RegExpMatchArray => Boolean(m));
+
+  if (parsedRefs.length === 0) {
+    return [{ text: prompt } as Part];
   }
-  return [{ text: prompt } as Part];
+
+  const instrucaoPrimeiraRef =
+    intencao === "conteudo"
+      ? " Incorporate the provided reference image as actual subject matter of the artwork — integrate it naturally into the composition while matching the requested style and palette."
+      : intencao === "verso_continuacao"
+        ? " This is the FRONT cover of the book. Generate the BACK cover that sits to its LEFT as a natural continuation of the same artwork: same world, palette, technique and lighting. Do NOT copy, mirror or repeat the front or its main subject — paint the surrounding/preceding region of the same scene, calmer and less dense, with generous quiet space for text. The reference image defines the artistic technique and palette — follow the IMAGE over any stylistic wording in the prompt."
+        : " Use the provided reference image as a style and mood guide only — do not copy it literally.";
+
+  const instrucaoSegundaRef =
+    intencao === "verso_continuacao" && parsedRefs.length === 2
+      ? " The second image is the PREVIOUS attempt for the back cover. Improve on it according to the briefing adjustments while keeping full continuity with the front (first image). Do not simply repeat the previous attempt."
+      : "";
+
+  const parts: Part[] = [
+    { text: prompt + instrucaoPrimeiraRef + instrucaoSegundaRef } as Part,
+  ];
+  for (const m of parsedRefs) {
+    parts.push({ inlineData: { mimeType: m[1], data: m[2] } } as Part);
+  }
+  return parts;
 }
 
 const gerarCapaBodySchema = z.object({
@@ -312,45 +334,87 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Verso em modo "continuacao": se o front não mandou imagemRef, buscamos
-  // a frente escolhida no storage e injetamos como referência de estilo.
-  // Sem essa referência a continuidade fica muito frágil.
-  let imagemRef = body.imagemRef;
+  // Verso em modo "continuacao": a frente REAL é referência obrigatória
+  // (sem ela, a IA gera cega e o autor recebe uma cena desconexa). B2-05q:
+  // identidade do arquivo vem do PATH estável da URL, nunca por comparação
+  // de URL assinada (tokens divergem a cada createSignedUrl). Se a frente
+  // não puder ser carregada, retornamos 502 — falha visível > silêncio.
+  //
+  // Segunda referência (também B2-05q M2): a tentativa ANTERIOR do verso.
+  // Sem ela, "regenerar" produz uma nova aleatória em vez de iterar sobre
+  // o que já existe. Best-effort — se o download falhar, degrada com warn
+  // (a frente sozinha ainda é uma continuação válida).
+  const imagemRefs: string[] = [];
   let imagemRefIntencao: "estilo" | "conteudo" | "verso_continuacao" = body.imagemRefIntencao;
+  if (body.imagemRef) {
+    imagemRefs.push(body.imagemRef);
+  }
   if (
     alvo === "verso" &&
     body.briefing.verso?.modo === "continuacao" &&
-    !imagemRef
+    imagemRefs.length === 0
   ) {
     const frenteRef =
       (dadosCapaAtual?.url_escolhida as string | null | undefined) ??
       (dadosCapaAtual?.imagem_url as string | null | undefined) ??
       null;
-    const frenteStoragePath = (() => {
-      // Preferimos storage_path (galeria) para leitura direta do bucket.
-      const galeria = Array.isArray(dadosCapaAtual?.galeria)
-        ? (dadosCapaAtual!.galeria as GaleriaCapaItem[])
-        : [];
-      const escolhida = galeria.find(
-        (g) => g.url === frenteRef && g.tipo === "frente",
+    const frenteStoragePath = storagePathDaUrl(frenteRef);
+    if (!frenteStoragePath) {
+      console.warn(
+        "[gerar-capa] verso continuacao: path da frente não derivou de",
+        frenteRef,
       );
-      return escolhida?.storage_path ?? null;
-    })();
-    if (frenteStoragePath) {
-      const { data: file, error: dlErr } = await storageClient.storage
-        .from("capas")
-        .download(frenteStoragePath);
-      if (!dlErr && file) {
-        const buf = Buffer.from(await file.arrayBuffer());
-        const mime = file.type || "image/png";
-        imagemRef = `data:${mime};base64,${buf.toString("base64")}`;
-        // B2-05j M3b: anti-cópia — a frente é referência de MUNDO, não de
-        // repetição. Instrução verbatim acompanha a imagemRef.
-        imagemRefIntencao = "verso_continuacao";
+      return NextResponse.json(
+        { error: "Não foi possível carregar a arte da frente para a continuação. Tente novamente." },
+        { status: 502 },
+      );
+    }
+    const { data: fileFrente, error: dlErrFrente } = await storageClient.storage
+      .from("capas")
+      .download(frenteStoragePath);
+    if (dlErrFrente || !fileFrente) {
+      console.warn(
+        "[gerar-capa] verso continuacao: download da frente falhou —",
+        dlErrFrente?.message,
+      );
+      return NextResponse.json(
+        { error: "Não foi possível carregar a arte da frente para a continuação. Tente novamente." },
+        { status: 502 },
+      );
+    }
+    const bufFrente = Buffer.from(await fileFrente.arrayBuffer());
+    const mimeFrente = fileFrente.type || "image/png";
+    imagemRefs.push(`data:${mimeFrente};base64,${bufFrente.toString("base64")}`);
+    // B2-05j M3b: anti-cópia — a frente é referência de MUNDO, não de
+    // repetição. Instrução verbatim acompanha a imagemRef.
+    imagemRefIntencao = "verso_continuacao";
+
+    // Verso anterior — url_escolhida do verso OU último item de verso.opcoes.
+    // Sem ele, "gerar outra opção" é uma nova aleatória, não uma iteração.
+    const versoAtual = dadosCapaAtual?.verso as DadosVersoIa | null | undefined;
+    const versoAnteriorUrl =
+      (versoAtual?.url_escolhida as string | null | undefined) ??
+      (versoAtual?.opcoes?.[versoAtual.opcoes.length - 1]?.url ?? null);
+    if (versoAnteriorUrl) {
+      const versoAnteriorPath = storagePathDaUrl(versoAnteriorUrl);
+      if (versoAnteriorPath) {
+        const { data: fileVerso, error: dlErrVerso } = await storageClient.storage
+          .from("capas")
+          .download(versoAnteriorPath);
+        if (!dlErrVerso && fileVerso) {
+          const bufVerso = Buffer.from(await fileVerso.arrayBuffer());
+          const mimeVerso = fileVerso.type || "image/png";
+          imagemRefs.push(`data:${mimeVerso};base64,${bufVerso.toString("base64")}`);
+        } else {
+          console.warn(
+            "[gerar-capa] verso continuacao: download do verso anterior falhou (segue só com frente) —",
+            dlErrVerso?.message,
+          );
+        }
       } else {
         console.warn(
-          "[gerar-capa] verso continuacao: download da frente falhou —",
-          dlErr?.message,
+          "[gerar-capa] verso continuacao: path do verso anterior não derivou de",
+          versoAnteriorUrl,
         );
       }
     }
@@ -371,7 +435,7 @@ export async function POST(req: NextRequest) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-image-preview",
-        contents: [{ role: "user", parts: buildContents(prompt_imagem, imagemRef, imagemRefIntencao) }],
+        contents: [{ role: "user", parts: buildContents(prompt_imagem, imagemRefs, imagemRefIntencao) }],
         config: {
           responseModalities: ["IMAGE"],
           imageConfig: { aspectRatio, imageSize: "4K" },
