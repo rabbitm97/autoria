@@ -1767,6 +1767,14 @@ function ModoIA({
   const [atmosferaPersonalizada, setAtmosferaPersonalizada] = useState<string>(
     regerarDe?.atmosfera_personalizada ?? "",
   );
+  // B2-05t: estado de ABERTURA da aba personalizada, independente do conteúdo.
+  // Bug antes: `personalizadaAtiva` era derivado de `.trim().length > 0`, então
+  // o chip precisava semear conteúdo para "abrir" — hack `setAtmosferaPersonalizada(" ")`
+  // era trimado no input e derrubava a derivação → chip parecia morto.
+  // Regra v11: estado de UI e conteúdo são eixos independentes.
+  const [atmosferaCustomAberta, setAtmosferaCustomAberta] = useState<boolean>(
+    Boolean(regerarDe?.atmosfera_personalizada),
+  );
   const [cor, setCor] = useState(presetCorInicial?.value ?? (regerarDe?.cor_predominante ?? CORES_PRESET[0].value));
   const [corHex, setCorHex] = useState(presetCorInicial?.hex ?? (regerarDe?.cor_predominante_hex ?? CORES_PRESET[0].hex));
   const [posicaoTitulo, setPosicaoTitulo] = useState<"topo" | "centro" | "base" | "sem_preferencia">(
@@ -1807,7 +1815,12 @@ function ModoIA({
     if (d.estilo) setEstilo(d.estilo);
     if (typeof d.estiloPersonalizado === "string") setEstiloPersonalizado(d.estiloPersonalizado);
     if (Array.isArray(d.atmosfera)) setAtmosfera(d.atmosfera.slice(0, 2));
-    if (typeof d.atmosferaPersonalizada === "string") setAtmosferaPersonalizada(d.atmosferaPersonalizada);
+    if (typeof d.atmosferaPersonalizada === "string") {
+      setAtmosferaPersonalizada(d.atmosferaPersonalizada);
+      // B2-05t: rascunho com texto não-vazio deve abrir a aba automaticamente
+      // (autor volta e vê o que escreveu, sem ter que clicar de novo no chip).
+      if (d.atmosferaPersonalizada.trim().length > 0) setAtmosferaCustomAberta(true);
+    }
     if (d.cor) setCor(d.cor);
     if (d.corHex) setCorHex(d.corHex);
     if (d.posicaoTitulo) setPosicaoTitulo(d.posicaoTitulo);
@@ -1858,12 +1871,14 @@ function ModoIA({
   // B2-05s: personalizada conta como 1 das 2. Sem essa conta, autor podia
   // marcar 2 presets + escrever personalizada e ultrapassar o limite ao
   // salvar. O gate visual dos chips (`bloq`) segue a mesma soma.
-  const personalizadaAtiva = atmosferaPersonalizada.trim().length > 0;
-  const totalAtmosferas = atmosfera.length + (personalizadaAtiva ? 1 : 0);
+  // B2-05t: renomeado para deixar explícito que é derivação de CONTEÚDO — a
+  // abertura da aba é `atmosferaCustomAberta`, eixo independente.
+  const atmosferaCustomPreenchida = atmosferaPersonalizada.trim().length > 0;
+  const totalAtmosferas = atmosfera.length + (atmosferaCustomPreenchida ? 1 : 0);
   function toggleAtmosfera(a: string) {
     setAtmosfera(prev => {
       if (prev.includes(a)) return prev.filter(x => x !== a);
-      const jaCheio = prev.length + (personalizadaAtiva ? 1 : 0) >= 2;
+      const jaCheio = prev.length + (atmosferaCustomPreenchida ? 1 : 0) >= 2;
       if (jaCheio) return prev;
       return [...prev, a];
     });
@@ -1946,8 +1961,9 @@ function ModoIA({
     // Gate de validação do briefing — atmosfera é obrigatória. Antes o gate
     // vivia no handleConfirmar (removido em B2-05i M5c).
     // B2-05s: personalizada conta como 1 das (até 2) atmosferas.
-    const totalAtmosfera = atmosfera.length + (atmosferaPersonalizada.trim() ? 1 : 0);
-    if (totalAtmosfera === 0) {
+    // B2-05t: usa mesma derivação de conteúdo do gate visual (aba aberta
+    // vazia NÃO satisfaz — mesma semântica do botão desabilitado).
+    if (!(atmosfera.length > 0 || atmosferaCustomPreenchida)) {
       setErroForm("Escolha pelo menos 1 atmosfera antes de continuar.");
       return;
     }
@@ -2186,21 +2202,25 @@ function ModoIA({
                   </button>
                 );
               })}
-              {/* B2-05s: chip "Personalizada ✎" — clique ativa/desativa o
-                  input. Ao ativar sem espaço (2 presets já marcados), o
-                  clique não abre; ao desativar limpa o texto. Conta como
-                  1 das 2 no `totalAtmosferas`. */}
+              {/* B2-05t: chip "Personalizada ✎" — abre/fecha a aba com estado
+                  próprio (`atmosferaCustomAberta`). O gate `podeAtivar` conta o
+                  chip já aberto como ocupando 1 slot, então enquanto aberto ele
+                  sempre "pode fechar". Ao fechar, limpa o texto. */}
               {(() => {
-                const podeAtivar = personalizadaAtiva || atmosfera.length < 2;
+                const podeAtivar = atmosferaCustomAberta || atmosfera.length < 2;
                 return (
                   <button
                     type="button"
                     onClick={() => {
-                      if (personalizadaAtiva) setAtmosferaPersonalizada("");
-                      else if (podeAtivar) setAtmosferaPersonalizada(" ");
+                      if (atmosferaCustomAberta) {
+                        setAtmosferaCustomAberta(false);
+                        setAtmosferaPersonalizada("");
+                      } else if (podeAtivar) {
+                        setAtmosferaCustomAberta(true);
+                      }
                     }}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all
-                      ${personalizadaAtiva ? "border-brand-gold bg-brand-gold/10 text-brand-primary" :
+                      ${atmosferaCustomAberta ? "border-brand-gold bg-brand-gold/10 text-brand-primary" :
                         !podeAtivar ? "border-zinc-100 text-zinc-300 cursor-not-allowed" :
                         "border-zinc-200 text-zinc-600 hover:border-zinc-300"}`}
                   >
@@ -2209,11 +2229,12 @@ function ModoIA({
                 );
               })()}
             </div>
-            {personalizadaAtiva && (
+            {atmosferaCustomAberta && (
               <div className="mt-3">
                 <input
                   type="text"
-                  value={atmosferaPersonalizada.trimStart()}
+                  autoFocus
+                  value={atmosferaPersonalizada}
                   onChange={(e) => setAtmosferaPersonalizada(e.target.value.slice(0, 60))}
                   maxLength={60}
                   placeholder="Ex.: nostálgica de infância…"
@@ -2409,7 +2430,7 @@ function ModoIA({
           <div className="space-y-2">
             <button
               onClick={() => void handleGerar()}
-              disabled={totalAtmosferas === 0 || saldoEsgotado(alvoEfetivo, saldoImagens)}
+              disabled={!(atmosfera.length > 0 || atmosferaCustomPreenchida) || saldoEsgotado(alvoEfetivo, saldoImagens)}
               className="w-full py-4 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                 hover:bg-brand-primary/90 transition-colors disabled:opacity-50">
               {rotuloConsumo(alvoEfetivo, saldoImagens) ?? "Gerar capa com IA →"}
