@@ -15,6 +15,7 @@ import {
 } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
 import { avancarEtapa } from "@/lib/supabase-helpers";
+import { suggestTemplate } from "@/lib/templates";
 import { DocxDisclaimer } from "./docx-disclaimer";
 import { Printer, Laptop, FileText, BookOpen, Download, Info } from "lucide-react";
 import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
@@ -22,20 +23,6 @@ import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 type Step = "config" | "capitulos" | "processing" | "preview";
-
-// Map genre → template (sugestão inicial; o autor pode alterar na UI)
-function suggestTemplate(genero: string | null): TemplateId {
-  const g = (genero ?? "").toLowerCase();
-  if (g.includes("romance") || g.includes("ficção") || g.includes("conto") || g.includes("suspense") || g.includes("fantasia")) return "literario";
-  if (g.includes("autoajuda") || g.includes("negócio") || g.includes("empreend") || g.includes("biografi") || g.includes("memória")) return "nao_ficcao";
-  if (g.includes("acadêm") || g.includes("técnico") || g.includes("abnt") || g.includes("científ")) return "abnt";
-  if (g.includes("infantil")) return "infantil";
-  if (g.includes("jovem") || g.includes("ya") || g.includes("juvenil")) return "juvenil";
-  if (g.includes("poesia")) return "poesia";
-  if (g.includes("teatro") || g.includes("dramaturgi")) return "teatro";
-  if (g.includes("religi") || g.includes("espirit") || g.includes("devoci")) return "religioso";
-  return "literario";
-}
 
 const FAMILIA_STYLES: Record<
   TemplateOption["familia"],

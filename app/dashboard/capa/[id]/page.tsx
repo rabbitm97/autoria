@@ -16,6 +16,7 @@ import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm 
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem, DadosVersoIa } from "@/lib/project-data";
 import { PLANO_LABEL, planoAtende, type Plano } from "@/lib/planos";
+import { generoParaFamilia } from "@/lib/templates";
 import { TelaConversaoPlano } from "@/components/plano-conversao";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -47,6 +48,17 @@ const ESTILOS: { id: EstiloCapa; label: string; emoji: string }[] = [
   // este card está selecionado.
   { id: "personalizado", label: "Personalizado", emoji: "✎" },
 ];
+
+// B2-06 EXEC-A2: default de estilo por família editorial (spec §2.3).
+// A família vem do gênero via lib/templates.generoParaFamilia. `personalizado`
+// nunca é default. Regeneração ignora este mapa — respeita a rodada anterior.
+const ESTILO_DEFAULT_POR_FAMILIA: Record<string, EstiloCapa> = {
+  literaria: "fotorrealista",
+  nao_ficcao: "geometrico",
+  poesia_teatro: "minimalista",
+  infantil_juvenil: "cartoon",
+  espiritual: "aquarela",
+};
 
 const CORES_PRESET = [
   { label: "Azul escuro",   value: "azul escuro",   hex: "#1e3a5f" },
@@ -1759,7 +1771,11 @@ function ModoIA({
   const presetCorInicial = regerarDe
     ? (CORES_PRESET.find(c => c.value === regerarDe.cor_predominante) ?? null)
     : null;
-  const [estilo, setEstilo] = useState<EstiloCapa>(regerarDe?.estilo ?? "minimalista");
+  const [estilo, setEstilo] = useState<EstiloCapa>(
+    regerarDe?.estilo ??
+      ESTILO_DEFAULT_POR_FAMILIA[generoParaFamilia(genero) ?? ""] ??
+      "minimalista",
+  );
   const [estiloPersonalizado, setEstiloPersonalizado] = useState<string>(
     regerarDe?.estilo_personalizado ?? "",
   );
@@ -2150,9 +2166,8 @@ function ModoIA({
             </div>
           )}
 
-          {/* Estilo — TODO B2-06: default por família editorial (aplicação
-              bloqueada; mapeamento gênero→família ainda é decisão pendente).
-              Thumbnails aplicadas em B2-06 EXEC-A B1. */}
+          {/* Estilo — thumbnails aplicadas em B2-06 EXEC-A B1; default por
+              família editorial aplicado em B2-06 EXEC-A2 (spec §2.3). */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Estilo visual</p>
             <div className="grid grid-cols-4 gap-2">
