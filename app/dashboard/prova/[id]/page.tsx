@@ -1080,7 +1080,7 @@ export default function ProvaPage() {
                 <div>
                   <p className="text-sm text-brand-primary font-medium">Preparando arquivos finais…</p>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    Estamos gerando os PDFs de publicação. Pode levar até um minuto.
+                    Estamos gerando os PDFs de publicação.
                   </p>
                 </div>
               </div>

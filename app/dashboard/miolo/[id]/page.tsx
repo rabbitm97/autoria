@@ -903,9 +903,6 @@ export default function MioloPage() {
               >
                 Iniciar diagramação →
               </button>
-              <p className="text-center text-xs text-zinc-400 mt-2">
-                Leva {(paginasEst ?? 0) > 200 ? "60–90" : "30–60"} segundos.
-              </p>
             </div>
           </div>
             </>

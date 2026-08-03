@@ -637,7 +637,7 @@ export default function RevisaoPage() {
               ) : "Iniciar revisão →"}
             </button>
             <p className="text-zinc-400 text-xs mt-4">
-              A análise é processada em paralelo pela Anthropic. Manuscritos grandes levam alguns minutos.
+              A análise é processada em paralelo pela Anthropic. Manuscritos grandes demoram um pouco mais.
             </p>
           </div>
 

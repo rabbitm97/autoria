@@ -928,7 +928,7 @@ function ModoUpload({
                   <p className="text-sm font-medium text-zinc-800 mb-1">Análise técnica pendente</p>
                   <p className="text-xs text-zinc-600 mb-3">
                     Antes de continuar, vamos verificar se sua capa está adequada para eBook
-                    e impressão. Leva alguns segundos.
+                    e impressão.
                   </p>
                   <button
                     type="button"
@@ -1602,7 +1602,7 @@ function PainelVersoIa({
       {fase === "gerando" && (
         <div className="flex flex-col items-center justify-center h-40 gap-3">
           <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-          <p className="text-sm text-zinc-500">Gerando sua capa… ~15 segundos</p>
+          <p className="text-sm text-zinc-500">Gerando sua capa…</p>
         </div>
       )}
 
@@ -2497,7 +2497,7 @@ function ModoIA({
         <div className="bg-white rounded-2xl border border-zinc-100 p-6 flex flex-col items-center
           justify-center h-40 gap-3">
           <span className="w-6 h-6 rounded-full border-2 border-brand-primary border-t-transparent animate-spin" />
-          <p className="text-sm text-zinc-500">Gerando sua capa… ~15 segundos</p>
+          <p className="text-sm text-zinc-500">Gerando sua capa…</p>
         </div>
       )}
 

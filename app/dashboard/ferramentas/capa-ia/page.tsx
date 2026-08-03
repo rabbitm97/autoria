@@ -285,7 +285,7 @@ export default function CapaIAPage() {
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
               <div className="w-12 h-12 border-4 border-brand-gold/20 border-t-brand-gold rounded-full animate-spin mb-4" />
-              <p className="text-sm">Criando capas com IA… pode levar até 30 segundos</p>
+              <p className="text-sm">Criando capas com IA…</p>
             </div>
           )}
 

@@ -1077,7 +1077,7 @@ export default function CreditosPage() {
               : "Gerar página de créditos →"}
           </button>
           <p className="text-center text-xs text-zinc-400 mt-3">
-            {!geraCreditos ? "Vai direto para a diagramação do miolo." : "Apenas alguns segundos."}
+            {!geraCreditos ? "Vai direto para a diagramação do miolo." : "Vamos gerar sua página de créditos."}
           </p>
             </>
           )}

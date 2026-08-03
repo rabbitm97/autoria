@@ -136,7 +136,7 @@ function PendingState({
     if (status === "processando_capitulos" && progresso) {
       return `Analisando capítulo ${progresso.atual} de ${progresso.total}…`;
     }
-    return "A IA está analisando seu manuscrito. Isso leva alguns segundos.";
+    return "A IA está analisando seu manuscrito.";
   })();
 
   return (
