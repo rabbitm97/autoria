@@ -17,7 +17,8 @@ export const AGENT_NAME = "capa-briefing";
  *  - "verso":  arte da contracapa (retrato). Sempre acompanha uma frente já
  *              escolhida — o autor decide continuação/independente.
  *  - "unica":  UMA arte panorâmica landscape que cobre verso+lombada+frente.
- *              O terço direito vira a frente no editor.
+ *              A metade direita vira a frente no editor (largura/(2×largura
+ *              +lombada) ≈ 49-50% em todos os formatos — ver FIX-04).
  */
 export type AlvoCapa = "frente" | "verso" | "unica";
 
@@ -28,7 +29,9 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 // da capa (spine/fold/back cover/front cover). Hipótese: nomear a peça no
 // prompt sugere ao modelo desenhá-la; proibir depois de citar cria conflito.
 // Descrevemos apenas geometria e composição — nenhuma peça de livro é
-// nomeada. O terço direito é referido como "right third", não "front cover".
+// nomeada. A frente é referida como "right half of the canvas", não "front
+// cover" (FIX-04: fração corrigida para a metade — deriva da geometria real
+// do editor, não de chute).
 // B2-05o (azeite v5): mapa determinístico posição-do-título → cláusula.
 // O v4 (05m) ensinou o respiro como QUALIDADE natural, mas o sujeito
 // continuava colidindo com a zona reservada ao título (evidência 01/ago:
@@ -40,23 +43,26 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 // única centro com bandas letterbox em topo e base. Duas hipóteses cobertas:
 // (h1) modelo lê "posição" como colocação global da arte no canvas; (h2)
 // modelo interpreta "landscape" como cinema (com barras). A frase abaixo
-// deixa explícito que a distribuição de detalhe é LOCAL ao terço direito;
+// deixa explícito que a distribuição de detalhe é LOCAL à metade direita;
 // o anti-letterbox global está em sufixoUnica.
+// B2-06 FIX-04: fração corrigida de "third" para "half" — a frente do
+// editor ocupa largura/(2×largura+lombada) ≈ 49-50% em todos os formatos
+// (lombada 2-8 mm). "third" era chute; fração deriva da geometria real.
 const ESCOPO_POSICAO_UNICA =
-  " This describes only the distribution of detail INSIDE the right third — the artwork itself always covers the full canvas height.";
+  " This describes only the distribution of detail within the right half — the artwork itself always covers the full canvas.";
 
 const CLAUSULA_POSICAO_UNICA: Record<"topo" | "centro" | "base" | "sem_preferencia", string> = {
   topo:
-    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    " Within the right half of the canvas, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that half. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond that half." +
     ESCOPO_POSICAO_UNICA,
   centro:
-    " Inside the right third, keep the MIDDLE naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper OR lower portion of that region — never vertically centered. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    " Within the right half of the canvas, keep the MIDDLE naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper OR lower portion of that half — never vertically centered. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond that half." +
     ESCOPO_POSICAO_UNICA,
   base:
-    " Inside the right third, keep the LOWER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    " Within the right half of the canvas, keep the LOWER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds of that half. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond that half." +
     ESCOPO_POSICAO_UNICA,
   sem_preferencia:
-    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    " Within the right half of the canvas, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that half. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond that half." +
     ESCOPO_POSICAO_UNICA,
 };
 // B2-06 FIX-01 (03/ago): mesma lição do 05o portada para a FRENTE —
@@ -73,24 +79,29 @@ const CLAUSULA_POSICAO_FRENTE: Record<"topo" | "centro" | "base", string> = {
     " Keep the LOWER third of the canvas naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block.",
 };
 function sufixoUnica(posicao: "topo" | "centro" | "base" | "sem_preferencia"): string {
+  // B2-06 FIX-04: reordenação — anti-letterbox primeiro, cláusula de posição
+  // no meio, continuidade+anti-zona no fecho. Fração corrigida para "half"
+  // (a frente do editor ocupa ~50% do span; ver ESCOPO_POSICAO_UNICA).
+  // Removida a nomeação de DUAS regiões: nomear zonas faz o modelo pintar
+  // zonas (irmã da verdade 28 anti-spine). Cena única contínua descrita por
+  // POSIÇÃO DO SUJEITO, não por zonas.
   return (
     "One single wide continuous artwork in landscape orientation, filling" +
     " the entire canvas edge-to-edge." +
-    // B2-06 FIX-02: anti-letterbox global (evidência 03/ago: única centro com
-    // bandas letterbox na cor de fundo em topo e base do canvas). Reforço aqui
-    // porque "landscape" pode ser interpretado como formato cinema com barras.
+    // Anti-letterbox global (FIX-02, evidência 03/ago: única centro com
+    // bandas letterbox em topo e base). Reforço porque "landscape" pode ser
+    // interpretado como formato cinema com barras.
     " The painted scene itself must reach ALL FOUR edges of the canvas —" +
     " absolutely no empty margins, no letterboxing, no solid bands of" +
     " background color at the top or bottom of the canvas." +
-    " The dominant subject lives INSIDE the" +
-    " right third, facing or moving toward the left." +
     CLAUSULA_POSICAO_UNICA[posicao] +
-    " The left two thirds are the same continuous scene extending outward," +
-    " painted with the same treatment. The entire canvas is ONE uniform," +
-    " continuous painting with a single consistent treatment throughout." +
-    " No horizontal or vertical bands, strips or panels of any kind," +
-    " anywhere; no seam, no glow line, no fold, no lighting or texture" +
-    " change across the width or the height. Flat two-dimensional artwork" +
+    " The dominant subject stands within the RIGHT HALF of the canvas," +
+    " facing or moving toward the left, and the scene extends naturally and" +
+    " continuously to the left with the same treatment throughout — ONE" +
+    " uniform, continuous painting from edge to edge. Never two zones, never" +
+    " a split, never a change of background, treatment, lighting or texture" +
+    " anywhere across the width or the height; no horizontal or vertical" +
+    " bands, strips, panels or seams of any kind. Flat two-dimensional artwork" +
     " only: no mockup, no paper, no shadow, no border, no text."
   );
 }
@@ -242,24 +253,23 @@ REGRAS INEGOCIÁVEIS do prompt de imagem (sempre em inglês):
   "spine", "lombada", "fold", "dobra", "back cover", "front cover",
   "capa", "verso" ou "frente" como partes da composição no texto do
   prompt. Descreva apenas GEOMETRIA e COMPOSIÇÃO: o sujeito/elemento
-  dominante DEVE viver DENTRO do terço direito da tela, orientado ou se
-  movendo em direção à esquerda (para dentro da composição). Os dois
-  terços à esquerda são a MESMA cena contínua se estendendo para fora,
-  com o MESMO tratamento — nunca uma continuação "mais quieta" ou
-  "diferente". A tela inteira é UMA pintura uniforme e contínua com um
-  único tratamento consistente do início ao fim.
-  RESPIRO (dentro do terço direito): a região correspondente à posição
+  dominante DEVE viver DENTRO da metade direita da tela, orientado ou se
+  movendo em direção à esquerda (para dentro da composição). A cena se
+  estende natural e continuamente para a esquerda com o MESMO
+  tratamento — nunca duas zonas, nunca um corte, nunca uma continuação
+  "mais quieta" ou "diferente". A tela inteira é UMA pintura uniforme e
+  contínua com um único tratamento consistente do início ao fim.
+  RESPIRO (dentro da metade direita): a região correspondente à posição
   do título — TOPO, MEIO ou BASE — deve ser NATURALMENTE mais quieta,
   simplesmente com menos elementos e contraste mais suave ALI, alcançado
   pela própria composição. A posição do sujeito decorre da posição do
   título — nunca centralize o sujeito quando o título for ao centro:
-  título no TOPO → sujeito nos dois terços inferiores do terço direito;
-  título no CENTRO → sujeito na porção superior OU inferior do terço
-  direito (nunca vertically centered); título na BASE → sujeito nos dois
-  terços superiores do terço direito. Isso é uma QUALIDADE local da
+  título no TOPO → sujeito nos dois terços inferiores da metade direita;
+  título no CENTRO → sujeito na porção superior OU inferior da metade
+  direita (nunca vertically centered); título na BASE → sujeito nos dois
+  terços superiores da metade direita. Isso é uma QUALIDADE local da
   arte, NÃO uma forma: nunca uma faixa, painel, caixa, overlay, barra
-  de gradiente ou bloco tonal, e nunca se estendendo além do terço
-  direito.
+  de gradiente ou bloco tonal, e nunca se estendendo além dessa metade.
   ANTI-FAIXA (obrigatório na ARTE ÚNICA): proíba explicitamente qualquer
   faixa horizontal ou vertical, painel, tira, costura, dobra, veio de
   luz ou mudança de iluminação/textura em QUALQUER eixo e em QUALQUER
