@@ -2150,7 +2150,9 @@ function ModoIA({
             </div>
           )}
 
-          {/* Estilo — TODO B2-06: default por família editorial + thumbnails */}
+          {/* Estilo — TODO B2-06: default por família editorial (aplicação
+              bloqueada; mapeamento gênero→família ainda é decisão pendente).
+              Thumbnails aplicadas em B2-06 EXEC-A B1. */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Estilo visual</p>
             <div className="grid grid-cols-4 gap-2">
@@ -2158,7 +2160,28 @@ function ModoIA({
                 <button key={s.id} type="button" onClick={() => setEstilo(s.id)}
                   className={`py-3 px-2 rounded-xl border-2 text-center transition-all
                     ${estilo === s.id ? "border-brand-gold bg-brand-gold/5" : "border-zinc-200 hover:border-zinc-300"}`}>
-                  <p className="text-lg mb-1">{s.emoji}</p>
+                  {s.id === "personalizado" ? (
+                    // Card "personalizado" mantém ícone-lápis fixo (05s):
+                    // sinaliza input livre, não pré-visualização.
+                    <p className="text-lg mb-1">{s.emoji}</p>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/estilos-capa/${s.id}.jpg`}
+                      alt={s.label}
+                      className="w-full aspect-square rounded-md object-cover mb-1"
+                      onError={(e) => {
+                        // Fallback: se o thumbnail 404, mostra o emoji antigo
+                        // trocando o <img> por um <span> in-place. Nunca card
+                        // quebrado — thumb é decorativo, não crítico.
+                        const el = e.currentTarget;
+                        const span = document.createElement("span");
+                        span.textContent = s.emoji;
+                        span.className = "text-lg block mb-1";
+                        el.replaceWith(span);
+                      }}
+                    />
+                  )}
                   <p className={`text-xs font-medium ${estilo === s.id ? "text-brand-primary" : "text-zinc-600"}`}>
                     {s.label}
                   </p>
