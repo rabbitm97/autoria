@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { useEditorStore } from "./editor-store";
 import { captureStageAsJpegDataUrl, captureFrontAsJpegDataUrl, dataUrlToBlob } from "./png-export";
 import { serializeEditorState } from "./editor-serializer";
@@ -116,17 +117,37 @@ export function useCoverExport(projectId: string) {
       const jpegDataUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm, 0.92, layout);
       const jpegBlob = dataUrlToBlob(jpegDataUrl);
 
-      const uploadRes = await fetch(`/api/projects/${projectId}/cover-editor/upload-cover-image`, {
+      // B2-06 EXEC-C: JPEG panorâmico pior caso ~15-22 MB — não passa pela
+      // rota Vercel (limite 4.5 MB). Signed upload direto ao storage, mesmo
+      // padrão do editor-confirm-button.
+      const presignRes = await fetch(`/api/projects/${projectId}/cover-editor/upload-url`, {
         method: "POST",
-        headers: { "Content-Type": "image/jpeg" },
-        body: jpegBlob,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: "temp" }),
         signal: controller.signal,
       });
-      if (!uploadRes.ok) {
-        const d = await uploadRes.json().catch(() => ({})) as { error?: string };
-        throw new Error(d.error ?? "Falha ao enviar imagem da capa.");
+      if (!presignRes.ok) {
+        const d = await presignRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? "Falha ao obter URL de upload.");
       }
-      const { path: coverImagePath } = await uploadRes.json() as { path: string };
+      const {
+        path: coverImagePath,
+        signed_url: signedUrl,
+        token,
+      } = (await presignRes.json()) as {
+        path: string;
+        signed_url: string | null;
+        token: string | null;
+      };
+
+      if (signedUrl && token) {
+        const { error: uploadErr } = await supabase.storage
+          .from("editor-assets")
+          .uploadToSignedUrl(coverImagePath, token, jpegBlob, {
+            contentType: "image/jpeg",
+          });
+        if (uploadErr) throw new Error(`Falha ao enviar imagem: ${uploadErr.message}`);
+      }
 
       const res = await fetch(`/api/projects/${projectId}/cover-editor/export-pdf`, {
         method: "POST",

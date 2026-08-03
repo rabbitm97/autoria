@@ -5,16 +5,36 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 
-// Gera signed upload URL para o PNG panorâmico confirmado do editor.
-// O cliente sobe o blob direto para o storage e depois chama /confirm com
-// apenas `{ path, layout }` — assim o body da rota `/confirm` fica < 1KB e
-// evita o limite de 4.5 MB do Vercel para multipart/PNG panorâmico 4K.
+// Gera signed upload URL para dois alvos do editor de capa:
+//   - "confirm" (default): PNG panorâmico final → cover-confirmed.png
+//   - "temp"             : JPEG intermediário do export gráfico → temp-cover.jpg
+// O cliente sobe o blob direto no storage; o body das rotas /confirm e
+// /export-pdf fica compacto (JSON < 1KB) e evita o limite de 4.5 MB do
+// Vercel (PNG panorâmico 4K no confirm; JPEG panorâmico 15-22 MB pior
+// caso no export gráfico — B2-06 EXEC-C, 03/ago/2026).
+//
+// O cliente NUNCA dita path — o server monta a partir de userId+projectId
+// e escolhe entre dois alvos whitelisted.
+type UploadTarget = "confirm" | "temp";
+
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const dev = isDev();
+
+  // Body opcional. Ausente/malformado → "confirm" (compat com confirm-button
+  // que faz POST sem body).
+  let target: UploadTarget = "confirm";
+  try {
+    const body = (await req.json()) as { target?: unknown };
+    if (body?.target === "temp" || body?.target === "confirm") {
+      target = body.target;
+    }
+  } catch {
+    // sem body ou JSON inválido — segue default
+  }
 
   let userId: string;
   let supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
@@ -44,8 +64,12 @@ export async function POST(
     return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
   }
 
-  // Path canônico (mesmo do confirm) — BLOCO-02-B-housekeeping: 1 arquivo por projeto.
-  const path = `${userId}/${id}/cover-confirmed.png`;
+  // Paths canônicos (contratos com housekeeping — capa/reset e cleanup-images
+  // conhecem esses nomes; NÃO renomear).
+  const path =
+    target === "temp"
+      ? `${userId}/${id}/temp-cover.jpg`
+      : `${userId}/${id}/cover-confirmed.png`;
 
   if (dev) {
     // Em dev, retorna path fake; o cliente pula upload direto.
