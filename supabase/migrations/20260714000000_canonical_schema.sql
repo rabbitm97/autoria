@@ -4,12 +4,18 @@
 -- information_schema, pg_constraint, pg_policies, pg_indexes, storage.buckets.
 --
 -- PROPRIEDADES:
---   - IDEMPOTENTE: pode rodar N vezes. Em prod é no-op exceto 3 mudanças
---     intencionais (constraint 12 valores, DROP texto_hash, limpeza de 4
---     policies de Storage).
---   - COMPLETO: rodado em ambiente vazio (Supabase novo), cria o schema
---     inteiro fiel à produção. Substitui schema.sql, setup-completo.sql,
---     storage.sql, waitlist.sql e os 18 .sql soltos (ver supabase/deprecated/).
+--   - BASELINE DE AMBIENTE VAZIO. Em Supabase novo, cria o schema fiel à
+--     produção de 14/jul/2026 — mas NÃO deixa o ambiente pronto sozinho:
+--     é OBRIGATÓRIO rodar em seguida os incrementais, NA ORDEM:
+--       20260716000000_bloco_d2_plano.sql
+--       20260721000000_bloco_d2_trigger_plano.sql
+--       20260723000000_creditos_usuario.sql
+--   - NÃO RE-RODAR EM PRODUÇÃO. Deixou de ser idempotente em 16/jul/2026:
+--     as constraints de plano abaixo usam o vocabulário ANTIGO
+--     (basico/profissional/premium) e colidem com os dados remapeados
+--     pela 20260716 (freemium/essencial/pro) — a transação aborta.
+--   - Substitui schema.sql, setup-completo.sql, storage.sql, waitlist.sql
+--     e os .sql soltos (ver supabase/deprecated/).
 --
 -- COMO RODAR: Supabase Studio → SQL Editor → New query → colar → Run.
 -- NUNCA via supabase db push.

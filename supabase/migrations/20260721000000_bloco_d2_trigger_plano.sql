@@ -3,6 +3,16 @@
 -- 2ª migration incremental pós-baseline (20260714000000).
 -- Idempotente. NÃO usar supabase db push — rodar via SQL Editor do Studio.
 --
+-- REGRA DE OURO — atualização deste arquivo:
+--   Esta migration é a ÚNICA fonte da trigger `projects_plano_guard` e da
+--   `autoria_chamada_privilegiada()`. Para mudar o comportamento delas em
+--   produção, EDITE ESTE ARQUIVO e re-rode ele inteiro no SQL Editor —
+--   NÃO crie uma migration nova só com o CREATE OR REPLACE do trecho
+--   alterado (foi o que aconteceu com a 20260723_creditos_usuario e virou
+--   pegadinha: ambiente novo precisa das duas na ordem 21→23, mas prod já
+--   tinha a 21 rodada quando a 23 chegou).
+--   Quando alterar aqui, avise no PR quais ambientes já foram atualizados.
+--
 -- Invariante de negócio (D.1): projeto SEMPRE nasce freemium no banco;
 -- promoção de plano só por processo autorizado (Studio/beta manual hoje,
 -- webhook service_role no D.3/D.4). Exceção: dono admin nasce 'pro' (teste).
