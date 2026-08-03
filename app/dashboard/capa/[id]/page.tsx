@@ -3771,18 +3771,19 @@ export default function CapaPage() {
               Envie uma capa pronta, gere com IA ou crie no editor interativo.
             </p>
           </div>
-          {/* B2-05n: link permanente para a galeria universal — sempre
-              visível em qualquer estado da etapa, some quando não há artes.
-              Fora da etapa: este componente não é montado, sem risco. */}
-          {galeriaCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setGaleriaModalOpen(true)}
-              className="shrink-0 text-sm text-zinc-500 hover:text-brand-primary hover:underline underline-offset-2 mt-1"
-            >
-              Galeria do projeto ({galeriaCount})
-            </button>
-          )}
+          {/* B2-06 FIX-01: sempre visível, inclusive vazia — o modal cobre o
+              estado vazio, e a contagem de `galeriaCount` só refetcha quando
+              `dados` do pai muda (a geração no filho ModoIA não dispara), o
+              que fazia o link sumir logo após a 1ª arte + voltar. */}
+          <button
+            type="button"
+            onClick={() => setGaleriaModalOpen(true)}
+            className="shrink-0 text-sm text-zinc-500 hover:text-brand-primary hover:underline underline-offset-2 mt-1"
+          >
+            {galeriaCount > 0
+              ? `Galeria do projeto (${galeriaCount})`
+              : "Galeria do projeto"}
+          </button>
         </div>
 
         {/* Precedência de render em `modo === "escolha"`:

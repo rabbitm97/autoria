@@ -46,6 +46,19 @@ const CLAUSULA_POSICAO_UNICA: Record<"topo" | "centro" | "base" | "sem_preferenc
   sem_preferencia:
     " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
 };
+// B2-06 FIX-01 (03/ago): mesma lição do 05o portada para a FRENTE —
+// evidência: 3 frentes geradas com posicao_titulo="centro" e sujeito
+// dominante centralizado. Cláusula anexada por código; só quando a
+// posição é EXPLÍCITA (sem_preferencia preserva o comportamento
+// aprovado no roteiro C1).
+const CLAUSULA_POSICAO_FRENTE: Record<"topo" | "centro" | "base", string> = {
+  topo:
+    " Keep the UPPER third of the canvas naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block.",
+  centro:
+    " Keep the vertical MIDDLE of the canvas naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper OR lower portion of the canvas — never vertically centered. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block.",
+  base:
+    " Keep the LOWER third of the canvas naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block.",
+};
 function sufixoUnica(posicao: "topo" | "centro" | "base" | "sem_preferencia"): string {
   return (
     "One single wide continuous artwork in landscape orientation, filling" +
@@ -65,7 +78,11 @@ const SUFIXO_POR_ALVO = (
   alvo: AlvoCapa,
   posicao: "topo" | "centro" | "base" | "sem_preferencia",
 ): string => {
-  if (alvo === "frente") return "Single artwork only, portrait composition.";
+  if (alvo === "frente")
+    return (
+      "Single artwork only, portrait composition." +
+      (posicao === "sem_preferencia" ? "" : CLAUSULA_POSICAO_FRENTE[posicao])
+    );
   if (alvo === "verso") return "Single artwork only, portrait composition, meant to pair with the front artwork of the same book.";
   return sufixoUnica(posicao);
 };
