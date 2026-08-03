@@ -36,15 +36,28 @@ export type AlvoCapa = "frente" | "verso" | "unica";
 // direito). O v5 acopla, por posição, a zona quieta À posição do
 // sujeito — mesma lição do centro da frente (azeite B2-04a) portada
 // para a única. sem_preferencia herda o comportamento de "topo".
+// B2-06 FIX-02: sufixo de ESCOPO em cada cláusula — evidência 03/ago de
+// única centro com bandas letterbox em topo e base. Duas hipóteses cobertas:
+// (h1) modelo lê "posição" como colocação global da arte no canvas; (h2)
+// modelo interpreta "landscape" como cinema (com barras). A frase abaixo
+// deixa explícito que a distribuição de detalhe é LOCAL ao terço direito;
+// o anti-letterbox global está em sufixoUnica.
+const ESCOPO_POSICAO_UNICA =
+  " This describes only the distribution of detail INSIDE the right third — the artwork itself always covers the full canvas height.";
+
 const CLAUSULA_POSICAO_UNICA: Record<"topo" | "centro" | "base" | "sem_preferencia", string> = {
   topo:
-    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    ESCOPO_POSICAO_UNICA,
   centro:
-    " Inside the right third, keep the MIDDLE naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper OR lower portion of that region — never vertically centered. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+    " Inside the right third, keep the MIDDLE naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper OR lower portion of that region — never vertically centered. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    ESCOPO_POSICAO_UNICA,
   base:
-    " Inside the right third, keep the LOWER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+    " Inside the right third, keep the LOWER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the upper two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    ESCOPO_POSICAO_UNICA,
   sem_preferencia:
-    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third.",
+    " Inside the right third, keep the UPPER portion naturally quieter — simply fewer elements and softer contrast there, achieved by the composition itself; place the dominant subject in the lower two thirds of that region. This is a local quality of the artwork, NOT a shape: never a strip, panel, box, overlay, gradient bar or tonal block, and never extending beyond the right third." +
+    ESCOPO_POSICAO_UNICA,
 };
 // B2-06 FIX-01 (03/ago): mesma lição do 05o portada para a FRENTE —
 // evidência: 3 frentes geradas com posicao_titulo="centro" e sujeito
@@ -62,7 +75,14 @@ const CLAUSULA_POSICAO_FRENTE: Record<"topo" | "centro" | "base", string> = {
 function sufixoUnica(posicao: "topo" | "centro" | "base" | "sem_preferencia"): string {
   return (
     "One single wide continuous artwork in landscape orientation, filling" +
-    " the entire canvas edge-to-edge. The dominant subject lives INSIDE the" +
+    " the entire canvas edge-to-edge." +
+    // B2-06 FIX-02: anti-letterbox global (evidência 03/ago: única centro com
+    // bandas letterbox na cor de fundo em topo e base do canvas). Reforço aqui
+    // porque "landscape" pode ser interpretado como formato cinema com barras.
+    " The painted scene itself must reach ALL FOUR edges of the canvas —" +
+    " absolutely no empty margins, no letterboxing, no solid bands of" +
+    " background color at the top or bottom of the canvas." +
+    " The dominant subject lives INSIDE the" +
     " right third, facing or moving toward the left." +
     CLAUSULA_POSICAO_UNICA[posicao] +
     " The left two thirds are the same continuous scene extending outward," +

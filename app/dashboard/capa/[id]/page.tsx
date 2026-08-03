@@ -1284,6 +1284,12 @@ function PainelVersoIa({
     typeof dadosFrente.atmosfera_personalizada === "string"
       ? dadosFrente.atmosfera_personalizada
       : "";
+  // B2-06 FIX-02: descrição livre da frente = contexto de mundo, alimenta
+  // o Haiku SEMPRE em continuação. Antes ela era sobrescrita pelo `ajustes`
+  // do autor → o modelo perdia o mundo da história e recebia "Descrição da
+  // FRENTE: <ajuste do verso>". Ajuste vai só em `verso.descricao`.
+  const descricaoLivreFrente =
+    typeof dadosFrente.descricao_livre === "string" ? dadosFrente.descricao_livre : "";
   const corNome = (dadosFrente.cor_predominante as string | undefined) ?? "";
   // B2-05g: sem default fabricado — herança do result mínimo do fallback
   // (B2-04d) pode gravar hex="". `??` não cobre string vazia; validamos e
@@ -1343,7 +1349,6 @@ function PainelVersoIa({
   }
 
   function buildBriefing() {
-    const desc = modoVerso === "continuacao" ? ajustes : descricao;
     return {
       estilo,
       // B2-05s: quando frente é personalizada, propaga o texto ao verso
@@ -1354,9 +1359,19 @@ function PainelVersoIa({
       atmosfera_personalizada: atmosferaPersonalizadaFrente || undefined,
       cor_predominante: { nome: corNome, hex: corHex },
       posicao_titulo: posicaoTitulo,
-      descricao_livre: desc || undefined,
+      // B2-06 FIX-02: continuação → descricao_livre é o contexto herdado da
+      // frente (mundo da história); ajuste do autor vai em verso.descricao.
+      // Independente → descricao do autor entra nos dois campos (comportamento
+      // pré-fix intacto).
+      descricao_livre:
+        (modoVerso === "continuacao" ? descricaoLivreFrente : descricao) ||
+        undefined,
       evitar: modoVerso === "independente" ? (evitar || undefined) : undefined,
-      verso: { modo: modoVerso, descricao: desc || undefined },
+      verso: {
+        modo: modoVerso,
+        descricao:
+          (modoVerso === "continuacao" ? ajustes : descricao) || undefined,
+      },
     };
   }
 

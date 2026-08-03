@@ -53,6 +53,10 @@ function buildContents(
   prompt: string,
   refs: string[],
   intencao: "estilo" | "conteudo" | "verso_continuacao" = "estilo",
+  // B2-06 FIX-02: só na continuação. Verdade 33 no nível do Nano — quando o
+  // autor pediu conteúdo específico pro verso, o TEXTO manda; imagem fica só
+  // como referência técnica. Sem ajuste, imagem continua soberana (entorno).
+  temAjusteDeConteudo: boolean = false,
 ): Part[] {
   const parsedRefs = refs
     .slice(0, 2)
@@ -67,12 +71,16 @@ function buildContents(
     intencao === "conteudo"
       ? " Incorporate the provided reference image as actual subject matter of the artwork — integrate it naturally into the composition while matching the requested style and palette."
       : intencao === "verso_continuacao"
-        ? " This is the FRONT cover of the book. Generate the BACK cover that sits to its LEFT as a natural continuation of the same artwork: same world, palette, technique and lighting. Do NOT copy, mirror or repeat the front or its main subject — paint the surrounding/preceding region of the same scene, calmer and less dense, with generous quiet space for text. The reference image defines the artistic technique and palette — follow the IMAGE over any stylistic wording in the prompt."
+        ? (temAjusteDeConteudo
+            ? " This is the FRONT cover of the book. Generate the BACK cover that sits to its LEFT. The reference image defines ONLY the artistic technique, palette, lighting and the world of the story. The SUBJECT MATTER of the back cover is defined by the TEXT prompt — follow the TEXT for content and the IMAGE for technique. Do NOT copy, mirror or repeat the front or its main subject; keep generous quiet space for text."
+            : " This is the FRONT cover of the book. Generate the BACK cover that sits to its LEFT as a natural continuation of the same artwork: same world, palette, technique and lighting. Do NOT copy, mirror or repeat the front or its main subject — paint the surrounding/preceding region of the same scene, calmer and less dense, with generous quiet space for text. The reference image defines the artistic technique and palette — follow the IMAGE over any stylistic wording in the prompt.")
         : " Use the provided reference image as a style and mood guide only — do not copy it literally.";
 
   const instrucaoSegundaRef =
     intencao === "verso_continuacao" && parsedRefs.length === 2
-      ? " The second image is the PREVIOUS attempt for the back cover. Improve on it according to the briefing adjustments while keeping full continuity with the front (first image). Do not simply repeat the previous attempt."
+      ? (temAjusteDeConteudo
+          ? " The second image is the PREVIOUS attempt for the back cover. The TEXT prompt defines the NEW content — do not repeat the previous attempt's subject; keep only technique, palette and lighting continuity with both images."
+          : " The second image is the PREVIOUS attempt for the back cover. Improve on it according to the briefing adjustments while keeping full continuity with the front (first image). Do not simply repeat the previous attempt.")
       : "";
 
   const parts: Part[] = [
@@ -444,6 +452,12 @@ export async function POST(req: NextRequest) {
         )
       : "2:3";
 
+  // B2-06 FIX-02: fio direto — deriva da presença de `verso.descricao`
+  // não-vazia no briefing. Sem ajuste, imagem continua soberana (entorno).
+  const temAjusteDeConteudo = Boolean(
+    body.briefing.verso?.descricao?.trim().length,
+  );
+
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
   const rodadaTs = Date.now();
 
@@ -451,7 +465,7 @@ export async function POST(req: NextRequest) {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-pro-image-preview",
-        contents: [{ role: "user", parts: buildContents(prompt_imagem, imagemRefs, imagemRefIntencao) }],
+        contents: [{ role: "user", parts: buildContents(prompt_imagem, imagemRefs, imagemRefIntencao, temAjusteDeConteudo) }],
         config: {
           responseModalities: ["IMAGE"],
           imageConfig: { aspectRatio, imageSize: "4K" },
