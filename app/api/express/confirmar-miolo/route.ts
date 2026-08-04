@@ -11,7 +11,19 @@ import {
   type FormatoLivro,
 } from "@/lib/formatos";
 import { validarProjectData, type PdfResult } from "@/lib/project-data";
-import { verificarMioloPdf } from "@/app/api/express/_verificacao";
+import {
+  verificarMioloPdf,
+  type MarcasVisuaisHint,
+} from "@/app/api/express/_verificacao";
+
+function parseMarcasVisuais(raw: unknown): MarcasVisuaisHint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const cantos = Number(obj.cantos_detectados);
+  const dist = Number(obj.distancia_borda_mm);
+  if (!Number.isFinite(cantos) || !Number.isFinite(dist)) return null;
+  return { cantos_detectados: cantos, distancia_borda_mm: dist };
+}
 
 // Confirmação do PDF de miolo enviado pela porta Express.
 //  1. Re-verifica server-side (nunca confia em números do client).
@@ -44,7 +56,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let body: { project_id?: unknown; formato?: unknown };
+  let body: {
+    project_id?: unknown;
+    formato?: unknown;
+    marcas_visuais?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -87,6 +103,7 @@ export async function POST(req: NextRequest) {
     userId,
     formato,
     paginas_declaradas: 1,
+    marcas_visuais: parseMarcasVisuais(body.marcas_visuais),
   });
 
   if (!verificacao.ok) {

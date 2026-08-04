@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { AUTHOR_TITLES, GENRES } from "@/lib/generos";
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
+import {
+  detectarMarcasMioloCliente,
+  type MarcasVisuaisHint,
+} from "@/lib/miolo-marcas-cliente";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -29,6 +33,8 @@ interface CoAuthor {
   sobrenome: string;
 }
 
+type DeteccaoFonte = "pdf_boxes" | "visual" | "none";
+
 interface VerificacaoOk {
   ok: true;
   paginas_reais: number;
@@ -37,8 +43,14 @@ interface VerificacaoOk {
   com_sangria: boolean;
   /** Espelha `com_sangria`, novo contrato. */
   sangria_detectada: boolean;
-  /** MediaBox > BleedBox — só é true quando o PDF declara boxes semânticos. */
+  /**
+   * Marcas de corte detectadas. Fonte `pdf_boxes` (MediaBox > BleedBox) OU
+   * `visual` (hint do cliente validado geometricamente pelo motor).
+   */
   marcas_detectadas: boolean;
+  /** Sangria em mm quando quantificável; `null` na fonte MediaBox cru. */
+  sangria_mm: number | null;
+  deteccao_fonte: DeteccaoFonte;
   lombada_mm: number;
   avisos: string[];
 }
@@ -51,6 +63,8 @@ interface VerificacaoKo {
   com_sangria: boolean;
   sangria_detectada: boolean;
   marcas_detectadas: boolean;
+  sangria_mm: number | null;
+  deteccao_fonte: DeteccaoFonte;
   lombada_mm: number;
   formato_provavel?: FormatoLivro;
   divergencias: string[];
@@ -112,6 +126,13 @@ export default function LivroProntoPage() {
   const [error, setError] = useState<string | null>(null);
   const [retryContext, setRetryContext] = useState<{ projectId: string } | null>(null);
 
+  // Detecção visual de marcas de corte — roda no browser (pdfjs) enquanto o
+  // upload/verify seguem em paralelo. Usada como pista para o motor server-side
+  // quando o PDF não declara TrimBox (ex.: nossos próprios exports Chromium).
+  // Guardamos a promise para conseguir aguardar antes de POSTs se o cálculo
+  // ainda estiver em voo, sem bloquear a UI.
+  const marcasHintRef = useRef<Promise<MarcasVisuaisHint | null> | null>(null);
+
   // Token monotônico: respostas de verificações antigas são descartadas se
   // os insumos (arquivo/formato/páginas) mudaram no meio do voo.
   const verifyTokenRef = useRef(0);
@@ -145,6 +166,10 @@ export default function LivroProntoPage() {
     setFile(f);
     setHasUploaded(false);
     setVerificacao(null);
+
+    // Dispara detecção visual em paralelo ao upload. Não bloqueia a UI —
+    // o resultado é aguardado (se ainda em voo) no momento do POST verify.
+    marcasHintRef.current = detectarMarcasMioloCliente(f);
 
     // Dispara upload imediato (não espera clique em botão)
     void uploadFileToTemp(f);
@@ -233,44 +258,50 @@ export default function LivroProntoPage() {
     // a verificação sozinha.
     const paginas = Number(paginasDeclaradas);
     if (formato && Number.isFinite(paginas) && paginas > 0) {
-      runVerify(formato as FormatoLivro, paginas);
+      void runVerify(formato as FormatoLivro, paginas);
     }
   }
 
   // ── Verificação (roda sozinha; caller garante insumos válidos) ──────────────
 
-  function runVerify(fmt: FormatoLivro, paginas: number) {
+  async function runVerify(fmt: FormatoLivro, paginas: number) {
     const token = ++verifyTokenRef.current;
     setStatus("verifying");
     setVerificacao(null);
     setError(null);
 
-    fetch("/api/express/verificar-miolo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        formato: fmt,
-        paginas_declaradas: Math.round(paginas),
-      }),
-    })
-      .then(async (res) => {
-        const data = (await res.json()) as VerificacaoResp | { error: string };
-        // Descarta resposta obsoleta se um novo verify já foi disparado.
-        if (token !== verifyTokenRef.current) return;
-        if (!res.ok && !("ok" in data)) {
-          setError((data as { error: string }).error ?? "Falha na verificação.");
-          setStatus("error");
-          return;
-        }
-        const veri = data as VerificacaoResp;
-        setVerificacao(veri);
-        setStatus(veri.ok ? "verified_ok" : "verified_ko");
-      })
-      .catch((e) => {
-        if (token !== verifyTokenRef.current) return;
-        setError(e instanceof Error ? e.message : "Erro na verificação.");
-        setStatus("error");
+    // Aguarda o hint visual (se ainda em voo). Falhas na detecção são
+    // absorvidas em `null` — o motor server-side segue funcionando.
+    const marcasHint = marcasHintRef.current
+      ? await marcasHintRef.current.catch(() => null)
+      : null;
+    if (token !== verifyTokenRef.current) return;
+
+    try {
+      const res = await fetch("/api/express/verificar-miolo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formato: fmt,
+          paginas_declaradas: Math.round(paginas),
+          marcas_visuais: marcasHint,
+        }),
       });
+      const data = (await res.json()) as VerificacaoResp | { error: string };
+      if (token !== verifyTokenRef.current) return;
+      if (!res.ok && !("ok" in data)) {
+        setError((data as { error: string }).error ?? "Falha na verificação.");
+        setStatus("error");
+        return;
+      }
+      const veri = data as VerificacaoResp;
+      setVerificacao(veri);
+      setStatus(veri.ok ? "verified_ok" : "verified_ko");
+    } catch (e) {
+      if (token !== verifyTokenRef.current) return;
+      setError(e instanceof Error ? e.message : "Erro na verificação.");
+      setStatus("error");
+    }
   }
 
   // ── Gatilhos: mudança de formato ou de páginas re-executa a verificação ────
@@ -281,7 +312,7 @@ export default function LivroProntoPage() {
     cancelPagesDebounce();
     const paginas = Number(paginasDeclaradas);
     if (hasUploaded && Number.isFinite(paginas) && paginas > 0) {
-      runVerify(novo, paginas);
+      void runVerify(novo, paginas);
     }
   }
 
@@ -294,7 +325,7 @@ export default function LivroProntoPage() {
     if (!Number.isFinite(paginas) || paginas <= 0) return;
     pagesDebounceRef.current = setTimeout(() => {
       pagesDebounceRef.current = null;
-      runVerify(formato as FormatoLivro, paginas);
+      void runVerify(formato as FormatoLivro, paginas);
     }, 800);
   }
 
@@ -303,7 +334,7 @@ export default function LivroProntoPage() {
     const paginas = Number(paginasDeclaradas);
     if (!hasUploaded || !formato) return;
     if (!Number.isFinite(paginas) || paginas <= 0) return;
-    runVerify(formato as FormatoLivro, paginas);
+    void runVerify(formato as FormatoLivro, paginas);
   }
 
   // ── Persistência final: cria manuscript + project + patcha formato + confirma ──
@@ -391,12 +422,20 @@ export default function LivroProntoPage() {
       return;
     }
 
-    // 4. Confirmar miolo
+    // 4. Confirmar miolo — repassa o hint visual para que a re-verificação
+    // server-side aceite marcas visuais quando o PDF não declara boxes.
+    const marcasHint = marcasHintRef.current
+      ? await marcasHintRef.current.catch(() => null)
+      : null;
     try {
       const confRes = await fetch(`/api/express/confirmar-miolo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, formato: fmt }),
+        body: JSON.stringify({
+          project_id: projectId,
+          formato: fmt,
+          marcas_visuais: marcasHint,
+        }),
       });
       if (!confRes.ok) {
         const data = await confRes.json().catch(() => ({}));
@@ -711,6 +750,7 @@ export default function LivroProntoPage() {
                           setVerificacao(null);
                           setError(null);
                           setUploadProgress(0);
+                          marcasHintRef.current = null;
                           if (inputRef.current) inputRef.current.value = "";
                         }}
                         className="text-zinc-300 hover:text-zinc-500 transition-colors p-1"

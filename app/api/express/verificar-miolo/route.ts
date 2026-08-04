@@ -4,7 +4,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { isFormatoValido, type FormatoLivro } from "@/lib/formatos";
-import { verificarMioloPdf } from "@/app/api/express/_verificacao";
+import {
+  verificarMioloPdf,
+  type MarcasVisuaisHint,
+} from "@/app/api/express/_verificacao";
+
+/**
+ * Aceita um hint visual do cliente e o valida em forma antes de repassar
+ * ao motor. Números finitos apenas; qualquer coisa estranha → `null` (o motor
+ * trata como ausente e cai no fluxo normal).
+ */
+function parseMarcasVisuais(raw: unknown): MarcasVisuaisHint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const cantos = Number(obj.cantos_detectados);
+  const dist = Number(obj.distancia_borda_mm);
+  if (!Number.isFinite(cantos) || !Number.isFinite(dist)) return null;
+  return { cantos_detectados: cantos, distancia_borda_mm: dist };
+}
 
 // Verificação declara→confere do PDF de miolo enviado pela porta Express.
 // PURA: não escreve no banco, não move arquivo. Reexecutada tantas vezes
@@ -26,7 +43,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let body: { formato?: unknown; paginas_declaradas?: unknown };
+  let body: {
+    formato?: unknown;
+    paginas_declaradas?: unknown;
+    marcas_visuais?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -50,6 +71,7 @@ export async function POST(req: NextRequest) {
     userId,
     formato,
     paginas_declaradas: Math.round(paginasDeclaradas),
+    marcas_visuais: parseMarcasVisuais(body.marcas_visuais),
   });
 
   if (!resultado.ok) {
@@ -64,6 +86,10 @@ export async function POST(req: NextRequest) {
         largura_mm: resultado.largura_mm ?? 0,
         altura_mm: resultado.altura_mm ?? 0,
         com_sangria: false,
+        sangria_detectada: false,
+        marcas_detectadas: false,
+        sangria_mm: null,
+        deteccao_fonte: "none" as const,
         lombada_mm: 0,
         formato_provavel: resultado.formato_provavel,
         divergencias: resultado.divergencias,
@@ -79,6 +105,10 @@ export async function POST(req: NextRequest) {
     largura_mm: resultado.largura_mm,
     altura_mm: resultado.altura_mm,
     com_sangria: resultado.com_sangria,
+    sangria_detectada: resultado.sangria_detectada,
+    marcas_detectadas: resultado.marcas_detectadas,
+    sangria_mm: resultado.sangria_mm,
+    deteccao_fonte: resultado.deteccao_fonte,
     lombada_mm: resultado.lombada_mm,
     divergencias: [] as string[],
     avisos: resultado.avisos,
