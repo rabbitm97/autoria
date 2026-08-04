@@ -1,91 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText, isDev } from "@/lib/anthropic";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+// MORTA em 03/ago/2026 (Bloco FERR-1A — sessão FERRAMENTAS).
+//
+// Síncrona, trecho 8k; divergente do motor batch canônico.
+// Substituta: Revisão completa (150 créditos) sobre o motor batch — FERR-3.x
+//
+// Handler mantido em 410 para não gerar 404 numa aba antiga aberta durante
+// o deploy; se aparecer no log, é caller esquecido. Remoção física do
+// arquivo fica pra limpeza pós-beta.
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { NextResponse } from "next/server";
 
-export interface SugestaoRevisor {
-  id: string;
-  tipo: "gramatica" | "ortografia" | "estilo" | "coesao" | "clareza";
-  trecho_original: string;
-  sugestao: string;
-  explicacao: string;
-}
-
-// ─── Claude ───────────────────────────────────────────────────────────────────
-
-
-const SYSTEM_PROMPT = `\
-Você é um revisor literário brasileiro especializado.
-Revise o trecho e retorne EXCLUSIVAMENTE um array JSON de sugestões.
-
-Schema de cada item:
-{
-  "id": "r001",
-  "tipo": "gramatica" | "ortografia" | "estilo" | "coesao" | "clareza",
-  "trecho_original": "<trecho exato do texto, máx 150 chars>",
-  "sugestao": "<trecho corrigido>",
-  "explicacao": "<explicação didática em 1-2 frases>"
-}
-
-Retorne entre 5 e 20 sugestões. Preserve a voz do autor. Sem markdown fora do JSON.`;
-
-// ─── Dev mock ─────────────────────────────────────────────────────────────────
-
-const MOCK: SugestaoRevisor[] = [
-  { id: "r001", tipo: "ortografia",  trecho_original: "então ele disse que ia embora",  sugestao: "então ele disse que iria embora",       explicacao: "O futuro do pretérito 'iria' é mais adequado em narrativa formal." },
-  { id: "r002", tipo: "estilo",      trecho_original: "muito muito cansado",              sugestao: "exausto",                               explicacao: "Evite duplicação de advérbios de intensidade; use um único adjetivo forte." },
-  { id: "r003", tipo: "coesao",      trecho_original: "E depois. E então saíram.",        sugestao: "Então saíram juntos.",                  explicacao: "Frases iniciadas com conjunção aditiva consecutiva fragmentam o ritmo." },
-  { id: "r004", tipo: "gramatica",   trecho_original: "ela veio junto comigo",            sugestao: "ela veio comigo",                       explicacao: "'Junto comigo' é redundante; 'comigo' já indica companhia." },
-  { id: "r005", tipo: "clareza",     trecho_original: "o fato de que ele não foi",        sugestao: "o fato de ele não ter ido",             explicacao: "A construção 'o fato de que' é mais elegante sem a conjunção 'que'." },
-  { id: "r006", tipo: "estilo",      trecho_original: "disse ele",                        sugestao: "ele murmurou",                         explicacao: "Variar os verbos de elocução cria ritmo e nuance na narrativa." },
-];
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
-
-export async function POST(req: NextRequest) {
-  if (isDev()) {
-    await new Promise((r) => setTimeout(r, 1500));
-    return NextResponse.json(MOCK);
-  }
-
-  // ── Auth obrigatória (BLOCO-D2-04) ────────────────────────────────────────
-  const supabase = await createSupabaseServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
-
-  // Ferramenta avulsa desativada até o sistema de créditos (Bloco D.5+).
-  // Reativar: apagar este bloco (auth acima permanece).
-  const AVULSA_LIBERADA: boolean = false;
-  if (!AVULSA_LIBERADA) {
-    return NextResponse.json(
-      { error: "Esta ferramenta avulsa está temporariamente indisponível. Use-a dentro do fluxo do seu projeto." },
-      { status: 403 }
-    );
-  }
-
-  let body: { texto: string };
-  try { body = await req.json(); }
-  catch { return NextResponse.json({ error: "Body inválido" }, { status: 400 }); }
-
-  const { texto } = body;
-  if (!texto?.trim()) return NextResponse.json({ error: "Texto obrigatório" }, { status: 400 });
-
-  try {
-    const msg = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: `Texto para revisão:\n\n${texto.slice(0, 8000)}` }],
-    });
-    return NextResponse.json(parseLLMJson<SugestaoRevisor[]>(extractText(msg.content)));
-  } catch (e) {
-    console.error("[ferramenta/revisor] Erro Claude:", e);
-    return NextResponse.json(
-      { error: "Erro ao processar a revisão com IA. Tente novamente." },
-      { status: 502 }
-    );
-  }
+export async function POST() {
+  return NextResponse.json(
+    { error: "Ferramenta descontinuada. Use a Revisão dentro do seu projeto." },
+    { status: 410 },
+  );
 }

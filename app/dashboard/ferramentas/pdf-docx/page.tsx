@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 
-const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024;
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -26,7 +26,7 @@ export default function PdfDocxPage() {
       return;
     }
     if (f.size > MAX_BYTES) {
-      setError("Arquivo muito grande. Máximo: 50 MB.");
+      setError("Arquivo muito grande. Máximo: 4 MB.");
       return;
     }
     setError(null);
@@ -68,6 +68,15 @@ export default function PdfDocxPage() {
       });
 
       if (!res.ok) {
+        const ctype = res.headers.get("content-type") ?? "";
+        if (!ctype.includes("application/json")) {
+          // 413/erro de plataforma chega como HTML — não tentar res.json()
+          throw new Error(
+            res.status === 413
+              ? "Arquivo muito grande para o servidor. Máximo: 4 MB."
+              : `Erro do servidor (${res.status}). Tente novamente.`
+          );
+        }
         const data = await res.json();
         throw new Error(data.error ?? "Erro na conversão.");
       }
@@ -163,7 +172,7 @@ export default function PdfDocxPage() {
                   <p className="text-sm font-semibold text-zinc-600 uppercase tracking-wider">
                     {isDragging ? "Solte o PDF aqui" : "Arraste o PDF ou clique para selecionar"}
                   </p>
-                  <p className="text-zinc-400 text-xs mt-1">.pdf · máx. 50 MB</p>
+                  <p className="text-zinc-400 text-xs mt-1">.pdf · máx. 4 MB · 2 conversões por dia</p>
                 </div>
               </div>
             </div>

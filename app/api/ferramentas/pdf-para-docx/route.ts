@@ -1,5 +1,8 @@
+export const maxDuration = 60;
+
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 
@@ -171,12 +174,43 @@ async function buildDocx(rawText: string): Promise<Buffer> {
 // Body: multipart/form-data — field "file" (PDF, máx 50 MB)
 
 export async function POST(req: NextRequest) {
+  const LIMITE_DIA = 2;
+
+  // Hoistados para o insert de telemetria no fim do handler.
+  let userId: string | null = null;
+  let admin: SupabaseClient | null = null;
+
   if (!isDev()) {
     // ── Auth obrigatória (BLOCO-D2-04) ──────────────────────────────────────
     const supabase = await createSupabaseServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+    userId = user.id;
+
+    // ── Limite diário da ferramenta grátis (FERR-1A) ──────────────────────
+    // Padrão D2-03: count em usage_logs por agent_name+user_id+janela UTC do
+    // dia; 429 no excedente; fail-open LOGADO (erro de telemetria não trava).
+    admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const inicioDoDia = new Date();
+    inicioDoDia.setUTCHours(0, 0, 0, 0);
+    const { count, error: cntErr } = await admin
+      .from("usage_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("agent_name", "ferramenta-pdf-para-docx")
+      .eq("user_id", userId)
+      .gte("created_at", inicioDoDia.toISOString());
+    if (cntErr) {
+      console.error("[ferramenta/pdf-para-docx] contagem do limite falhou:", cntErr.message);
+    } else if ((count ?? 0) >= LIMITE_DIA) {
+      return NextResponse.json(
+        { error: `Limite diário atingido (${LIMITE_DIA} conversões/dia). Volte amanhã.` },
+        { status: 429 }
+      );
     }
   }
 
@@ -201,9 +235,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (file.size > 50 * 1024 * 1024) {
+  // Limite de body de função no Vercel é ~4,5 MB; acima disso a plataforma
+  // devolve 413 antes do handler.
+  if (file.size > 4 * 1024 * 1024) {
     return NextResponse.json(
-      { error: "Arquivo muito grande. Máximo: 50 MB." },
+      { error: "Arquivo muito grande. Máximo: 4 MB." },
       { status: 400 }
     );
   }
@@ -244,6 +280,17 @@ export async function POST(req: NextRequest) {
   // ── Build DOCX ────────────────────────────────────────────────────────────
   const docxBuffer = await buildDocx(rawText);
   const outName = file.name.replace(/\.pdf$/i, ".docx");
+
+  // ── Telemetria de uso (FERR-1A) ───────────────────────────────────────────
+  // Best-effort: erro de log não trava o download.
+  if (!isDev() && admin && userId) {
+    const { error: logErr } = await admin.from("usage_logs").insert({
+      agent_name: "ferramenta-pdf-para-docx",
+      user_id: userId,
+      metadata: { bytes: file.size, nome: file.name },
+    });
+    if (logErr) console.error("[ferramenta/pdf-para-docx] usage_logs falhou:", logErr.message);
+  }
 
   return new NextResponse(docxBuffer as unknown as BodyInit, {
     headers: {

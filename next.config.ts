@@ -8,7 +8,6 @@ const nextConfig: NextConfig = {
     "mammoth",
     "sharp",
     "@google/genai",
-    "@react-pdf/renderer",
     "jszip",
   ],
 
