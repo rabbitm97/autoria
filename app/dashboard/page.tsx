@@ -36,13 +36,6 @@ const TOOLS = [
     highlight: false,
   },
   {
-    href: "/dashboard/publicacao-direta",
-    icon: "🚀",
-    label: "Publicação Direta",
-    desc: "Já tem os arquivos prontos? Publique direto — 100% grátis",
-    highlight: true,
-  },
-  {
     href: "/dashboard/ferramentas/creditos",
     icon: "📑",
     label: "Página de créditos",
