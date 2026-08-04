@@ -484,12 +484,21 @@ export default async function DiagnosticoPage({ params }: PageProps) {
   // Production: fetch project
   const { data: project } = await supabase
     .from("projects")
-    .select("id, etapa_atual, usar_revisao, diagnostico, manuscripts(nome, titulo)")
+    .select("id, etapa_atual, usar_revisao, diagnostico, dados_pdf, manuscripts(nome, titulo)")
     .eq("id", id)
     .eq("user_id", user!.id)
     .single();
 
   if (!project) notFound();
+
+  // Express: quando o autor sobe o PDF pronto pela porta "Publicar livro
+  // pronto", pula toda a esteira editorial (diagnóstico incluído). O guard
+  // é server-side aqui porque a página é RSC — o hook cliente
+  // `useExpressGuard` das outras etapas não se aplica.
+  const dadosPdfExpress = (project.dados_pdf as { origem?: string } | null)?.origem;
+  if (dadosPdfExpress === "upload") {
+    redirect(`/dashboard/prova/${id}`);
+  }
 
   const raw = project.diagnostico as DiagnosticoStateMinimo | DiagnosticoResult | null;
   const ms = project.manuscripts as unknown as { nome?: string; titulo?: string | null } | null;

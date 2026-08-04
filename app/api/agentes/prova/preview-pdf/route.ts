@@ -26,12 +26,25 @@ export async function GET(req: NextRequest) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("dados_pdf_digital")
+    .select("dados_pdf_digital, dados_pdf")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
 
-  const storagePath = (project?.dados_pdf_digital as { storage_path?: string } | null)?.storage_path;
+  // Preferência: PDF eBook gerado pela esteira. Fallback: PDF enviado pelo
+  // autor via porta Express (`dados_pdf.origem === "upload"`). O PDF gráfica
+  // gerado pelo agente `gerar-pdf` NÃO deve ser servido aqui — a preview é
+  // pensada para a diagramação digital do autor.
+  let storagePath: string | undefined =
+    (project?.dados_pdf_digital as { storage_path?: string } | null)?.storage_path;
+
+  if (!storagePath) {
+    const pdf = project?.dados_pdf as { storage_path?: string; origem?: string } | null;
+    if (pdf?.origem === "upload") {
+      storagePath = pdf.storage_path;
+    }
+  }
+
   if (!storagePath) {
     return NextResponse.json({ error: "PDF não encontrado" }, { status: 404 });
   }

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
+import { ExpressProgress } from "@/components/express-progress";
 import { supabase } from "@/lib/supabase";
 import { avancarEtapa } from "@/lib/supabase-helpers";
 import type { CapaGeradaResult, EstiloCapa } from "@/app/api/agentes/gerar-capa/route";
@@ -3383,15 +3384,25 @@ export default function CapaPage() {
   const [galeriaModalOpen, setGaleriaModalOpen] = useState(false);
   const [galeriaCount, setGaleriaCount] = useState<number>(0);
 
+  // Express: autor pulou a esteira editorial subindo PDF pronto via "Publicar
+  // livro pronto". Discriminador é `dados_pdf.origem === "upload"`.
+  const [isExpress, setIsExpress] = useState(false);
+
 
   const loadProject = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await supabase
         .from("projects")
-        .select("dados_elementos, dados_capa, dados_creditos, dados_miolo, plano, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("dados_elementos, dados_capa, dados_creditos, dados_miolo, dados_pdf, plano, manuscripts:manuscript_id(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
+
+      // Express: origem "upload" em `dados_pdf` identifica projetos vindos da
+      // porta "Publicar livro pronto" — ao concluir a capa, saltamos direto
+      // para a Prova (Créditos/Diagramação não se aplicam).
+      const dadosPdf = (data as { dados_pdf?: { origem?: string } | null } | null)?.dados_pdf;
+      setIsExpress(dadosPdf?.origem === "upload");
 
       // Plano — determina o gate do card "Gerar com IA" (D2-05).
       const planoRaw = (data as { plano?: unknown } | null)?.plano;
@@ -3625,6 +3636,19 @@ export default function CapaPage() {
       }
     }
 
+    // Express: Créditos/Diagramação não fazem parte do fluxo — pula direto
+    // para a Prova. `avancarEtapa` é forward-only, então tudo bem "saltar"
+    // capa → qa sem passar pelos intermediários.
+    if (isExpress) {
+      const { ok } = await avancarEtapa(supabase, id, null, "qa", "dashboard-capa-express");
+      if (!ok) {
+        alert("Não foi possível avançar a etapa. Tente novamente.");
+        return;
+      }
+      router.push(`/dashboard/prova/${id}`);
+      return;
+    }
+
     const { ok } = await avancarEtapa(supabase, id, null, "creditos", "dashboard-capa");
     if (!ok) {
       alert("Não foi possível avançar a etapa. Tente novamente.");
@@ -3640,6 +3664,11 @@ export default function CapaPage() {
       .eq("id", id);
     if (skipErr) {
       alert("Não foi possível pular a capa. Tente novamente.");
+      return;
+    }
+    if (isExpress) {
+      await avancarEtapa(supabase, id, null, "qa", "dashboard-capa-express");
+      router.push(`/dashboard/prova/${id}`);
       return;
     }
     await avancarEtapa(supabase, id, null, "creditos", "dashboard-capa");
@@ -3773,13 +3802,17 @@ export default function CapaPage() {
 
   return (
     <div>
-      <EtapasProgress currentStep={3} projectId={id} />
+      {isExpress ? (
+        <ExpressProgress currentStep={1} projectId={id} />
+      ) : (
+        <EtapasProgress currentStep={3} projectId={id} />
+      )}
       <main className="max-w-4xl mx-auto px-4 py-10">
 
         <div className="mb-8 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
-              Passo 4 — Capa
+              {isExpress ? "Publicação direta — Capa" : "Passo 4 — Capa"}
             </p>
             <h1 className="font-heading text-3xl text-brand-primary">Criação da capa</h1>
             <p className="text-zinc-500 mt-1.5 text-sm">

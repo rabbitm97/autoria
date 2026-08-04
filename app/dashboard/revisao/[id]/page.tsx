@@ -6,6 +6,7 @@ import { EtapasProgress } from "@/components/etapas-progress";
 import { RevisaoLoading } from "@/components/revisao/RevisaoLoading";
 import type { SugestaoRevisao, RevisaoResult, RevisaoProcessingState } from "@/app/api/agentes/revisao/route";
 import { supabase } from "@/lib/supabase";
+import { useExpressGuard } from "@/lib/use-express-guard";
 
 // ─── Tipo labels ──────────────────────────────────────────────────────────────
 
@@ -190,6 +191,7 @@ function SugestaoCard({
 
 export default function RevisaoPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  useExpressGuard(projectId);
   const router = useRouter();
   const newFileRef = useRef<HTMLInputElement>(null);
 

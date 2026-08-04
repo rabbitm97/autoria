@@ -9,6 +9,7 @@ import type { CreditosConfig, CreditosResult, PropositoPublicacao } from "@/app/
 import { FORMATOS_LIVRO, type FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
 import { avancarEtapa } from "@/lib/supabase-helpers";
+import { useExpressGuard } from "@/lib/use-express-guard";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -208,6 +209,7 @@ function SectionToggle({
 
 export default function CreditosPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  useExpressGuard(projectId);
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 

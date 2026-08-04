@@ -8,11 +8,13 @@ import type { ElementosEditoriais } from "@/app/api/agentes/elementos-editoriais
 import type { FormatoSugerido } from "@/app/api/agentes/diagnostico/route";
 import type { FormatoLivro } from "@/lib/formatos";
 import { supabase } from "@/lib/supabase";
+import { useExpressGuard } from "@/lib/use-express-guard";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ElementosPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  useExpressGuard(projectId);
   const router = useRouter();
 
   const [elementos, setElementos] = useState<ElementosEditoriais | null>(null);

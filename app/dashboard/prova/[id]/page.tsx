@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
+import { ExpressProgress } from "@/components/express-progress";
 import { supabase } from "@/lib/supabase";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import type { ProvaResult, ProvaItem } from "@/app/api/agentes/prova/types";
@@ -714,6 +715,9 @@ export default function ProvaPage() {
   const [hasCreditos, setHasCreditos] = useState<boolean>(true);
   const [plano, setPlano] = useState<string | null>(null);
   const [gateAtivo, setGateAtivo] = useState(false);
+  // Express: autor pulou a esteira editorial subindo PDF pronto via "Publicar
+  // livro pronto". Discriminador é `dados_pdf.origem === "upload"`.
+  const [isExpress, setIsExpress] = useState(false);
 
   const loadExisting = useCallback(async () => {
     setLoading(true);
@@ -721,16 +725,20 @@ export default function ProvaPage() {
     let capaOrigemLocal: "editor" | "ia_ou_upload" = "ia_ou_upload";
     let isPanoramicLocal = true; // default seguro para casos onde a capa não carregou
     let planoLocal: string = "freemium";
+    let isExpressLocal = false;
     try {
       const { data: project } = await supabase
         .from("projects")
-        .select("plano, formato, dados_capa, dados_miolo, dados_creditos, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
+        .select("plano, formato, dados_capa, dados_miolo, dados_creditos, dados_pdf, manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)")
         .eq("id", id)
         .single();
 
       if (project) {
         planoLocal = ((project as { plano?: string }).plano) ?? "freemium";
         setPlano(planoLocal);
+        const dadosPdf = (project as { dados_pdf?: { origem?: string } | null }).dados_pdf;
+        isExpressLocal = dadosPdf?.origem === "upload";
+        setIsExpress(isExpressLocal);
         const ms = project.manuscripts as unknown as {
           titulo?: string;
           autor_primeiro_nome?: string;
@@ -818,7 +826,10 @@ export default function ProvaPage() {
     if (!prova) return;
     // Freemium não dispara auto-gen: os endpoints respondem 402 (gate) e a
     // Prova é ponto de conversão, não geração. (D2-05)
-    if (planoLocal === "freemium") return;
+    // Express: o autor subiu o PDF pronto — não existe esteira digital a
+    // preparar. Os endpoints `gerar-pdf-*` e `preparar-capa-grafica` também
+    // não fazem sentido aqui (miolo já é o próprio upload).
+    if (planoLocal === "freemium" || isExpressLocal) return;
     const missing = detectarArtefatosAusentes(prova, capaOrigemLocal, isPanoramicLocal);
     if (missing.length === 0) return;
 
@@ -987,23 +998,30 @@ export default function ProvaPage() {
   // D2-05: freemium (ou qualquer artefato retornado 402) SUBSTITUI trilhas +
   // aprovação pela tela de conversão. Book3D/abas permanecem — o autor vê
   // o livro dele como parte da celebração.
-  const mostrarConversao = plano === "freemium" || gateAtivo;
+  // Express é grátis: nunca vira gate de conversão.
+  const mostrarConversao = !isExpress && (plano === "freemium" || gateAtivo);
 
   // D2-07: upgrade Essencial→Pro pela DIFERENÇA (sempre calculado de lib/planos).
   const precoUpgradePro = `R$ ${((PLANO_PRECO_CENTAVOS.pro - PLANO_PRECO_CENTAVOS.essencial) / 100).toLocaleString("pt-BR")}`;
 
   return (
     <div>
-      <EtapasProgress currentStep={6} projectId={id} />
+      {isExpress ? (
+        <ExpressProgress currentStep={2} projectId={id as string} />
+      ) : (
+        <EtapasProgress currentStep={6} projectId={id} />
+      )}
       <main className="max-w-4xl mx-auto px-4 py-10">
 
         <div className="mb-8">
           <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
-            Etapa final
+            {isExpress ? "Publicação direta" : "Etapa final"}
           </p>
           <h1 className="font-heading text-3xl text-brand-primary">Prova</h1>
           <p className="text-zinc-500 mt-2 text-sm leading-relaxed max-w-xl">
-            Confira o livro pronto para publicação. Ao aprovar, você assina a versão final e libera a distribuição.
+            {isExpress
+              ? "Confira sua capa e seu miolo lado a lado antes de pedir a impressão."
+              : "Confira o livro pronto para publicação. Ao aprovar, você assina a versão final e libera a distribuição."}
           </p>
         </div>
 
@@ -1102,36 +1120,41 @@ export default function ProvaPage() {
             {/* Trilhas de prontidão */}
             {result && !mostrarConversao && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <TrilhaCard
-                  icone="tablet"
-                  titulo="Publicação digital"
-                  subtitulo="EPUB para Amazon, Apple, Kobo, Google Play"
-                  aprovado={digitalAprovado}
-                  pendencias={digitalPendencias}
-                  avisos={[]}
-                  onNavigate={handleNavigateToEtapa}
-                  ctaLabel={null}
-                  ctaBusy={false}
-                  ctaError={null}
-                  avisoInfo={!hasCreditos ? "Livro gerado sem página de créditos, conforme sua escolha. Adequado para plataformas digitais e distribuição gratuita." : undefined}
-                />
-                <TrilhaCard
-                  icone="livro"
-                  titulo="Publicação impressa"
-                  subtitulo="PDF com sangria e marcas de corte para gráfica"
-                  aprovado={impressaAprovado}
-                  pendencias={impressaPendencias}
-                  avisos={impressaAvisos}
-                  onNavigate={handleNavigateToEtapa}
-                  ctaLabel={null}
-                  ctaBusy={false}
-                  ctaError={null}
-                  modoPrevia={plano !== null && plano !== "pro"}
-                />
+                {!isExpress && (
+                  <TrilhaCard
+                    icone="tablet"
+                    titulo="Publicação digital"
+                    subtitulo="EPUB para Amazon, Apple, Kobo, Google Play"
+                    aprovado={digitalAprovado}
+                    pendencias={digitalPendencias}
+                    avisos={[]}
+                    onNavigate={handleNavigateToEtapa}
+                    ctaLabel={null}
+                    ctaBusy={false}
+                    ctaError={null}
+                    avisoInfo={!hasCreditos ? "Livro gerado sem página de créditos, conforme sua escolha. Adequado para plataformas digitais e distribuição gratuita." : undefined}
+                  />
+                )}
+                <div className={isExpress ? "md:col-span-2" : undefined}>
+                  <TrilhaCard
+                    icone="livro"
+                    titulo="Publicação impressa"
+                    subtitulo="PDF com sangria e marcas de corte para gráfica"
+                    aprovado={impressaAprovado}
+                    pendencias={impressaPendencias}
+                    avisos={impressaAvisos}
+                    onNavigate={handleNavigateToEtapa}
+                    ctaLabel={null}
+                    ctaBusy={false}
+                    ctaError={null}
+                    modoPrevia={!isExpress && plano !== null && plano !== "pro"}
+                  />
+                </div>
 
                 {/* D2-07: upgrade Essencial→Pro pela diferença (sempre
-                    calculado de lib/planos). CTA → /dashboard/planos até o D.4. */}
-                {plano === "essencial" && (
+                    calculado de lib/planos). CTA → /dashboard/planos até o D.4.
+                    Não se aplica ao Express. */}
+                {!isExpress && plano === "essencial" && (
                   <div className="md:col-span-2 bg-white rounded-2xl border border-brand-gold/40 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-brand-primary">
@@ -1154,7 +1177,7 @@ export default function ProvaPage() {
             )}
 
             {/* Card de aprovação */}
-            {result && !mostrarConversao && (
+            {result && !mostrarConversao && !isExpress && (
               <div className="bg-white rounded-2xl border-2 border-brand-gold/40 p-6">
                 <div className="flex items-start gap-3 mb-3">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
@@ -1193,6 +1216,29 @@ export default function ProvaPage() {
                     Resolva as pendências da trilha digital para aprovar. A trilha impressa é opcional — você pode preparar depois.
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* Express: fluxo de compra da impressão ainda em construção. */}
+            {result && isExpress && (
+              <div className="bg-white rounded-2xl border-2 border-brand-gold/40 p-6">
+                <div className="flex items-start gap-3 mb-3">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c9a84c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                    <path d="M20 7 9 18l-5-5"/>
+                  </svg>
+                  <div>
+                    <p className="font-medium text-brand-primary text-base">Pedido de impressão — em breve</p>
+                    <p className="text-sm text-zinc-500 mt-1 leading-relaxed">
+                      Seu livro está conferido e pronto para virar exemplar físico. Estamos finalizando o fluxo de pedido — em breve você poderá comprar diretamente por aqui.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  disabled
+                  className="mt-4 w-full py-3 rounded-xl bg-zinc-100 text-zinc-400 font-semibold text-sm cursor-not-allowed"
+                >
+                  Pedido de impressão — em breve
+                </button>
               </div>
             )}
 

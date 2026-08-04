@@ -14,6 +14,7 @@ import {
   type TemplateOption,
 } from "@/lib/miolo-builder";
 import { supabase } from "@/lib/supabase";
+import { useExpressGuard } from "@/lib/use-express-guard";
 import { avancarEtapa } from "@/lib/supabase-helpers";
 import { suggestTemplate } from "@/lib/templates";
 import { DocxDisclaimer } from "./docx-disclaimer";
@@ -85,6 +86,7 @@ function RadioCard({ selected, onClick, children }: {
 
 export default function MioloPage() {
   const { id: projectId } = useParams<{ id: string }>();
+  useExpressGuard(projectId);
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const newFileRef = useRef<HTMLInputElement>(null);

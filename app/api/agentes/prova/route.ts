@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Load project ──────────────────────────────────────────────────────────
+  // `dados_pdf.origem` discrimina a trilha Express (upload direto do PDF do
+  // autor) da esteira editorial completa (gerado pelo agente `gerar-pdf`).
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select("dados_capa, dados_miolo, dados_creditos, dados_pdf, dados_pdf_digital, dados_qa, formato")
@@ -101,46 +103,55 @@ export async function POST(req: NextRequest) {
   } | null;
   const creditos = project.dados_creditos as { html_storage_path?: string } | null;
   const pdfEbook = project.dados_pdf_digital as { storage_path?: string } | null;
-  const pdfMioloGrafica = project.dados_pdf as { storage_path?: string } | null;
+  const pdfMioloGrafica = project.dados_pdf as { storage_path?: string; origem?: string } | null;
   const formatoKey = (project.formato ?? "padrao_br") as FormatKey;
 
   const capaResolvida = resolveCapaCompleta(capa, formatoKey);
   const pdfCapaGrafica = capa?.pdf_grafica as { storage_path?: string } | undefined;
 
+  // Trilha Express: quando o autor subiu o PDF pronto pela porta "livro
+  // pronto", pulamos toda a esteira editorial. A trilha digital (eBook +
+  // consolidação HTML) não existe; a trilha impressa vale apenas para a
+  // conferência estrutural da capa, sem exigir `pdf_capa_grafica` (a
+  // preparação gráfica migra para o "pedido de impressão").
+  const isExpress = pdfMioloGrafica?.origem === "upload";
+
   // ── Trilha digital ────────────────────────────────────────────────────────
   const itensDigital: ProvaItem[] = [];
 
-  if (!capaResolvida.pronta) {
-    itensDigital.push({
-      categoria: "capa",
-      status: "erro",
-      mensagem: "A capa ainda não foi confirmada.",
-      acao: { label: "Voltar para Capa", etapa: "capa" },
-    });
-  }
-  if (!miolo?.html_storage_path) {
-    itensDigital.push({
-      categoria: "miolo",
-      status: "erro",
-      mensagem: "O miolo ainda não foi diagramado.",
-      acao: { label: "Voltar para Diagramação", etapa: "miolo" },
-    });
-  }
-  if (!creditos?.html_storage_path) {
-    itensDigital.push({
-      categoria: "creditos",
-      status: "erro",
-      mensagem: "A página de créditos ainda não foi aprovada.",
-      acao: { label: "Voltar para Créditos", etapa: "creditos" },
-    });
-  }
-  if (!pdfEbook?.storage_path) {
-    itensDigital.push({
-      categoria: "pdf_ebook",
-      status: "erro",
-      mensagem: "Não foi possível preparar o PDF eBook.",
-      acao: { label: "Tentar novamente", etapa: "__gerar_pdf_digital__" },
-    });
+  if (!isExpress) {
+    if (!capaResolvida.pronta) {
+      itensDigital.push({
+        categoria: "capa",
+        status: "erro",
+        mensagem: "A capa ainda não foi confirmada.",
+        acao: { label: "Voltar para Capa", etapa: "capa" },
+      });
+    }
+    if (!miolo?.html_storage_path) {
+      itensDigital.push({
+        categoria: "miolo",
+        status: "erro",
+        mensagem: "O miolo ainda não foi diagramado.",
+        acao: { label: "Voltar para Diagramação", etapa: "miolo" },
+      });
+    }
+    if (!creditos?.html_storage_path) {
+      itensDigital.push({
+        categoria: "creditos",
+        status: "erro",
+        mensagem: "A página de créditos ainda não foi aprovada.",
+        acao: { label: "Voltar para Créditos", etapa: "creditos" },
+      });
+    }
+    if (!pdfEbook?.storage_path) {
+      itensDigital.push({
+        categoria: "pdf_ebook",
+        status: "erro",
+        mensagem: "Não foi possível preparar o PDF eBook.",
+        acao: { label: "Tentar novamente", etapa: "__gerar_pdf_digital__" },
+      });
+    }
   }
 
   // ── Trilha impressa ───────────────────────────────────────────────────────
@@ -152,6 +163,18 @@ export async function POST(req: NextRequest) {
       status: "erro",
       mensagem: "Não foi possível preparar o PDF do miolo para a gráfica.",
       acao: { label: "Tentar novamente", etapa: "__gerar_pdf_miolo__" },
+    });
+  }
+
+  // Express + capa ainda não enviada: item explícito na trilha impressa
+  // (única trilha visível no fluxo Express). Sem esse item o autor cairia
+  // silenciosamente na cascata estrutural sem `analiseTec`.
+  if (isExpress && !capaResolvida.pronta) {
+    itensImpressa.push({
+      categoria: "capa",
+      status: "erro",
+      mensagem: "Envie a capa do seu livro para concluir a publicação.",
+      acao: { label: "Enviar capa", etapa: "capa" },
     });
   }
   // Critério customizado alinhado com o pipeline real da Autoria (não
@@ -218,7 +241,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!capaAptaEstrutural) {
+  // No Express, a cascata só corre se a capa já foi enviada — o item
+  // "Envie a capa" acima já cobre o caso `!capaResolvida.pronta`. E o
+  // último ramo (`!pdfCapaGrafica?.storage_path`) é ignorado porque a
+  // preparação gráfica migra para o "pedido de impressão".
+  if (isExpress && !capaResolvida.pronta) {
+    // capa ausente já sinalizada — não empilha duplicata.
+  } else if (!capaAptaEstrutural) {
     // Bloqueio estrutural (frente pura, Config C, dimensões atípicas).
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
@@ -244,9 +273,10 @@ export async function POST(req: NextRequest) {
       mensagem: `A lombada da capa (${lombadaDivergente.capa.toFixed(1)}mm) diverge da lombada real do miolo (${lombadaDivergente.miolo.toFixed(1)}mm). Para publicação impressa, envie uma capa com a lombada correta.`,
       acao: { label: "Alterar capa", etapa: "__alterar_capa__" },
     });
-  } else if (!pdfCapaGrafica?.storage_path) {
+  } else if (!isExpress && !pdfCapaGrafica?.storage_path) {
     // Capa apta mas PDF gráfica ainda não foi preparado.
     // Item de auto-preparação silenciosa (client dispara sem expor ao autor).
+    // Skipa no Express: a preparação gráfica migra para o pedido de impressão.
     itensImpressa.push({
       categoria: "pdf_capa_grafica",
       status: "erro",
