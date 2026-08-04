@@ -35,6 +35,10 @@ interface VerificacaoOk {
   largura_mm: number;
   altura_mm: number;
   com_sangria: boolean;
+  /** Espelha `com_sangria`, novo contrato. */
+  sangria_detectada: boolean;
+  /** MediaBox > BleedBox — só é true quando o PDF declara boxes semânticos. */
+  marcas_detectadas: boolean;
   lombada_mm: number;
   avisos: string[];
 }
@@ -45,6 +49,8 @@ interface VerificacaoKo {
   largura_mm: number;
   altura_mm: number;
   com_sangria: boolean;
+  sangria_detectada: boolean;
+  marcas_detectadas: boolean;
   lombada_mm: number;
   formato_provavel?: FormatoLivro;
   divergencias: string[];
@@ -748,8 +754,15 @@ export default function LivroProntoPage() {
                     Arquivo conferido com sucesso
                   </p>
                   <p className="text-xs text-emerald-700">
-                    {verificacao.paginas_reais} páginas · {verificacao.largura_mm.toFixed(1)}×{verificacao.altura_mm.toFixed(1)}mm{" "}
-                    ({verificacao.com_sangria ? "com sangria" : "sem sangria"}) · lombada estimada {verificacao.lombada_mm.toFixed(1)}mm
+                    {verificacao.paginas_reais} páginas ·{" "}
+                    {verificacao.marcas_detectadas ? "corte " : ""}
+                    {verificacao.largura_mm.toFixed(1)}×{verificacao.altura_mm.toFixed(1)}mm ·{" "}
+                    lombada estimada {verificacao.lombada_mm.toFixed(1)}mm ·{" "}
+                    {verificacao.marcas_detectadas
+                      ? "sangria e marcas de corte detectadas"
+                      : verificacao.sangria_detectada
+                        ? "com sangria"
+                        : "sem sangria"}
                   </p>
                   {verificacao.avisos.map((aviso, i) => (
                     <p key={i} className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-100">
