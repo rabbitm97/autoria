@@ -329,3 +329,57 @@ export function getRatioArteUnica(
 export function isFormatoRuimParaUnica(format: FormatoLivro): boolean {
   return format === "quadrado" || format === "a4";
 }
+
+// ─── Papéis da calculadora de lombada (FERR-1B, 03/ago/2026) ─────────────────
+// Fonte dos valores empíricos: planilha Papel_1.xlsx (Graphium), aba
+// "Cálculo Lombada", colunas G ("Papel") e I ("Média de Média por Caderno",
+// mm por caderno de 32 páginas), lida em 03/ago/2026.
+//
+// Dois métodos:
+//   "gramatura": papéis lisos — delega para estimarLombadaMm (fórmula única
+//                da verdade 16: gramatura × páginas / 1440, em mm).
+//   "caderno":   papéis porosos/couché — empírico da gráfica:
+//                páginas × mm_por_caderno_32 / 32.
+//
+// ESCOPO: calculadora de ferramentas apenas. O pipeline (miolo, capa, ficha)
+// segue PAPEL_GRAMATURA_PADRAO_GSM fixo até o item 5 do backlog (papel por
+// escolha do autor na esteira).
+
+export interface PapelCalculadora {
+  id: string;
+  label: string;
+  metodo: "gramatura" | "caderno";
+  /** metodo === "gramatura" */
+  gramatura_gsm?: number;
+  /** metodo === "caderno": mm por caderno de 32 páginas (Papel_1.xlsx col. I) */
+  mm_por_caderno_32?: number;
+}
+
+export const PAPEIS_CALCULADORA: readonly PapelCalculadora[] = [
+  { id: "offset_75",        label: "Offset 75 g/m²",        metodo: "gramatura", gramatura_gsm: 75 },
+  { id: "offset_70",        label: "Offset 70 g/m²",        metodo: "gramatura", gramatura_gsm: 70 },
+  { id: "offset_90",        label: "Offset 90 g/m²",        metodo: "gramatura", gramatura_gsm: 90 },
+  { id: "avena_80",         label: "Avena 80 g/m²",         metodo: "gramatura", gramatura_gsm: 80 },
+  { id: "polen_natural_80", label: "Pólen Natural 80 g/m²", metodo: "gramatura", gramatura_gsm: 80 },
+  { id: "luxcream_70",      label: "Lux Cream 70 g/m²",     metodo: "caderno",   mm_por_caderno_32: 1.8583 },
+  { id: "polen_bold_90",    label: "Pólen Bold 90 g/m²",    metodo: "caderno",   mm_por_caderno_32: 2.4667 },
+  { id: "couche_90",        label: "Couché 90 g/m²",        metodo: "caderno",   mm_por_caderno_32: 1.4 },
+  { id: "ivory_65",         label: "Ivory 65 g/m²",         metodo: "caderno",   mm_por_caderno_32: 2.0 },
+] as const;
+
+/**
+ * Lombada em mm por papel, para a calculadora de ferramentas.
+ * Papéis "gramatura" delegam para estimarLombadaMm (fórmula única).
+ * Papéis "caderno" usam a média empírica da Graphium.
+ * Resultado com 1 casa decimal, sem clamp (valor matemático).
+ */
+export function estimarLombadaPapelMm(
+  paginas: number,
+  papel: PapelCalculadora,
+): number {
+  if (paginas <= 0) return 0;
+  if (papel.metodo === "gramatura") {
+    return estimarLombadaMm(paginas, papel.gramatura_gsm);
+  }
+  return Math.round((paginas * (papel.mm_por_caderno_32 ?? 0) / 32) * 10) / 10;
+}

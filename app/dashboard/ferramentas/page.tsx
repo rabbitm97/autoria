@@ -1,31 +1,173 @@
 import Link from "next/link";
 
-// ─── Tools registry ───────────────────────────────────────────────────────────
+// ─── Registry ─────────────────────────────────────────────────────────────────
 
-const TOOLS = [
+type EstadoFerramenta = "gratis" | "pago" | "breve";
+
+type CategoriaFerramenta =
+  | "Análise e texto"
+  | "Arquivos e formatos"
+  | "Capa e imagem"
+  | "Áudio";
+
+interface FerramentaCard {
+  id: string;
+  label: string;
+  desc: string;
+  categoria: CategoriaFerramenta;
+  estado: EstadoFerramenta;
+  /** Só quando estado === "gratis" */
+  href?: string;
+  /** Só quando estado === "pago". 1 crédito = R$ 1 — exibir o MESMO número. */
+  preco_creditos?: number;
+  /** Copy livre de preço p/ casos não-unitários (capa) — substitui preco_creditos no render */
+  preco_copy?: { rs: string; creditos: string };
+  /** Limite honesto exibido no card grátis. Ausente = sem limite. */
+  limite?: string;
+  icon: () => React.ReactElement;
+}
+
+// Ordem canônica das categorias na tela.
+const CATEGORIAS_ORDEM: readonly CategoriaFerramenta[] = [
+  "Análise e texto",
+  "Arquivos e formatos",
+  "Capa e imagem",
+  "Áudio",
+] as const;
+
+const TOOLS: readonly FerramentaCard[] = [
+  // ── Análise e texto ─────────────────────────────────────────────────────────
   {
-    href: "/dashboard/ferramentas/rgb-cmyk",
-    icon: PaletteIcon,
-    label: "RGB → CMYK",
-    desc: "Converta cores RGB para CMYK para impressão profissional de capas.",
-    categoria: "Utilidades",
-    available: true,
+    id: "diagnostico-expresso",
+    label: "Diagnóstico Expresso",
+    desc: "Análise editorial rápida de uma amostra do seu manuscrito.",
+    categoria: "Análise e texto",
+    estado: "pago",
+    preco_creditos: 10,
+    icon: ScanIcon,
   },
   {
-    href: "/dashboard/ferramentas/pdf-docx",
-    icon: ConvertIcon,
+    id: "diagnostico-completo",
+    label: "Diagnóstico completo",
+    desc: "Diagnóstico editorial completo do livro inteiro, capítulo a capítulo.",
+    categoria: "Análise e texto",
+    estado: "pago",
+    preco_creditos: 40,
+    icon: ScanIcon,
+  },
+  {
+    id: "revisao",
+    label: "Revisão completa",
+    desc: "Manuscrito revisado por IA, entregue em DOCX com as alterações.",
+    categoria: "Análise e texto",
+    estado: "pago",
+    preco_creditos: 150,
+    icon: CheckIcon,
+  },
+  {
+    id: "traducao",
+    label: "Tradução",
+    desc: "Seu livro traduzido para outro idioma, em DOCX ou EPUB.",
+    categoria: "Análise e texto",
+    estado: "pago",
+    preco_creditos: 200,
+    icon: GlobeIcon,
+  },
+
+  // ── Arquivos e formatos ─────────────────────────────────────────────────────
+  {
+    id: "lombada-paginas",
+    label: "Lombada e páginas",
+    desc: "Estime páginas e calcule a lombada do seu livro em qualquer formato.",
+    categoria: "Arquivos e formatos",
+    estado: "gratis",
+    href: "/dashboard/ferramentas/lombada-paginas",
+    icon: RulerIcon,
+  },
+  {
+    id: "pdf-docx",
     label: "PDF para DOCX",
-    desc: "Converta PDFs com texto em arquivos Word editáveis (.docx) com estrutura de capítulos.",
-    categoria: "Utilidades",
-    available: true,
+    desc: "Converta PDFs com texto em arquivos Word editáveis.",
+    categoria: "Arquivos e formatos",
+    estado: "gratis",
+    href: "/dashboard/ferramentas/pdf-docx",
+    limite: "2 por dia",
+    icon: ConvertIcon,
+  },
+  {
+    id: "ficha-creditos",
+    label: "Ficha e página de créditos",
+    desc: "Monte a página de créditos do seu livro pronta para impressão.",
+    categoria: "Arquivos e formatos",
+    estado: "gratis",
+    href: "/dashboard/ferramentas/creditos",
+    icon: DocIcon,
+  },
+  {
+    id: "epub",
+    label: "EPUB",
+    desc: "Converta seu arquivo em um EPUB pronto para as lojas digitais.",
+    categoria: "Arquivos e formatos",
+    estado: "pago",
+    preco_creditos: 50,
+    icon: EpubIcon,
+  },
+  {
+    id: "diagramacao-digital",
+    label: "Diagramação digital",
+    desc: "Miolo diagramado profissionalmente em PDF para plataformas digitais.",
+    categoria: "Arquivos e formatos",
+    estado: "pago",
+    preco_creditos: 100,
+    icon: PdfIcon,
+  },
+  {
+    id: "diagramacao-completa",
+    label: "Diagramação completa",
+    desc: "PDF digital + PDF gráfico em CMYK, pronto para a gráfica.",
+    categoria: "Arquivos e formatos",
+    estado: "pago",
+    preco_creditos: 150,
+    icon: PdfIcon,
+  },
+
+  // ── Capa e imagem ───────────────────────────────────────────────────────────
+  {
+    id: "rgb-cmyk",
+    label: "RGB → CMYK",
+    desc: "Converta cores RGB para CMYK para impressão profissional.",
+    categoria: "Capa e imagem",
+    estado: "gratis",
+    href: "/dashboard/ferramentas/rgb-cmyk",
+    icon: PaletteIcon,
+  },
+  {
+    id: "capa-ia",
+    label: "Capa com IA",
+    desc: "Capas em 4K geradas por IA a partir do seu briefing.",
+    categoria: "Capa e imagem",
+    estado: "pago",
+    preco_copy: {
+      rs: "R$ 20 por imagem · 4 por R$ 60",
+      creditos: "ou 20 créditos por imagem · 4 por 60",
+    },
+    icon: SparkleIcon,
+  },
+
+  // ── Áudio ───────────────────────────────────────────────────────────────────
+  {
+    id: "audiolivro",
+    label: "Audiolivro",
+    desc: "Seu livro narrado com voz neural, capítulo a capítulo.",
+    categoria: "Áudio",
+    estado: "breve",
+    icon: MicIcon,
   },
 ] as const;
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function FerramentasPage() {
-  const categorias = [...new Set(TOOLS.map(t => t.categoria))];
-
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
 
@@ -37,37 +179,103 @@ export default function FerramentasPage() {
         </p>
       </div>
 
-      {categorias.map(cat => {
+      {CATEGORIAS_ORDEM.map(cat => {
         const items = TOOLS.filter(t => t.categoria === cat);
+        if (items.length === 0) return null;
         return (
           <div key={cat} className="mb-10">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400 mb-4">{cat}</h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {items.map(tool => {
-                const Icon = tool.icon;
-                return (
-                  <Link
-                    key={tool.href}
-                    href={tool.href}
-                    className="flex flex-col gap-3 bg-white rounded-2xl border border-zinc-100 p-5 hover:border-brand-gold/40 hover:shadow-sm transition-all group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-brand-primary/5 flex items-center justify-center group-hover:bg-brand-gold/10 transition-colors shrink-0">
-                      <Icon />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-heading text-base text-brand-primary leading-tight mb-1 group-hover:text-brand-gold transition-colors">
-                        {tool.label}
-                      </p>
-                      <p className="text-xs text-zinc-500 leading-relaxed">{tool.desc}</p>
-                    </div>
-                    <p className="text-xs text-brand-gold font-semibold">Abrir →</p>
-                  </Link>
-                );
-              })}
+              {items.map(tool => <FerramentaCardView key={tool.id} tool={tool} />)}
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Card renderer (3 estados) ────────────────────────────────────────────────
+
+function FerramentaCardView({ tool }: { tool: FerramentaCard }) {
+  const Icon = tool.icon;
+
+  if (tool.estado === "gratis") {
+    return (
+      <Link
+        href={tool.href!}
+        className="relative flex flex-col gap-3 bg-white rounded-2xl border border-zinc-100 p-5 hover:border-brand-gold/40 hover:shadow-sm transition-all group"
+      >
+        {tool.limite && (
+          <span className="absolute top-3 right-4 text-[10px] text-zinc-400">
+            {tool.limite}
+          </span>
+        )}
+        <div className="w-10 h-10 rounded-xl bg-brand-primary/5 flex items-center justify-center group-hover:bg-brand-gold/10 transition-colors shrink-0">
+          <Icon />
+        </div>
+        <div className="flex-1">
+          <p className="font-heading text-base text-brand-primary leading-tight mb-1 group-hover:text-brand-gold transition-colors">
+            {tool.label}
+          </p>
+          <p className="text-xs text-zinc-500 leading-relaxed">{tool.desc}</p>
+        </div>
+        <p className="text-xs text-brand-gold font-semibold">Abrir →</p>
+      </Link>
+    );
+  }
+
+  if (tool.estado === "pago") {
+    const linhaPreco = tool.preco_copy
+      ? tool.preco_copy.rs
+      : `R$ ${tool.preco_creditos ?? 0}`;
+    const linhaCreditos = tool.preco_copy
+      ? tool.preco_copy.creditos
+      : `ou ${tool.preco_creditos ?? 0} créditos`;
+
+    return (
+      <div className="flex flex-col gap-3 bg-white rounded-2xl border border-zinc-100 p-5">
+        <div className="w-10 h-10 rounded-xl bg-brand-primary/5 flex items-center justify-center shrink-0">
+          <Icon />
+        </div>
+        <div className="flex-1">
+          <p className="font-heading text-base text-brand-primary leading-tight mb-1">
+            {tool.label}
+          </p>
+          <p className="text-xs text-zinc-500 leading-relaxed">{tool.desc}</p>
+        </div>
+        <div>
+          <p className="font-heading text-2xl text-brand-primary leading-none">
+            {linhaPreco}
+          </p>
+          <p className="text-[11px] text-zinc-400 mt-0.5">
+            {linhaCreditos}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled
+          className="w-full mt-1 rounded-xl bg-zinc-100 text-zinc-400 text-xs font-semibold py-2 cursor-not-allowed"
+        >
+          Disponível em breve
+        </button>
+      </div>
+    );
+  }
+
+  // breve
+  return (
+    <div className="flex flex-col gap-3 bg-white rounded-2xl border border-zinc-100 p-5">
+      <div className="w-10 h-10 rounded-xl bg-brand-primary/5 flex items-center justify-center shrink-0">
+        <Icon />
+      </div>
+      <div className="flex-1">
+        <p className="font-heading text-base text-brand-primary leading-tight mb-1">
+          {tool.label}
+        </p>
+        <p className="text-xs text-zinc-500 leading-relaxed">{tool.desc}</p>
+      </div>
+      <p className="text-xs text-zinc-400 font-semibold">Em breve</p>
     </div>
   );
 }
@@ -93,13 +301,6 @@ function SparkleIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-    </svg>
-  );
-}
-function ImageIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
     </svg>
   );
 }
@@ -145,6 +346,37 @@ function PaletteIcon() {
       <circle cx="8.5" cy="7.5" r=".5" fill="#1a1a2e"/>
       <circle cx="6.5" cy="12.5" r=".5" fill="#1a1a2e"/>
       <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+    </svg>
+  );
+}
+function GlobeIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M2 12h20"/>
+      <path d="M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/>
+    </svg>
+  );
+}
+function RulerIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.3 8.7 8.7 21.3a2.4 2.4 0 0 1-3.4 0L2.7 18.7a2.4 2.4 0 0 1 0-3.4L15.3 2.7a2.4 2.4 0 0 1 3.4 0l2.6 2.6a2.4 2.4 0 0 1 0 3.4z"/>
+      <path d="m7.5 10.5 2 2"/>
+      <path d="m10.5 7.5 2 2"/>
+      <path d="m13.5 4.5 2 2"/>
+      <path d="m4.5 13.5 2 2"/>
+    </svg>
+  );
+}
+function DocIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="8" y1="13" x2="16" y2="13"/>
+      <line x1="8" y1="17" x2="16" y2="17"/>
+      <line x1="8" y1="9" x2="10" y2="9"/>
     </svg>
   );
 }
