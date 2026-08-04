@@ -1,0 +1,86 @@
+export const maxDuration = 60;
+
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/supabase-server";
+import { isDev } from "@/lib/anthropic";
+import { isFormatoValido, type FormatoLivro } from "@/lib/formatos";
+import { verificarMioloPdf } from "@/app/api/express/_verificacao";
+
+// Verificação declara→confere do PDF de miolo enviado pela porta Express.
+// PURA: não escreve no banco, não move arquivo. Reexecutada tantas vezes
+// quanto o autor precisar (troca de formato, novo upload etc.). A persistência
+// canônica é `confirmar-miolo`, que re-executa este mesmo motor server-side.
+
+export async function POST(req: NextRequest) {
+  const dev = isDev();
+
+  let userId: string;
+  if (dev) {
+    userId = "dev-user";
+  } else {
+    try {
+      const auth = await requireAuth();
+      userId = auth.user.id;
+    } catch (e) {
+      return e as Response;
+    }
+  }
+
+  let body: { formato?: unknown; paginas_declaradas?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
+  }
+
+  if (!isFormatoValido(body.formato)) {
+    return NextResponse.json({ error: "Formato inválido." }, { status: 422 });
+  }
+  const formato = body.formato as FormatoLivro;
+
+  const paginasDeclaradas = Number(body.paginas_declaradas);
+  if (!Number.isFinite(paginasDeclaradas) || paginasDeclaradas <= 0) {
+    return NextResponse.json(
+      { error: "Informe a quantidade de páginas do PDF." },
+      { status: 422 },
+    );
+  }
+
+  const resultado = await verificarMioloPdf({
+    userId,
+    formato,
+    paginas_declaradas: Math.round(paginasDeclaradas),
+  });
+
+  if (!resultado.ok) {
+    const status =
+      resultado.motivo === "pdf_ausente" || resultado.motivo === "pdf_ilegivel"
+        ? 422
+        : 200;
+    return NextResponse.json(
+      {
+        ok: false,
+        paginas_reais: resultado.paginas_reais ?? 0,
+        largura_mm: resultado.largura_mm ?? 0,
+        altura_mm: resultado.altura_mm ?? 0,
+        com_sangria: false,
+        lombada_mm: 0,
+        formato_provavel: resultado.formato_provavel,
+        divergencias: resultado.divergencias,
+        avisos: [] as string[],
+      },
+      { status },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    paginas_reais: resultado.paginas_reais,
+    largura_mm: resultado.largura_mm,
+    altura_mm: resultado.altura_mm,
+    com_sangria: resultado.com_sangria,
+    lombada_mm: resultado.lombada_mm,
+    divergencias: [] as string[],
+    avisos: resultado.avisos,
+  });
+}

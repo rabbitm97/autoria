@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { AUTHOR_TITLES, GENRES } from "@/lib/generos";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -13,49 +15,6 @@ const ACCEPTED_MIME = [
   "text/plain",
 ];
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
-
-const AUTHOR_TITLES = ["Sr.", "Sra.", "Dr.", "Dra.", "Prof.", "Profa.", "Rev."];
-
-const GENRES: Record<string, Record<string, string[]>> = {
-  "Ficção": {
-    "Romance": ["Romance Contemporâneo", "Romance Histórico", "Romance Suspense", "Romance Paranormal", "Chick Lit"],
-    "Thriller e Suspense": ["Thriller Policial", "Thriller Psicológico", "Suspense", "Crime"],
-    "Terror e Horror": ["Terror Sobrenatural", "Horror Psicológico", "Terror Gótico"],
-    "Ficção Científica": ["Space Opera", "Distopia", "Cyberpunk", "Hard Sci-Fi", "Ficção Científica Soft"],
-    "Fantasia": ["Fantasia Épica", "Fantasia Urbana", "Dark Fantasy", "Steampunk"],
-    "Mistério": ["Mistério Policial", "Cozy Mystery", "Noir"],
-    "Aventura": ["Aventura de Ação", "Aventura Histórica"],
-    "Ficção Literária": ["Ficção Contemporânea", "Ficção Histórica"],
-    "Humor e Sátira": ["Humor", "Sátira"],
-  },
-  "Não Ficção": {
-    "Autoajuda e Desenvolvimento Pessoal": ["Autoajuda", "Motivação", "Mindfulness", "Produtividade", "Coaching"],
-    "Negócios e Empreendedorismo": ["Empreendedorismo", "Marketing", "Finanças Pessoais", "Liderança", "Gestão"],
-    "Biografia e Memórias": ["Autobiografia", "Biografia", "Memórias", "Diário"],
-    "História": ["História do Brasil", "História Mundial", "História Regional"],
-    "Ciência e Natureza": ["Ciência Popular", "Física", "Biologia", "Astronomia", "Meio Ambiente"],
-    "Saúde e Bem-estar": ["Saúde", "Nutrição", "Fitness", "Medicina Alternativa"],
-    "Espiritualidade e Religião": ["Espiritualidade", "Religião", "Esoterismo"],
-    "Filosofia": ["Filosofia Geral", "Filosofia Prática", "Ética"],
-  },
-  "Infantil e Juvenil": {
-    "Infantil": ["Livro Ilustrado", "Conto Infantil", "Fábula", "Livro de Atividades"],
-    "Jovem Adulto (YA)": ["YA Romance", "YA Fantasia", "YA Ficção Científica", "YA Contemporâneo"],
-  },
-  "Poesia e Literatura": {
-    "Poesia": ["Poesia Lírica", "Poesia Épica", "Haiku", "Poesia Contemporânea"],
-    "Contos": ["Contos Literários", "Contos de Terror", "Contos Românticos", "Contos de Ficção Científica"],
-    "Crônicas": ["Crônicas Literárias", "Crônicas Humorísticas"],
-  },
-  "Arte e Fotografia": {
-    "Arte": ["Arte Visual", "Arquitetura", "Design", "Moda e Estilo"],
-    "Fotografia": ["Fotografia Artística", "Fotografia Documental"],
-  },
-  "Culinária e Estilo de Vida": {
-    "Culinária": ["Receitas Gerais", "Cozinha Regional Brasileira", "Culinária Internacional", "Vegano e Vegetariano"],
-    "Estilo de Vida": ["Casa e Jardim", "Viagem", "Artesanato"],
-  },
-};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -374,6 +333,14 @@ export default function NovoProjetoPage() {
           </div>
 
           <div className="px-8 py-8 space-y-7">
+
+            <Link
+              href="/dashboard/livro-pronto"
+              className="block text-center text-xs text-zinc-400 hover:text-brand-gold transition-colors -mb-2"
+            >
+              Já tem seu livro diagramado e com capa?{" "}
+              <span className="underline underline-offset-2">Publique direto →</span>
+            </Link>
 
             {/* ── Title + Subtitle ── */}
             <div className="space-y-4">

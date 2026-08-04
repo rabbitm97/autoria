@@ -49,6 +49,13 @@ const TOOLS = [
     desc: "Acompanhe seus ganhos em todas as plataformas",
     highlight: false,
   },
+  {
+    href: "/dashboard/livro-pronto",
+    icon: "📕",
+    label: "Já tenho meu livro pronto",
+    desc: "Livro diagramado e com capa? Publique direto, sem passar pela esteira",
+    highlight: false,
+  },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────

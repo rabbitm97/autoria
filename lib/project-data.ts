@@ -67,6 +67,17 @@ export interface PdfResult {
   url_download: string;  // signed URL (1h)
   paginas: number;
   gerado_em: string;
+  /**
+   * Origem do PDF do miolo (EXPRESS-1A, espelha o padrão discriminado do
+   * dados_capa — verdade 22):
+   *  - "gerado": produzido pela esteira (gerar-pdf). Valor implícito de
+   *    todos os results legados — ausência de campo = "gerado".
+   *  - "upload": enviado pronto pelo autor na trilha Express ("Já tenho
+   *    meu livro pronto"). Projetos com origem "upload" pulam a esteira;
+   *    detecção de projeto Express em toda a stack é
+   *    `dados_pdf?.origem === "upload"`.
+   */
+  origem?: "gerado" | "upload";
 }
 
 // ── miolo ────────────────────────────────────────────────────────────────────
@@ -977,6 +988,7 @@ const pdfResultSchema = z.looseObject({
   url_download: z.string(),
   paginas: z.number(),
   gerado_em: z.string(),
+  origem: z.string().nullish(),
 });
 
 const epubResultSchema = z.looseObject({
