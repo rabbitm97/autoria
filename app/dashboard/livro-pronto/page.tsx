@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { AUTHOR_TITLES, GENRES } from "@/lib/generos";
@@ -100,10 +100,28 @@ export default function LivroProntoPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [verificacao, setVerificacao] = useState<VerificacaoResp | null>(null);
+  const [hasUploaded, setHasUploaded] = useState(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [retryContext, setRetryContext] = useState<{ projectId: string } | null>(null);
+
+  // Token monotônico: respostas de verificações antigas são descartadas se
+  // os insumos (arquivo/formato/páginas) mudaram no meio do voo.
+  const verifyTokenRef = useRef(0);
+  // Debounce da digitação de páginas (800ms). Blur cancela e dispara imediato.
+  const pagesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelPagesDebounce() {
+    if (pagesDebounceRef.current) {
+      clearTimeout(pagesDebounceRef.current);
+      pagesDebounceRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => cancelPagesDebounce();
+  }, []);
 
   // ── File selection ──────────────────────────────────────────────────────────
 
@@ -113,9 +131,17 @@ export default function LivroProntoPage() {
       setError(err);
       return;
     }
+    // Invalida qualquer verificação anterior + cancela responses em voo
+    verifyTokenRef.current += 1;
+    cancelPagesDebounce();
+
     setError(null);
     setFile(f);
-    setVerificacao(null); // novo upload invalida verificação anterior
+    setHasUploaded(false);
+    setVerificacao(null);
+
+    // Dispara upload imediato (não espera clique em botão)
+    void uploadFileToTemp(f);
   }
 
   function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -154,30 +180,13 @@ export default function LivroProntoPage() {
     setCoautores(coautores.map((ca, i) => i === idx ? { ...ca, [field]: value } : ca));
   }
 
-  // ── Verificar arquivo ───────────────────────────────────────────────────────
+  // ── Upload direto para path temp (dispara na seleção do arquivo) ────────────
 
-  async function handleVerificar(formatoParam?: FormatoLivro) {
-    const fmt = formatoParam ?? (formato as FormatoLivro);
-    setError(null);
-
-    if (!fmt) {
-      setError("Selecione o formato do livro.");
-      return;
-    }
-    const paginas = Number(paginasDeclaradas);
-    if (!Number.isFinite(paginas) || paginas <= 0) {
-      setError("Informe a quantidade de páginas do PDF.");
-      return;
-    }
-    if (!file) {
-      setError("Selecione o arquivo do miolo.");
-      return;
-    }
-
+  async function uploadFileToTemp(f: File) {
     setStatus("uploading");
     setUploadProgress(0);
+    setError(null);
 
-    // 1. Signed upload URL
     let uploadPath: string;
     let signedUrl: string | null;
     let token: string | null;
@@ -194,12 +203,11 @@ export default function LivroProntoPage() {
       return;
     }
 
-    // 2. Upload direto no Storage
     if (signedUrl && token) {
       try {
         const { error: upErr } = await supabase.storage
           .from("livros")
-          .uploadToSignedUrl(uploadPath, token, file, {
+          .uploadToSignedUrl(uploadPath, token, f, {
             contentType: "application/pdf",
             upsert: true,
           });
@@ -212,37 +220,84 @@ export default function LivroProntoPage() {
       }
     }
 
-    // 3. Verificação
-    setStatus("verifying");
-    try {
-      const res = await fetch("/api/express/verificar-miolo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          formato: fmt,
-          paginas_declaradas: Math.round(paginas),
-        }),
-      });
-      const data = (await res.json()) as VerificacaoResp | { error: string };
-      if (!res.ok && !("ok" in data)) {
-        setError((data as { error: string }).error ?? "Falha na verificação.");
-        setStatus("error");
-        return;
-      }
-      const veri = data as VerificacaoResp;
-      setVerificacao(veri);
-      setStatus(veri.ok ? "verified_ok" : "verified_ko");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro na verificação.");
-      setStatus("error");
+    setHasUploaded(true);
+    setStatus("idle");
+
+    // Se formato + páginas já foram declarados antes do arquivo chegar, roda
+    // a verificação sozinha.
+    const paginas = Number(paginasDeclaradas);
+    if (formato && Number.isFinite(paginas) && paginas > 0) {
+      runVerify(formato as FormatoLivro, paginas);
     }
   }
 
-  // ── Usar formato provável ───────────────────────────────────────────────────
+  // ── Verificação (roda sozinha; caller garante insumos válidos) ──────────────
 
-  async function handleUsarFormatoProvavel(novo: FormatoLivro) {
+  function runVerify(fmt: FormatoLivro, paginas: number) {
+    const token = ++verifyTokenRef.current;
+    setStatus("verifying");
+    setVerificacao(null);
+    setError(null);
+
+    fetch("/api/express/verificar-miolo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        formato: fmt,
+        paginas_declaradas: Math.round(paginas),
+      }),
+    })
+      .then(async (res) => {
+        const data = (await res.json()) as VerificacaoResp | { error: string };
+        // Descarta resposta obsoleta se um novo verify já foi disparado.
+        if (token !== verifyTokenRef.current) return;
+        if (!res.ok && !("ok" in data)) {
+          setError((data as { error: string }).error ?? "Falha na verificação.");
+          setStatus("error");
+          return;
+        }
+        const veri = data as VerificacaoResp;
+        setVerificacao(veri);
+        setStatus(veri.ok ? "verified_ok" : "verified_ko");
+      })
+      .catch((e) => {
+        if (token !== verifyTokenRef.current) return;
+        setError(e instanceof Error ? e.message : "Erro na verificação.");
+        setStatus("error");
+      });
+  }
+
+  // ── Gatilhos: mudança de formato ou de páginas re-executa a verificação ────
+
+  function onFormatoChange(novo: FormatoLivro) {
     setFormato(novo);
-    await handleVerificar(novo);
+    setVerificacao(null);
+    cancelPagesDebounce();
+    const paginas = Number(paginasDeclaradas);
+    if (hasUploaded && Number.isFinite(paginas) && paginas > 0) {
+      runVerify(novo, paginas);
+    }
+  }
+
+  function onPaginasChange(v: string) {
+    setPaginasDeclaradas(v);
+    setVerificacao(null);
+    cancelPagesDebounce();
+    const paginas = Number(v);
+    if (!hasUploaded || !formato) return;
+    if (!Number.isFinite(paginas) || paginas <= 0) return;
+    pagesDebounceRef.current = setTimeout(() => {
+      pagesDebounceRef.current = null;
+      runVerify(formato as FormatoLivro, paginas);
+    }, 800);
+  }
+
+  function onPaginasBlur() {
+    cancelPagesDebounce();
+    const paginas = Number(paginasDeclaradas);
+    if (!hasUploaded || !formato) return;
+    if (!Number.isFinite(paginas) || paginas <= 0) return;
+    runVerify(formato as FormatoLivro, paginas);
   }
 
   // ── Persistência final: cria manuscript + project + patcha formato + confirma ──
@@ -373,21 +428,18 @@ export default function LivroProntoPage() {
   // ── Derived state ───────────────────────────────────────────────────────────
 
   const isProcessing = ["uploading", "verifying", "creating"].includes(status);
-  const isVerifying = status === "uploading" || status === "verifying";
   const fileExt = file?.name.split(".").pop()?.toUpperCase() ?? "";
   const subcats = generoPrincipal ? Object.keys(GENRES[generoPrincipal]) : [];
   const details = generoSub && generoPrincipal ? GENRES[generoPrincipal][generoSub] : [];
 
-  const podeVerificar = !!file && !!formato && !!paginasDeclaradas && !isProcessing;
+  const paginasNum = Number(paginasDeclaradas);
+  const paginasValidas = Number.isFinite(paginasNum) && paginasNum > 0;
+  const trioIncompleto = !hasUploaded || !formato || !paginasValidas;
+
   const podeContinuar =
     verificacao?.ok === true &&
     titulo.trim().length > 0 &&
     !isProcessing;
-
-  const verificacaoLabel =
-    status === "uploading" ? `Enviando… ${uploadProgress}%` :
-    status === "verifying" ? "Conferindo o arquivo…" :
-    "Verificar arquivo";
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -565,10 +617,7 @@ export default function LivroProntoPage() {
                     <button
                       key={f.value}
                       type="button"
-                      onClick={() => {
-                        setFormato(f.value);
-                        setVerificacao(null);
-                      }}
+                      onClick={() => onFormatoChange(f.value)}
                       disabled={isProcessing}
                       className={`text-left rounded-lg border-2 p-3 transition-all ${
                         formato === f.value
@@ -590,10 +639,8 @@ export default function LivroProntoPage() {
                   type="number"
                   min={1}
                   value={paginasDeclaradas}
-                  onChange={(e) => {
-                    setPaginasDeclaradas(e.target.value);
-                    setVerificacao(null);
-                  }}
+                  onChange={(e) => onPaginasChange(e.target.value)}
+                  onBlur={onPaginasBlur}
                   placeholder="Ex.: 168"
                   disabled={isProcessing}
                   className={fieldClass}
@@ -651,9 +698,13 @@ export default function LivroProntoPage() {
                     {!isProcessing && (
                       <button
                         onClick={() => {
+                          verifyTokenRef.current += 1;
+                          cancelPagesDebounce();
                           setFile(null);
+                          setHasUploaded(false);
                           setVerificacao(null);
                           setError(null);
+                          setUploadProgress(0);
                           if (inputRef.current) inputRef.current.value = "";
                         }}
                         className="text-zinc-300 hover:text-zinc-500 transition-colors p-1"
@@ -666,17 +717,31 @@ export default function LivroProntoPage() {
                 )}
               </div>
 
-              {/* Botão Verificar */}
-              <button
-                type="button"
-                onClick={() => handleVerificar()}
-                disabled={!podeVerificar}
-                className="w-full bg-brand-primary text-brand-gold py-3 rounded-xl font-semibold text-sm uppercase tracking-wide hover:bg-[#2a2a4e] active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isVerifying ? verificacaoLabel : "Verificar arquivo"}
-              </button>
+              {/* Painel de resultado — auto-verificação; sem botão intermediário */}
+              {status === "uploading" && (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 flex items-center gap-3">
+                  <Spinner />
+                  <p className="text-sm text-zinc-600">
+                    Enviando o arquivo… {uploadProgress}%
+                  </p>
+                </div>
+              )}
 
-              {/* Resultado da verificação */}
+              {status === "verifying" && (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 flex items-center gap-3">
+                  <Spinner />
+                  <p className="text-sm text-zinc-600">Conferindo seu arquivo…</p>
+                </div>
+              )}
+
+              {status !== "uploading" && status !== "verifying" && !verificacao && file && trioIncompleto && (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="text-sm text-zinc-500">
+                    Selecione o formato e informe as páginas para conferirmos o arquivo.
+                  </p>
+                </div>
+              )}
+
               {verificacao?.ok === true && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-2">
                   <p className="text-sm font-semibold text-emerald-800">
@@ -705,7 +770,7 @@ export default function LivroProntoPage() {
                   {verificacao.formato_provavel && (
                     <button
                       type="button"
-                      onClick={() => handleUsarFormatoProvavel(verificacao.formato_provavel!)}
+                      onClick={() => onFormatoChange(verificacao.formato_provavel!)}
                       disabled={isProcessing}
                       className="text-xs font-semibold text-brand-primary underline underline-offset-2 hover:text-brand-gold"
                     >
@@ -840,5 +905,14 @@ function RemoveIcon() {
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      className="inline-block w-4 h-4 rounded-full border-2 border-zinc-300 border-t-brand-primary animate-spin"
+      aria-hidden="true"
+    />
   );
 }
