@@ -3,6 +3,7 @@ import { isDev } from "@/lib/anthropic";
 import Link from "next/link";
 import { ProjectsThumbnails } from "./ProjectsThumbnails";
 import { STEPS, ETAPA_HREF, getStepIndex, derivarEtapaExibida } from "@/lib/etapas";
+import { resolveCapaCompleta } from "@/lib/capa-resolver";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,14 +12,15 @@ interface Projeto {
   etapa_atual: string;
   qa_aprovado_em: string | null;
   dados_miolo: { paginas_reais?: number } | null;
+  dados_pdf: { origem?: string } | null;
   criado_em: string;
   manuscript: { nome: string; titulo: string | null } | null;
 }
 
 const MOCK_PROJETOS: Projeto[] = [
-  { id: "mock-1", etapa_atual: "revisao",   qa_aprovado_em: null, dados_miolo: null, criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
-  { id: "mock-2", etapa_atual: "capa",      qa_aprovado_em: null, dados_miolo: null, criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
-  { id: "mock-3", etapa_atual: "elementos", qa_aprovado_em: null, dados_miolo: null, criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
+  { id: "mock-1", etapa_atual: "revisao",   qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
+  { id: "mock-2", etapa_atual: "capa",      qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
+  { id: "mock-3", etapa_atual: "elementos", qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
 ];
 
 function formatDate(iso: string) {
@@ -56,25 +58,31 @@ const TOOLS = [
 export default async function DashboardPage() {
   let projetos: Projeto[] = [];
   let userName = "Autor";
+  let userPlano = "freemium";
 
   if (isDev()) {
     projetos = MOCK_PROJETOS;
     userName = "Mateus";
+    userPlano = "pro";
   } else {
     const supabase = await createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileErr } = await supabase
         .from("users")
-        .select("nome")
+        .select("nome, plano")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
+      if (profileErr) {
+        console.warn("[dashboard] falha ao carregar perfil:", profileErr.message);
+      }
       userName = profile?.nome ?? user.email?.split("@")[0] ?? "Autor";
+      userPlano = profile?.plano ?? "freemium";
 
       const { data } = await supabase
         .from("projects")
-        .select("id, etapa_atual, qa_aprovado_em, dados_miolo, criado_em, manuscript:manuscript_id(nome, titulo)")
+        .select("id, etapa_atual, qa_aprovado_em, dados_miolo, dados_pdf, criado_em, manuscript:manuscript_id(nome, titulo)")
         .order("criado_em", { ascending: false });
 
       projetos = (data ?? []) as unknown as Projeto[];
@@ -89,6 +97,31 @@ export default async function DashboardPage() {
   const continueHref = projetoAtivo && etapaExibida
     ? (ETAPA_HREF[etapaExibida]?.(projetoAtivo.id) ?? `/dashboard/diagnostico/${projetoAtivo.id}`)
     : "/dashboard/novo-projeto";
+
+  const isExpressAtivo = projetoAtivo?.dados_pdf?.origem === "upload";
+
+  let capaExpressPronta = false;
+  if (isExpressAtivo && projetoAtivo && !isDev()) {
+    const supabase = await createSupabaseServerClient();
+    const { data: capaRow, error: capaErr } = await supabase
+      .from("projects")
+      .select("dados_capa, formato")
+      .eq("id", projetoAtivo.id)
+      .maybeSingle();
+    if (capaErr) {
+      console.warn("[dashboard] falha ao carregar capa do projeto Express:", capaErr.message);
+    } else if (capaRow) {
+      capaExpressPronta = resolveCapaCompleta(
+        capaRow.dados_capa,
+        (capaRow.formato ?? "padrao_br") as Parameters<typeof resolveCapaCompleta>[1],
+      ).pronta;
+    }
+  }
+
+  const expressStep = projetoAtivo?.qa_aprovado_em ? 3 : capaExpressPronta ? 2 : 1;
+  const EXPRESS_STEPS = ["Arquivo do livro", "Capa", "Prova"] as const;
+  const expressEtapaLabel =
+    expressStep >= 2 ? "Prova" : "Capa";
 
   return (
     <div className="min-h-full bg-brand-surface">
@@ -161,19 +194,31 @@ export default async function DashboardPage() {
               {/* Progress + CTA */}
               <div className="flex-1 p-7">
                 <p className="text-xs text-zinc-400 uppercase tracking-widest font-medium mb-1">Projeto ativo</p>
+                {isExpressAtivo && (
+                  <span className="inline-block text-[10px] text-brand-gold border border-brand-gold/30 rounded px-1.5 mb-1">
+                    Livro pronto
+                  </span>
+                )}
                 <h2 className="font-heading text-2xl text-brand-primary mb-1">{nomeAtivo}</h2>
                 <p className="text-sm text-zinc-400 mb-6">
-                  Etapa atual: <span className="text-brand-primary font-medium">{STEPS[stepAtivo]?.label}</span>
+                  Etapa atual:{" "}
+                  <span className="text-brand-primary font-medium">
+                    {isExpressAtivo ? expressEtapaLabel : STEPS[stepAtivo]?.label}
+                  </span>
                 </p>
 
                 {/* Step progress */}
                 <div className="flex items-center gap-0 mb-7 overflow-x-auto">
-                  {STEPS.map((step, i) => {
-                    const done    = i < stepAtivo;
-                    const active  = i === stepAtivo;
-                    const locked  = i > stepAtivo;
+                  {(isExpressAtivo
+                    ? EXPRESS_STEPS.map((label, i) => ({ key: `express-${i}`, label, i }))
+                    : STEPS.map((step, i) => ({ key: step.key, label: step.label, i }))
+                  ).map(({ key, label, i }) => {
+                    const currentStep = isExpressAtivo ? expressStep : stepAtivo;
+                    const done    = i < currentStep;
+                    const active  = i === currentStep;
+                    const locked  = i > currentStep;
                     return (
-                      <div key={step.key} className="flex items-center">
+                      <div key={key} className="flex items-center">
                         {/* Connector line */}
                         {i > 0 && (
                           <div className={`h-0.5 w-6 shrink-0 ${done || active ? "bg-brand-gold" : "bg-zinc-200"}`} />
@@ -198,7 +243,7 @@ export default async function DashboardPage() {
                           {/* Label */}
                           <span className={`text-[10px] font-medium whitespace-nowrap
                             ${active ? "text-brand-primary" : done ? "text-brand-gold" : "text-zinc-300"}`}>
-                            {step.label}
+                            {label}
                           </span>
                           <span className={`text-[9px] whitespace-nowrap
                             ${active ? "text-brand-gold" : done ? "text-zinc-400" : "text-zinc-300"}`}>
@@ -225,18 +270,20 @@ export default async function DashboardPage() {
               <div className="w-52 shrink-0 border-l border-zinc-100 p-5 flex flex-col gap-4">
 
                 {/* Upgrade banner */}
-                <div className="rounded-xl bg-gradient-to-br from-brand-gold/10 to-brand-gold/5 border border-brand-gold/20 p-4">
-                  <p className="text-xs font-semibold text-brand-primary mb-1">Desbloqueie tudo</p>
-                  <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">
-                    Capa IA, EPUB, audiolivro e publicação em 5 plataformas.
-                  </p>
-                  <Link
-                    href="/dashboard/planos"
-                    className="block text-center text-xs font-bold text-brand-primary bg-brand-gold px-3 py-2 rounded-lg hover:bg-brand-gold-light transition-colors"
-                  >
-                    Ver planos
-                  </Link>
-                </div>
+                {userPlano !== "pro" && !isExpressAtivo && (
+                  <div className="rounded-xl bg-gradient-to-br from-brand-gold/10 to-brand-gold/5 border border-brand-gold/20 p-4">
+                    <p className="text-xs font-semibold text-brand-primary mb-1">Desbloqueie tudo</p>
+                    <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">
+                      Capa IA, EPUB, audiolivro e publicação em 5 plataformas.
+                    </p>
+                    <Link
+                      href="/dashboard/planos"
+                      className="block text-center text-xs font-bold text-brand-primary bg-brand-gold px-3 py-2 rounded-lg hover:bg-brand-gold-light transition-colors"
+                    >
+                      Ver planos
+                    </Link>
+                  </div>
+                )}
 
                 {/* Other projects */}
                 {outrosProjetos.length > 0 && (
