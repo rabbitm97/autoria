@@ -58,7 +58,12 @@ const TOOLS = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ projeto?: string }>;
+}) {
+  const { projeto: projetoSelecionado } = await searchParams;
   let projetos: Projeto[] = [];
   let userName = "Autor";
   let userPlano = "freemium";
@@ -92,8 +97,9 @@ export default async function DashboardPage() {
     }
   }
 
-  const projetoAtivo = projetos[0] ?? null;
-  const outrosProjetos = projetos.slice(1);
+  const projetoAtivo =
+    projetos.find((p) => p.id === projetoSelecionado) ?? projetos[0] ?? null;
+  const outrosProjetos = projetos.filter((p) => p.id !== projetoAtivo?.id);
   const etapaExibida = projetoAtivo ? derivarEtapaExibida(projetoAtivo) : null;
   const stepAtivo = etapaExibida ? getStepIndex(etapaExibida) : 0;
   const nomeAtivo = projetoAtivo?.manuscript?.titulo?.trim() || projetoAtivo?.manuscript?.nome || "Meu Livro";
@@ -103,8 +109,10 @@ export default async function DashboardPage() {
 
   const isExpressAtivo = projetoAtivo?.dados_pdf?.origem === "upload";
 
-  let capaExpressPronta = false;
-  if (isExpressAtivo && projetoAtivo && !isDev()) {
+  let capaAtivaUrl: string | null = null;
+  let capaAtivaPanoramica = false;
+  let capaAtivaPronta = false;
+  if (projetoAtivo && !isDev()) {
     const supabase = await createSupabaseServerClient();
     const { data: capaRow, error: capaErr } = await supabase
       .from("projects")
@@ -112,14 +120,18 @@ export default async function DashboardPage() {
       .eq("id", projetoAtivo.id)
       .maybeSingle();
     if (capaErr) {
-      console.warn("[dashboard] falha ao carregar capa do projeto Express:", capaErr.message);
+      console.warn("[dashboard] falha ao carregar capa do projeto ativo:", capaErr.message);
     } else if (capaRow) {
-      capaExpressPronta = resolveCapaCompleta(
+      const capa = resolveCapaCompleta(
         capaRow.dados_capa,
         (capaRow.formato ?? "padrao_br") as Parameters<typeof resolveCapaCompleta>[1],
-      ).pronta;
+      );
+      capaAtivaPronta = capa.pronta;
+      capaAtivaUrl = capa.url_area_util ?? capa.url_principal;
+      capaAtivaPanoramica = capa.is_panoramica;
     }
   }
+  const capaExpressPronta = capaAtivaPronta;
 
   const expressStep = projetoAtivo?.qa_aprovado_em ? 3 : capaExpressPronta ? 2 : 1;
   const EXPRESS_STEPS = ["Arquivo do livro", "Capa", "Prova"] as const;
@@ -180,16 +192,27 @@ export default async function DashboardPage() {
 
               {/* Book cover */}
               <div className="w-44 shrink-0 flex flex-col items-center justify-center p-6 border-r border-zinc-100 bg-zinc-50">
-                <div className="w-24 h-36 rounded-lg shadow-lg flex flex-col items-end justify-end overflow-hidden relative"
-                  style={{ background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center px-2">
-                    <div className="w-full h-px bg-brand-gold/30 mb-2" />
-                    <p className="text-brand-gold text-[9px] font-heading text-center leading-tight line-clamp-3">
-                      {nomeAtivo}
-                    </p>
-                    <div className="w-full h-px bg-brand-gold/30 mt-2" />
-                  </div>
-                  <div className="w-full h-1.5 bg-brand-gold/40" />
+                <div className="w-24 h-36 rounded-lg shadow-lg overflow-hidden relative"
+                  style={capaAtivaPronta && capaAtivaUrl ? undefined : { background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}>
+                  {capaAtivaPronta && capaAtivaUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={capaAtivaUrl}
+                      alt={`Capa de ${nomeAtivo}`}
+                      className={`w-full h-full object-cover ${capaAtivaPanoramica ? "object-right" : "object-center"}`}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-end justify-end">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center px-2">
+                        <div className="w-full h-px bg-brand-gold/30 mb-2" />
+                        <p className="text-brand-gold text-[9px] font-heading text-center leading-tight line-clamp-3">
+                          {nomeAtivo}
+                        </p>
+                        <div className="w-full h-px bg-brand-gold/30 mt-2" />
+                      </div>
+                      <div className="w-full h-1.5 bg-brand-gold/40" />
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-zinc-400 mt-3 text-center">
                   Criado em<br />{formatDate(projetoAtivo.criado_em)}
@@ -298,7 +321,7 @@ export default async function DashboardPage() {
                       {outrosProjetos.slice(0, 3).map((p) => (
                         <Link
                           key={p.id}
-                          href={ETAPA_HREF[derivarEtapaExibida(p)]?.(p.id) ?? "#"}
+                          href={`/dashboard?projeto=${p.id}`}
                           className="flex items-center gap-2 p-2 rounded-lg hover:bg-zinc-50 transition-colors group"
                         >
                           <div className="w-5 h-7 rounded shrink-0 flex items-center justify-center"

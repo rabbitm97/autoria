@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ETAPA_HREF, derivarEtapaExibida } from "@/lib/etapas";
 
 interface Projeto {
   id: string;
@@ -51,7 +50,7 @@ export function ProjectsThumbnails({
       <div className="flex gap-2">
         {projetos.map((p) => (
           <div key={p.id} className="relative shrink-0 group/card">
-            <Link href={ETAPA_HREF[derivarEtapaExibida(p)]?.(p.id) ?? "#"}>
+            <Link href={`/dashboard?projeto=${p.id}`} scroll={false}>
               <div
                 className={`w-14 h-20 rounded-lg border-2 flex flex-col items-center justify-end pb-1.5 overflow-hidden transition-all
                   ${p.id === activeId
