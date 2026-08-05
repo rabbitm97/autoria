@@ -31,25 +31,28 @@ function formatDate(iso: string) {
 
 const TOOLS = [
   {
-    href: "/dashboard/novo-projeto",
-    icon: "📄",
-    label: "Upload de manuscrito",
-    desc: "Envie seu manuscrito e inicie o processo",
-    highlight: false,
+    href: "/dashboard/ferramentas/lombada-paginas",
+    icon: "📐",
+    label: "Lombada e páginas",
+    desc: "Calcule a lombada e estime as páginas do seu livro",
+  },
+  {
+    href: "/dashboard/ferramentas/pdf-docx",
+    icon: "🔄",
+    label: "PDF → DOCX",
+    desc: "Converta seu PDF em Word editável — 2 por dia, até 4 MB",
   },
   {
     href: "/dashboard/ferramentas/creditos",
     icon: "📑",
-    label: "Página de créditos",
+    label: "Ficha de créditos",
     desc: "Gere o verso da folha de rosto com sugestão de ficha catalográfica",
-    highlight: false,
   },
   {
-    href: "/dashboard/royalties",
-    icon: "💰",
-    label: "Royalties",
-    desc: "Acompanhe seus ganhos em todas as plataformas",
-    highlight: false,
+    href: "/dashboard/ferramentas/rgb-cmyk",
+    icon: "🎨",
+    label: "RGB → CMYK",
+    desc: "Prepare sua imagem para impressão em cores de gráfica",
   },
 ];
 
@@ -145,22 +148,24 @@ export default async function DashboardPage() {
           <div className="shrink-0 ml-auto flex items-center gap-2">
             <Link
               href="/dashboard/novo-projeto"
-              className="shrink-0 flex flex-col items-center justify-center w-24 h-20 rounded-xl bg-brand-gold text-brand-primary font-semibold text-xs text-center leading-tight hover:bg-brand-gold-light transition-colors gap-1"
+              className="shrink-0 flex flex-col items-center justify-center w-36 h-[5.5rem] px-2 rounded-xl bg-brand-gold text-brand-primary font-semibold text-xs text-center leading-tight hover:bg-brand-gold-light transition-colors gap-0.5"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
               </svg>
-              Novo<br />Projeto
+              Produzir meu livro
+              <span className="text-[9px] font-normal opacity-80">Tenho o texto — a Autoria produz comigo</span>
             </Link>
             <Link
               href="/dashboard/livro-pronto"
-              className="shrink-0 flex flex-col items-center justify-center w-24 h-20 rounded-xl bg-brand-primary border border-brand-gold/40 text-brand-gold font-semibold text-xs text-center leading-tight hover:border-brand-gold hover:bg-brand-primary/90 transition-colors gap-1"
+              className="shrink-0 flex flex-col items-center justify-center w-36 h-[5.5rem] px-2 rounded-xl bg-brand-primary border border-brand-gold/40 text-brand-gold font-semibold text-xs text-center leading-tight hover:border-brand-gold hover:bg-brand-primary/90 transition-colors gap-0.5"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
               </svg>
-              Livro<br />pronto
+              Publicar livro pronto
+              <span className="text-[9px] font-normal opacity-80">Já tenho o PDF diagramado e a capa</span>
             </Link>
           </div>
         </div>
@@ -274,7 +279,7 @@ export default async function DashboardPage() {
                   <div className="rounded-xl bg-gradient-to-br from-brand-gold/10 to-brand-gold/5 border border-brand-gold/20 p-4">
                     <p className="text-xs font-semibold text-brand-primary mb-1">Desbloqueie tudo</p>
                     <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">
-                      Capa IA, EPUB, audiolivro e publicação em 5 plataformas.
+                      Revisão com IA, capa com IA, EPUB e PDF de impressão.
                     </p>
                     <Link
                       href="/dashboard/planos"
@@ -331,31 +336,41 @@ export default async function DashboardPage() {
               </svg>
             </div>
             <h3 className="font-heading text-xl text-brand-primary mb-2">Pronto para publicar?</h3>
-            <p className="text-zinc-400 text-sm mb-6 max-w-sm mx-auto leading-relaxed">
-              Faça o upload do seu manuscrito e a IA cuida do resto — diagnóstico, revisão, capa e publicação.
+            <p className="text-zinc-400 text-sm mb-6 max-w-md mx-auto leading-relaxed">
+              Duas portas, um destino: seu livro publicado. Produza com a IA da Autoria ou traga o arquivo pronto para imprimir.
             </p>
-            <Link
-              href="/dashboard/novo-projeto"
-              className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-7 py-3 rounded-xl font-semibold text-sm hover:bg-brand-primary/90 transition-colors"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              Fazer upload do manuscrito
-            </Link>
-            <p className="mt-4 text-xs text-zinc-400">
-              Já tem seu livro diagramado e com capa?{" "}
-              <Link href="/dashboard/livro-pronto" className="text-brand-gold underline underline-offset-2 hover:text-brand-gold/80">
-                Publique direto →
-              </Link>
-            </p>
+            <div className="flex gap-3 justify-center flex-wrap">
+              <div className="flex flex-col items-center">
+                <Link
+                  href="/dashboard/novo-projeto"
+                  className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-7 py-3 rounded-xl font-semibold text-sm hover:bg-brand-primary/90 transition-colors"
+                >
+                  Produzir meu livro
+                </Link>
+                <p className="text-[11px] text-zinc-400 mt-2">Tenho o texto — a Autoria produz comigo</p>
+              </div>
+              <div className="flex flex-col items-center">
+                <Link
+                  href="/dashboard/livro-pronto"
+                  className="inline-flex items-center gap-2 bg-white border border-brand-primary/20 text-brand-primary px-7 py-3 rounded-xl font-semibold text-sm hover:border-brand-gold transition-colors"
+                >
+                  Publicar livro pronto
+                </Link>
+                <p className="text-[11px] text-zinc-400 mt-2">Já tenho o PDF diagramado e a capa</p>
+              </div>
+            </div>
           </div>
         )}
 
         {/* ── Tools grid ────────────────────────────────────────────────────── */}
         <div>
-          <h3 className="font-heading text-lg text-brand-primary mb-4">Ferramentas</h3>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="flex items-baseline justify-between mb-4">
+            <h3 className="font-heading text-lg text-brand-primary">Ferramentas gratuitas</h3>
+            <Link href="/dashboard/ferramentas" className="text-xs text-brand-gold hover:underline underline-offset-2">
+              Ver todas as ferramentas →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {TOOLS.map((tool) => (
               <Link
                 key={tool.href}
