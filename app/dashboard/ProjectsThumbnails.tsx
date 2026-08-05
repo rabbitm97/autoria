@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { CapaFrenteThumb } from "@/components/capa-frente-thumb";
 
 interface Projeto {
   id: string;
@@ -52,18 +53,22 @@ export function ProjectsThumbnails({
           <div key={p.id} className="relative shrink-0 group/card">
             <Link href={`/dashboard?projeto=${p.id}`} scroll={false}>
               <div
-                className={`w-14 h-20 rounded-lg border-2 flex flex-col items-center justify-end pb-1.5 overflow-hidden transition-all
+                className={`w-14 h-20 rounded-lg border-2 overflow-hidden transition-all
                   ${p.id === activeId
                     ? "border-brand-gold shadow-md shadow-brand-gold/20"
                     : "border-zinc-200 group-hover/card:border-brand-gold/50"}`}
                 style={{ background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}
               >
-                <span
-                  className="text-[8px] text-brand-gold/80 font-medium text-center leading-tight px-1 line-clamp-3 w-full break-words"
-                  title={p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}
-                >
-                  {p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}
-                </span>
+                <CapaFrenteThumb projectId={p.id} alt={p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}>
+                  <div className="w-full h-full flex items-end justify-center pb-1.5">
+                    <span
+                      className="text-[8px] text-brand-gold/80 font-medium text-center leading-tight px-1 line-clamp-3 w-full break-words"
+                      title={p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}
+                    >
+                      {p.manuscript?.titulo?.trim() || p.manuscript?.nome || "Livro"}
+                    </span>
+                  </div>
+                </CapaFrenteThumb>
               </div>
             </Link>
             <button

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ProjectsThumbnails } from "./ProjectsThumbnails";
 import { STEPS, ETAPA_HREF, getStepIndex, derivarEtapaExibida } from "@/lib/etapas";
 import { resolveCapaCompleta } from "@/lib/capa-resolver";
+import { CapaFrenteThumb } from "@/components/capa-frente-thumb";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,10 +110,8 @@ export default async function DashboardPage({
 
   const isExpressAtivo = projetoAtivo?.dados_pdf?.origem === "upload";
 
-  let capaAtivaUrl: string | null = null;
-  let capaAtivaPanoramica = false;
-  let capaAtivaPronta = false;
-  if (projetoAtivo && !isDev()) {
+  let capaExpressPronta = false;
+  if (isExpressAtivo && projetoAtivo && !isDev()) {
     const supabase = await createSupabaseServerClient();
     const { data: capaRow, error: capaErr } = await supabase
       .from("projects")
@@ -126,12 +125,9 @@ export default async function DashboardPage({
         capaRow.dados_capa,
         (capaRow.formato ?? "padrao_br") as Parameters<typeof resolveCapaCompleta>[1],
       );
-      capaAtivaPronta = capa.pronta;
-      capaAtivaUrl = capa.url_area_util ?? capa.url_principal;
-      capaAtivaPanoramica = capa.is_panoramica;
+      capaExpressPronta = capa.pronta;
     }
   }
-  const capaExpressPronta = capaAtivaPronta;
 
   const expressStep = projetoAtivo?.qa_aprovado_em ? 3 : capaExpressPronta ? 2 : 1;
   const EXPRESS_STEPS = ["Arquivo do livro", "Capa", "Prova"] as const;
@@ -193,15 +189,8 @@ export default async function DashboardPage({
               {/* Book cover */}
               <div className="w-44 shrink-0 flex flex-col items-center justify-center p-6 border-r border-zinc-100 bg-zinc-50">
                 <div className="w-24 h-36 rounded-lg shadow-lg overflow-hidden relative"
-                  style={capaAtivaPronta && capaAtivaUrl ? undefined : { background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}>
-                  {capaAtivaPronta && capaAtivaUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={capaAtivaUrl}
-                      alt={`Capa de ${nomeAtivo}`}
-                      className={`w-full h-full object-cover ${capaAtivaPanoramica ? "object-right" : "object-center"}`}
-                    />
-                  ) : (
+                  style={{ background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}>
+                  <CapaFrenteThumb projectId={projetoAtivo.id} alt={`Capa de ${nomeAtivo}`}>
                     <div className="w-full h-full flex flex-col items-end justify-end">
                       <div className="absolute inset-0 flex flex-col items-center justify-center px-2">
                         <div className="w-full h-px bg-brand-gold/30 mb-2" />
@@ -212,7 +201,7 @@ export default async function DashboardPage({
                       </div>
                       <div className="w-full h-1.5 bg-brand-gold/40" />
                     </div>
-                  )}
+                  </CapaFrenteThumb>
                 </div>
                 <p className="text-xs text-zinc-400 mt-3 text-center">
                   Criado em<br />{formatDate(projetoAtivo.criado_em)}
