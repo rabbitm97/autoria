@@ -31,7 +31,7 @@ export default async function EditorCapaPage({
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "formato, dados_elementos, dados_capa, dados_creditos, dados_miolo, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo, texto, texto_revisado)",
+      "formato, dados_elementos, dados_capa, dados_creditos, dados_miolo, dados_pdf, manuscripts:manuscript_id(autor_primeiro_nome, autor_sobrenome, titulo, subtitulo, texto, texto_revisado)",
     )
     .eq("id", project_id)
     .single();
@@ -48,6 +48,8 @@ export default async function EditorCapaPage({
     lombada_mm?: number;
     paginas_reais?: number;
   } | null;
+  const dadosPdf = project.dados_pdf as { origem?: string } | null;
+  const isExpress = dadosPdf?.origem === "upload";
   const manuscript = project.manuscripts as {
     autor_primeiro_nome?: string;
     autor_sobrenome?: string;
@@ -167,6 +169,7 @@ export default async function EditorCapaPage({
 
   const projectData: ProjectData = {
     projectId: project_id,
+    isExpress,
     format,
     pages,
     layout,

@@ -8,12 +8,14 @@ interface EditorConfirmSuccessModalProps {
   onClose: () => void;
   projectId: string;
   confirmedAt: string;
+  isExpress: boolean;
 }
 
 export function EditorConfirmSuccessModal({
   onClose,
   projectId,
   confirmedAt,
+  isExpress,
 }: EditorConfirmSuccessModalProps) {
   const router = useRouter();
   const { states, exportJpegCompleta, exportJpegEbook, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
@@ -159,11 +161,15 @@ export function EditorConfirmSuccessModal({
             <button
               onClick={() => {
                 onClose();
-                router.push(`/dashboard/creditos/${projectId}`);
+                router.push(
+                  isExpress
+                    ? `/dashboard/prova/${projectId}`
+                    : `/dashboard/creditos/${projectId}`,
+                );
               }}
               className="w-full rounded-xl bg-[#1a1a2e] px-5 py-3 text-sm font-medium text-[#c9a84c] transition-opacity hover:opacity-90"
             >
-              Próximo passo: Créditos →
+              {isExpress ? "Próximo passo: Prova →" : "Próximo passo: Créditos →"}
             </button>
             <button
               onClick={onClose}

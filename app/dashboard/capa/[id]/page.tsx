@@ -448,6 +448,7 @@ function ModoUpload({
   onRefazer,
   onAnalisar,
   onVoltar,
+  isExpress,
 }: {
   projectId: string;
   formatoInicial: FormatoLivro;
@@ -462,6 +463,7 @@ function ModoUpload({
   onRefazer: () => void;
   onAnalisar: () => void;
   onVoltar: () => void;
+  isExpress: boolean;
 }) {
   const formato = formatoInicial;
 
@@ -1038,7 +1040,7 @@ function ModoUpload({
                     : undefined
           }
         >
-          Continuar para Créditos →
+          {isExpress ? "Continuar para a Prova →" : "Continuar para Créditos →"}
         </button>
       )}
     </div>
@@ -3068,6 +3070,7 @@ function CapaExistenteCard({
   editorConfirmed,
   proposito,
   formato,
+  isExpress,
   onContinuarEditor,
   onAvancarCreditos,
   onVerOutrasGeracoes,
@@ -3079,6 +3082,7 @@ function CapaExistenteCard({
   editorConfirmed: boolean;
   proposito: PropositoPublicacao | null;
   formato: FormatoLivro;
+  isExpress: boolean;
   onContinuarEditor: () => void;
   onAvancarCreditos: () => void;
   onVerOutrasGeracoes: () => void;
@@ -3245,7 +3249,7 @@ function CapaExistenteCard({
                   <button onClick={onAvancarCreditos}
                     className="px-5 py-2.5 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                       hover:bg-brand-primary/90 transition-colors">
-                    Avançar para Créditos →
+                    {isExpress ? "Avançar para a Prova →" : "Avançar para Créditos →"}
                   </button>
                   <button onClick={handleAbrirEditor}
                     className="px-5 py-2.5 rounded-xl border border-zinc-200 text-brand-primary font-medium text-sm
@@ -3885,6 +3889,7 @@ export default function CapaPage() {
               editorConfirmed={isEditorCapa(dados)}
               proposito={proposito}
               formato={formatoGlobal}
+              isExpress={isExpress}
               onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
               onAvancarCreditos={handleContinuar}
               onVerOutrasGeracoes={() => setGaleriaModalOpen(true)}
@@ -4142,6 +4147,7 @@ export default function CapaPage() {
             dadosSalvos={dados}
             analiseStatus={analiseStatus}
             analiseErro={analiseErro}
+            isExpress={isExpress}
             onSalvo={handleSalvoUpload}
             onContinuar={handleContinuar}
             onRefazer={async () => {

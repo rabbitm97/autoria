@@ -36,6 +36,8 @@ export interface CapaIaHandoff {
 
 export interface ProjectData {
   projectId: string;
+  /** Trilha Express (verdade 38): dados_pdf.origem === "upload". */
+  isExpress: boolean;
   format: FormatKey;
   pages: number;
   layout: EditorLayout;
