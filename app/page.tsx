@@ -5,6 +5,8 @@ import WaitlistForm from "./_components/waitlist-form";
 import FAQ from "./_components/faq";
 import HowItWorks from "./_components/how-it-works";
 import PublicNavbar from "./_components/public-navbar";
+import { PLANO_PRECO_CENTAVOS, formatarPrecoPlano } from "@/lib/planos";
+import { FORMATOS_LIVRO } from "@/lib/formatos";
 
 export const metadata: Metadata = {
   title: "Autoria — Publique seu livro com IA, do manuscrito ao leitor",
@@ -19,138 +21,48 @@ const jsonLd = {
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   description:
-    "Plataforma brasileira de autopublicação com IA. Revisão, capa, audiolivro e distribuição em 15+ plataformas.",
+    "Plataforma brasileira de autopublicação com IA. Revisão, capa e diagramação para eBook e livro impresso.",
   offers: [
-    { "@type": "Offer", name: "Essencial", price: "197", priceCurrency: "BRL" },
-    { "@type": "Offer", name: "Completo",  price: "397", priceCurrency: "BRL" },
-    { "@type": "Offer", name: "Pro",       price: "697", priceCurrency: "BRL" },
+    { "@type": "Offer", name: "Essencial", price: String(PLANO_PRECO_CENTAVOS.essencial / 100), priceCurrency: "BRL" },
+    { "@type": "Offer", name: "Pro",       price: String(PLANO_PRECO_CENTAVOS.pro / 100),       priceCurrency: "BRL" },
   ],
 };
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-
-const PLATFORMS = [
-  "Amazon KDP", "Kobo", "Apple Books", "Google Play", "Spotify Audiobooks",
-  "Barnes & Noble", "Rakuten", "Scribd", "OverDrive",
-];
-
-
 const PLANS = [
   {
     name: "Essencial",
-    price: "R$197",
+    price: formatarPrecoPlano("essencial"),
     period: "por obra",
     desc: "Publique seu primeiro eBook",
     highlight: false,
     cta: "Começar com Essencial",
-    guarantee: false,
     items: [
       "Diagnóstico editorial com IA",
-      "Revisão gramatical e de estilo",
-      "Sinopse + sugestão de ficha catalográfica",
-      "3 opções de capa geradas por IA",
-      "Diagramação EPUB 3.0",
-      "Publicação em 15+ plataformas digitais",
-      "Painel de royalties",
-    ],
-  },
-  {
-    name: "Completo",
-    price: "R$397",
-    period: "por obra",
-    desc: "eBook + físico + audiolivro",
-    highlight: true,
-    badge: "Mais popular",
-    cta: "Começar com Completo",
-    guarantee: true,
-    items: [
-      "Tudo do Essencial",
-      "PDF para impressão (KDP, A5, Carta)",
-      "Capa completa com lombada e orelhas",
-      "Audiolivro com voz neural (IA)",
-      "ISBN registrado em seu nome",
-      "Print on demand no Brasil",
-      "Suporte prioritário",
+      "Revisão gramatical e de estilo com IA",
+      "Capa (frente) gerada por IA — até 2 imagens inclusas",
+      "Página de créditos e ficha catalográfica preenchida pelo autor",
+      "Diagramação e EPUB pronto para as plataformas",
+      "PDF digital sem marca d'água",
     ],
   },
   {
     name: "Pro",
-    price: "R$697",
+    price: formatarPrecoPlano("pro"),
     period: "por obra",
-    desc: "Para autores com ambição global",
-    highlight: false,
+    desc: "Tudo do Essencial + livro impresso",
+    highlight: true,
+    badge: "Mais popular",
     cta: "Começar com Pro",
-    guarantee: true,
     items: [
-      "Tudo do Completo",
-      "Clonagem de voz do autor",
-      "Tradução para 1 idioma",
-      "Marketing kit: posts, banners, press release",
-      "Gerente de conta dedicado",
-      "Acesso antecipado a novos recursos",
+      "Tudo do Essencial",
+      "Capa completa com IA (frente e verso ou arte única) — até 8 imagens inclusas",
+      "PDF de impressão com sangria e marcas de corte",
+      "Prova de impressão e simulação de tiragem",
     ],
   },
 ];
-
-const TESTIMONIALS = [
-  {
-    quote: "Enviei meu manuscrito às 9h e às 17h tinha a capa, o EPUB e a sinopse prontos. Algo que eu tentava fazer há 2 anos aconteceu em um dia. A revisão da IA foi cirúrgica.",
-    name: "Fernanda Oliveira",
-    role: "Autora de romance contemporâneo",
-    initials: "FO",
-    stars: 5,
-  },
-  {
-    quote: "A revisão do Claude pegou inconsistências no meu texto que nenhum revisor humano tinha notado. A sinopse que a IA gerou é melhor do que a que eu estava usando há meses.",
-    name: "Ricardo Almeida",
-    role: "Escritor e professor de literatura",
-    initials: "RA",
-    stars: 5,
-  },
-  {
-    quote: "Tentei publicar sozinho na Amazon KDP e desisti depois de duas semanas. Com a Autoria, o mesmo processo levou 6 horas. A capa ficou incrível — melhor do que o que eu tinha pedido para um designer.",
-    name: "Patrícia Santos",
-    role: "Autora de autoajuda e bem-estar",
-    initials: "PS",
-    stars: 5,
-  },
-  {
-    quote: "Já publiquei três livros com a Autoria. O retorno sobre o investimento no plano Completo é absurdo. Só de não precisar de um revisor pago, já paguei o plano várias vezes.",
-    name: "Carlos Mendes",
-    role: "Autor de ficção científica",
-    initials: "CM",
-    stars: 5,
-  },
-  {
-    quote: "O audiolivro gerado pela IA ficou natural. Minha editora cobrou R$8.000 para fazer o mesmo serviço. A Autoria fez por R$397. Não tem comparação.",
-    name: "Ana Beatriz Costa",
-    role: "Escritora de literatura infantil",
-    initials: "AB",
-    stars: 5,
-  },
-  {
-    quote: "O diagnóstico editorial foi uma aula. Aprendi mais sobre o meu próprio manuscrito em 2 minutos do que em anos de escrita. Recomendo a qualquer autor que esteja travado.",
-    name: "Marcos Vieira",
-    role: "Autor estreante",
-    initials: "MV",
-    stars: 5,
-  },
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function Stars({ n }: { n: number }) {
-  return (
-    <div className="flex gap-0.5" aria-label={`${n} estrelas de 5`}>
-      {Array.from({ length: n }).map((_, i) => (
-        <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill="#c9a84c" aria-hidden="true">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-        </svg>
-      ))}
-    </div>
-  );
-}
 
 // ─── Logo component ───────────────────────────────────────────────────────────
 
@@ -182,15 +94,15 @@ function Hero() {
             </div>
 
             <h1 className="font-heading text-[3.75rem] xl:text-[4.5rem] text-white leading-[1.02] mb-6">
-              Publique seu livro.{" "}
-              <span className="text-brand-gold">Em horas,</span>{" "}
-              não em meses.
+              Do manuscrito{" "}
+              <span className="text-brand-gold">ao livro</span>{" "}
+              pronto.
             </h1>
 
             <p className="text-white/60 text-xl leading-relaxed mb-10 max-w-lg">
               A Autoria usa inteligência artificial para transformar seu manuscrito
-              em livro publicado — com revisão, capa profissional, audiolivro e
-              distribuição global. Sem editora. Sem intermediários.
+              em livro pronto para publicar — com revisão, capa e diagramação.
+              Sem editora.
             </p>
 
             <div className="flex items-center gap-4 mb-14">
@@ -209,16 +121,9 @@ function Hero() {
               </a>
             </div>
 
-            {/* Trust signals */}
+            {/* Trust signal */}
             <div className="flex items-center gap-6 pt-8 border-t border-white/10">
-              <div className="flex items-center gap-2">
-                <Stars n={5} />
-                <span className="text-white/40 text-xs">4.9 / 5</span>
-              </div>
-              <div className="w-px h-4 bg-white/10" />
-              <p className="text-white/40 text-xs">Garantia de 7 dias em todos os planos</p>
-              <div className="w-px h-4 bg-white/10" />
-              <p className="text-white/40 text-xs">Diagnóstico 100% gratuito</p>
+              <p className="text-white/40 text-xs">Diagnóstico gratuito</p>
             </div>
           </div>
 
@@ -238,7 +143,7 @@ function Hero() {
                     <div className="w-3 h-3 rounded-full bg-green-500/40" />
                   </div>
                   <div className="flex-1 mx-4 bg-white/5 rounded px-3 py-1 text-white/20 text-xs font-mono">
-                    autoria.app/dashboard
+                    useautoria.com/dashboard
                   </div>
                 </div>
 
@@ -261,7 +166,7 @@ function Hero() {
                         <p className="text-white text-sm font-semibold">O Último Horizonte</p>
                       </div>
                       <div className="bg-brand-gold/15 text-brand-gold text-[10px] font-bold px-2 py-1 rounded-full border border-brand-gold/20">
-                        Plano Completo
+                        Plano Pro
                       </div>
                     </div>
 
@@ -312,9 +217,9 @@ function Hero() {
               </div>
 
               <div className="absolute -right-8 top-32 bg-brand-primary rounded-xl shadow-xl border border-white/10 px-4 py-3 w-40">
-                <p className="text-white/40 text-[10px] mb-1">Royalties estimados</p>
-                <p className="text-brand-gold font-heading text-xl">R$ 2.847</p>
-                <p className="text-white/30 text-[9px] mt-0.5">últimos 30 dias</p>
+                <p className="text-white/40 text-[10px] mb-1">Capa</p>
+                <p className="text-brand-gold font-heading text-xl">Pronta</p>
+                <p className="text-white/30 text-[9px] mt-0.5">frente + lombada</p>
               </div>
             </div>
           </div>
@@ -323,10 +228,10 @@ function Hero() {
         {/* Stats bar at bottom of hero */}
         <div className="grid grid-cols-4 border-t border-white/5 -mx-8">
           {[
-            { value: "15+",   label: "Plataformas de distribuição" },
-            { value: "100%",  label: "Royalties para o autor"       },
-            { value: "R$197", label: "A partir de por obra"          },
-            { value: "< 24h", label: "Do upload à publicação"        },
+            { value: "R$197", label: "A partir de, por obra"      },
+            { value: "100%",  label: "Direitos autorais do autor" },
+            { value: "0",     label: "Tiragem mínima"             },
+            { value: "PT-BR", label: "Esteira editorial em português" },
           ].map((s) => (
             <div key={s.label} className="px-8 py-7 border-r border-white/5 last:border-0">
               <div className="font-heading text-3xl text-brand-gold mb-1">{s.value}</div>
@@ -336,39 +241,6 @@ function Hero() {
         </div>
       </div>
     </section>
-  );
-}
-
-function PlatformBar() {
-  const platforms = [
-    { name: "Amazon KDP",    letter: "A", color: "bg-orange-100 text-orange-600" },
-    { name: "Apple Books",   letter: "🍎", color: "bg-zinc-100 text-zinc-600" },
-    { name: "Kobo",          letter: "K", color: "bg-blue-100 text-blue-600" },
-    { name: "Google Play",   letter: "G", color: "bg-green-100 text-green-600" },
-    { name: "Spotify",       letter: "S", color: "bg-emerald-100 text-emerald-600" },
-    { name: "Scribd",        letter: "Sc", color: "bg-red-100 text-red-600" },
-    { name: "Barnes & Noble",letter: "B&N", color: "bg-indigo-100 text-indigo-600" },
-    { name: "Rakuten",       letter: "R", color: "bg-rose-100 text-rose-600" },
-    { name: "+ 7 mais",      letter: "…", color: "bg-zinc-100 text-zinc-400" },
-  ];
-  return (
-    <div className="bg-white border-b border-zinc-100 py-6">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="flex items-center gap-4 flex-wrap justify-center">
-          <p className="text-zinc-400 text-xs font-semibold uppercase tracking-widest mr-2">
-            Distribua em
-          </p>
-          {platforms.map((p) => (
-            <div key={p.name} className="flex items-center gap-2 text-sm text-zinc-500 font-medium">
-              <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${p.color}`}>
-                {p.letter}
-              </span>
-              <span className="hidden sm:inline">{p.name}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -423,20 +295,6 @@ function FeatureEditorial() {
                     </div>
                   ))}
                 </div>
-
-                {/* Stats row */}
-                <div className="grid grid-cols-3 gap-3 pt-2">
-                  {[
-                    { v: "47", l: "Sugestões" },
-                    { v: "98%", l: "Precisão" },
-                    { v: "PT-BR", l: "Idioma" },
-                  ].map(s => (
-                    <div key={s.l} className="bg-white/3 rounded-lg p-3 text-center border border-white/5">
-                      <div className="font-heading text-lg text-brand-gold">{s.v}</div>
-                      <div className="text-white/30 text-[10px] mt-0.5">{s.l}</div>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           </div>
@@ -451,7 +309,7 @@ function FeatureEditorial() {
             </h2>
             <p className="text-white/60 text-lg leading-relaxed mb-8">
               Enquanto outras plataformas usam ferramentas genéricas em inglês,
-              a Autoria usa Claude Sonnet — o modelo mais preciso da Anthropic —
+              a Autoria usa o modelo Claude Sonnet, da Anthropic,
               ajustado especificamente para o português brasileiro. Cada sugestão
               considera seu estilo, gênero e tom narrativo.
             </p>
@@ -461,7 +319,7 @@ function FeatureEditorial() {
                 "Análise de coesão, coerência e estilo",
                 "Sugestões de ritmo e fluidez narrativa",
                 "Geração de sinopse em 3 formatos (curta, média, longa)",
-                "Sugestão de ficha catalográfica editável",
+                "Campos da página de créditos preenchidos por você",
                 "Palavras-chave otimizadas para SEO editorial",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-white/70 text-base">
@@ -574,6 +432,7 @@ function FeatureCapa() {
 }
 
 function FeatureFormatos() {
+  const formatosDisponiveis = FORMATOS_LIVRO.map(f => f.dimensoes).join(", ");
   return (
     <section className="bg-brand-primary py-28">
       <div className="max-w-7xl mx-auto px-8">
@@ -582,39 +441,29 @@ function FeatureFormatos() {
             Formatos
           </p>
           <h2 className="font-heading text-5xl text-white leading-tight mb-5">
-            Um manuscrito.<br />Três formatos.
+            Um manuscrito.<br />Dois formatos.
           </h2>
           <p className="text-white/55 text-lg leading-relaxed">
-            eBook, livro físico e audiolivro — todos gerados a partir do mesmo arquivo,
+            eBook e livro físico gerados a partir do mesmo arquivo,
             em um único fluxo de trabalho.
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 gap-6">
           {[
             {
               icon: "◈",
               title: "eBook",
               sub: "EPUB 3.0 + PDF",
-              desc: "EPUB 3.0 compatível com Kindle, Kobo, Apple Books e todos os e-readers. Tipografia editorial com detecção automática de capítulos, notas de rodapé e índice.",
-              items: ["Kindle (mobi/epub)", "Kobo, Apple Books", "Google Play Books", "Padrão EPUB 3 global"],
-              available: true,
+              desc: "EPUB 3.0 com tipografia editorial, detecção automática de capítulos, notas de rodapé e índice.",
+              items: ["Padrão EPUB 3 global", "Tipografia editorial", "Detecção de capítulos", "Notas de rodapé e índice"],
             },
             {
               icon: "⊟",
               title: "Livro Físico",
               sub: "PDF para impressão",
-              desc: "PDF/X compatível com Amazon KDP, gráficas sob demanda e impressão offset. Formatação automática com margens, sangria e páginas de rosto profissionais.",
-              items: ["Amazon KDP Print", "Print on demand BR", "Formatos: 16×23, A5, A4", "Alta resolução 300 DPI"],
-              available: true,
-            },
-            {
-              icon: "♫",
-              title: "Audiolivro",
-              sub: "Narração com IA",
-              desc: "ElevenLabs gera narração com voz neural em português — a mesma tecnologia usada por produtoras profissionais. No plano Pro, clone sua própria voz.",
-              items: ["Spotify Audiobooks", "Voz neural em PT-BR", "Clonagem de voz (Pro)", "Formato MP3 / M4B"],
-              available: true,
+              desc: "PDF/X para gráficas sob demanda e impressão offset. Formatação automática com margens, sangria e páginas de rosto profissionais.",
+              items: ["Impressão sob demanda, sem tiragem mínima", `Formatos: ${formatosDisponiveis}`, "Alta resolução 300 DPI", "Sangria e marcas de corte"],
             },
           ].map((f) => (
             <div key={f.title} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-brand-gold/30 transition-all group">
@@ -644,107 +493,6 @@ function FeatureFormatos() {
   );
 }
 
-function FeatureRoyalties() {
-  return (
-    <section className="bg-zinc-50 py-28">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="grid grid-cols-2 gap-20 items-center">
-
-          {/* Visual */}
-          <div className="relative" aria-hidden="true">
-            <div className="absolute inset-0 bg-brand-gold/5 rounded-3xl blur-2xl" />
-            <div className="relative bg-brand-primary rounded-2xl overflow-hidden border border-white/10 p-8">
-              {/* Royalties header */}
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Seus royalties</p>
-                  <p className="font-heading text-4xl text-brand-gold">R$ 14.280</p>
-                  <p className="text-emerald-400 text-sm mt-1">↑ 23% este mês</p>
-                </div>
-                <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                  <p className="text-white/30 text-xs mb-0.5">Período</p>
-                  <p className="text-white text-sm font-semibold">2025</p>
-                </div>
-              </div>
-
-              {/* Platform bars */}
-              <div className="space-y-3 mb-8">
-                {[
-                  { platform: "Amazon KDP", pct: 78, value: "R$11.138" },
-                  { platform: "Apple Books", pct: 13, value: "R$1.856"  },
-                  { platform: "Kobo",       pct: 6,  value: "R$857"    },
-                  { platform: "Outros",     pct: 3,  value: "R$429"    },
-                ].map((p) => (
-                  <div key={p.platform}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-white/50">{p.platform}</span>
-                      <span className="text-white/70 font-medium">{p.value}</span>
-                    </div>
-                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-brand-gold rounded-full"
-                        style={{ width: `${p.pct}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Split */}
-              <div className="flex gap-3">
-                <div className="flex-1 bg-brand-gold/10 border border-brand-gold/20 rounded-xl p-4 text-center">
-                  <div className="font-heading text-3xl text-brand-gold">100%</div>
-                  <div className="text-white/40 text-xs mt-1">Para você</div>
-                </div>
-                <div className="flex-1 bg-white/5 border border-white/5 rounded-xl p-4 text-center">
-                  <div className="font-heading text-3xl text-white/30">R$0</div>
-                  <div className="text-white/30 text-xs mt-1">Comissão Autoria</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Text */}
-          <div>
-            <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-4">
-              Royalties
-            </p>
-            <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-6">
-              100% de cada<br />venda são seus.
-            </h2>
-            <p className="text-zinc-500 text-lg leading-relaxed mb-8">
-              A Autoria não cobra comissão sobre suas vendas. Zero. Você paga uma vez
-              pela produção do livro e fica com tudo que vender — para sempre.
-              Os royalties de todas as plataformas chegam em um painel unificado.
-            </p>
-            <ul className="space-y-4 mb-10">
-              {[
-                "100% dos royalties direto para você",
-                "Sem comissão sobre vendas — nunca",
-                "Painel unificado com todas as vendas",
-                "Relatórios por plataforma, período e formato",
-                "ISBN registrado em seu nome",
-                "Pague por obra, não por assinatura",
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-3 text-zinc-600 text-base">
-                  <span className="text-brand-gold mt-1 shrink-0 text-sm">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-2 bg-brand-primary text-white px-7 py-3.5 rounded-xl font-bold text-sm hover:bg-[#2a2a4e] active:scale-[0.98] transition-all"
-            >
-              Ver painel de royalties →
-            </Link>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Pricing() {
   return (
     <section id="precos" className="bg-brand-primary py-28">
@@ -755,11 +503,11 @@ function Pricing() {
             Pague uma vez.<br />Publique para sempre.
           </h2>
           <p className="text-white/55 text-lg">
-            Sem assinatura. Diagnóstico gratuito antes de qualquer cobrança. Garantia de 7 dias.
+            Sem assinatura. Diagnóstico gratuito antes de qualquer cobrança.
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-2 gap-6 items-start max-w-4xl mx-auto">
           {PLANS.map((plan) => (
             <article
               key={plan.name}
@@ -813,12 +561,6 @@ function Pricing() {
                 >
                   {plan.cta}
                 </Link>
-
-                {plan.guarantee && (
-                  <p className={`text-center text-xs mt-3 ${plan.highlight ? "text-zinc-400" : "text-white/30"}`}>
-                    Garantia de devolução em 7 dias
-                  </p>
-                )}
               </div>
             </article>
           ))}
@@ -826,58 +568,10 @@ function Pricing() {
 
         <p className="text-center text-white/30 text-sm mt-10">
           Precisa de volume? Fale com a nossa equipe para condições especiais.{" "}
-          <a href="mailto:oi@autoria.app" className="text-brand-gold hover:underline">
-            oi@autoria.app
+          <a href="mailto:contato@useautoria.com" className="text-brand-gold hover:underline">
+            contato@useautoria.com
           </a>
         </p>
-      </div>
-    </section>
-  );
-}
-
-function Testimonials() {
-  return (
-    <section className="bg-zinc-50 py-28">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="flex items-end justify-between mb-16">
-          <div>
-            <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">Depoimentos</p>
-            <h2 className="font-heading text-5xl text-brand-primary leading-tight">
-              Autores que<br />já publicaram
-            </h2>
-          </div>
-          <div className="flex items-center gap-3 pb-2">
-            <div className="flex items-center gap-1.5">
-              <Stars n={5} />
-              <span className="text-zinc-600 text-sm font-semibold">4.9</span>
-            </div>
-            <span className="text-zinc-300">·</span>
-            <span className="text-zinc-500 text-sm">Avaliação média dos usuários</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-5">
-          {TESTIMONIALS.map((t, i) => (
-            <blockquote
-              key={t.name}
-              className={`bg-white rounded-2xl p-8 border border-zinc-100 hover:border-brand-gold/30 hover:shadow-lg transition-all ${i === 1 ? "border-brand-gold/20 shadow-md" : ""}`}
-            >
-              <Stars n={t.stars} />
-              <p className="text-zinc-700 text-base leading-relaxed mt-5 mb-6">
-                &ldquo;{t.quote}&rdquo;
-              </p>
-              <footer className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center text-brand-gold text-sm font-bold shrink-0">
-                  {t.initials}
-                </div>
-                <div>
-                  <p className="text-zinc-900 font-semibold text-sm">{t.name}</p>
-                  <p className="text-zinc-400 text-xs mt-0.5">{t.role}</p>
-                </div>
-              </footer>
-            </blockquote>
-          ))}
-        </div>
       </div>
     </section>
   );
@@ -925,9 +619,6 @@ function FinalCTA() {
               <div className="flex items-center gap-2 text-white/40 text-sm">
                 <span className="text-brand-gold">✓</span> Diagnóstico gratuito
               </div>
-              <div className="flex items-center gap-2 text-white/40 text-sm">
-                <span className="text-brand-gold">✓</span> Garantia 7 dias
-              </div>
             </div>
           </div>
 
@@ -956,13 +647,6 @@ function FinalCTA() {
             </div>
 
             <WaitlistForm />
-
-            <p className="text-zinc-400 text-xs text-center mt-5">
-              Ao criar conta, você concorda com os{" "}
-              <a href="/termos" className="underline hover:text-zinc-600">Termos</a>
-              {" "}e{" "}
-              <a href="/privacidade" className="underline hover:text-zinc-600">Privacidade</a>.
-            </p>
           </div>
         </div>
       </div>
@@ -979,15 +663,8 @@ function Footer() {
           <div>
             <Logo variant="gold" />
             <p className="text-white/35 text-sm leading-relaxed mt-5 max-w-xs">
-              A plataforma brasileira de publicação com IA. Do manuscrito ao leitor em horas, não meses.
+              A plataforma brasileira de publicação com IA. Do manuscrito ao livro pronto.
             </p>
-            <div className="flex gap-5 mt-6">
-              {["Instagram", "LinkedIn", "X"].map((n) => (
-                <a key={n} href="#" className="text-white/25 hover:text-white/60 text-xs transition-colors">
-                  {n}
-                </a>
-              ))}
-            </div>
           </div>
 
           <div>
@@ -1009,7 +686,7 @@ function Footer() {
           <div>
             <p className="text-white/20 text-xs font-semibold uppercase tracking-widest mb-5">Serviços</p>
             <ul className="space-y-3">
-              {["Diagnóstico Editorial", "Revisão com IA", "Gerador de Capa", "PDF e EPUB", "Audiolivro", "Distribuição Global"].map((l) => (
+              {["Diagnóstico Editorial", "Revisão com IA", "Gerador de Capa", "PDF e EPUB"].map((l) => (
                 <li key={l}>
                   <span className="text-white/35 text-sm">{l}</span>
                 </li>
@@ -1021,12 +698,7 @@ function Footer() {
             <p className="text-white/20 text-xs font-semibold uppercase tracking-widest mb-5">Empresa</p>
             <ul className="space-y-3">
               {[
-                { label: "Sobre",              href: "/sobre"           },
-                { label: "Blog",               href: "/blog"            },
-                { label: "Contato",            href: "/contato"         },
-                { label: "Termos",             href: "/termos"          },
-                { label: "Privacidade",        href: "/privacidade"     },
-                { label: "Contrato de Edição", href: "/contrato-edicao" },
+                { label: "Blog", href: "/blog" },
               ].map((l) => (
                 <li key={l.label}>
                   <a href={l.href} className="text-white/35 hover:text-white/65 text-sm transition-colors">{l.label}</a>
@@ -1038,7 +710,7 @@ function Footer() {
 
         <div className="flex items-center justify-between pt-8 border-t border-white/5">
           <p className="text-white/20 text-sm">
-            © {year} Autoria Tecnologia Ltda. Todos os direitos reservados.
+            © {year} Autoria
           </p>
           <p className="text-white/20 text-xs">
             Feito no Brasil 🇧🇷
@@ -1074,14 +746,11 @@ export default function Home() {
       <PublicNavbar />
       <main>
         <Hero />
-        <PlatformBar />
         <HowItWorks />
         <FeatureEditorial />
         <FeatureCapa />
         <FeatureFormatos />
-        <FeatureRoyalties />
         <Pricing />
-        <Testimonials />
         <FAQ />
         <FinalCTA />
       </main>

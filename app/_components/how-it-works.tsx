@@ -29,7 +29,7 @@ const STEPS = [
       },
       {
         icon: "user",
-        text: "Gera automaticamente sinopse, palavras-chave e sugestão de ficha catalográfica editável.",
+        text: "Gera automaticamente sinopse e palavras-chave.",
       },
     ],
     visual: <RevisaoVisual />,
@@ -48,21 +48,6 @@ const STEPS = [
       },
     ],
     visual: <CapaVisual />,
-  },
-  {
-    label: "Publique & Distribua",
-    title: "Publique e alcance leitores no mundo todo",
-    bullets: [
-      {
-        icon: "globe",
-        text: "Com um clique, seu livro é distribuído para 15+ plataformas globais — Amazon, Kobo, Apple Books, Spotify e muito mais.",
-      },
-      {
-        icon: "chart",
-        text: "Acompanhe visualizações, vendas e royalties consolidados em um painel único. 85% de cada venda são seus.",
-      },
-    ],
-    visual: <PublicacaoVisual />,
   },
 ];
 
@@ -92,18 +77,18 @@ export default function HowItWorks() {
         <div className="text-center mb-10">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">Processo</p>
           <h2 className="font-heading text-4xl text-brand-primary leading-tight mb-4">
-            Publique com a Autoria em 4 etapas simples
+            Publique com a Autoria em 3 etapas simples
           </h2>
           <p className="text-zinc-500 text-base">
-            A Autoria revisa, projeta capas, diagrama e distribui seu livro em horas.
+            A Autoria revisa, projeta capas e diagrama seu livro em horas.
           </p>
         </div>
 
         {/* Single fixed-size box */}
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
 
-          {/* Tabs — always 4 cols equally spaced */}
-          <div className="grid grid-cols-4 border-b border-zinc-100">
+          {/* Tabs — always 3 cols equally spaced */}
+          <div className="grid grid-cols-3 border-b border-zinc-100">
             {STEPS.map((s, i) => (
               <button
                 key={i}
@@ -240,16 +225,6 @@ function BulletIcon({ type }: { type: string }) {
       <rect x="3" y="3" width="14" height="14" rx="2"/><path d="M3 8h14M8 8v9"/>
     </svg>
   );
-  if (type === "globe") return (
-    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="10" cy="10" r="7"/><path d="M10 3c0 0-3 3-3 7s3 7 3 7M10 3c0 0 3 3 3 7s-3 7-3 7M3 10h14"/>
-    </svg>
-  );
-  if (type === "chart") return (
-    <svg className={cls} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 14l4-4 3 3 5-5"/><rect x="3" y="3" width="14" height="14" rx="2"/>
-    </svg>
-  );
   return null;
 }
 
@@ -358,40 +333,3 @@ function CapaVisual() {
   );
 }
 
-function PublicacaoVisual() {
-  return (
-    <div className="h-full p-4 flex flex-col gap-2">
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: "Visualizações", value: "1.847" },
-          { label: "Compraram", value: "143" },
-          { label: "Saldo total", value: "R$2.890" },
-        ].map((s) => (
-          <div key={s.label} className="bg-zinc-50 border border-zinc-100 rounded-lg p-2 text-center">
-            <div className="text-sm font-bold text-brand-primary">{s.value}</div>
-            <div className="text-[9px] text-zinc-400">{s.label}</div>
-          </div>
-        ))}
-      </div>
-      {/* Table */}
-      <div className="flex-1 bg-zinc-50 rounded-lg border border-zinc-100 overflow-hidden">
-        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 px-3 py-1.5 border-b border-zinc-200 text-[9px] text-zinc-400 font-semibold">
-          <span>Capa</span><span>Plataforma</span><span>Royalties</span><span>Status</span>
-        </div>
-        {[
-          { color: "bg-purple-300", name: "Amazon KDP", val: "R$1.240", status: "Pausar" },
-          { color: "bg-yellow-300", name: "Apple Books", val: "R$890", status: "Pausar" },
-          { color: "bg-blue-300", name: "Kobo", val: "R$760", status: "Iniciar" },
-        ].map((r) => (
-          <div key={r.name} className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 px-3 py-1.5 border-b border-zinc-100 items-center text-[9px]">
-            <span className={`w-5 h-5 rounded ${r.color} shrink-0`} />
-            <span className="text-zinc-600">{r.name}</span>
-            <span className="text-zinc-500">{r.val}</span>
-            <span className="bg-zinc-200 text-zinc-500 px-1.5 py-0.5 rounded text-[8px]">{r.status}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

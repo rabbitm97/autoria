@@ -12,24 +12,20 @@ const ITEMS = [
     a: "Aceitamos .docx (Word), .pdf e .txt. Recomendamos o .docx para melhor fidelidade na extração do texto. O arquivo pode ter até 50 MB.",
   },
   {
-    q: "Quanto tempo leva do upload à publicação?",
-    a: "A etapa de processamento com IA — revisão, sinopse, capa e diagramação — é concluída em poucas horas. A publicação nas plataformas (Amazon, Kobo, etc.) segue o prazo de aprovação de cada loja, geralmente de 24 a 72 horas.",
+    q: "Quanto tempo leva a esteira editorial?",
+    a: "A etapa de processamento com IA — revisão, sinopse, capa e diagramação — é concluída em poucas horas na esteira editorial da Autoria. A distribuição em canais externos (livrarias, marketplaces, bibliotecas) depende de cada canal e não faz parte do serviço.",
   },
   {
     q: "A revisão da IA substitui um revisor humano?",
-    a: "A IA faz uma revisão gramatical, ortográfica e de estilo muito precisa para o português brasileiro, capturando a maioria dos erros. Para obras literárias de maior exigência, recomendamos usar a revisão da IA como primeira passagem e complementar com um olhar humano se desejado.",
+    a: "Não. A revisão assistida por IA aponta erros gramaticais, ortográficos e sugestões de estilo em português brasileiro, mas não garante ausência de erros e a decisão final é sempre do autor. Para obras literárias de maior exigência, use a revisão da IA como primeira passagem e complemente com um revisor humano.",
   },
   {
     q: "Quem fica com os direitos do meu livro?",
-    a: "100% de seus direitos autorais permanecem com você. A Autoria é apenas a plataforma de produção e distribuição. O ISBN (incluído nos planos Completo e Pro) também é registrado em seu nome.",
+    a: "100% de seus direitos autorais permanecem com você. A Autoria presta o serviço de editoração; o editor responsável pela obra é você.",
   },
   {
-    q: "Como funciona o audiolivro com IA?",
-    a: "Usamos tecnologia de voz neural de última geração para narrar seu livro em português com entonação e ritmo adequados. No plano Pro, é possível clonar sua própria voz para narrar o audiolivro.",
-  },
-  {
-    q: "Em quais plataformas meu livro será publicado?",
-    a: "Amazon KDP (eBook e Print on Demand), Kobo, Apple Books, Google Play Books, Rakuten, Barnes & Noble, Scribd e Spotify Audiobooks, entre outras. O total é de 15+ plataformas dependendo do formato escolhido.",
+    q: "Preciso de ISBN para publicar?",
+    a: "Não para publicar. O ISBN é exigido pelos canais externos de venda — livrarias, marketplaces, bibliotecas, editais e prêmios. Sem ele, seu livro existe e circula, mas não entra nesses canais. O ISBN é emitido pela CBL e fica registrado em seu nome, como editor responsável pela obra. A Autoria orienta o processo e não emite ISBN em nome próprio.",
   },
   {
     q: "Posso usar a Autoria para publicar mais de um livro?",
@@ -97,7 +93,7 @@ export default function FAQ() {
               Ainda tem dúvidas? Fale com a nossa equipe — respondemos em menos de 24 horas.
             </p>
             <a
-              href="mailto:oi@autoria.app"
+              href="mailto:contato@useautoria.com"
               className="inline-flex items-center gap-2 text-brand-primary font-semibold text-sm border-b-2 border-brand-gold pb-0.5 hover:text-brand-gold transition-colors"
             >
               Falar com a equipe →

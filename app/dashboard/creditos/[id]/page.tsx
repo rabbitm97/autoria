@@ -671,7 +671,7 @@ export default function CreditosPage() {
                     <p className="text-sm font-semibold text-brand-primary mb-1">Publicação digital</p>
                     <p className="text-xs text-zinc-500 leading-relaxed">
                       Plataformas digitais (Amazon KDP, Apple Books, Kobo, Kiwify) e distribuição gratuita.
-                      Ficha CRB não é exigida.
+                      Ficha CRB não é exigida nesses canais.
                     </p>
                   </div>
                 </div>
@@ -693,7 +693,7 @@ export default function CreditosPage() {
                     <p className="text-sm font-semibold text-brand-primary mb-1">Publicação completa</p>
                     <p className="text-xs text-zinc-500 leading-relaxed">
                       Plataformas digitais + livrarias, bibliotecas, editais e prêmios.
-                      Exige ficha CRB oficial (Lei 10.753).
+                      Exigida por livrarias, bibliotecas, editais e prêmios literários.
                     </p>
                   </div>
                 </div>
@@ -816,10 +816,8 @@ export default function CreditosPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-zinc-100">
                   <Field
-                    label={isCompleta ? "ISBN *" : "ISBN"}
-                    hint={isCompleta
-                      ? "Obrigatório em publicação completa. Registre em cblservicos.org.br"
-                      : "Opcional. Se preenchido, aparece na página de créditos."}
+                    label="ISBN"
+                    hint="Exigido pelos canais externos de venda (livrarias, marketplaces, bibliotecas, editais). Emitido pela CBL em seu nome."
                     value={isbn}
                     onChange={v => setIsbn(formatISBN(v))}
                     placeholder="978-65-XXXXX-XX-X"
@@ -890,7 +888,7 @@ export default function CreditosPage() {
                       hint="Deixe em branco para aparecer como 'Edição do Autor'"
                       value={nomeEditora}
                       onChange={setNomeEditora}
-                      placeholder="Editora Autoria Ltda."
+                      placeholder="Ex.: Selo do Autor"
                     />
                     <Field label="Local de edição" value={localEdicao} onChange={setLocalEdicao} placeholder="São Paulo" />
                   </div>
@@ -1064,13 +1062,18 @@ export default function CreditosPage() {
             </>
           )}
 
+          {isCompleta && isbn.trim() === "" && (
+            <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 leading-relaxed">
+              Sem ISBN, seu livro não será aceito em livrarias, marketplaces e editais.
+              Você pode seguir agora e preencher depois.
+            </div>
+          )}
           <button
             type="button"
             onClick={handleGerar}
             disabled={
               (isCompleta && !modoOficialValido) ||
-              isbnInvalido ||
-              (isCompleta && isbn.trim() === "")
+              isbnInvalido
             }
             className="w-full bg-brand-primary text-brand-surface py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed"
           >
