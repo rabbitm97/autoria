@@ -69,8 +69,8 @@ export default function ContratoServicosPage() {
       <section id="clausula-6">
         <h2 className="font-heading text-2xl text-brand-primary mt-10 mb-4">Cláusula 6 — Impressão e tolerâncias industriais</h2>
         <p className="mb-3 italic text-zinc-500">Aplica-se quando o AUTOR contrata livro impresso.</p>
-        <p className="mb-3"><strong>6.1.</strong> A impressão é executada por gráfica parceira, sob responsabilidade técnica da AUTORIA perante o AUTOR.</p>
-        <p className="mb-3"><strong>6.2. Prazos</strong> contam a partir da aprovação da prova e da confirmação do pagamento: impressão digital aproximadamente 15 dias úteis; offset aproximadamente 20 dias úteis. Prazos não incluem transporte.</p>
+        <p className="mb-3"><strong>6.1.</strong> A impressão é executada por gráfica parceira — atualmente <strong>Graphium Editora e Gráfica Ltda.</strong> —, sob responsabilidade técnica da AUTORIA perante o AUTOR. A AUTORIA pode substituir a gráfica parceira mediante aviso prévio no painel do projeto, mantendo o padrão de qualidade contratado.</p>
+        <p className="mb-3"><strong>6.2. Prazos de produção</strong> contam a partir da aprovação da prova e da confirmação do pagamento, variando conforme a tiragem: até <strong>300 exemplares</strong>, aproximadamente <strong>15 dias úteis</strong>; acima de <strong>300 exemplares</strong>, aproximadamente <strong>20 dias úteis</strong>. Prazos não incluem transporte.</p>
         <p className="mb-3"><strong>6.3. Tolerâncias que não caracterizam defeito</strong>, por serem inerentes ao processo gráfico:</p>
         <ul className="list-disc pl-6 space-y-1 mb-3">
           <li>variação de cor entre prova digital em tela e impresso, e entre tiragens distintas;</li>
@@ -88,14 +88,9 @@ export default function ContratoServicosPage() {
         <h2 className="font-heading text-2xl text-brand-primary mt-10 mb-4">Cláusula 7 — Preço, cancelamento e reembolso</h2>
         <p className="mb-3"><strong>7.1.</strong> O preço é o exibido no momento da contratação, pago <strong>uma vez, por obra</strong>. Não há assinatura nem cobrança recorrente.</p>
         <p className="mb-3"><strong>7.2. Direito de arrependimento (CDC, art. 49).</strong> O AUTOR pode desistir em <strong>7 dias corridos</strong> contados da contratação.</p>
-        <p className="mb-3"><strong>7.3. Efeito do arrependimento:</strong></p>
-        <ul className="list-disc pl-6 space-y-1 mb-3">
-          <li>Se <strong>nenhuma etapa</strong> de processamento foi executada: reembolso <strong>integral</strong>.</li>
-          <li>Se alguma etapa foi executada: reembolso <strong>proporcional</strong>, descontadas apenas as etapas já concluídas e entregues, cujo valor unitário é exibido no painel do projeto antes de cada execução.</li>
-          <li>Etapa executada e entregue não é reembolsada, por ter sido efetivamente consumida.</li>
-        </ul>
+        <p className="mb-3"><strong>7.3. Efeito do arrependimento.</strong> Exercido o direito nos 7 dias corridos previstos na Cláusula 7.2, o AUTOR tem direito ao <strong>reembolso integral</strong> dos valores pagos, na forma do art. 49, parágrafo único, do CDC, independentemente das etapas já executadas pela AUTORIA nesse período.</p>
         <p className="mb-3"><strong>7.4.</strong> Após 7 dias, não há reembolso de etapas executadas. Etapas contratadas e não executadas são reembolsadas a qualquer tempo.</p>
-        <p><strong>7.5.</strong> Impressão já iniciada não é reembolsável, salvo defeito nos termos da Cláusula 6.</p>
+        <p><strong>7.5. Autorização expressa de produção.</strong> O livro impresso é produto <strong>sob encomenda</strong>, personalizado para o AUTOR. Ao aprovar a prova e confirmar o pagamento, o AUTOR <strong>autoriza expressamente</strong> o início imediato da produção gráfica, mesmo dentro do prazo de arrependimento previsto na Cláusula 7.2. Iniciada a produção, a tiragem impressa não é passível de reembolso após o prazo de arrependimento, salvo defeito nos termos da Cláusula 6.</p>
       </section>
 
       <section id="clausula-8">

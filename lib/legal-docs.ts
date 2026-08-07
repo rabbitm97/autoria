@@ -49,9 +49,9 @@ export const LEGAL_DOCS = {
     slug: "contrato-servicos",
     titulo: "Contrato de Prestação de Serviços Editoriais",
     rota: "/contrato-servicos",
-    versao: "1.0",
+    versao: "1.1",
     vigenciaISO: "[DATA]",
-    conteudoHash: "b4bbb12949d9925520559691cee5a01ea52cd591f7720e052bf6908edc5bdee0",
+    conteudoHash: "b57246a3095d84667078784856aacddf8c1901fc1729194c3263ffa645c713f6",
   },
   "declaracao-titularidade": {
     slug: "declaracao-titularidade",
