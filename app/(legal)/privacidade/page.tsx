@@ -82,7 +82,7 @@ export default function PrivacidadePage() {
               <tr className="border-b border-zinc-100"><td className="py-2 pr-4">Anthropic</td><td className="py-2 pr-4">Modelos de IA (diagnóstico, revisão, capa, elementos)</td><td className="py-2">Exterior</td></tr>
               <tr className="border-b border-zinc-100"><td className="py-2 pr-4">Google Cloud</td><td className="py-2 pr-4">Modelos de IA e serviços de infraestrutura</td><td className="py-2">Exterior</td></tr>
               <tr className="border-b border-zinc-100"><td className="py-2 pr-4">Provedor de pagamento</td><td className="py-2 pr-4">Processamento de cobrança</td><td className="py-2">Brasil</td></tr>
-              <tr><td className="py-2 pr-4">Graphium Gráfica e Editora</td><td className="py-2 pr-4">Impressão e expedição, quando você contrata livro impresso</td><td className="py-2">Brasil</td></tr>
+              <tr><td className="py-2 pr-4">Graphium Editora Ltda</td><td className="py-2 pr-4">Impressão e expedição, quando você contrata livro impresso</td><td className="py-2">Brasil</td></tr>
             </tbody>
           </table>
         </div>

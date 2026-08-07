@@ -33,9 +33,9 @@ export const LEGAL_DOCS = {
     slug: "politica-privacidade",
     titulo: "Política de Privacidade",
     rota: "/privacidade",
-    versao: "1.0",
+    versao: "1.1",
     vigenciaISO: "[DATA]",
-    conteudoHash: "575024ba58d716d7696b4877bdc88605d06aa1286eb0a1d6bd44033f76f83473",
+    conteudoHash: "d51bf01579a239317e976c330a6e28526f2d48e1563b015791e2f02170ff6880",
   },
   "politica-conteudo": {
     slug: "politica-conteudo",
@@ -49,9 +49,9 @@ export const LEGAL_DOCS = {
     slug: "contrato-servicos",
     titulo: "Contrato de Prestação de Serviços Editoriais",
     rota: "/contrato-servicos",
-    versao: "1.1",
+    versao: "1.2",
     vigenciaISO: "[DATA]",
-    conteudoHash: "b57246a3095d84667078784856aacddf8c1901fc1729194c3263ffa645c713f6",
+    conteudoHash: "7cf57089e599ec0abc1f091f3a1173df43cdfd3b2fba5c73a973f46a6153c148",
   },
   "declaracao-titularidade": {
     slug: "declaracao-titularidade",
