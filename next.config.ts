@@ -35,6 +35,16 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "placehold.co" },
     ],
   },
+
+  async redirects() {
+    return [
+      {
+        source: "/contrato-edicao",
+        destination: "/contrato-servicos",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

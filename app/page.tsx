@@ -572,6 +572,12 @@ function Pricing() {
             contato@useautoria.com
           </a>
         </p>
+
+        <p className="text-center text-white/30 text-xs mt-3">
+          <Link href="/contrato-servicos#clausula-7" className="hover:text-white/60 underline underline-offset-4">
+            Arrependimento em 7 dias, conforme o Contrato de Serviços
+          </Link>
+        </p>
       </div>
     </section>
   );
@@ -647,6 +653,18 @@ function FinalCTA() {
             </div>
 
             <WaitlistForm />
+
+            <p className="text-zinc-400 text-xs leading-relaxed mt-5">
+              Ao criar conta, você concorda com os{" "}
+              <Link href="/termos" className="text-brand-primary font-semibold hover:underline">
+                Termos de Uso
+              </Link>{" "}
+              e a{" "}
+              <Link href="/privacidade" className="text-brand-primary font-semibold hover:underline">
+                Política de Privacidade
+              </Link>
+              .
+            </p>
           </div>
         </div>
       </div>
@@ -698,7 +716,11 @@ function Footer() {
             <p className="text-white/20 text-xs font-semibold uppercase tracking-widest mb-5">Empresa</p>
             <ul className="space-y-3">
               {[
-                { label: "Blog", href: "/blog" },
+                { label: "Blog",                     href: "/blog"                 },
+                { label: "Termos de Uso",            href: "/termos"               },
+                { label: "Política de Privacidade",  href: "/privacidade"          },
+                { label: "Política de Conteúdo",     href: "/politica-de-conteudo" },
+                { label: "Contrato de Serviços",     href: "/contrato-servicos"    },
               ].map((l) => (
                 <li key={l.label}>
                   <a href={l.href} className="text-white/35 hover:text-white/65 text-sm transition-colors">{l.label}</a>

@@ -486,10 +486,10 @@ export default function PublicacaoPage() {
                 />
                 <span className="text-sm text-white/70 leading-relaxed group-hover:text-white/85 transition-colors">
                   Li e aceito o{" "}
-                  <Link href="/contrato-edicao" target="_blank" className="underline decoration-brand-gold/40 hover:decoration-brand-gold text-brand-gold/90 hover:text-brand-gold">
-                    contrato de edição não exclusiva
+                  <Link href="/contrato-servicos" target="_blank" className="underline decoration-brand-gold/40 hover:decoration-brand-gold text-brand-gold/90 hover:text-brand-gold">
+                    Contrato de Prestação de Serviços Editoriais
                   </Link>
-                  {" "}para publicação via Autoria. Direitos autorais e propriedade da obra permanecem 100% comigo.
+                  {" "}da Autoria. Direitos autorais e titularidade da obra permanecem 100% comigo — a Autoria presta serviço técnico e não figura como editora.
                 </span>
               </label>
             </div>
