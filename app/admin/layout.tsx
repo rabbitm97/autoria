@@ -23,6 +23,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             >
               Agentes
             </Link>
+            <Link
+              href="/admin/notificacoes"
+              className="text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              Notificações
+            </Link>
+            <Link
+              href="/admin/aceites"
+              className="text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              Aceites
+            </Link>
           </nav>
           <div className="ml-auto">
             <Link

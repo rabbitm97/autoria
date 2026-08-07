@@ -2,6 +2,21 @@
 
 ## Legal
 
+### Verdade 41 — Registro imutável de notificação e providência (LEGAL-1D)
+
+Toda notificação recebida via `POST /api/denuncia` gera **registro de entrada imutável** em `public.content_reports` — só a coluna `status` é mutável (trigger `guard_content_report_mutation` bloqueia UPDATE do restante e todo DELETE). Toda providência do compliance vira linha em `public.content_report_actions`, append-only integral (trigger `guard_content_report_action_mutation` bloqueia UPDATE e DELETE para todos os papéis, inclusive `service_role`).
+
+**Por quê:** desde a decisão parcial do STF sobre o art. 19 do MCI (junho/2025), a proteção da plataforma contra responsabilização por conteúdo de terceiro depende de **procedimento com registro**, não de cláusula contratual. O log existe para ser oposto a terceiros — a Autoria pode errar na decisão; não pode não ter registro.
+
+Enforcement:
+- Ambas as tabelas têm RLS habilitada e **nenhuma policy** — leitura e escrita só via `service_role` nas rotas `/api/denuncia`, `/api/admin/notificacoes/*`.
+- Rota pública sem autenticação: defesas de abuso são honeypot (`website`, `aria-hidden`), rate limit por IP (5/h in-memory por instância), validação de `trecho` mínimo (20 chars).
+- SLA de 2 dias úteis (confirmação) e 5 dias úteis (decisão) vem da Política de Conteúdo; a tela `/admin/notificacoes` destaca em âmbar/vermelho o que passou do prazo, ordenando pela mais antiga primeiro.
+- E-mail via Resend HTTP API (`lib/email.ts`) — falha de envio nunca impede gravação da notificação.
+- Consulta somente-leitura de aceites vive em `/admin/aceites` (residual do LEGAL-1C resolvido pelo LEGAL-1D).
+
+---
+
 ### Verdade 42 — Tabela append-only não tem FK com ação referencial (FIX-LEGAL-1C-02)
 
 Corolário da Verdade 40. `ON DELETE SET NULL` e `ON DELETE CASCADE` são executados como UPDATE/DELETE na tabela filha e disparam o trigger de imutabilidade, abortando a transação. Efeito prático descoberto em `legal_acceptances`: com pelo menos um aceite gravado, apagar o projeto ou a conta que originaram o aceite passava a falhar — sendo que exclusão de conta é obrigação de LGPD prometida em `/privacidade`.
@@ -119,3 +134,23 @@ Refatorar para `createStore` por componente (usando `createContext` + Provider) 
 4. **Aceite `contexto: "cadastro"` só é gravado se `data.session` existir após `signUp`** — se a confirmação de email do Supabase estiver ligada, a sessão vem depois e o aceite não é registrado no mesmo request. Hoje logamos um warning; o correto é retentar no primeiro login pós-confirmação (ou em um `middleware`/`callback` server).
 5. **Checkout usa cart multi-item** — `registrarAceitesCheckout()` está no arquivo mas é `void` até a implementação real do pagamento (D.3/D.4). Ligar como pré-requisito da criação da payment intent do provedor.
 6. **`artefatoRef` do aceite de prova é `preview-pdf:<projectId>`** — string composta para dar rastreabilidade sem exigir hash do PDF. Quando gerarmos hash do artefato final entregue (miolo assinado), substituir por `sha256:...`.
+
+---
+
+## Residuais LEGAL (pós-1D — bloco encerrado)
+
+Pontos que ficam abertos após LEGAL-1D:
+
+1. **Autor não é notificado por e-mail** quando sua obra é reportada — hoje o alerta vai só para `denuncia@useautoria.com` e para o notificante. Ciência ao autor é manual.
+2. **Sem tela de contestação do autor** — a Política de Conteúdo aponta `contato@useautoria.com`; não há fluxo próprio.
+3. **Sem exportação de comprovante de aceite** para o autor (PDF/e-mail com hash e versão).
+4. **Sem rotina de re-aceite** quando `versao` de um documento é bumpada — precisa gate no login que compara aceites do usuário com a `versao` corrente.
+5. **Blog** (`app/blog/`) nunca auditado quanto a afirmação de obrigação legal.
+6. **Base de conhecimento do suporte** (`agent_prompts`) nunca auditada — pode estar respondendo "ISBN é obrigatório por lei" em produção.
+7. **`waitlist-form.tsx`** coleta e-mail sem aviso de privacidade nem base legal declarada.
+8. **Modo "oficial" da ficha CRB** na página de créditos não auditado.
+9. **Termo de Distribuição Não Exclusiva** pendente (D.3/D.4). Base arquivada em `docs/legal/arquivo/contrato-edicao-v0.1.md`.
+10. **Placeholders de CNPJ** e as três decisões humanas do LEGAL-1B seguem abertos.
+11. **Badge "Rascunho · sujeito a revisão jurídica"** permanece até validação por advogado.
+12. **Rate limit de `/api/denuncia` é in-memory por instância** — em serverless, cada instância tem sua janela. Aceitável para 5/h; se o volume crescer, migrar para tabela (`rate_limits`) ou KV.
+13. **`AUTORIA-CONTEXTO.md`, `DICIONARIO.md`, `TABELA.md`** — canônicos citados nos prompts continuam ausentes do repo. Decisão pendente sobre criar ou remover das referências.

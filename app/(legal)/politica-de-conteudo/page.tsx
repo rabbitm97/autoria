@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import LegalDocFrame from "../_frame";
 import { LEGAL_DOCS } from "@/lib/legal-docs";
+import FormDenuncia from "./_form-denuncia";
 
 const DOC = LEGAL_DOCS["politica-conteudo"];
 
@@ -84,6 +85,8 @@ export default function PoliticaConteudoPage() {
           Notificações genéricas, sem indicação específica do trecho, ou sem fundamento não
           permitem análise e serão respondidas pedindo complementação.
         </p>
+
+        <FormDenuncia />
       </section>
 
       <section id="clausula-5">

@@ -43,7 +43,7 @@ export const LEGAL_DOCS = {
     rota: "/politica-de-conteudo",
     versao: "1.0",
     vigenciaISO: "[DATA]",
-    conteudoHash: "7620c89561b7778990ef380d22cd5b3866255a39124ca1fff9dcd9e4732bdd41",
+    conteudoHash: "08e79e6982264d16003d3908ea9ef2b3c98c77c13570267e334bdee4f30dcfe4",
   },
   "contrato-servicos": {
     slug: "contrato-servicos",
