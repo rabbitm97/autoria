@@ -92,6 +92,11 @@ COMMENT ON TABLE public.content_report_actions IS
   'para todos os papéis, inclusive service_role.';
 
 -- 3. Imutabilidade seletiva de content_reports --------------------------------
+--    `status` é a ÚNICA coluna mutável. `id` entra explicitamente na lista
+--    congelada: sem ele, um UPDATE que trocasse apenas a PK passaria pelo
+--    guard (a linha "muda", mas nenhuma coluna verificada diverge), permitindo
+--    reparentar o registro e orfanar o log de providências, que referencia
+--    `report_id` sem FK.
 CREATE OR REPLACE FUNCTION public.guard_content_report_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -100,7 +105,8 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
   IF ROW(NEW.*) IS DISTINCT FROM ROW(OLD.*) THEN
-    IF NEW.protocolo   IS DISTINCT FROM OLD.protocolo
+    IF NEW.id          IS DISTINCT FROM OLD.id
+    OR NEW.protocolo   IS DISTINCT FROM OLD.protocolo
     OR NEW.nome        IS DISTINCT FROM OLD.nome
     OR NEW.email       IS DISTINCT FROM OLD.email
     OR NEW.vinculo     IS DISTINCT FROM OLD.vinculo
