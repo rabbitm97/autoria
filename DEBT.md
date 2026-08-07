@@ -2,6 +2,18 @@
 
 ## Legal
 
+### Verdade 42 — Tabela append-only não tem FK com ação referencial (FIX-LEGAL-1C-02)
+
+Corolário da Verdade 40. `ON DELETE SET NULL` e `ON DELETE CASCADE` são executados como UPDATE/DELETE na tabela filha e disparam o trigger de imutabilidade, abortando a transação. Efeito prático descoberto em `legal_acceptances`: com pelo menos um aceite gravado, apagar o projeto ou a conta que originaram o aceite passava a falhar — sendo que exclusão de conta é obrigação de LGPD prometida em `/privacidade`.
+
+**Regra:** em tabela append-only, referências a outras entidades (`user_id`, `project_id`, etc.) são **históricas** — coluna solta, sem FK. A integridade é garantida na escrita (rota valida sessão + ownership antes de inserir). O registro sobrevive à exclusão do que o originou; se precisar de rótulo legível, snapshot em coluna própria (`user_email`).
+
+Aplicação:
+- `legal_acceptances`: FKs removidas por `supabase/migrations/20260807010000_fix_legal_acceptances_fks.sql`. `user_id` promovido a `NOT NULL` (nunca mais é anulado). Migration original (`20260807000000`) fica intocada como registro do aplicado.
+- **Aplicar a mesma regra em LEGAL-1D** (`content_reports`, `content_report_actions`): definir sem FK desde a criação. O prompt daquele bloco já os define assim; a regra agora é explícita.
+
+---
+
 ### Verdade 40 — Versionamento imutável de documentos legais (LEGAL-1C)
 
 Regra de ouro da camada legal: **alterar o texto de qualquer documento em `app/(legal)/` exige bump de `versao` em `lib/legal-docs.ts`**. Aceites antigos gravados em `public.legal_acceptances` NUNCA são migrados, reescritos ou recategorizados — eles ficam para sempre presos à `versao` + `conteudoHash` vigentes no momento em que o usuário clicou.
