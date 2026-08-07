@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { AUTHOR_TITLES, GENRES } from "@/lib/generos";
+import { DeclaracaoTitularidade } from "@/components/declaracao-titularidade";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,10 @@ export default function NovoProjetoPage() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // ── LEGAL-1C: Declaração de Titularidade obrigatória para upload ─────────
+  const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
+  const [declaracaoAberta, setDeclaracaoAberta] = useState(false);
+
   // ── File selection ──────────────────────────────────────────────────────────
 
   function pickFile(f: File) {
@@ -177,6 +182,10 @@ export default function NovoProjetoPage() {
     }
     if (!file) {
       setError("Selecione o arquivo do manuscrito.");
+      return;
+    }
+    if (!declaracaoAceita) {
+      setError("Assine a Declaração de Titularidade e Originalidade para enviar o manuscrito.");
       return;
     }
 
@@ -249,6 +258,27 @@ export default function NovoProjetoPage() {
       setError("Manuscrito salvo, mas falha ao criar o projeto.");
       setStatus("error");
       return;
+    }
+
+    // 4b. LEGAL-1C: registra aceite da Declaração de Titularidade, agora que
+    // temos project.id. Falha aqui é logada mas não bloqueia o fluxo — o
+    // manuscrito já está no bucket e a etapa de diagnóstico segue.
+    try {
+      const res = await fetch("/api/legal/aceite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: "declaracao-titularidade",
+          contexto: "upload",
+          projectId: project.id,
+          artefatoRef: storagePath,
+        }),
+      });
+      if (!res.ok) {
+        console.error("[novo-projeto] aceite declaração falhou:", res.status);
+      }
+    } catch (err) {
+      console.error("[novo-projeto] aceite declaração exception:", err);
     }
 
     // 5. Parse manuscript (extract text)
@@ -663,6 +693,15 @@ export default function NovoProjetoPage() {
               )}
             </div>
 
+            {/* ── LEGAL-1C: Declaração de Titularidade e Originalidade ── */}
+            <DeclaracaoTitularidade
+              aceita={declaracaoAceita}
+              aberta={declaracaoAberta}
+              disabled={isProcessing}
+              onAceita={setDeclaracaoAceita}
+              onToggle={() => setDeclaracaoAberta((v) => !v)}
+            />
+
             {/* ── Error ── */}
             {error && (
               <div className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-xl p-4">
@@ -684,7 +723,7 @@ export default function NovoProjetoPage() {
             {/* ── CTA ── */}
             <button
               onClick={handleNext}
-              disabled={isProcessing}
+              disabled={isProcessing || !declaracaoAceita}
               className="w-full bg-brand-primary text-white py-3.5 rounded-xl font-semibold text-sm uppercase tracking-wide hover:bg-[#2a2a4e] active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isProcessing ? statusLabel : "Próximo →"}

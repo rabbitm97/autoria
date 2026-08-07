@@ -9,6 +9,7 @@ import {
   detectarMarcasMioloCliente,
   type MarcasVisuaisHint,
 } from "@/lib/miolo-marcas-cliente";
+import { DeclaracaoTitularidade } from "@/components/declaracao-titularidade";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,13 @@ export default function LivroProntoPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [retryContext, setRetryContext] = useState<{ projectId: string } | null>(null);
+
+  // ── LEGAL-1C: Declaração de Titularidade obrigatória para upload ─────────
+  const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
+  const [declaracaoAberta, setDeclaracaoAberta] = useState(false);
+
+  // Path temp do PDF conferido — vira `artefato_ref` do aceite ao ser POSTado.
+  const uploadedPathRef = useRef<string | null>(null);
 
   // Detecção visual de marcas de corte — roda no browser (pdfjs) enquanto o
   // upload/verify seguem em paralelo. Usada como pista para o motor server-side
@@ -251,6 +259,7 @@ export default function LivroProntoPage() {
       }
     }
 
+    uploadedPathRef.current = uploadPath;
     setHasUploaded(true);
     setStatus("idle");
 
@@ -402,6 +411,26 @@ export default function LivroProntoPage() {
         return;
       }
       projectId = project.id;
+
+      // LEGAL-1C: registra aceite da Declaração de Titularidade agora que
+      // temos project.id. Idempotente e não bloqueante — o miolo já subiu.
+      try {
+        const res = await fetch("/api/legal/aceite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: "declaracao-titularidade",
+            contexto: "upload",
+            projectId,
+            artefatoRef: uploadedPathRef.current,
+          }),
+        });
+        if (!res.ok) {
+          console.error("[livro-pronto] aceite declaração falhou:", res.status);
+        }
+      } catch (err) {
+        console.error("[livro-pronto] aceite declaração exception:", err);
+      }
     }
 
     // 3. PATCH formato
@@ -461,6 +490,10 @@ export default function LivroProntoPage() {
       setError("Verifique o arquivo do miolo antes de continuar.");
       return;
     }
+    if (!declaracaoAceita) {
+      setError("Assine a Declaração de Titularidade e Originalidade para continuar.");
+      return;
+    }
     setRetryContext(null);
     await persistir();
   }
@@ -484,6 +517,7 @@ export default function LivroProntoPage() {
   const podeContinuar =
     verificacao?.ok === true &&
     titulo.trim().length > 0 &&
+    declaracaoAceita &&
     !isProcessing;
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -833,6 +867,17 @@ export default function LivroProntoPage() {
                 </div>
               )}
             </div>
+
+            {/* LEGAL-1C: Declaração de Titularidade obrigatória */}
+            {verificacao?.ok === true && (
+              <DeclaracaoTitularidade
+                aceita={declaracaoAceita}
+                aberta={declaracaoAberta}
+                disabled={isProcessing}
+                onAceita={setDeclaracaoAceita}
+                onToggle={() => setDeclaracaoAberta((v) => !v)}
+              />
+            )}
 
             {/* Error box */}
             {error && (

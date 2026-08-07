@@ -10,7 +10,11 @@ export default function LegalDocFrame({
   children: ReactNode;
 }) {
   const doc = LEGAL_DOCS[slug];
-  const outros = LEGAL_DOC_SLUGS.filter((s) => s !== slug).map((s) => LEGAL_DOCS[s]);
+  // Declaração de Titularidade é Anexo I do Contrato — não é rota autônoma;
+  // por isso não aparece na barra de cross-links.
+  const outros = LEGAL_DOC_SLUGS
+    .filter((s) => s !== slug && s !== "declaracao-titularidade")
+    .map((s) => LEGAL_DOCS[s]);
 
   return (
     <>

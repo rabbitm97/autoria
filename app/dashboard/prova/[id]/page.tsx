@@ -939,6 +939,29 @@ export default function ProvaPage() {
       setApprovingPub(false);
       return;
     }
+
+    // LEGAL-1C: além do qa_aprovado_em (marco jurídico da Cláusula 5),
+    // registra aceite do Contrato no contexto "prova" — a aprovação da
+    // prova é o momento de transferência de risco editorial e precisa
+    // ficar carimbada na tabela probatória. Idempotente e não bloqueante.
+    try {
+      const res = await fetch("/api/legal/aceite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: "contrato-servicos",
+          contexto: "prova",
+          projectId: projectIdStr,
+          artefatoRef: `preview-pdf:${projectIdStr}`,
+        }),
+      });
+      if (!res.ok) {
+        console.error("[prova] aceite Cláusula 5 falhou:", res.status);
+      }
+    } catch (err) {
+      console.error("[prova] aceite Cláusula 5 exception:", err);
+    }
+
     router.push(`/dashboard/publicacao/${projectIdStr}`);
   }
 

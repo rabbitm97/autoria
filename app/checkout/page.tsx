@@ -6,9 +6,11 @@ import type { ConfigImpressao } from "@/lib/impressao-pricing";
 
 interface CartItemMinimo {
   id: string;
+  project_id?: string | null;
   preco_centavos: number;
   config: ConfigImpressao;
   projects?: {
+    id?: string;
     manuscripts?: { titulo?: string } | null;
   };
 }
@@ -16,6 +18,7 @@ interface CartItemMinimo {
 export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<CartItemMinimo[]>([]);
+  const [aceite, setAceite] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -29,6 +32,38 @@ export default function CheckoutPage() {
   }, []);
 
   const total = items.reduce((s, i) => s + i.preco_centavos, 0) / 100;
+
+  // LEGAL-1C: quando o pagamento for ligado (D.3/D.4), a rota do provedor
+  // chama esta função antes de disparar a intent. Um POST por projectId
+  // distinto — a rota é idempotente. Falha aqui bloqueia o pagamento.
+  async function registrarAceitesCheckout(): Promise<boolean> {
+    const projectIds = Array.from(
+      new Set(
+        items
+          .map((i) => i.project_id ?? i.projects?.id ?? null)
+          .filter((x): x is string => !!x),
+      ),
+    );
+    if (projectIds.length === 0) return true;
+    const results = await Promise.all(
+      projectIds.map((projectId) =>
+        fetch("/api/legal/aceite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: "contrato-servicos",
+            contexto: "checkout",
+            projectId,
+          }),
+        })
+          .then((r) => r.ok)
+          .catch(() => false),
+      ),
+    );
+    return results.every(Boolean);
+  }
+  // Evita warning de "declared but never used" enquanto o pagamento não é ligado.
+  void registrarAceitesCheckout;
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-10">
@@ -157,16 +192,53 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
+              {/* LEGAL-1C: destaques + aceite obrigatório do Contrato de Serviços */}
+              <div className="mt-5 rounded-lg bg-white/5 border border-white/10 p-3 text-[11px] leading-relaxed text-white/80 space-y-2">
+                <p>
+                  <strong className="text-brand-gold">Cláusula 5 —</strong>{" "}
+                  ao aprovar a prova, o risco editorial (erros de texto,
+                  ortografia, ordem de capítulos, dados da página de créditos)
+                  passa a ser seu.
+                </p>
+                <p>
+                  <strong className="text-brand-gold">Cláusula 7 —</strong>{" "}
+                  arrependimento em 7 dias corridos; após esse prazo, etapas
+                  já executadas não são reembolsadas.
+                </p>
+              </div>
+
+              <label className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-white/85 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={aceite}
+                  onChange={(e) => setAceite(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/25 bg-white/10 text-brand-gold accent-brand-gold focus:ring-2 focus:ring-brand-gold/40"
+                />
+                <span>
+                  Li e aceito o{" "}
+                  <Link href="/contrato-servicos" target="_blank" rel="noreferrer" className="text-brand-gold underline underline-offset-2">
+                    Contrato de Prestação de Serviços Editoriais
+                  </Link>
+                  {" "}(inclusive as{" "}
+                  <Link href="/contrato-servicos#clausula-5" target="_blank" rel="noreferrer" className="text-brand-gold underline underline-offset-2">
+                    Cláusulas 5
+                  </Link>{" "}e{" "}
+                  <Link href="/contrato-servicos#clausula-7" target="_blank" rel="noreferrer" className="text-brand-gold underline underline-offset-2">
+                    7
+                  </Link>).
+                </span>
+              </label>
+
               <div className="mt-5 space-y-2">
                 <button
-                  disabled
-                  className="w-full bg-brand-gold text-brand-primary font-bold py-3 rounded-xl opacity-40 cursor-not-allowed"
+                  disabled={!aceite}
+                  className="w-full bg-brand-gold text-brand-primary font-bold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Pagar com PIX (em breve)
                 </button>
                 <button
-                  disabled
-                  className="w-full border border-white/20 text-white/80 py-3 rounded-xl opacity-40 cursor-not-allowed"
+                  disabled={!aceite}
+                  className="w-full border border-white/20 text-white/80 py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Pagar com cartão (em breve)
                 </button>

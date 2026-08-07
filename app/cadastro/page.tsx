@@ -27,13 +27,14 @@ export default function CadastroPage() {
   const [email, setEmail]       = useState("");
   const [senha, setSenha]       = useState("");
   const [confirma, setConfirma] = useState("");
+  const [aceite, setAceite]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
   const strength = strengthLabel(senha);
   const senhaOk  = strength.score >= 3 && senha.length >= 8;
   const igual    = senha === confirma;
-  const formOk   = nome.trim().length >= 2 && email.includes("@") && senhaOk && igual;
+  const formOk   = nome.trim().length >= 2 && email.includes("@") && senhaOk && igual && aceite;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,7 +73,29 @@ export default function CadastroPage() {
       }
     }
 
-    // 3. Se Supabase exigir confirmação de e-mail, mostrar aviso;
+    // 3. LEGAL-1C: aceite de termos + privacidade no momento do cadastro.
+    // Só é possível registrar via API quando há sessão viva — se confirmação
+    // de email estiver ligada, a sessão vem depois e o aceite será feito por
+    // outro gate. Falha aqui é logada e NÃO bloqueia o cadastro.
+    if (data.session) {
+      const slugs = ["termos-de-uso", "politica-privacidade"] as const;
+      await Promise.all(
+        slugs.map((slug) =>
+          fetch("/api/legal/aceite", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug, contexto: "cadastro" }),
+          }).catch((err) => {
+            console.error(`[cadastro] Falha ao registrar aceite ${slug}:`, err);
+            return null;
+          }),
+        ),
+      );
+    } else {
+      console.warn("[cadastro] Sessão ausente após signUp — aceite legal será feito no próximo login.");
+    }
+
+    // 4. Se Supabase exigir confirmação de e-mail, mostrar aviso;
     //    caso contrário, redirecionar para o dashboard
     if (data.session) {
       router.push("/dashboard");
@@ -215,6 +238,29 @@ export default function CadastroPage() {
               )}
             </div>
 
+            {/* LEGAL-1C: aceite obrigatório de Termos + Privacidade */}
+            <label className="flex items-start gap-3 text-xs text-white/60 leading-relaxed cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={aceite}
+                onChange={(e) => setAceite(e.target.checked)}
+                disabled={loading}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-white/5 text-brand-gold accent-brand-gold focus:ring-2 focus:ring-brand-gold/40"
+                aria-describedby="aceite-cadastro-hint"
+              />
+              <span id="aceite-cadastro-hint">
+                Li e aceito os{" "}
+                <Link href="/termos" target="_blank" rel="noreferrer" className="text-brand-gold underline underline-offset-2 hover:text-brand-gold-light">
+                  Termos de Uso
+                </Link>{" "}
+                e a{" "}
+                <Link href="/privacidade" target="_blank" rel="noreferrer" className="text-brand-gold underline underline-offset-2 hover:text-brand-gold-light">
+                  Política de Privacidade
+                </Link>{" "}
+                da Autoria.
+              </span>
+            </label>
+
             {error && (
               <div className="bg-red-400/10 border border-red-400/20 rounded-xl p-3 text-sm text-red-400">
                 {error}
@@ -229,17 +275,6 @@ export default function CadastroPage() {
               {loading ? "Criando conta…" : "Criar conta gratuita"}
             </button>
           </form>
-
-          <p className="mt-6 text-center text-xs text-white/25 leading-relaxed">
-            Ao criar sua conta, você concorda com os{" "}
-            <a href="/termos" className="underline underline-offset-2 hover:text-white/50 transition-colors">
-              Termos de Uso
-            </a>{" "}
-            e a{" "}
-            <a href="/privacidade" className="underline underline-offset-2 hover:text-white/50 transition-colors">
-              Política de Privacidade
-            </a>.
-          </p>
 
           <p className="text-center text-white/20 text-xs mt-8 pt-8 border-t border-white/5">
             <Link href="/" className="hover:text-white/40 transition-colors">

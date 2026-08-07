@@ -19,7 +19,12 @@ interface ProjectMeta {
   hasCreditos: boolean;
 }
 
-const ACEITE_STORAGE_KEY = "autoria:contrato-aceito:v0.1";
+// LEGAL-1C: `ACEITE_STORAGE_KEY` (localStorage) foi removido. O aceite do
+// Contrato agora fica em `legal_acceptances` — carimbado no checkout (D.3)
+// e na aprovação da prova (contexto=prova). A distribuição delegada (a
+// "Iniciar publicação" que apontava para /publicacao-direta) fica
+// DESATIVADA até que a etapa de distribuição seja realmente entregue, com
+// verificação server-side via `lib/legal-acceptance.ts#jaAceitou`.
 
 export default function PublicacaoPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,25 +32,7 @@ export default function PublicacaoPage() {
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<ProjectMeta | null>(null);
   const [downloads, setDownloads] = useState<PublicacaoDownloadsResponse | null>(null);
-  const [contratoAceito, setContratoAceito] = useState(false);
   const [zipping, setZipping] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(ACEITE_STORAGE_KEY);
-    setContratoAceito(stored === "true");
-  }, []);
-
-  const toggleAceite = useCallback(() => {
-    setContratoAceito(prev => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        if (next) window.localStorage.setItem(ACEITE_STORAGE_KEY, "true");
-        else window.localStorage.removeItem(ACEITE_STORAGE_KEY);
-      }
-      return next;
-    });
-  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -143,11 +130,6 @@ export default function PublicacaoPage() {
       setZipping(false);
     }
   }, [downloads, zipping, meta]);
-
-  const iniciarPublicacao = useCallback(() => {
-    if (!contratoAceito) return;
-    router.push(`/dashboard/publicacao-direta/${id}`);
-  }, [contratoAceito, router, id]);
 
   const irParaImpressao = useCallback(() => {
     router.push(`/dashboard/publicacao/${id}/impressao`);
@@ -457,41 +439,32 @@ export default function PublicacaoPage() {
               </div>
             )}
 
+            {/* LEGAL-1C: distribuição delegada está desativada até que a
+                etapa seja realmente entregue. O aceite do Contrato é
+                registrado no checkout (D.3) e na aprovação da prova; nada
+                de "checkbox de contrato" aqui — era falso (localStorage),
+                não tinha valor probatório. */}
             <div className="bg-brand-primary rounded-2xl p-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+              <div className="flex items-start gap-4">
+                <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-gold">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                </div>
                 <div className="flex-1">
                   <p className="font-heading text-xl text-brand-gold mb-1">
-                    Publicar nas plataformas
+                    Distribuição delegada nas plataformas
                   </p>
-                  <p className="text-white/60 text-sm leading-relaxed">
-                    Selecione onde quer distribuir, faça o QA específico por plataforma e envie. Disponível para Amazon KDP, Kobo, Apple Books, Spotify e mais.
+                  <p className="text-white/70 text-sm leading-relaxed">
+                    Este serviço ainda não está disponível. Por ora, você mesmo(a) faz o upload
+                    dos arquivos acima nas plataformas em que quiser publicar (Amazon KDP,
+                    Kobo, Apple Books, Kiwify e outras). Quando ligarmos a distribuição
+                    delegada, vamos avisar por email.
                   </p>
                 </div>
-                <button
-                  onClick={iniciarPublicacao}
-                  disabled={!contratoAceito}
-                  className="shrink-0 inline-flex items-center gap-2 bg-brand-gold text-brand-primary font-bold px-6 py-3 rounded-xl hover:bg-brand-gold/90 transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={!contratoAceito ? "Aceite o contrato antes de continuar" : undefined}
-                >
-                  Iniciar publicação
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </button>
               </div>
-              <label className="flex items-start gap-3 mt-5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={contratoAceito}
-                  onChange={toggleAceite}
-                  className="mt-0.5 w-4 h-4 rounded border-white/30 bg-white/10 accent-brand-gold cursor-pointer"
-                />
-                <span className="text-sm text-white/70 leading-relaxed group-hover:text-white/85 transition-colors">
-                  Li e aceito o{" "}
-                  <Link href="/contrato-servicos" target="_blank" className="underline decoration-brand-gold/40 hover:decoration-brand-gold text-brand-gold/90 hover:text-brand-gold">
-                    Contrato de Prestação de Serviços Editoriais
-                  </Link>
-                  {" "}da Autoria. Direitos autorais e titularidade da obra permanecem 100% comigo — a Autoria presta serviço técnico e não figura como editora.
-                </span>
-              </label>
             </div>
 
             <div className="bg-brand-primary rounded-2xl p-6">

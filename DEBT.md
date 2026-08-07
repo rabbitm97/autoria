@@ -1,5 +1,26 @@
 # Dívida técnica — Autoria
 
+## Legal
+
+### Verdade 40 — Versionamento imutável de documentos legais (LEGAL-1C)
+
+Regra de ouro da camada legal: **alterar o texto de qualquer documento em `app/(legal)/` exige bump de `versao` em `lib/legal-docs.ts`**. Aceites antigos gravados em `public.legal_acceptances` NUNCA são migrados, reescritos ou recategorizados — eles ficam para sempre presos à `versao` + `conteudoHash` vigentes no momento em que o usuário clicou.
+
+Enforcement:
+- `lib/legal-docs.ts` é a fonte única (slug, titulo, rota, versao, vigenciaISO, conteudoHash).
+- `scripts/legal-hash.mjs` calcula o SHA-256 dos arquivos-fonte e reescreve `conteudoHash`. Modo `--check` (via `npm run legal:check`) sai com 1 se algum hash está desatualizado — sinal de que o texto mudou sem bump de versão.
+- Tabela `public.legal_acceptances` é **append-only**: triggers `block_legal_acceptance_mutation` bloqueiam UPDATE e DELETE para TODOS os papéis, inclusive `service_role`. Correção de dado exige `DISABLE TRIGGER` explícito no Studio.
+- Writes só via `POST /api/legal/aceite` (Node runtime, service role). RLS impede insert de authenticated/anon. Cliente NÃO carimba versao/hash — o servidor resolve a partir de `LEGAL_DOCS[slug]`.
+
+Gates ativos hoje:
+- **Cadastro** (`app/cadastro`): checkbox obrigatório de Termos + Privacidade; 2 POSTs `contexto: "cadastro"` após signUp.
+- **Upload normal** (`app/dashboard/novo-projeto`): componente `DeclaracaoTitularidade` com os 7 itens do Anexo I; POST `declaracao-titularidade` `contexto: "upload"` após INSERT projects.
+- **Upload Express** (`app/dashboard/livro-pronto`): mesmo padrão.
+- **Checkout** (`app/checkout`): destaque Cláusulas 5 e 7 + checkbox obrigatório do Contrato. POSTs `contexto: "checkout"` ficam pré-implementados (`registrarAceitesCheckout`) — a rota do provedor de pagamento (D.3/D.4) os dispara antes de iniciar a intent.
+- **Prova** (`app/dashboard/prova/[id]`): em `handleAprovarEPublicar`, além do `qa_aprovado_em`, POST `contrato-servicos` `contexto: "prova"` com `artefatoRef: "preview-pdf:<projectId>"`.
+
+---
+
 ## Editor de Capa
 
 ### Smart fields sem fonte de dados confiável (Onda 3)
@@ -75,3 +96,15 @@ Refatorar para `createStore` por componente (usando `createContext` + Provider) 
 ### export-pdf no outputFileTracingIncludes
 
 `next.config.ts` já inclui o binário do Chromium para `/api/agentes/gerar-pdf`. O novo `/api/projects/[id]/cover-editor/export-pdf` foi adicionado na Onda 3. Verificar em produção (Vercel) se o deploy copia corretamente o binário para ambas as rotas — pode ser necessário ajuste se a wildcarded no `outputFileTracingIncludes` não cobrir paths dinâmicos.
+
+---
+
+## Residuais LEGAL-1C
+
+1. **`vigenciaISO` como `[DATA]` em todos os slugs** — hardcoded como placeholder aguardando revisão jurídica final. Trocar por data ISO real antes da estreia comercial (mesma nota do rodapé "Rascunho v1.0 · sujeito a revisão jurídica").
+2. **`[RAZÃO SOCIAL]`, `[CNPJ]`, `[ENDEREÇO]`, `[NOME DO ENCARREGADO]`** — placeholders visíveis nos documentos legais aguardando definição societária/DPO.
+3. **`legal:check` não roda em CI** — só existe local (`npm run legal:check`). Amarrar no pré-commit ou pipeline quando houver CI configurado, para que edições silenciosas de texto sejam pegas antes do merge.
+4. **Aceite `contexto: "cadastro"` só é gravado se `data.session` existir após `signUp`** — se a confirmação de email do Supabase estiver ligada, a sessão vem depois e o aceite não é registrado no mesmo request. Hoje logamos um warning; o correto é retentar no primeiro login pós-confirmação (ou em um `middleware`/`callback` server).
+5. **Checkout usa cart multi-item** — `registrarAceitesCheckout()` está no arquivo mas é `void` até a implementação real do pagamento (D.3/D.4). Ligar como pré-requisito da criação da payment intent do provedor.
+6. **`artefatoRef` do aceite de prova é `preview-pdf:<projectId>`** — string composta para dar rastreabilidade sem exigir hash do PDF. Quando gerarmos hash do artefato final entregue (miolo assinado), substituir por `sha256:...`.
+7. **`declaracao-titularidade` compartilha `conteudoHash` com `contrato-servicos`** — o Anexo I mora dentro da mesma página (`app/(legal)/contrato-servicos/page.tsx`). Se um dia o Anexo virar rota própria, atualizar `LEGAL_DOC_SOURCES` e recalcular hashes independentemente.

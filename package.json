@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/sync-pdf-worker.mjs",
-    "embed-fonts": "tsx scripts/embed-fonts.ts"
+    "embed-fonts": "tsx scripts/embed-fonts.ts",
+    "legal:hash": "node scripts/legal-hash.mjs",
+    "legal:check": "node scripts/legal-hash.mjs --check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
