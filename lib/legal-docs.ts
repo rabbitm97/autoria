@@ -51,7 +51,7 @@ export const LEGAL_DOCS = {
     rota: "/contrato-servicos",
     versao: "1.0",
     vigenciaISO: "[DATA]",
-    conteudoHash: "c443b1de8619725b1520e2f940f0e094eaa4470c0276b02dd9c0616487eb3119",
+    conteudoHash: "b4bbb12949d9925520559691cee5a01ea52cd591f7720e052bf6908edc5bdee0",
   },
   "declaracao-titularidade": {
     slug: "declaracao-titularidade",
@@ -59,7 +59,7 @@ export const LEGAL_DOCS = {
     rota: "/contrato-servicos#anexo-i",
     versao: "1.0",
     vigenciaISO: "[DATA]",
-    conteudoHash: "c443b1de8619725b1520e2f940f0e094eaa4470c0276b02dd9c0616487eb3119",
+    conteudoHash: "85f9efe75eda32ce90bb65f192986ba0e34173194e074b681178bcbce9be54d5",
   },
 } as const satisfies Record<string, LegalDoc>;
 
@@ -68,16 +68,17 @@ export const LEGAL_DOC_SLUGS = Object.keys(LEGAL_DOCS) as LegalDocSlug[];
 
 /**
  * Mapa slug → arquivo-fonte usado por `scripts/legal-hash.mjs` para calcular
- * o SHA-256. `declaracao-titularidade` compartilha o arquivo do contrato pois
- * é o Anexo I dele — se o Anexo mudar, o hash de ambos muda e ambas as
- * versões precisam subir.
+ * o SHA-256. `declaracao-titularidade` aponta para `_anexo-i.tsx`, o
+ * componente que renderiza os 7 itens tanto na página pública (âncora
+ * `#anexo-i`) quanto no gate de upload — assim o hash reflete só o texto
+ * do Anexo, sem carona nas mudanças de outras cláusulas do contrato.
  */
 export const LEGAL_DOC_SOURCES: Record<LegalDocSlug, string> = {
   "termos-de-uso": "app/(legal)/termos/page.tsx",
   "politica-privacidade": "app/(legal)/privacidade/page.tsx",
   "politica-conteudo": "app/(legal)/politica-de-conteudo/page.tsx",
   "contrato-servicos": "app/(legal)/contrato-servicos/page.tsx",
-  "declaracao-titularidade": "app/(legal)/contrato-servicos/page.tsx",
+  "declaracao-titularidade": "app/(legal)/contrato-servicos/_anexo-i.tsx",
 };
 
 export const LEGAL_ACEITE_CONTEXTOS = [

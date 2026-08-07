@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import LegalDocFrame from "../_frame";
 import { LEGAL_DOCS } from "@/lib/legal-docs";
+import { AnexoIContent } from "./_anexo-i";
 
 const DOC = LEGAL_DOCS["contrato-servicos"];
 
@@ -129,16 +130,7 @@ export default function ContratoServicosPage() {
         <h2 className="font-heading text-3xl text-brand-primary mb-3">Declaração de Titularidade e Originalidade</h2>
         <p className="italic text-zinc-500 mb-6">Aceita separadamente, no momento do envio do manuscrito.</p>
 
-        <p className="mb-4">Declaro, sob as penas da lei, em relação à obra que envio à plataforma Autoria:</p>
-        <ol className="list-decimal pl-6 space-y-3">
-          <li>Sou titular dos direitos patrimoniais de autor sobre a obra, ou possuo autorização escrita e expressa de todos os coautores e titulares.</li>
-          <li>A obra é original. Não contém plágio, reprodução não autorizada nem trecho de terceiro além do permitido em lei, sempre com indicação de fonte e autoria.</li>
-          <li>Possuo autorização para todas as imagens, ilustrações, fotografias, gráficos, tabelas e demais elementos de terceiros incluídos na obra.</li>
-          <li>Possuo autorização para uso de nome, imagem, voz e dados pessoais de qualquer pessoa identificável mencionada na obra, quando exigida por lei.</li>
-          <li>A obra não contém material vedado pela Política de Conteúdo.</li>
-          <li>Sou o editor responsável pela obra e assumo as obrigações que a legislação atribui ao editor.</li>
-          <li>Estou ciente de que declaração falsa configura falsidade ideológica (art. 299 do Código Penal) e gera responsabilidade civil e criminal integral, além de direito de regresso da Autoria por todos os prejuízos.</li>
-        </ol>
+        <AnexoIContent />
 
         <p className="italic text-zinc-500 mt-6 text-sm">
           Registro do aceite: data, hora, versão do documento, IP e identificador do projeto.
