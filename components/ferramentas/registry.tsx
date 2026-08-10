@@ -145,6 +145,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Capa e imagem",
     estado: "gratis",
     href: "/dashboard/ferramentas/rgb-cmyk",
+    href_publico: "/ferramentas/rgb-cmyk",
     icon: PaletteIcon,
   },
   {
