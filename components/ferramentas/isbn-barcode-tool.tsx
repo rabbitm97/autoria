@@ -5,25 +5,42 @@ import { validarIsbn, type ValidacaoIsbn } from "@/lib/isbn";
 
 // bwip-js: import dinâmico via subpath /browser (mantém o node build fora do
 // bundle do cliente). Precedente: app/editor/capa/[project_id]/lib/barcode.ts.
-// bcid "ean13" é o padrão real do código de barras de livro; o bcid "isbn" do
-// BWIPP exige entrada hifenizada no formato do grupo GS1 (frágil) — a barra
-// em si é idêntica.
 type BwipModule = typeof import("bwip-js/browser");
 async function loadBwip(): Promise<BwipModule> {
   return await import("bwip-js/browser");
 }
 
-const OPTS_BASE = {
-  includetext: true,
-  textxalign: "center",
-  backgroundcolor: "FFFFFF",
-  paddingwidth: 4,
-  paddingheight: 4,
-  height: 18,
-} as const;
+// Preserva os hífens que o usuário digitou pra linha "ISBN 978-..." acima
+// das barras; só usa o entrada bruto se, tirando os hífens, bater com o
+// código de 13 dígitos validado (evita passar lixo pro BWIPP).
+function textoIsbn(entradaRaw: string, codigo13: string): string {
+  const soft = entradaRaw.replace(/[^\d-]/g, "");
+  if (soft.includes("-") && soft.replace(/-/g, "") === codigo13) return soft;
+  return codigo13;
+}
 
-function opts(codigo: string, scale: number) {
-  return { ...OPTS_BASE, bcid: "ean13", text: codigo, scale };
+// Fonte única das opções de render — preview, SVG e PNG usam este mesmo
+// objeto (só `scale` varia por finalidade). O BWIPP desenha sozinho o
+// layout editorial: linha "ISBN ..." em cima (só bcid "isbn"), primeiro
+// dígito fora à esquerda, dois grupos de seis, guardas descendo entre eles
+// e ">" da zona de silêncio à direita.
+function opcoesBarcode(
+  codigo: string,
+  tipo: "isbn" | "ean13",
+  entradaRaw: string,
+  scale: number,
+) {
+  return {
+    bcid: tipo,
+    text: tipo === "isbn" ? textoIsbn(entradaRaw, codigo) : codigo,
+    includetext: true,
+    guardwhitespace: true,
+    height: 22,
+    backgroundcolor: "FFFFFF",
+    paddingwidth: 6,
+    paddingheight: 6,
+    scale,
+  };
 }
 
 function baixarBlob(blob: Blob, nome: string) {
@@ -49,10 +66,12 @@ export default function IsbnBarcodeTool() {
   }, [entrada]);
 
   const codigoValido = validacao.ok ? validacao.codigo : null;
+  const tipoValido = validacao.ok ? validacao.tipo : null;
 
-  // Preview no canvas sempre que houver código válido.
+  // Preview no canvas sempre que houver código válido. Entrada bruta entra
+  // na dep pra que ligar/desligar hífens re-renderize a linha "ISBN ...".
   useEffect(() => {
-    if (!codigoValido) {
+    if (!codigoValido || !tipoValido) {
       const c = canvasRef.current;
       if (c) {
         const ctx = c.getContext("2d");
@@ -65,7 +84,7 @@ export default function IsbnBarcodeTool() {
       try {
         const bwipjs = await loadBwip();
         if (cancelado || !canvasRef.current) return;
-        bwipjs.toCanvas(canvasRef.current, opts(codigoValido, 3));
+        bwipjs.toCanvas(canvasRef.current, opcoesBarcode(codigoValido, tipoValido, entrada, 3));
         setRenderError(null);
       } catch (err) {
         console.error("[isbn-barcode] preview:", err);
@@ -75,18 +94,18 @@ export default function IsbnBarcodeTool() {
     return () => {
       cancelado = true;
     };
-  }, [codigoValido]);
+  }, [codigoValido, tipoValido, entrada]);
 
   const aplicarSugestao = useCallback(() => {
     if (!validacao.ok && validacao.sugestao) setEntrada(validacao.sugestao);
   }, [validacao]);
 
   async function baixarSvg() {
-    if (!codigoValido) return;
+    if (!codigoValido || !tipoValido) return;
     setBaixando("svg");
     try {
       const bwipjs = await loadBwip();
-      const svg = bwipjs.toSVG(opts(codigoValido, 3));
+      const svg = bwipjs.toSVG(opcoesBarcode(codigoValido, tipoValido, entrada, 3));
       baixarBlob(new Blob([svg], { type: "image/svg+xml" }), `isbn-${codigoValido}.svg`);
     } catch (err) {
       console.error("[isbn-barcode] svg:", err);
@@ -97,12 +116,12 @@ export default function IsbnBarcodeTool() {
   }
 
   async function baixarPng() {
-    if (!codigoValido) return;
+    if (!codigoValido || !tipoValido) return;
     setBaixando("png");
     try {
       const bwipjs = await loadBwip();
       const off = document.createElement("canvas");
-      bwipjs.toCanvas(off, opts(codigoValido, 4));
+      bwipjs.toCanvas(off, opcoesBarcode(codigoValido, tipoValido, entrada, 4));
       await new Promise<void>((resolve) => {
         off.toBlob((blob) => {
           if (blob) baixarBlob(blob, `isbn-${codigoValido}.png`);
@@ -155,6 +174,11 @@ export default function IsbnBarcodeTool() {
               />
             </label>
 
+            <p className="mt-1.5 text-xs text-zinc-400">
+              Dica: digite com hífens (<span className="font-mono">978-65-XXXXX-XX-X</span>) pra
+              linha ISBN sair formatada acima do código.
+            </p>
+
             {/* Erro de validação */}
             {!validacao.ok && entrada.length > 0 && (
               <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 p-3">
@@ -184,12 +208,12 @@ export default function IsbnBarcodeTool() {
             {/* Estado inicial */}
             {entrada.length === 0 && (
               <p className="mt-4 text-xs text-zinc-400">
-                Aceita com ou sem hífens. Exemplo válido:{" "}
+                Exemplo válido:{" "}
                 <button
-                  onClick={() => setEntrada("9788535902778")}
+                  onClick={() => setEntrada("978-85-359-0277-8")}
                   className="font-mono text-zinc-500 underline underline-offset-4 hover:text-brand-gold"
                 >
-                  9788535902778
+                  978-85-359-0277-8
                 </button>
               </p>
             )}
