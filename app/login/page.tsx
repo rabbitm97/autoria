@@ -5,10 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { safeNext } from "@/lib/safe-next";
 
 function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get("next"));
 
   const [email, setEmail]     = useState("");
   const [senha, setSenha]     = useState("");
@@ -44,7 +46,7 @@ function LoginInner() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push(next ?? "/dashboard");
   }
 
   // ── Google ─────────────────────────────────────────────────────────────────
@@ -53,7 +55,11 @@ function LoginInner() {
     setError(null);
     const { error: err } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback${
+          next ? `?next=${encodeURIComponent(next)}` : ""
+        }`,
+      },
     });
     if (err) {
       setError("Não foi possível conectar com o Google. Tente novamente.");
@@ -69,7 +75,11 @@ function LoginInner() {
     setError(null);
     const { error: err } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback${
+          next ? `?next=${encodeURIComponent(next)}` : ""
+        }`,
+      },
     });
     if (err) {
       setError("Não foi possível enviar o link. Verifique o e-mail.");
@@ -116,7 +126,10 @@ function LoginInner() {
                 <h1 className="font-heading text-3xl text-white mb-2">Bem-vindo de volta</h1>
                 <p className="text-white/50 text-sm">
                   Não tem conta?{" "}
-                  <Link href="/cadastro" className="text-brand-gold hover:underline">Criar agora</Link>
+                  <Link
+                    href={next ? `/cadastro?next=${encodeURIComponent(next)}` : "/cadastro"}
+                    className="text-brand-gold hover:underline"
+                  >Criar agora</Link>
                 </p>
               </div>
 

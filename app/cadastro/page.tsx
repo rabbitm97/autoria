@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { safeNext } from "@/lib/safe-next";
 
 function strengthLabel(pw: string): { label: string; color: string; score: number } {
   let score = 0;
@@ -21,8 +22,10 @@ function strengthLabel(pw: string): { label: string; color: string; score: numbe
   return { ...map[score], score };
 }
 
-export default function CadastroPage() {
+function CadastroInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get("next"));
   const [nome, setNome]         = useState("");
   const [email, setEmail]       = useState("");
   const [senha, setSenha]       = useState("");
@@ -48,7 +51,9 @@ export default function CadastroPage() {
       password: senha,
       options: {
         data: { nome },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/callback${
+          next ? `?next=${encodeURIComponent(next)}` : ""
+        }`,
       },
     });
 
@@ -98,9 +103,11 @@ export default function CadastroPage() {
     // 4. Se Supabase exigir confirmação de e-mail, mostrar aviso;
     //    caso contrário, redirecionar para o dashboard
     if (data.session) {
-      router.push("/dashboard");
+      router.push(next ?? "/dashboard");
     } else {
-      router.push("/login?cadastro=ok");
+      router.push(
+        `/login?cadastro=ok${next ? `&next=${encodeURIComponent(next)}` : ""}`,
+      );
     }
   }
 
@@ -141,7 +148,10 @@ export default function CadastroPage() {
             <h1 className="font-heading text-3xl text-white mb-2">Criar conta</h1>
             <p className="text-white/50 text-sm">
               Já tem conta?{" "}
-              <Link href="/login" className="text-brand-gold hover:underline">
+              <Link
+                href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}
+                className="text-brand-gold hover:underline"
+              >
                 Faça login
               </Link>
             </p>
@@ -284,5 +294,13 @@ export default function CadastroPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CadastroPage() {
+  return (
+    <Suspense>
+      <CadastroInner />
+    </Suspense>
   );
 }

@@ -298,7 +298,7 @@ export default function SimuladorImpressaoTool() {
           {/* CTAs */}
           <div className="mt-4 space-y-2">
             <Link
-              href="/cadastro"
+              href="/cadastro?next=%2Fdashboard%2Flivro-pronto"
               className="block text-center bg-brand-gold text-brand-primary text-sm font-bold px-5 py-3 rounded-xl hover:bg-brand-gold-light active:scale-95 transition-all tracking-wide"
             >
               Imprimir meu livro
