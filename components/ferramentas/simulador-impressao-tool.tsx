@@ -292,6 +292,7 @@ export default function SimuladorImpressaoTool() {
           <ResultadoView
             resultado={resultado}
             loading={loading}
+            tiragem={tiragem}
           />
 
           {/* CTAs */}
@@ -325,9 +326,11 @@ export default function SimuladorImpressaoTool() {
 function ResultadoView({
   resultado,
   loading,
+  tiragem,
 }: {
   resultado: ResultadoOrcamento | null;
   loading: boolean;
+  tiragem: number;
 }) {
   // Estado inicial (nunca renderizou nada)
   if (!resultado) {
@@ -386,7 +389,9 @@ function ResultadoView({
 
       <div className="space-y-2 text-sm mb-4">
         <div className="flex items-center justify-between">
-          <span className="text-zinc-500">Subtotal ({o.faixa_tiragem_label.split(" ")[0]}×)</span>
+          <span className="text-zinc-500">
+            Subtotal ({tiragem} {tiragem === 1 ? "exemplar" : "exemplares"})
+          </span>
           <span className="text-zinc-700 font-mono">{brl(o.subtotal_produtos_reais)}</span>
         </div>
         <div className="flex items-center justify-between">
@@ -401,10 +406,6 @@ function ResultadoView({
         </div>
       </div>
 
-      <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-zinc-100 text-zinc-600 text-xs px-3 py-1">
-        Faixa: {o.faixa_tiragem_label}
-      </div>
-
       <div className="bg-brand-primary/5 rounded-xl border border-brand-primary/10 px-4 py-3 mb-4">
         <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-0.5">Produção</p>
         <p className="text-sm text-brand-primary font-semibold">Até 15 dias úteis</p>
@@ -417,27 +418,31 @@ function ResultadoView({
         <div className="mt-3 space-y-1.5 text-xs text-zinc-500">
           <div className="flex items-center justify-between">
             <span>Miolo</span>
-            <span className="font-mono">{brl(o.custo_miolo_unit_reais)} × unid.</span>
+            <span className="font-mono">{brl(o.custo_miolo_unit_reais)}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>Capa</span>
-            <span className="font-mono">{brl(o.custo_capa_unit_reais)} × unid.</span>
+            <span className="font-mono">{brl(o.custo_capa_unit_reais)}</span>
           </div>
           <div className="flex items-center justify-between">
             <span>Encadernação ({ENCADERNACAO_LABELS[o.encadernacao_tecnica]})</span>
-            <span className="font-mono">{brl(o.custo_encadernacao_unit_reais)} × unid.</span>
+            <span className="font-mono">{brl(o.custo_encadernacao_unit_reais)}</span>
           </div>
-          <div className="flex items-center justify-between pt-1.5 border-t border-zinc-100">
-            <span>Subtotal por exemplar</span>
-            <span className="font-mono">{brl(o.subtotal_unit_reais)}</span>
-          </div>
+          {tiragem > 1 && (
+            <div className="flex items-center justify-between text-emerald-600">
+              <span>Desconto por quantidade</span>
+              <span className="font-mono">
+                −{brl(o.subtotal_unit_reais - o.custo_unit_com_multiplicador_reais)}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
-            <span>× multiplicador de escala</span>
-            <span className="font-mono">{o.multiplicador_tiragem.toFixed(3)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>+ setup rateado</span>
+            <span>Preparação do título (rateada)</span>
             <span className="font-mono">{brl(o.setup_rateado_unit_reais)}</span>
+          </div>
+          <div className="flex items-center justify-between pt-1.5 border-t border-zinc-100 text-zinc-700">
+            <span>Por exemplar</span>
+            <span className="font-mono">{brl(o.custo_por_exemplar_reais)}</span>
           </div>
         </div>
       </details>
