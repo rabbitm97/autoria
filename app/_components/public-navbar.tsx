@@ -4,13 +4,20 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 
-const NAV_LINKS = [
-  { label: "Como funciona", href: "/#como-funciona" },
-  { label: "Serviços",      href: "/#servicos"      },
-  { label: "Ferramentas",   href: "/ferramentas"    },
-  { label: "Preços",        href: "/#precos"        },
-  { label: "Blog",          href: "/blog"           },
-  { label: "FAQ",           href: "/#faq"           },
+interface NavLink {
+  label: string;
+  href: string;
+  destaque?: boolean;
+}
+
+const NAV_LINKS: NavLink[] = [
+  { label: "Como funciona",      href: "/#como-funciona"                   },
+  { label: "Serviços",           href: "/#servicos"                        },
+  { label: "Ferramentas",        href: "/ferramentas"                      },
+  { label: "Simulador de preço", href: "/simulador",     destaque: true    },
+  { label: "Preços",             href: "/#precos"                          },
+  { label: "Blog",               href: "/blog"                             },
+  { label: "FAQ",                href: "/#faq"                             },
 ];
 
 export default function PublicNavbar() {
@@ -47,9 +54,16 @@ export default function PublicNavbar() {
 
         {/* Desktop nav */}
         <ul className="hidden lg:flex items-center gap-7 text-sm text-white/55">
-          {NAV_LINKS.map(({ label, href }) => (
+          {NAV_LINKS.map(({ label, href, destaque }) => (
             <li key={href}>
-              <Link href={href} className="hover:text-white transition-colors tracking-wide">
+              <Link
+                href={href}
+                className={
+                  destaque
+                    ? "text-brand-gold hover:text-brand-gold-light transition-colors tracking-wide font-semibold"
+                    : "hover:text-white transition-colors tracking-wide"
+                }
+              >
                 {label}
               </Link>
             </li>
@@ -86,12 +100,16 @@ export default function PublicNavbar() {
       {/* Mobile drawer */}
       {open && (
         <div className="lg:hidden bg-brand-primary border-t border-white/5 px-6 py-5 flex flex-col gap-4">
-          {NAV_LINKS.map(({ label, href }) => (
+          {NAV_LINKS.map(({ label, href, destaque }) => (
             <Link
               key={href}
               href={href}
               onClick={() => setOpen(false)}
-              className="text-white/60 hover:text-white text-base py-1 transition-colors"
+              className={
+                destaque
+                  ? "text-brand-gold hover:text-brand-gold-light text-base py-1 transition-colors font-semibold"
+                  : "text-white/60 hover:text-white text-base py-1 transition-colors"
+              }
             >
               {label}
             </Link>

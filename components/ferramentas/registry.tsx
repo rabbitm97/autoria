@@ -5,6 +5,7 @@ export type EstadoFerramenta = "gratis" | "pago" | "breve";
 export type CategoriaFerramenta =
   | "Análise e texto"
   | "Arquivos e formatos"
+  | "Impressão"
   | "Capa e imagem"
   | "Áudio";
 
@@ -36,6 +37,7 @@ export interface FerramentaCard {
 export const CATEGORIAS_ORDEM: readonly CategoriaFerramenta[] = [
   "Análise e texto",
   "Arquivos e formatos",
+  "Impressão",
   "Capa e imagem",
   "Áudio",
 ] as const;
@@ -135,6 +137,18 @@ export const TOOLS: readonly FerramentaCard[] = [
     estado: "pago",
     preco_creditos: 150,
     icon: PdfIcon,
+  },
+
+  // ── Impressão ───────────────────────────────────────────────────────────────
+  {
+    id: "simulador-impressao",
+    label: "Simulador de preço",
+    desc: "Quanto custa imprimir seu livro: formato, papel, tiragem e frete na hora.",
+    categoria: "Impressão",
+    estado: "gratis",
+    href: "/simulador",
+    href_publico: "/simulador",
+    icon: CalcIcon,
   },
 
   // ── Capa e imagem ───────────────────────────────────────────────────────────
@@ -271,6 +285,20 @@ function DocIcon() {
       <line x1="8" y1="13" x2="16" y2="13"/>
       <line x1="8" y1="17" x2="16" y2="17"/>
       <line x1="8" y1="9" x2="10" y2="9"/>
+    </svg>
+  );
+}
+function CalcIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="3" width="16" height="18" rx="2"/>
+      <line x1="8" y1="7" x2="16" y2="7"/>
+      <line x1="8" y1="12" x2="8" y2="12"/>
+      <line x1="12" y1="12" x2="12" y2="12"/>
+      <line x1="16" y1="12" x2="16" y2="12"/>
+      <line x1="8" y1="16" x2="8" y2="16"/>
+      <line x1="12" y1="16" x2="12" y2="16"/>
+      <line x1="16" y1="16" x2="16" y2="16"/>
     </svg>
   );
 }
