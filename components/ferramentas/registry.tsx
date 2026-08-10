@@ -45,6 +45,16 @@ export const CATEGORIAS_ORDEM: readonly CategoriaFerramenta[] = [
 export const TOOLS: readonly FerramentaCard[] = [
   // ── Análise e texto ─────────────────────────────────────────────────────────
   {
+    id: "ficha-catalografica",
+    label: "Ficha catalográfica",
+    desc: "Guia honesto: o que é, quem pode elaborar e como obter a sua.",
+    categoria: "Análise e texto",
+    estado: "gratis",
+    href: "/ferramentas/ficha-catalografica",
+    href_publico: "/ferramentas/ficha-catalografica",
+    icon: FichaIcon,
+  },
+  {
     id: "diagnostico-expresso",
     label: "Diagnóstico Expresso",
     desc: "Análise editorial rápida de uma amostra do seu manuscrito.",
@@ -328,6 +338,16 @@ function CheckDocIcon() {
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
       <polyline points="14 2 14 8 20 8"/>
       <polyline points="9 14 11 16 15 12"/>
+    </svg>
+  );
+}
+function FichaIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="5" width="16" height="14" rx="1.5"/>
+      <line x1="7" y1="9"  x2="17" y2="9"/>
+      <line x1="7" y1="12" x2="15" y2="12"/>
+      <line x1="7" y1="15" x2="13" y2="15"/>
     </svg>
   );
 }
