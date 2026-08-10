@@ -163,6 +163,16 @@ export const TOOLS: readonly FerramentaCard[] = [
     icon: PaletteIcon,
   },
   {
+    id: "codigo-barras-isbn",
+    label: "Código de barras ISBN",
+    desc: "Cole o ISBN e baixe o EAN-13 em SVG ou PNG, pronto pra capa.",
+    categoria: "Capa e imagem",
+    estado: "gratis",
+    href: "/ferramentas/codigo-barras-isbn",
+    href_publico: "/ferramentas/codigo-barras-isbn",
+    icon: BarcodeIcon,
+  },
+  {
     id: "capa-ia",
     label: "Capa com IA",
     desc: "Capas em 4K geradas por IA a partir do seu briefing.",
@@ -299,6 +309,18 @@ function CalcIcon() {
       <line x1="8" y1="16" x2="8" y2="16"/>
       <line x1="12" y1="16" x2="12" y2="16"/>
       <line x1="16" y1="16" x2="16" y2="16"/>
+    </svg>
+  );
+}
+function BarcodeIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4"  y1="5" x2="4"  y2="19"/>
+      <line x1="7"  y1="5" x2="7"  y2="19"/>
+      <line x1="10" y1="5" x2="10" y2="19"/>
+      <line x1="13" y1="5" x2="13" y2="19"/>
+      <line x1="17" y1="5" x2="17" y2="19"/>
+      <line x1="20" y1="5" x2="20" y2="19"/>
     </svg>
   );
 }
