@@ -50,8 +50,8 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Guia honesto: o que é, quem pode elaborar e como obter a sua.",
     categoria: "Análise e texto",
     estado: "gratis",
-    href: "/ferramentas/ficha-catalografica",
-    href_publico: "/ferramentas/ficha-catalografica",
+    href: "/blog/ficha-catalografica-guia",
+    href_publico: "/blog/ficha-catalografica-guia",
     icon: FichaIcon,
   },
   {

@@ -224,6 +224,112 @@ export const POSTS: Post[] = [
     ],
   },
 
+  // ── Post 4 ────────────────────────────────────────────────────────────────
+  {
+    slug: "ficha-catalografica-guia",
+    title: "Ficha catalográfica: o que é, quem pode fazer e como obter a sua",
+    excerpt: "Antes de procurar um \"gerador grátis\", leia isto — vai te poupar retrabalho e uma ficha sem validade.",
+    date: "11 Agosto 2026",
+    category: "Publicação",
+    readTime: "6 min",
+    coverColor: "from-amber-800 to-yellow-950",
+    content: [
+      {
+        type: "p",
+        text: "Antes de procurar um \"gerador grátis\", leia isto — vai te poupar retrabalho e uma ficha sem validade.",
+      },
+      {
+        type: "h2",
+        text: "O que é a ficha catalográfica",
+      },
+      {
+        type: "p",
+        text: "A ficha catalográfica é aquele bloco padronizado de dados que aparece no verso da página de rosto do livro: título, autor, edição, editora, ano, ISBN, número de páginas, assuntos e os códigos de classificação usados por bibliotecas (como CDD ou CDU). Ela existe pra que qualquer biblioteca do país catalogue seu livro do mesmo jeito, sem precisar interpretar nada.",
+      },
+      {
+        type: "h2",
+        text: "Ela é obrigatória?",
+      },
+      {
+        type: "p",
+        text: "Depende do destino do livro. Nenhuma lei obriga um livro a ter ficha catalográfica pra ser publicado ou vendido. Na prática, ela é exigida ou fortemente recomendada quando o livro vai circular por instituições: editais e prêmios literários, compras governamentais, doação e distribuição pra bibliotecas, acervos universitários. Pra vender em loja online ou no seu próprio site, ela não é requisito — mas dá ao livro acabamento profissional e abre essas portas desde a primeira edição.",
+      },
+      {
+        type: "h2",
+        text: "Quem pode elaborar (e por que \"gerador grátis\" não vale)",
+      },
+      {
+        type: "p",
+        text: "A elaboração de ficha catalográfica é atividade privativa de bibliotecário registrado no Conselho Regional de Biblioteconomia (CRB) — é o que estabelecem a Lei 4.084/62 e a Lei 9.674/98, que regulamentam a profissão, e a Resolução CFB 184/2017, que trata especificamente da ficha. Uma ficha válida sai com o nome e o número de registro do bibliotecário responsável.",
+      },
+      {
+        type: "p",
+        text: "É por isso que a Autoria não oferece um \"gerador automático de ficha\": um bloco de texto imitando ficha, sem bibliotecário responsável, não tem validade — e é exatamente o que os geradores gratuitos entregam.",
+      },
+      {
+        type: "callout",
+        text: "Se o seu livro precisa de ficha, ele precisa de um bibliotecário.",
+      },
+      {
+        type: "h2",
+        text: "Como obter a sua (passo a passo)",
+      },
+      {
+        type: "ul",
+        items: [
+          "1. Reúna os dados do livro — Título e subtítulo, nome do autor como vai impresso, edição, cidade e ano de publicação, ISBN, número de páginas, formato em centímetros e de 3 a 5 palavras-chave sobre o tema. Com isso em mãos, o trabalho do bibliotecário flui.",
+          "2. Encontre um bibliotecário com CRB — Há profissionais autônomos que atendem online em todo o Brasil — busque por \"ficha catalográfica bibliotecário CRB\" ou consulte o site do CRB da sua região. Confirme que a ficha virá com nome e número de registro.",
+          "3. Receba e posicione — A ficha chega como texto ou imagem diagramável. Ela entra no verso da página de rosto, na metade inferior — junto dos créditos da edição.",
+          "4. Confira o ISBN — O ISBN que aparece na ficha precisa ser o mesmo do código de barras e do cadastro do livro. Divergência aí é o erro mais comum — e o mais chato de corrigir depois de impresso.",
+        ],
+      },
+      {
+        type: "p",
+        text: "O serviço é rápido (em geral poucos dias) e o investimento é pequeno perto do custo de uma edição — consulte os valores diretamente com o profissional.",
+      },
+      {
+        type: "h2",
+        text: "Perguntas frequentes",
+      },
+      {
+        type: "h2",
+        text: "Ficha catalográfica e ISBN são a mesma coisa?",
+      },
+      {
+        type: "p",
+        text: "Não. O ISBN é o registro numérico do livro, emitido pela Câmara Brasileira do Livro. A ficha catalográfica é a descrição bibliográfica padronizada, elaborada por bibliotecário — e ela inclui o ISBN entre os dados.",
+      },
+      {
+        type: "h2",
+        text: "Posso publicar sem ficha catalográfica?",
+      },
+      {
+        type: "p",
+        text: "Pode. Ela só se torna exigência em contextos institucionais (editais, bibliotecas, compras públicas). Muitos livros vendidos online não têm ficha — mas ter é sinal de edição cuidada.",
+      },
+      {
+        type: "h2",
+        text: "Quanto custa uma ficha catalográfica?",
+      },
+      {
+        type: "p",
+        text: "Varia por profissional e prazo. Consulte bibliotecários registrados — o orçamento é rápido e o serviço costuma ser acessível.",
+      },
+      {
+        type: "h2",
+        text: "Onde a ficha entra no livro?",
+      },
+      {
+        type: "p",
+        text: "No verso da página de rosto (a chamada página de créditos), na parte inferior, dentro de um retângulo — posição padronizada que os bibliotecários e as gráficas conhecem.",
+      },
+      {
+        type: "callout",
+        text: "Publicando seu livro? Verifique grátis se o PDF está pronto pra gráfica e simule o preço de impressão em useautoria.com/ferramentas — sem cadastro.",
+      },
+    ],
+  },
+
   // ── MODELO PARA NOVO POST — copie e cole abaixo desta linha ───────────────
   // {
   //   slug: "meu-novo-post",
