@@ -1,13 +1,23 @@
 import type { Metadata } from "next";
 import BrandLogo from "./_components/brand-logo";
 import Link from "next/link";
+import Atos from "./_components/atos";
 import FAQ from "./_components/faq";
-import HowItWorks from "./_components/how-it-works";
 import PublicNavbar from "./_components/public-navbar";
 import TypeField from "./_components/type-field";
 import { PLANO_PRECO_CENTAVOS, formatarPrecoPlano } from "@/lib/planos";
 import { FORMATOS_LIVRO } from "@/lib/formatos";
 import { TOOLS } from "@/components/ferramentas/registry";
+
+/** Cortes de vídeo dos atos (DESIGN-2B). Preencher com os paths em
+ *  /public/media quando o Mateus entregar os cortes; null = mostra o
+ *  visual estático atual do ato. */
+const VIDEOS_ATOS: Record<1 | 2 | 3 | 4, string | null> = {
+  1: null,
+  2: null,
+  3: null,
+  4: null,
+};
 
 const FERRAMENTAS_HOME = [
   "simulador-impressao",
@@ -111,14 +121,14 @@ function Hero() {
 
 function FeatureEditorial() {
   return (
-    <section id="servicos" className="bg-brand-primary py-28">
+    <section id="servicos" className="bg-brand-surface py-28">
       <div className="max-w-7xl mx-auto px-8">
         <div className="grid grid-cols-2 gap-20 items-center">
 
-          {/* Visual */}
+          {/* Visual — o mockup escuro FICA escuro (objeto de contraste sobre papel) */}
           <div className="relative" aria-hidden="true">
-            <div className="absolute -inset-4 bg-brand-gold/5 rounded-3xl blur-2xl" />
-            <div className="relative bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+            <div className="absolute -inset-4 bg-brand-primary/10 rounded-3xl blur-2xl" />
+            <div className="relative bg-brand-primary border border-brand-primary/10 rounded-2xl overflow-hidden shadow-2xl shadow-brand-primary/10">
               {/* Header bar */}
               <div className="border-b border-white/5 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -168,10 +178,10 @@ function FeatureEditorial() {
             <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-4">
               Revisão Editorial
             </p>
-            <h2 className="font-heading text-5xl text-white leading-tight mb-6">
+            <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-6">
               IA que entende<br />o português<br />do jeito certo
             </h2>
-            <p className="text-white/60 text-lg leading-relaxed mb-8">
+            <p className="text-brand-primary/70 text-lg leading-relaxed mb-8">
               Enquanto outras plataformas usam ferramentas genéricas em inglês,
               a Autoria usa o modelo Claude Sonnet, da Anthropic,
               ajustado especificamente para o português brasileiro. Cada sugestão
@@ -185,7 +195,7 @@ function FeatureEditorial() {
                 "Geração de sinopse em 3 formatos (curta, média, longa)",
                 "Palavras-chave otimizadas para SEO editorial",
               ].map((item) => (
-                <li key={item} className="flex items-start gap-3 text-white/70 text-base">
+                <li key={item} className="flex items-start gap-3 text-brand-primary/70 text-base">
                   <span className="text-brand-gold mt-1 shrink-0 text-sm">✓</span>
                   {item}
                 </li>
@@ -297,16 +307,16 @@ function FeatureCapa() {
 function FeatureFormatos() {
   const formatosDisponiveis = FORMATOS_LIVRO.map(f => f.dimensoes).join(", ");
   return (
-    <section className="bg-brand-primary py-28">
+    <section className="bg-brand-paper-deep py-28">
       <div className="max-w-7xl mx-auto px-8">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
             Formatos
           </p>
-          <h2 className="font-heading text-5xl text-white leading-tight mb-5">
+          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
             Um manuscrito.<br />Dois formatos.
           </h2>
-          <p className="text-white/55 text-lg leading-relaxed">
+          <p className="text-brand-primary/60 text-lg leading-relaxed">
             eBook e livro físico gerados a partir do mesmo arquivo,
             em um único fluxo de trabalho.
           </p>
@@ -329,20 +339,20 @@ function FeatureFormatos() {
               items: ["Impressão sob demanda, sem tiragem mínima", `Formatos: ${formatosDisponiveis}`, "Alta resolução 300 DPI", "Sangria e marcas de corte"],
             },
           ].map((f) => (
-            <div key={f.title} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:border-brand-gold/30 transition-all group">
+            <div key={f.title} className="bg-white border border-brand-primary/10 rounded-2xl p-8 hover:border-brand-gold/40 hover:shadow-sm transition-all group">
               <div className="flex items-center justify-between mb-6">
                 <div className="w-12 h-12 rounded-xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center text-brand-gold text-2xl">
                   {f.icon}
                 </div>
-                <span className="text-white/30 text-xs font-semibold uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full">{f.sub}</span>
+                <span className="text-brand-primary/50 text-xs font-semibold uppercase tracking-widest bg-brand-paper-deep px-3 py-1 rounded-full">{f.sub}</span>
               </div>
 
-              <h3 className="font-heading text-2xl text-white mb-3 group-hover:text-brand-gold transition-colors">{f.title}</h3>
-              <p className="text-white/50 text-sm leading-relaxed mb-6">{f.desc}</p>
+              <h3 className="font-heading text-2xl text-brand-primary mb-3 group-hover:text-brand-gold transition-colors">{f.title}</h3>
+              <p className="text-brand-primary/60 text-sm leading-relaxed mb-6">{f.desc}</p>
 
               <ul className="space-y-2">
                 {f.items.map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-white/60 text-sm">
+                  <li key={item} className="flex items-center gap-2 text-brand-primary/70 text-sm">
                     <span className="w-1 h-1 rounded-full bg-brand-gold/60 shrink-0" />
                     {item}
                   </li>
@@ -835,7 +845,7 @@ export default function Home() {
       <PublicNavbar tone="light" />
       <main>
         <Hero />
-        <HowItWorks />
+        <Atos videos={VIDEOS_ATOS} />
         <FeatureEditorial />
         <FeatureCapa />
         <FeatureFormatos />
