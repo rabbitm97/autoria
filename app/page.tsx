@@ -4,6 +4,7 @@ import Link from "next/link";
 import FAQ from "./_components/faq";
 import HowItWorks from "./_components/how-it-works";
 import PublicNavbar from "./_components/public-navbar";
+import TypeField from "./_components/type-field";
 import { PLANO_PRECO_CENTAVOS, formatarPrecoPlano } from "@/lib/planos";
 import { FORMATOS_LIVRO } from "@/lib/formatos";
 import { TOOLS } from "@/components/ferramentas/registry";
@@ -89,144 +90,35 @@ function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
 
 function Hero() {
   return (
-    <section className="bg-brand-primary pt-16 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-8 pt-20 pb-0">
-        <div className="grid grid-cols-[1fr_1fr] gap-16 items-center">
+    <section className="relative bg-brand-surface overflow-hidden">
+      <TypeField />
+      <div className="relative z-10 max-w-4xl mx-auto px-6 md:px-8 pt-40 pb-32 text-center">
+        <h1 className="font-heading text-brand-primary text-6xl md:text-7xl xl:text-8xl leading-[1.02] mb-8">
+          Do manuscrito{" "}
+          <span className="text-brand-gold">ao livro</span>{" "}
+          pronto.
+        </h1>
 
-          {/* Left */}
-          <div className="pb-20">
-            <div className="inline-flex items-center gap-2 bg-brand-gold/10 border border-brand-gold/25 rounded-full px-4 py-1.5 text-brand-gold text-xs font-semibold uppercase tracking-widest mb-8">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse" />
-              Plataforma de publicação com IA
-            </div>
+        <p className="text-brand-primary/60 text-lg md:text-xl leading-relaxed mb-12 max-w-2xl mx-auto">
+          Revisão, capa e diagramação com IA — e impressão a partir de 1 exemplar.
+        </p>
 
-            <h1 className="font-heading text-[3.75rem] xl:text-[4.5rem] text-white leading-[1.02] mb-6">
-              Do manuscrito{" "}
-              <span className="text-brand-gold">ao livro</span>{" "}
-              pronto.
-            </h1>
-
-            <p className="text-white/60 text-xl leading-relaxed mb-10 max-w-lg">
-              A Autoria usa inteligência artificial para transformar seu manuscrito
-              em livro pronto para publicar — com revisão, capa e diagramação.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link
-                href="/cadastro"
-                className="group flex-1 bg-brand-gold text-brand-primary rounded-xl px-6 py-4 font-bold text-sm hover:bg-brand-gold-light active:scale-[0.99] transition-all"
-              >
-                Tenho um manuscrito
-                <span className="block text-[11px] font-medium opacity-70 mt-0.5">Revisão, capa e diagramação com IA</span>
-              </Link>
-              <Link
-                href={"/cadastro?next=" + encodeURIComponent("/dashboard/livro-pronto")}
-                className="group flex-1 border border-white/20 text-white rounded-xl px-6 py-4 font-bold text-sm hover:border-brand-gold/60 hover:text-brand-gold active:scale-[0.99] transition-all"
-              >
-                Meu livro está pronto
-                <span className="block text-[11px] font-medium opacity-60 mt-0.5">Verifique, veja a prova e imprima</span>
-              </Link>
-            </div>
-          </div>
-
-          {/* Right: floating dashboard */}
-          <div className="relative flex items-end justify-center pb-0" aria-hidden="true">
-            {/* Glow */}
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-96 h-64 bg-brand-gold/10 rounded-full blur-3xl" />
-
-            {/* Main card */}
-            <div className="relative w-full max-w-md">
-              {/* Browser chrome */}
-              <div className="bg-[#12122a] rounded-t-2xl border border-white/10 overflow-hidden shadow-2xl">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5 bg-white/3">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-500/40" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-500/40" />
-                    <div className="w-3 h-3 rounded-full bg-green-500/40" />
-                  </div>
-                  <div className="flex-1 mx-4 bg-white/5 rounded px-3 py-1 text-white/20 text-xs font-mono">
-                    useautoria.com/dashboard
-                  </div>
-                </div>
-
-                {/* Sidebar + content */}
-                <div className="flex h-80">
-                  {/* Sidebar */}
-                  <div className="w-12 bg-white/3 border-r border-white/5 flex flex-col items-center py-4 gap-3">
-                    {["⌂","✦","◈","⊟","♫","⊕"].map((icon, i) => (
-                      <div key={i} className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs transition-colors ${i === 0 ? "bg-brand-gold text-brand-primary" : "text-white/20 hover:text-white/50"}`}>
-                        {icon}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Main content */}
-                  <div className="flex-1 p-5 overflow-hidden">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="text-white/30 text-[10px] uppercase tracking-widest mb-0.5">Projeto ativo</p>
-                        <p className="text-white text-sm font-semibold">O Último Horizonte</p>
-                      </div>
-                      <div className="bg-brand-gold/15 text-brand-gold text-[10px] font-bold px-2 py-1 rounded-full border border-brand-gold/20">
-                        Plano Pro
-                      </div>
-                    </div>
-
-                    {/* Progress */}
-                    <div className="mb-4">
-                      <div className="flex justify-between mb-2">
-                        <span className="text-white/40 text-[10px]">Progresso da publicação</span>
-                        <span className="text-brand-gold text-[10px] font-semibold">Etapa 4/6 — Capa</span>
-                      </div>
-                      <div className="flex gap-1">
-                        {["Upload","Diagnóst.","Revisão","Capa","Diagr.","Publicar"].map((s, i) => (
-                          <div key={i} className="flex-1">
-                            <div className={`h-1 rounded-full mb-1 ${i < 3 ? "bg-emerald-400" : i === 3 ? "bg-brand-gold" : "bg-white/10"}`} />
-                            <p className={`text-[8px] text-center ${i < 3 ? "text-emerald-400/70" : i === 3 ? "text-brand-gold" : "text-white/20"}`}>{s}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Cover preview + action */}
-                    <div className="flex gap-3">
-                      <div className="w-14 h-[76px] rounded-md bg-gradient-to-br from-brand-gold via-amber-600 to-amber-800 shadow-lg flex-shrink-0 flex items-end justify-center pb-1.5">
-                        <div className="w-1 h-10 bg-black/20 rounded-full" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-white/50 text-[10px] mb-1">3 opções geradas</p>
-                        <div className="flex gap-1.5 mb-2">
-                          {[1,2,3].map(n => (
-                            <div key={n} className={`w-8 h-10 rounded bg-gradient-to-br flex-shrink-0 ${n===1?"from-indigo-600 to-purple-900 ring-2 ring-brand-gold":n===2?"from-teal-600 to-cyan-900":"from-rose-600 to-red-900"}`} />
-                          ))}
-                        </div>
-                        <button className="bg-brand-gold text-brand-primary text-[10px] font-bold px-3 py-1.5 rounded-lg w-full">
-                          Escolher capa →
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Floating cards */}
-              <div className="absolute -left-10 top-16 bg-white rounded-xl shadow-xl border border-zinc-100 px-4 py-3 w-44">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-xs">✓</div>
-                  <span className="text-zinc-700 text-xs font-semibold">Revisão concluída</span>
-                </div>
-                <p className="text-zinc-400 text-[10px]">47 sugestões aplicadas</p>
-              </div>
-
-              <div className="absolute -right-8 top-32 bg-brand-primary rounded-xl shadow-xl border border-white/10 px-4 py-3 w-40">
-                <p className="text-white/40 text-[10px] mb-1">Capa</p>
-                <p className="text-brand-gold font-heading text-xl">Pronta</p>
-                <p className="text-white/30 text-[9px] mt-0.5">frente + lombada</p>
-              </div>
-            </div>
-          </div>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-xl mx-auto">
+          <Link
+            href="/cadastro"
+            className="group flex-1 bg-brand-primary text-white rounded-xl px-6 py-4 font-bold text-sm hover:bg-brand-primary/90 active:scale-[0.99] transition-all"
+          >
+            Tenho um manuscrito
+            <span className="block text-[11px] font-medium opacity-70 mt-0.5">Revisão, capa e diagramação com IA</span>
+          </Link>
+          <Link
+            href={"/cadastro?next=" + encodeURIComponent("/dashboard/livro-pronto")}
+            className="group flex-1 border border-brand-primary/25 text-brand-primary rounded-xl px-6 py-4 font-bold text-sm hover:border-brand-gold hover:text-brand-primary active:scale-[0.99] transition-all"
+          >
+            Meu livro está pronto
+            <span className="block text-[11px] font-medium opacity-60 mt-0.5">Verifique, veja a prova e imprima</span>
+          </Link>
         </div>
-
       </div>
     </section>
   );
@@ -956,7 +848,7 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PublicNavbar />
+      <PublicNavbar tone="light" />
       <main>
         <Hero />
         <HowItWorks />
