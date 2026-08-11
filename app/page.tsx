@@ -546,27 +546,44 @@ function ExpressSection() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-          {cards.map((c) => (
-            <div
-              key={c.titulo}
-              className="bg-white rounded-2xl border border-zinc-100 p-7 hover:border-brand-gold/40 hover:shadow-sm transition-all"
-            >
-              <h3 className="font-heading text-xl text-brand-primary mb-3">
-                {c.titulo}
-              </h3>
-              <p className="text-zinc-600 text-sm leading-relaxed mb-4">
-                {c.texto}
-              </p>
-              {c.link && (
+          {cards.map((c) => {
+            const body = (
+              <>
+                <h3 className="font-heading text-xl text-brand-primary mb-3">
+                  {c.titulo}
+                </h3>
+                <p className="text-zinc-600 text-sm leading-relaxed mb-4">
+                  {c.texto}
+                </p>
+                {c.link && (
+                  <span className="text-brand-gold text-sm font-semibold group-hover:underline">
+                    {c.link.label}
+                  </span>
+                )}
+              </>
+            );
+
+            if (c.link) {
+              return (
                 <Link
+                  key={c.titulo}
                   href={c.link.href}
-                  className="text-brand-gold text-sm font-semibold hover:underline"
+                  className="group block bg-white rounded-2xl border border-zinc-100 p-7 hover:border-brand-gold/40 hover:shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer"
                 >
-                  {c.link.label}
+                  {body}
                 </Link>
-              )}
-            </div>
-          ))}
+              );
+            }
+
+            return (
+              <div
+                key={c.titulo}
+                className="bg-white rounded-2xl border border-zinc-100 p-7"
+              >
+                {body}
+              </div>
+            );
+          })}
         </div>
 
         <div className="text-center mb-10">
