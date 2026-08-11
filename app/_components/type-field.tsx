@@ -65,7 +65,7 @@ export default function TypeField({ className }: { className?: string }) {
           glyph: GLYPHS[(Math.random() * GLYPHS.length) | 0],
           size: kind === "cmyk" ? 3 + Math.random() * 2 : 10 + Math.random() * 14,
           color: kind === "cmyk" ? CMYK[(Math.random() * 4) | 0] : gold ? GOLD : INK,
-          alpha: kind === "cmyk" ? 0.3 : 0.08 + Math.random() * 0.14,
+          alpha: kind === "cmyk" ? 0.3 : 0.10 + Math.random() * 0.16,
         };
       });
     };

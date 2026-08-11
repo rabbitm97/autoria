@@ -84,7 +84,7 @@ const PLANS = [
 
 function Hero() {
   return (
-    <section className="relative bg-brand-surface overflow-hidden">
+    <section className="relative bg-white overflow-hidden">
       <TypeField />
       <div className="relative z-10 max-w-4xl mx-auto px-6 md:px-8 pt-40 pb-32 text-center">
         <h1 className="font-heading text-brand-primary text-6xl md:text-7xl xl:text-8xl leading-[1.02] mb-8">
@@ -121,7 +121,7 @@ function Hero() {
 
 function FeatureEditorial() {
   return (
-    <section id="servicos" className="bg-brand-surface py-28 overflow-x-clip">
+    <section id="servicos" className="bg-white py-28 overflow-x-clip border-t border-brand-primary/8">
       <div className="max-w-7xl mx-auto px-8">
         <div className="grid grid-cols-2 gap-20 items-center">
 
@@ -217,7 +217,7 @@ function FeatureEditorial() {
 
 function FeatureCapa() {
   return (
-    <section className="bg-brand-surface py-28 overflow-x-clip">
+    <section className="bg-brand-surface py-28 overflow-x-clip border-t border-brand-primary/8">
       <div className="max-w-7xl mx-auto px-8">
         <div className="grid grid-cols-2 gap-20 items-center">
 
@@ -307,7 +307,7 @@ function FeatureCapa() {
 function FeatureFormatos() {
   const formatosDisponiveis = FORMATOS_LIVRO.map(f => f.dimensoes).join(", ");
   return (
-    <section className="bg-brand-paper-deep py-28">
+    <section className="bg-white py-28 border-t border-brand-primary/8">
       <div className="max-w-7xl mx-auto px-8">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
@@ -339,7 +339,7 @@ function FeatureFormatos() {
               items: ["Impressão sob demanda, sem tiragem mínima", `Formatos: ${formatosDisponiveis}`, "Alta resolução 300 DPI", "Sangria e marcas de corte"],
             },
           ].map((f) => (
-            <div key={f.title} className="bg-white border border-brand-primary/10 rounded-2xl p-8 hover:border-brand-gold/40 hover:shadow-sm transition-all group">
+            <div key={f.title} className="bg-white border border-brand-primary/15 rounded-2xl p-8 shadow-sm shadow-brand-primary/5 hover:border-brand-gold/40 hover:shadow-md transition-all group">
               <div className="flex items-center justify-between mb-6">
                 <div className="w-12 h-12 rounded-xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center text-brand-gold text-2xl">
                   {f.icon}
@@ -395,7 +395,7 @@ function ExpressSection() {
   ];
 
   return (
-    <section id="livro-pronto" className="bg-brand-surface py-28">
+    <section id="livro-pronto" className="bg-brand-surface py-28 border-t border-brand-primary/8">
       <div className="max-w-7xl mx-auto px-8">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
@@ -600,7 +600,7 @@ function FerramentasHome() {
     .filter((t): t is NonNullable<typeof t> => Boolean(t?.href_publico));
 
   return (
-    <section id="ferramentas-gratis" className="bg-brand-surface py-28">
+    <section id="ferramentas-gratis" className="bg-white py-28">
       <div className="max-w-7xl mx-auto px-8">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
@@ -845,7 +845,9 @@ export default function Home() {
       <PublicNavbar tone="light" />
       <main>
         <Hero />
-        <Atos videos={VIDEOS_ATOS} />
+        <div className="border-t border-brand-primary/8">
+          <Atos videos={VIDEOS_ATOS} />
+        </div>
         <FeatureEditorial />
         <FeatureCapa />
         <FeatureFormatos />
@@ -853,7 +855,9 @@ export default function Home() {
         <SimuladorBand />
         <Pricing />
         <FerramentasHome />
-        <FAQ />
+        <div className="border-t border-brand-primary/8">
+          <FAQ />
+        </div>
         <FinalCTA />
       </main>
       <Footer />

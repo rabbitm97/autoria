@@ -32,10 +32,10 @@ export default function PublicNavbar({ tone = "dark" }: { tone?: Tone } = {}) {
   }, []);
 
   const shellBase = light
-    ? "bg-brand-surface/90 backdrop-blur-md border-b border-brand-primary/10"
+    ? "bg-white/85 backdrop-blur-md border-b border-brand-primary/10"
     : "bg-brand-primary/95 backdrop-blur-md border-b border-white/5";
   const shellScrolled = light
-    ? "bg-brand-surface/95 backdrop-blur-md shadow-sm shadow-brand-primary/5 border-b border-brand-primary/10"
+    ? "bg-white/95 backdrop-blur-md shadow-sm shadow-brand-primary/5 border-b border-brand-primary/10"
     : "bg-brand-primary/98 backdrop-blur-md shadow-lg shadow-black/20 border-b border-white/5";
 
   const linkBase = light
@@ -53,7 +53,7 @@ export default function PublicNavbar({ tone = "dark" }: { tone?: Tone } = {}) {
   const hamburgerBar = light ? "bg-brand-primary/70" : "bg-white/70";
 
   const drawerShell = light
-    ? "bg-brand-surface border-t border-brand-primary/10"
+    ? "bg-white border-t border-brand-primary/10"
     : "bg-brand-primary border-t border-white/5";
   const drawerLink = light
     ? "text-brand-primary/70 hover:text-brand-primary text-base py-1 transition-colors"
