@@ -346,7 +346,7 @@ export default function NovoProjetoPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-full bg-zinc-50">
       <main className="max-w-2xl mx-auto px-4 py-10">
 
         {/* Card */}

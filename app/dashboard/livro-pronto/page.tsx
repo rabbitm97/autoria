@@ -523,7 +523,7 @@ export default function LivroProntoPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-full bg-zinc-50">
       <main className="max-w-2xl mx-auto px-4 py-10">
 
         <div className="bg-white rounded-2xl shadow-sm border border-zinc-100 overflow-hidden">

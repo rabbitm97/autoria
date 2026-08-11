@@ -44,7 +44,7 @@ export default async function PreviewPage({ params }: Props) {
   // Empty state: miolo never generated
   if (!dadosMiolo?.config) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
+      <div className="min-h-dvh bg-zinc-950 flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-8 space-y-5">
           <div className="space-y-2">
             <h1 className="text-xl font-semibold text-zinc-100">Gere o miolo primeiro</h1>

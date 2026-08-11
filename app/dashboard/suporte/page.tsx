@@ -102,7 +102,7 @@ export default function SuportePage() {
                   </p>
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex-1 overflow-y-auto scrollbar-brand p-5 space-y-4">
                   {conversa.map((msg, i) => (
                     <div key={i} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
                       <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold

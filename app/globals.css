@@ -153,3 +153,19 @@
     letter-spacing: -0.01em;
   }
 }
+
+/* SHELL-1: barra de rolagem fina e da marca — usar em toda região
+   rolável intencional (main do dashboard, sidebar quando o menu passar
+   da tela, painéis de chat, etc.). NUNCA aplicar em `body`. */
+.scrollbar-brand {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(26, 26, 46, 0.25) transparent;
+}
+.scrollbar-brand::-webkit-scrollbar        { width: 8px; height: 8px; }
+.scrollbar-brand::-webkit-scrollbar-thumb  { background: rgba(26, 26, 46, 0.22); border-radius: 8px; }
+.scrollbar-brand::-webkit-scrollbar-thumb:hover { background: rgba(26, 26, 46, 0.35); }
+.scrollbar-brand::-webkit-scrollbar-track  { background: transparent; }
+
+/* SHELL-1: carrossel horizontal sem barra visível (usar com snap). */
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }

@@ -3798,7 +3798,7 @@ export default function CapaPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-full">
         <div className="w-10 h-10 rounded-full border-4 border-brand-gold border-t-transparent animate-spin" />
       </div>
     );

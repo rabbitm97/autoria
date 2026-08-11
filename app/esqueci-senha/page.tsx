@@ -29,7 +29,7 @@ export default function EsqueciSenhaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-primary flex items-center justify-center p-8">
+    <div className="min-h-dvh bg-brand-primary flex items-center justify-center p-8">
       <div className="w-full max-w-sm">
         <Link href="/" className="font-heading text-2xl text-brand-gold block mb-10">
           Autoria

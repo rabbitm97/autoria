@@ -117,7 +117,7 @@ export default function PreviewClient({ data }: { data: ProjectData }) {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#0f0f0f", color: "#e5e5e5", fontFamily: "system-ui, sans-serif" }}>
+    <div style={{ display: "flex", height: "100dvh", overflow: "hidden", background: "#0f0f0f", color: "#e5e5e5", fontFamily: "system-ui, sans-serif" }}>
 
       {/* ── Left panel: controls ─────────────────────────────────────────────── */}
       <div style={{ width: "35%", minWidth: 300, maxWidth: 420, overflowY: "auto", borderRight: "1px solid #2a2a2a", padding: "24px 20px", display: "flex", flexDirection: "column", gap: 24 }}>

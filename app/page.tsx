@@ -121,7 +121,7 @@ function Hero() {
 
 function FeatureEditorial() {
   return (
-    <section id="servicos" className="bg-brand-surface py-28">
+    <section id="servicos" className="bg-brand-surface py-28 overflow-x-clip">
       <div className="max-w-7xl mx-auto px-8">
         <div className="grid grid-cols-2 gap-20 items-center">
 
@@ -217,7 +217,7 @@ function FeatureEditorial() {
 
 function FeatureCapa() {
   return (
-    <section className="bg-brand-surface py-28">
+    <section className="bg-brand-surface py-28 overflow-x-clip">
       <div className="max-w-7xl mx-auto px-8">
         <div className="grid grid-cols-2 gap-20 items-center">
 

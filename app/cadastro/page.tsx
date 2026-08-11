@@ -113,7 +113,7 @@ function CadastroInner() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-primary flex">
+    <div className="min-h-dvh bg-brand-primary flex">
       {/* Left panel */}
       <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 border-r border-white/5 p-12">
         <Link href="/" aria-label="Autoria — página inicial" className="inline-flex">

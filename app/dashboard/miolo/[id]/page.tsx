@@ -959,7 +959,7 @@ export default function MioloPage() {
 
       ) : (
         /* ── PREVIEW ── */
-        <main className="flex flex-col" style={{ minHeight: "calc(100vh - 120px)" }}>
+        <main className="flex flex-col" style={{ minHeight: "calc(100dvh - 120px)" }}>
           {/* Top bar */}
           <div className="bg-white border-b border-zinc-100 px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -978,7 +978,7 @@ export default function MioloPage() {
 
             {/* Left "page" — info panel */}
             <div
-              className="bg-white shadow-xl flex flex-col shrink-0 overflow-y-auto"
+              className="bg-white shadow-xl flex flex-col shrink-0 overflow-y-auto scrollbar-brand"
               style={{ width: "260px", padding: "28px 22px", margin: "24px 0 24px 24px", borderRadius: "4px 0 0 4px" }}
             >
               <h3 className="font-heading text-sm text-brand-primary mb-4">Confira o miolo do seu livro</h3>
@@ -1005,7 +1005,7 @@ export default function MioloPage() {
               {(miolo?.capitulos?.length ?? 0) > 1 && (
                 <div className="mb-4">
                   <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Capítulos</p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                  <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-brand">
                     {miolo!.capitulos.map((c, i) => (
                       <button
                         key={c.id}

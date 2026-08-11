@@ -79,7 +79,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex flex-col w-60 shrink-0 h-screen bg-[#1a1a2e] border-r border-white/8 overflow-y-auto">
+    <aside className="flex flex-col w-60 shrink-0 h-full bg-[#1a1a2e] border-r border-white/8 overflow-y-auto scrollbar-brand">
 
       {/* Logo */}
       <div className="px-5 py-5 border-b border-white/8">

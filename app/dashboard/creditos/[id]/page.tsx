@@ -1105,7 +1105,7 @@ export default function CreditosPage() {
 
       ) : (
         /* ── PREVIEW ─────────────────────────────────────────────────────────── */
-        <main className="flex flex-col" style={{ minHeight: "calc(100vh - 120px)" }}>
+        <main className="flex flex-col" style={{ minHeight: "calc(100dvh - 120px)" }}>
           {/* Top bar */}
           <div className="bg-white border-b border-zinc-100 px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -1122,7 +1122,7 @@ export default function CreditosPage() {
 
             {/* Left panel */}
             <div
-              className="bg-white shadow-xl flex flex-col shrink-0 overflow-y-auto"
+              className="bg-white shadow-xl flex flex-col shrink-0 overflow-y-auto scrollbar-brand"
               style={{ width: "260px", padding: "28px 22px", margin: "24px 0 24px 24px", borderRadius: "4px 0 0 4px" }}
             >
               <h3 className="font-heading text-sm text-brand-primary mb-4">Confira a página de créditos</h3>

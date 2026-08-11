@@ -16,10 +16,12 @@ export default async function DashboardLayout({
     }
   }
 
+  // SHELL-1: moldura veste a tela (h-dvh mobile-safe), miolo é a ÚNICA
+  // região rolável. Filhos ganham min-w-0 pra não estourar horizontal.
   return (
-    <div className="flex h-screen overflow-hidden bg-brand-surface">
+    <div className="flex h-dvh overflow-hidden bg-brand-surface">
       <Sidebar />
-      <div className="flex-1 overflow-y-auto min-w-0">
+      <div className="flex-1 min-w-0 h-full overflow-y-auto scrollbar-brand [scrollbar-gutter:stable]">
         {children}
       </div>
     </div>
