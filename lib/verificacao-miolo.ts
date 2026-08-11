@@ -30,10 +30,21 @@ export type DeteccaoFonte = "pdf_boxes" | "visual" | "none";
 /**
  * Pista de detecção visual computada no cliente (rasterização + análise de
  * cantos em pdfjs). O motor a valida geometricamente antes de aceitar.
+ *
+ * `insets_mm` (v2 — FIX-F-PUB-5-02): quando o cliente resolve consenso das
+ * 4 bordas, envia os insets por eixo. O motor prefere esse caminho (fórmula
+ * `corteW = mídia − esq − dir`, `corteH = mídia − topo − fundo`); ausente,
+ * cai no caminho legado (`mídia − 2×distancia_borda_mm`) preservado.
  */
 export interface MarcasVisuaisHint {
   cantos_detectados: number;
   distancia_borda_mm: number;
+  insets_mm?: {
+    topo: number;
+    fundo: number;
+    esq: number;
+    dir: number;
+  };
 }
 
 export interface VerificacaoOk {
@@ -246,25 +257,38 @@ export async function verificarMioloBuffer(params: {
   }
 
   // ── Pista visual do cliente (só faz sentido sem boxes declarados) ─────────
-  // Se o hint bate os limiares mínimos, tenta deduzir o corte pela fórmula
-  //   corte = media − 2×distancia_borda
-  // e testar contra o formato. Aceita se algum formato conhecido fecha (só
-  // hipótese sem-sangria, porque a distância já modela a própria sangria).
-  // Se nenhum formato fecha: descarta o hint (log) e cai no MediaBox cru.
+  // v2 (FIX-F-PUB-5-02): quando `insets_mm` está presente, usa insets por eixo
+  //   corteW = mídia − esq − dir     corteH = mídia − topo − fundo
+  // — remove a hipótese de sangria simétrica que envenenava PDFs com sangrias
+  // desiguais entre eixos. Sem `insets_mm`, cai na fórmula legada
+  //   corte = mídia − 2×distancia_borda_mm
+  // (v1, preservada por retrocompat com clientes antigos).
   if (!boxesDeclarados && marcas_visuais) {
-    const { cantos_detectados, distancia_borda_mm } = marcas_visuais;
-    const hintValido =
-      Number.isFinite(cantos_detectados) &&
-      Number.isFinite(distancia_borda_mm) &&
-      cantos_detectados >= 3 &&
-      distancia_borda_mm >= 2 &&
-      distancia_borda_mm <= 15;
+    const { cantos_detectados, distancia_borda_mm, insets_mm } = marcas_visuais;
 
-    if (hintValido) {
+    // Caminho v2: insets por eixo com consenso do cliente.
+    const insetsValidos =
+      insets_mm != null &&
+      Number.isFinite(insets_mm.topo) &&
+      Number.isFinite(insets_mm.fundo) &&
+      Number.isFinite(insets_mm.esq) &&
+      Number.isFinite(insets_mm.dir) &&
+      insets_mm.topo >= 0 &&
+      insets_mm.fundo >= 0 &&
+      insets_mm.esq >= 0 &&
+      insets_mm.dir >= 0 &&
+      insets_mm.topo <= 15 &&
+      insets_mm.fundo <= 15 &&
+      insets_mm.esq <= 15 &&
+      insets_mm.dir <= 15;
+
+    if (insetsValidos && insets_mm) {
       const corteW =
-        Math.round((mediaLarguraMm - 2 * distancia_borda_mm) * 10) / 10;
+        Math.round((mediaLarguraMm - insets_mm.esq - insets_mm.dir) * 10) / 10;
       const corteH =
-        Math.round((mediaAlturaMm - 2 * distancia_borda_mm) * 10) / 10;
+        Math.round(
+          (mediaAlturaMm - insets_mm.topo - insets_mm.fundo) * 10,
+        ) / 10;
       const bateFormato = testarFormato(formato, corteW, corteH, true).bate;
       const bateOutro =
         !bateFormato &&
@@ -278,13 +302,60 @@ export async function verificarMioloBuffer(params: {
         alturaMm = corteH;
         sangriaDetectada = true;
         marcasDetectadas = true;
-        sangriaMm = Math.round(distancia_borda_mm * 10) / 10;
+        // Reporta a menor sangria por eixo (o que a impressão vai realmente
+        // preservar); condiz com o critério do TrimBox → BleedBox.
+        const sangriaXMm = (insets_mm.esq + insets_mm.dir) / 2;
+        const sangriaYMm = (insets_mm.topo + insets_mm.fundo) / 2;
+        sangriaMm =
+          Math.round(Math.min(sangriaXMm, sangriaYMm) * 10) / 10;
         deteccaoFonte = "visual";
       } else {
         console.warn(
-          "[express-verificacao] hint de marcas descartado (geometria não fecha)",
-          { mediaLarguraMm, mediaAlturaMm, distancia_borda_mm, corteW, corteH },
+          "[express-verificacao] hint v2 (insets) descartado (geometria não fecha)",
+          { mediaLarguraMm, mediaAlturaMm, insets_mm, corteW, corteH },
         );
+      }
+    } else {
+      // Caminho legado v1: `distancia_borda_mm` como média simétrica.
+      const hintValido =
+        Number.isFinite(cantos_detectados) &&
+        Number.isFinite(distancia_borda_mm) &&
+        cantos_detectados >= 3 &&
+        distancia_borda_mm >= 2 &&
+        distancia_borda_mm <= 15;
+
+      if (hintValido) {
+        const corteW =
+          Math.round((mediaLarguraMm - 2 * distancia_borda_mm) * 10) / 10;
+        const corteH =
+          Math.round((mediaAlturaMm - 2 * distancia_borda_mm) * 10) / 10;
+        const bateFormato = testarFormato(formato, corteW, corteH, true).bate;
+        const bateOutro =
+          !bateFormato &&
+          FORMATOS_LIVRO.some(
+            (f) =>
+              f.value !== formato &&
+              testarFormato(f.value, corteW, corteH, true).bate,
+          );
+        if (bateFormato || bateOutro) {
+          larguraMm = corteW;
+          alturaMm = corteH;
+          sangriaDetectada = true;
+          marcasDetectadas = true;
+          sangriaMm = Math.round(distancia_borda_mm * 10) / 10;
+          deteccaoFonte = "visual";
+        } else {
+          console.warn(
+            "[express-verificacao] hint de marcas descartado (geometria não fecha)",
+            {
+              mediaLarguraMm,
+              mediaAlturaMm,
+              distancia_borda_mm,
+              corteW,
+              corteH,
+            },
+          );
+        }
       }
     }
   }

@@ -13,6 +13,9 @@ import {
  * Aceita um hint visual do cliente e o valida em forma antes de repassar
  * ao motor. Números finitos apenas; qualquer coisa estranha → `null` (o motor
  * trata como ausente e cai no fluxo normal).
+ *
+ * v2 (FIX-F-PUB-5-02): preserva `insets_mm` quando os 4 campos são finitos —
+ * o motor prefere esse caminho sobre a fórmula legada simétrica.
  */
 function parseMarcasVisuais(raw: unknown): MarcasVisuaisHint | null {
   if (!raw || typeof raw !== "object") return null;
@@ -20,7 +23,30 @@ function parseMarcasVisuais(raw: unknown): MarcasVisuaisHint | null {
   const cantos = Number(obj.cantos_detectados);
   const dist = Number(obj.distancia_borda_mm);
   if (!Number.isFinite(cantos) || !Number.isFinite(dist)) return null;
-  return { cantos_detectados: cantos, distancia_borda_mm: dist };
+
+  let insets_mm: MarcasVisuaisHint["insets_mm"];
+  const rawInsets = obj.insets_mm;
+  if (rawInsets && typeof rawInsets === "object") {
+    const i = rawInsets as Record<string, unknown>;
+    const topo = Number(i.topo);
+    const fundo = Number(i.fundo);
+    const esq = Number(i.esq);
+    const dir = Number(i.dir);
+    if (
+      Number.isFinite(topo) &&
+      Number.isFinite(fundo) &&
+      Number.isFinite(esq) &&
+      Number.isFinite(dir)
+    ) {
+      insets_mm = { topo, fundo, esq, dir };
+    }
+  }
+
+  return {
+    cantos_detectados: cantos,
+    distancia_borda_mm: dist,
+    ...(insets_mm ? { insets_mm } : {}),
+  };
 }
 
 // Verificação declara→confere do PDF de miolo enviado pela porta Express.

@@ -2,53 +2,78 @@
 
 /**
  * Detecção VISUAL de marcas de corte em PDFs de miolo — pista para o motor
- * server-side (`_verificacao.ts`).
+ * server-side (`lib/verificacao-miolo.ts`).
  *
  * ─── Por que existe ─────────────────────────────────────────────────────────
- * `_verificacao.ts` lê TrimBox/BleedBox/MediaBox via pdf-lib quando o PDF
- * declara boxes semânticos (InDesign, Illustrator, exports profissionais).
- * PDFs sem boxes — incluindo os que o nosso próprio `gerar-pdf` produz via
- * Chromium/Puppeteer — desenham marcas de corte como conteúdo dentro da
- * sangria; sem boxes declarados, o motor cai no MediaBox cru e o formato
- * cruzado com sangria dá falso match.
+ * O motor lê TrimBox/BleedBox/MediaBox via pdf-lib quando o PDF declara boxes
+ * semânticos (InDesign, Illustrator, exports profissionais). PDFs sem boxes
+ * — incluindo os que o nosso próprio `gerar-pdf` produz via Chromium/Puppeteer
+ * — desenham marcas de corte como conteúdo dentro da sangria; sem boxes
+ * declarados, o motor cai no MediaBox cru e o formato cruzado com sangria
+ * dá falso match.
  *
- * Este módulo rasteriza a página 1 em 150 DPI no browser (via pdfjs-dist)
- * e analisa os 4 cantos procurando o padrão "linha fina horizontal + linha
- * fina vertical próximas ao canto". Se ≥3 cantos batem, devolve `cantos`
- * + `distancia_borda_mm` média — o server valida a geometria (fórmula
- * `corte = mídia − 2×distância`) antes de aceitar como marcas.
+ * ─── Modelo v2 (FIX-F-PUB-5-02) ────────────────────────────────────────────
+ * Rasteriza a página 1 em 150 DPI no browser (via pdfjs-dist) e analisa os 4
+ * cantos com PRIORS DE CLASSE FIXOS (universais, não deriváveis do formato):
+ *   - linha escura: cinza < 160
+ *   - comprimento da linha: 2mm a 12mm (@150dpi ≈ 12 a 71 px)
+ *   - janela de canto: 20mm (@150dpi ≈ 118 px)
  *
- * ─── Origem da heurística ──────────────────────────────────────────────────
- * `analisarPadraoMarca` e `detectMarcasVisual` portadas verbatim de
- * `lib/capa-analyzer.ts` (funções homônimas), substituindo `sharp` (server)
- * por `canvas` 2D (browser). Grayscale = média RGB.
+ * A GEOMETRIA é SEMPRE MEDIDA, nunca assumida:
+ *   - cada canto reporta candidatos de posição em cada eixo, medidos como
+ *     INSET À BORDA EXTERNA (espelhamento por orientação — v1 tinha bug ao
+ *     medir sempre do topo/esquerda do recorte, envenenando cantos B/R).
+ *   - o consenso por borda cruza os candidatos dos 2 cantos vizinhos com
+ *     tolerância ±2px; o inset da borda é o menor valor com consenso.
+ *
+ * Retorna `insets_mm` (topo/fundo/esq/dir) quando as 4 bordas têm consenso.
+ * Sem consenso completo, `insets_mm` fica ausente e o motor cai na fórmula
+ * legada `média − 2×distância` (mantida por retrocompat).
  *
  * ─── Contrato ──────────────────────────────────────────────────────────────
  * Retorna `null` em qualquer falha (PDF inválido, worker indisponível,
- * canvas 2D negado, exceção interna). O caller trata `null` como "sem
- * pista" — o motor continua funcionando normalmente contra o MediaBox.
+ * canvas 2D negado, exceção interna). O caller trata `null` como "sem pista"
+ * — o motor continua funcionando normalmente contra o MediaBox.
  */
 
 export interface MarcasVisuaisHint {
   /** Quantidade de cantos onde o padrão de marca foi detectado (0–4). */
   cantos_detectados: number;
   /**
-   * Distância média das marcas à borda em mm — computada a partir da média
-   * das distâncias em px, convertida pelo DPI de rasterização (150).
+   * Distância média das marcas à borda em mm — compat com o motor legado.
+   * v2: média dos insets das bordas com consenso.
    */
   distancia_borda_mm: number;
+  /**
+   * Insets por borda em mm (v2). Presente apenas quando as 4 bordas tiveram
+   * consenso entre os cantos vizinhos. Caminho aditivo — sem isto, o motor
+   * usa a fórmula legada `mídia − 2×distancia_borda_mm`.
+   */
+  insets_mm?: {
+    topo: number;
+    fundo: number;
+    esq: number;
+    dir: number;
+  };
 }
 
 const DPI_RASTER = 150;
 const CORNER_ANALISE_MM = 20;
-const DARK_THRESHOLD = 100;
-const LINE_MIN_LEN = 3;
+
+// ─── Priors de classe (fixos, universais) ────────────────────────────────────
+// Não derivados do formato do livro — marcas de corte têm forma padronizada.
+const DARK_THRESHOLD = 160;
+const LINE_MIN_LEN_MM = 2;
+const LINE_MAX_LEN_MM = 12;
+// Tolerância de consenso entre cantos vizinhos, em px @150dpi.
+const CONSENSO_TOL_PX = 2;
 
 // FASE 1 (instrumentação): quantos px iniciais coletar por eixo em modo debug.
 const DEBUG_FIRST_PX = 60;
 
 type DebugCandidato = {
   pos: number;
+  inset: number;
   maxRun: number;
   aceita: boolean;
   motivo?: "curto" | "longo";
@@ -70,88 +95,89 @@ function computarHistograma(gray: Uint8Array): number[] {
 }
 
 /**
- * Analisa um canto rasterizado procurando padrão de marca de corte.
- * Portada verbatim de `lib/capa-analyzer.ts::analisarPadraoMarca`, adaptada
- * para receber grayscale já computado (Uint8Array) em vez do buffer sharp.
+ * Analisa um canto rasterizado e devolve TODOS os candidatos de marca em
+ * cada eixo, medidos como INSET À BORDA EXTERNA do canto.
  *
- * Parâmetro `debug` opcional (FASE 1): quando presente, coleta candidatos
- * dos primeiros `DEBUG_FIRST_PX` px de cada eixo sem alterar o resultado
- * retornado (ainda escolhe a primeira linha aceita).
+ * Espelhamento por orientação (o bug de v1 que envenenava cantos B/R):
+ *   - `espelhaHoriz`: canto inferior (B*) → insetY = (size − 1) − y
+ *   - `espelhaVert`:  canto direito  (*R) → insetX = (size − 1) − x
+ *
+ * Contract:
+ *   - candidatasHoriz: insets à borda horizontal externa (topo se T*, fundo
+ *     se B*), na ordem em que foram encontrados varrendo do topo do recorte.
+ *   - candidatasVert:  insets à borda vertical externa (esq se *L, dir se
+ *     *R), na ordem em que foram encontrados varrendo da esquerda do recorte.
  */
-function analisarPadraoMarca(
+function analisarCanto(
   gray: Uint8Array,
   size: number,
+  espelhaHoriz: boolean,
+  espelhaVert: boolean,
+  lineMinPx: number,
+  lineMaxPx: number,
   debug?: DebugCanto,
-): { detectada: boolean; distanciaBordaPx: number } {
-  const LINE_MAX_LEN = Math.floor(size / 3);
+): { candidatasHoriz: number[]; candidatasVert: number[] } {
+  const candidatasHoriz: number[] = [];
+  const candidatasVert: number[] = [];
 
-  let linhaH: number | null = null;
+  // Scan horizontal: varre linhas (y = 0..size-1). Cada linha tem um "maxRun"
+  // de píxeis escuros consecutivos horizontalmente.
   for (let y = 0; y < size; y++) {
-    let maxConsecutivos = 0;
-    let consecutivos = 0;
+    let maxRun = 0;
+    let run = 0;
     for (let x = 0; x < size; x++) {
       if (gray[y * size + x] < DARK_THRESHOLD) {
-        consecutivos++;
-        if (consecutivos > maxConsecutivos) maxConsecutivos = consecutivos;
+        run++;
+        if (run > maxRun) maxRun = run;
       } else {
-        consecutivos = 0;
+        run = 0;
       }
     }
-    const aceita =
-      maxConsecutivos >= LINE_MIN_LEN && maxConsecutivos <= LINE_MAX_LEN;
-    if (debug && y < DEBUG_FIRST_PX && maxConsecutivos > 0) {
+    const aceita = maxRun >= lineMinPx && maxRun <= lineMaxPx;
+    const inset = espelhaHoriz ? size - 1 - y : y;
+    if (aceita) candidatasHoriz.push(inset);
+    if (debug && y < DEBUG_FIRST_PX && maxRun > 0) {
       const motivo: DebugCandidato["motivo"] | undefined = aceita
         ? undefined
-        : maxConsecutivos < LINE_MIN_LEN
+        : maxRun < lineMinPx
           ? "curto"
           : "longo";
-      debug.linhas.push({ pos: y, maxRun: maxConsecutivos, aceita, motivo });
+      debug.linhas.push({ pos: y, inset, maxRun, aceita, motivo });
     }
-    if (aceita && linhaH == null) {
-      linhaH = y;
-      if (!debug) break;
-    }
-    if (debug && linhaH != null && y >= DEBUG_FIRST_PX - 1) break;
   }
 
-  let linhaV: number | null = null;
+  // Scan vertical: varre colunas (x = 0..size-1). Cada coluna tem um "maxRun"
+  // de píxeis escuros consecutivos verticalmente.
   for (let x = 0; x < size; x++) {
-    let maxConsecutivos = 0;
-    let consecutivos = 0;
+    let maxRun = 0;
+    let run = 0;
     for (let y = 0; y < size; y++) {
       if (gray[y * size + x] < DARK_THRESHOLD) {
-        consecutivos++;
-        if (consecutivos > maxConsecutivos) maxConsecutivos = consecutivos;
+        run++;
+        if (run > maxRun) maxRun = run;
       } else {
-        consecutivos = 0;
+        run = 0;
       }
     }
-    const aceita =
-      maxConsecutivos >= LINE_MIN_LEN && maxConsecutivos <= LINE_MAX_LEN;
-    if (debug && x < DEBUG_FIRST_PX && maxConsecutivos > 0) {
+    const aceita = maxRun >= lineMinPx && maxRun <= lineMaxPx;
+    const inset = espelhaVert ? size - 1 - x : x;
+    if (aceita) candidatasVert.push(inset);
+    if (debug && x < DEBUG_FIRST_PX && maxRun > 0) {
       const motivo: DebugCandidato["motivo"] | undefined = aceita
         ? undefined
-        : maxConsecutivos < LINE_MIN_LEN
+        : maxRun < lineMinPx
           ? "curto"
           : "longo";
-      debug.colunas.push({ pos: x, maxRun: maxConsecutivos, aceita, motivo });
+      debug.colunas.push({ pos: x, inset, maxRun, aceita, motivo });
     }
-    if (aceita && linhaV == null) {
-      linhaV = x;
-      if (!debug) break;
-    }
-    if (debug && linhaV != null && x >= DEBUG_FIRST_PX - 1) break;
   }
 
-  if (linhaH != null && linhaV != null) {
-    return { detectada: true, distanciaBordaPx: Math.min(linhaH, linhaV) };
-  }
-  return { detectada: false, distanciaBordaPx: 0 };
+  return { candidatasHoriz, candidatasVert };
 }
 
 /**
- * Extrai um recorte de `size×size` px do ImageData e devolve grayscale
- * como Uint8Array (média RGB, alpha ignorado).
+ * Extrai um recorte de `size×size` px do ImageData e devolve grayscale como
+ * Uint8Array (média RGB, alpha ignorado).
  */
 function extrairCantoGray(
   img: ImageData,
@@ -166,13 +192,28 @@ function extrairCantoGray(
     const dstRow = y * size;
     for (let x = 0; x < size; x++) {
       const i = srcRow + (left + x) * 4;
-      // grayscale = média RGB; equivalente ao `.toColourspace("b-w")` do
-      // sharp para os propósitos desta heurística (linha fina escura vs
-      // fundo claro).
       out[dstRow + x] = (img.data[i] + img.data[i + 1] + img.data[i + 2]) / 3;
     }
   }
   return out;
+}
+
+/**
+ * Consenso por borda: dado o par de listas de candidatos dos 2 cantos que
+ * medem uma mesma borda, devolve o menor inset que tem par na outra lista
+ * dentro de ±CONSENSO_TOL_PX. Retorna `undefined` se não há consenso.
+ */
+function consensoBorda(
+  candA: number[],
+  candB: number[],
+): number | undefined {
+  const ordenadaA = [...candA].sort((x, y) => x - y);
+  for (const v of ordenadaA) {
+    for (const w of candB) {
+      if (Math.abs(v - w) <= CONSENSO_TOL_PX) return v;
+    }
+  }
+  return undefined;
 }
 
 function debugAtivo(): boolean {
@@ -185,6 +226,10 @@ function debugAtivo(): boolean {
   } catch {
     return false;
   }
+}
+
+function pxParaMm(px: number): number {
+  return Math.round((px / DPI_RASTER) * 25.4 * 10) / 10;
 }
 
 export async function detectarMarcasMioloCliente(
@@ -239,22 +284,58 @@ export async function detectarMarcasMioloCliente(
       Math.floor(widthPx / 4),
       Math.floor(heightPx / 4),
     );
-    if (cornerPxSafe < LINE_MIN_LEN * 2) return null;
+    // Priors em px derivados da janela e do DPI.
+    const lineMinPx = Math.max(
+      2,
+      Math.floor((LINE_MIN_LEN_MM * DPI_RASTER) / 25.4),
+    );
+    const lineMaxPx = Math.min(
+      cornerPxSafe,
+      Math.ceil((LINE_MAX_LEN_MM * DPI_RASTER) / 25.4),
+    );
+    if (cornerPxSafe < lineMinPx * 2) return null;
 
     const cantos = [
-      { nome: "superior-esq", left: 0, top: 0 },
-      { nome: "superior-dir", left: widthPx - cornerPxSafe, top: 0 },
-      { nome: "inferior-esq", left: 0, top: heightPx - cornerPxSafe },
       {
-        nome: "inferior-dir",
+        nome: "TL",
+        left: 0,
+        top: 0,
+        espelhaHoriz: false,
+        espelhaVert: false,
+        bordaHoriz: "topo" as const,
+        bordaVert: "esq" as const,
+      },
+      {
+        nome: "TR",
+        left: widthPx - cornerPxSafe,
+        top: 0,
+        espelhaHoriz: false,
+        espelhaVert: true,
+        bordaHoriz: "topo" as const,
+        bordaVert: "dir" as const,
+      },
+      {
+        nome: "BL",
+        left: 0,
+        top: heightPx - cornerPxSafe,
+        espelhaHoriz: true,
+        espelhaVert: false,
+        bordaHoriz: "fundo" as const,
+        bordaVert: "esq" as const,
+      },
+      {
+        nome: "BR",
         left: widthPx - cornerPxSafe,
         top: heightPx - cornerPxSafe,
+        espelhaHoriz: true,
+        espelhaVert: true,
+        bordaHoriz: "fundo" as const,
+        bordaVert: "dir" as const,
       },
-    ] as const;
+    ];
 
-    let detectados = 0;
-    const distancias: number[] = [];
-    for (const c of cantos) {
+    // ─── Análise por canto ─────────────────────────────────────────────────
+    const analises = cantos.map((c) => {
       const gray = extrairCantoGray(imgData, c.left, c.top, cornerPxSafe);
       const debugCanto: DebugCanto | undefined = debug
         ? {
@@ -263,44 +344,104 @@ export async function detectarMarcasMioloCliente(
             histograma: computarHistograma(gray),
           }
         : undefined;
-      const r = analisarPadraoMarca(gray, cornerPxSafe, debugCanto);
+      const r = analisarCanto(
+        gray,
+        cornerPxSafe,
+        c.espelhaHoriz,
+        c.espelhaVert,
+        lineMinPx,
+        lineMaxPx,
+        debugCanto,
+      );
       if (debug && debugCanto) {
         console.log(`[marcas-debug] ${c.nome}`, {
+          candidatasHoriz: r.candidatasHoriz,
+          candidatasVert: r.candidatasVert,
           linhas: debugCanto.linhas,
           colunas: debugCanto.colunas,
           histograma_gray_8b: debugCanto.histograma,
-          detectada: r.detectada,
-          distanciaBordaPx: r.distanciaBordaPx,
         });
       }
-      if (r.detectada) {
-        detectados++;
-        distancias.push(r.distanciaBordaPx);
-      }
-    }
+      return { canto: c, resultado: r };
+    });
 
+    // ─── Consenso por borda ────────────────────────────────────────────────
+    // Topo: TL e TR reportam candidatasHoriz (inset ao topo em ambos).
+    // Fundo: BL e BR reportam candidatasHoriz (inset ao fundo em ambos).
+    // Esq:   TL e BL reportam candidatasVert (inset à esq em ambos).
+    // Dir:   TR e BR reportam candidatasVert (inset à dir em ambos).
+    const TL = analises[0].resultado;
+    const TR = analises[1].resultado;
+    const BL = analises[2].resultado;
+    const BR = analises[3].resultado;
+
+    const insetTopoPx = consensoBorda(TL.candidatasHoriz, TR.candidatasHoriz);
+    const insetFundoPx = consensoBorda(BL.candidatasHoriz, BR.candidatasHoriz);
+    const insetEsqPx = consensoBorda(TL.candidatasVert, BL.candidatasVert);
+    const insetDirPx = consensoBorda(TR.candidatasVert, BR.candidatasVert);
+
+    // ─── Compat: `cantos_detectados` e `distancia_borda_mm` ───────────────
+    // Um canto "detecta" quando tem ≥1 candidato em cada eixo (mesma semântica
+    // aproximada do modelo legado).
+    const cantos_detectados = analises.filter(
+      (a) =>
+        a.resultado.candidatasHoriz.length > 0 &&
+        a.resultado.candidatasVert.length > 0,
+    ).length;
+
+    const insetsComConsenso = [
+      insetTopoPx,
+      insetFundoPx,
+      insetEsqPx,
+      insetDirPx,
+    ].filter((x): x is number => x != null);
     const distanciaMediaPx =
-      distancias.length > 0
-        ? distancias.reduce((a, b) => a + b, 0) / distancias.length
+      insetsComConsenso.length > 0
+        ? insetsComConsenso.reduce((a, b) => a + b, 0) /
+          insetsComConsenso.length
         : 0;
-    const distancia_borda_mm =
-      Math.round((distanciaMediaPx / DPI_RASTER) * 25.4 * 10) / 10;
+    const distancia_borda_mm = pxParaMm(distanciaMediaPx);
+
+    // ─── `insets_mm` só quando as 4 bordas têm consenso ───────────────────
+    const insets_mm =
+      insetTopoPx != null &&
+      insetFundoPx != null &&
+      insetEsqPx != null &&
+      insetDirPx != null
+        ? {
+            topo: pxParaMm(insetTopoPx),
+            fundo: pxParaMm(insetFundoPx),
+            esq: pxParaMm(insetEsqPx),
+            dir: pxParaMm(insetDirPx),
+          }
+        : undefined;
 
     if (debug) {
+      console.log("[marcas-debug] consenso", {
+        insetTopoPx,
+        insetFundoPx,
+        insetEsqPx,
+        insetDirPx,
+        insets_mm,
+      });
       console.log("[marcas-debug] final", {
-        cantos_detectados: detectados,
+        cantos_detectados,
         distancia_borda_mm,
+        insets_mm,
         cornerPxSafe,
+        lineMinPx,
+        lineMaxPx,
+        darkThreshold: DARK_THRESHOLD,
         dpi: DPI_RASTER,
         widthPx,
         heightPx,
-        distancias_px: distancias,
       });
     }
 
     return {
-      cantos_detectados: detectados,
+      cantos_detectados,
       distancia_borda_mm,
+      ...(insets_mm ? { insets_mm } : {}),
     };
   } catch (err) {
     console.warn(
