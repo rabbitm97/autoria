@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import WaitlistForm from "./_components/waitlist-form";
 import FAQ from "./_components/faq";
 import HowItWorks from "./_components/how-it-works";
 import PublicNavbar from "./_components/public-navbar";
@@ -107,7 +106,7 @@ function Hero() {
 
             <div className="flex items-center gap-4 mb-14">
               <Link
-                href="/login"
+                href="/cadastro"
                 className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary px-8 py-4 rounded-xl font-bold text-base hover:bg-brand-gold-light active:scale-[0.98] transition-all shadow-xl shadow-brand-gold/20"
               >
                 Publicar meu livro
@@ -328,7 +327,7 @@ function FeatureEditorial() {
               ))}
             </ul>
             <Link
-              href="/login"
+              href="/cadastro"
               className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary px-7 py-3.5 rounded-xl font-bold text-sm hover:bg-brand-gold-light active:scale-[0.98] transition-all"
             >
               Experimentar revisão grátis →
@@ -376,7 +375,7 @@ function FeatureCapa() {
               ))}
             </ul>
             <Link
-              href="/login"
+              href="/cadastro"
               className="inline-flex items-center gap-2 bg-brand-primary text-white px-7 py-3.5 rounded-xl font-bold text-sm hover:bg-[#2a2a4e] active:scale-[0.98] transition-all"
             >
               Gerar minha capa →
@@ -551,7 +550,7 @@ function Pricing() {
                 </ul>
 
                 <Link
-                  href="/login"
+                  href="/cadastro"
                   className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
                     plan.highlight
                       ? "bg-brand-primary text-white hover:bg-[#2a2a4e]"
@@ -638,7 +637,7 @@ function FinalCTA() {
             </p>
 
             <Link
-              href="/login"
+              href="/cadastro"
               className="w-full flex items-center justify-center gap-3 bg-brand-primary text-white py-3.5 rounded-xl font-bold text-sm hover:bg-[#2a2a4e] active:scale-[0.98] transition-all mb-5 shadow-sm"
             >
               <GoogleIcon />
@@ -651,7 +650,12 @@ function FinalCTA() {
               <div className="flex-1 h-px bg-zinc-200" />
             </div>
 
-            <WaitlistForm />
+            <Link
+              href="/cadastro"
+              className="w-full flex items-center justify-center gap-2 bg-brand-gold text-brand-primary py-3.5 rounded-xl font-bold text-sm hover:bg-brand-gold-light active:scale-[0.98] transition-all"
+            >
+              Criar conta com e-mail →
+            </Link>
 
             <p className="text-zinc-400 text-xs leading-relaxed mt-5">
               Ao criar conta, você concorda com os{" "}
