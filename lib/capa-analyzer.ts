@@ -386,27 +386,41 @@ async function detectMarcasVisual(
   const cornerPxSafe = Math.min(cornerPx, Math.floor(widthPx / 4), Math.floor(heightPx / 4));
 
   const cantos = [
-    { name: "TL", left: 0, top: 0 },
-    { name: "TR", left: widthPx - cornerPxSafe, top: 0 },
-    { name: "BL", left: 0, top: heightPx - cornerPxSafe },
-    { name: "BR", left: widthPx - cornerPxSafe, top: heightPx - cornerPxSafe },
+    { name: "TL", left: 0, top: 0, flipH: false, flipV: false },
+    { name: "TR", left: widthPx - cornerPxSafe, top: 0, flipH: true, flipV: false },
+    { name: "BL", left: 0, top: heightPx - cornerPxSafe, flipH: false, flipV: true },
+    {
+      name: "BR",
+      left: widthPx - cornerPxSafe,
+      top: heightPx - cornerPxSafe,
+      flipH: true,
+      flipV: true,
+    },
   ];
 
   const detectadasEm: string[] = [];
   const distanciasBorda: number[] = [];
 
+  // FIX-CAPA-MARCAS-01 (11/ago/2026): `analisarPadraoMarca` mede sempre da
+  // origem (topo/esquerda) do recorte. Sem normalização, os cantos B*/*R
+  // reportavam a marca a ~size−17px em vez de ~17px, envenenando a média
+  // (evidência no miolo: 17/17/17/100 → 6,4mm — vide FIX-F-PUB-5-02).
+  // Remendo mínimo: normalizar cada canto pra orientação TL via flip antes
+  // de analisar; a medida da origem vira, por construção, o inset à borda
+  // externa correta. Redesenho completo (insets por borda + consenso) fica
+  // no MARCAS-UNIF pós-beta.
   for (const canto of cantos) {
     try {
-      const cornerBuf = await sharp(buffer)
-        .extract({
-          left: canto.left,
-          top: canto.top,
-          width: cornerPxSafe,
-          height: cornerPxSafe,
-        })
-        .toColourspace("b-w")
-        .raw()
-        .toBuffer();
+      let pipeline = sharp(buffer).extract({
+        left: canto.left,
+        top: canto.top,
+        width: cornerPxSafe,
+        height: cornerPxSafe,
+      });
+      if (canto.flipH) pipeline = pipeline.flop();
+      if (canto.flipV) pipeline = pipeline.flip();
+
+      const cornerBuf = await pipeline.toColourspace("b-w").raw().toBuffer();
 
       const res = analisarPadraoMarca(cornerBuf, cornerPxSafe);
       if (res.detectada) {
