@@ -491,6 +491,127 @@ function FeatureFormatos() {
   );
 }
 
+function ExpressSection() {
+  const cards = [
+    {
+      titulo: "Verificação técnica aberta",
+      texto:
+        "Confira formato, sangria e marcas de corte do seu PDF antes mesmo de criar conta. O arquivo não sai do seu navegador.",
+      link: { label: "Verificar meu PDF →", href: "/ferramentas/verificador-pdf" },
+    },
+    {
+      titulo: "Preço na tela, em segundos",
+      texto:
+        "Formato, papel, capa e tiragem — o custo por exemplar aparece na hora, sem cadastro e sem surpresa no fim.",
+      link: { label: "Simular preço →", href: "/simulador" },
+    },
+    {
+      titulo: "Prova visual grátis",
+      texto:
+        "Veja o livro montado, página a página, antes de pagar qualquer coisa.",
+      link: null as { label: string; href: string } | null,
+    },
+    {
+      titulo: "Prazo por escrito",
+      texto:
+        "Produção em até 15 dias úteis para tiragens de até 300 exemplares — garantido em contrato, não em promessa.",
+      link: { label: "Ler no contrato →", href: "/contrato-servicos" },
+    },
+  ];
+
+  return (
+    <section id="livro-pronto" className="bg-brand-surface py-28">
+      <div className="max-w-7xl mx-auto px-8">
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
+            Já tem o livro pronto?
+          </p>
+          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
+            Publique em minutos.<br />Imprima com preço de gráfica.
+          </h2>
+          <p className="text-zinc-500 text-lg leading-relaxed">
+            Se o seu PDF já está diagramado, você não precisa da esteira
+            completa: suba o arquivo, confira a verificação técnica na hora,
+            veja a prova visual do livro montado — e imprima a partir de 1
+            exemplar.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+          {cards.map((c) => (
+            <div
+              key={c.titulo}
+              className="bg-white rounded-2xl border border-zinc-100 p-7 hover:border-brand-gold/40 hover:shadow-sm transition-all"
+            >
+              <h3 className="font-heading text-xl text-brand-primary mb-3">
+                {c.titulo}
+              </h3>
+              <p className="text-zinc-600 text-sm leading-relaxed mb-4">
+                {c.texto}
+              </p>
+              {c.link && (
+                <Link
+                  href={c.link.href}
+                  className="text-brand-gold text-sm font-semibold hover:underline"
+                >
+                  {c.link.label}
+                </Link>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center mb-10">
+          <span className="inline-flex items-center gap-2 bg-brand-gold/10 border border-brand-gold/30 rounded-full px-4 py-1.5 text-brand-primary text-xs font-semibold uppercase tracking-widest">
+            Sem tiragem mínima — a partir de 1 exemplar
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+          <Link
+            href="/cadastro?next=%2Fdashboard%2Flivro-pronto"
+            className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary px-8 py-4 rounded-xl font-bold text-sm hover:bg-brand-gold-light active:scale-[0.98] transition-all shadow-xl shadow-brand-gold/20"
+          >
+            Publicar meu livro pronto →
+          </Link>
+          <a
+            href="#servicos"
+            className="text-brand-primary/70 text-sm hover:text-brand-primary transition-colors"
+          >
+            Ainda vou preparar o manuscrito
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SimuladorBand() {
+  return (
+    <section id="simulador" className="bg-brand-gold py-16">
+      <div className="max-w-7xl mx-auto px-8">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
+          <div className="flex-1">
+            <h2 className="font-heading text-4xl lg:text-5xl text-brand-primary leading-tight mb-3">
+              Quanto custa imprimir seu livro?
+            </h2>
+            <p className="text-brand-primary/70 text-lg leading-relaxed max-w-xl">
+              Escolha formato, papel, capa e tiragem — o preço aparece na tela
+              em segundos. Grátis, sem cadastro.
+            </p>
+          </div>
+          <Link
+            href="/simulador"
+            className="inline-flex items-center gap-2 bg-brand-primary text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-[#2a2a4e] active:scale-[0.98] transition-all shadow-xl shadow-brand-primary/20 shrink-0"
+          >
+            Simular agora →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Pricing() {
   return (
     <section id="precos" className="bg-brand-primary py-28">
@@ -775,6 +896,8 @@ export default function Home() {
         <FeatureEditorial />
         <FeatureCapa />
         <FeatureFormatos />
+        <ExpressSection />
+        <SimuladorBand />
         <Pricing />
         <FAQ />
         <FinalCTA />
