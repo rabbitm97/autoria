@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import BrandLogo from "@/app/_components/brand-logo";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -82,11 +83,8 @@ export function Sidebar() {
 
       {/* Logo */}
       <div className="px-5 py-5 border-b border-white/8">
-        <Link href="/dashboard" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-brand-gold/15 flex items-center justify-center shrink-0">
-            <BookmarkIcon />
-          </div>
-          <span className="font-heading text-lg text-brand-gold tracking-wide">Autoria</span>
+        <Link href="/dashboard" aria-label="Autoria — painel" className="inline-flex group">
+          <BrandLogo variant="gold" height={28} />
         </Link>
       </div>
 
@@ -229,15 +227,6 @@ function CartIcon() {
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
-
-function BookmarkIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-      stroke="#c9a84c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
 
 function HomeIcon() {
   return (

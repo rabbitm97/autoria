@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { safeNext } from "@/lib/safe-next";
+import BrandLogo from "@/app/_components/brand-logo";
 
 function strengthLabel(pw: string): { label: string; color: string; score: number } {
   let score = 0;
@@ -115,8 +116,8 @@ function CadastroInner() {
     <div className="min-h-screen bg-brand-primary flex">
       {/* Left panel */}
       <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 border-r border-white/5 p-12">
-        <Link href="/" className="font-heading text-2xl text-brand-gold">
-          Autoria
+        <Link href="/" aria-label="Autoria — página inicial" className="inline-flex">
+          <BrandLogo variant="gold" height={30} />
         </Link>
         <div>
           <div className="w-12 h-1 bg-brand-gold rounded-full mb-8" />
@@ -144,8 +145,8 @@ function CadastroInner() {
       {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-sm">
-          <Link href="/" className="font-heading text-2xl text-brand-gold block mb-10 lg:hidden">
-            Autoria
+          <Link href="/" aria-label="Autoria — página inicial" className="inline-flex mb-10 lg:hidden">
+            <BrandLogo variant="gold" height={30} />
           </Link>
 
           <div className="mb-8">

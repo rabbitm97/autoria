@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Image from "next/image";
+import BrandLogo from "./_components/brand-logo";
 import Link from "next/link";
 import FAQ from "./_components/faq";
 import HowItWorks from "./_components/how-it-works";
@@ -71,22 +71,6 @@ const PLANS = [
     ],
   },
 ];
-
-// ─── Logo component ───────────────────────────────────────────────────────────
-
-function Logo({ variant = "gold" }: { variant?: "gold" | "navy" }) {
-  const src = variant === "gold" ? "/logo-amarelo.png" : "/logo-azul.png";
-  return (
-    <Image
-      src={src}
-      alt="Autoria"
-      width={480}
-      height={120}
-      className="h-[108px] w-auto object-contain"
-      priority
-    />
-  );
-}
 
 function Hero() {
   return (
@@ -708,7 +692,7 @@ function FinalCTA() {
           {/* Sign-up card */}
           <div className="bg-white rounded-2xl p-8 shadow-2xl border border-zinc-100">
             <div className="mb-1">
-              <Logo variant="navy" />
+              <BrandLogo variant="navy" height={108} />
             </div>
             <h3 className="font-heading text-2xl text-brand-primary mt-4 mb-1">Crie sua conta grátis</h3>
             <p className="text-zinc-500 text-sm mb-7">
@@ -761,7 +745,7 @@ function Footer() {
       <div className="max-w-7xl mx-auto px-8">
         <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-12 mb-14">
           <div>
-            <Logo variant="gold" />
+            <BrandLogo variant="gold" height={108} />
             <p className="text-white/35 text-sm leading-relaxed mt-5 max-w-xs">
               A plataforma brasileira de publicação com IA. Do manuscrito ao livro pronto.
             </p>

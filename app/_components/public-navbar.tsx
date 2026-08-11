@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import BrandLogo from "./brand-logo";
 
 interface NavLink {
   label: string;
@@ -66,7 +66,7 @@ export default function PublicNavbar({ tone = "dark" }: { tone?: Tone } = {}) {
     ? "text-center text-sm text-brand-primary/70 border border-brand-primary/15 rounded-lg py-2.5 hover:border-brand-primary/35 transition-colors"
     : "text-center text-sm text-white/60 border border-white/15 rounded-lg py-2.5 hover:border-white/30 transition-colors";
 
-  const logoSrc = light ? "/logo-azul.png" : "/logo-amarelo.png";
+  const logoVariant: "navy" | "gold" = light ? "navy" : "gold";
   const listColor = light ? "text-brand-primary/70" : "text-white/55";
 
   return (
@@ -79,14 +79,7 @@ export default function PublicNavbar({ tone = "dark" }: { tone?: Tone } = {}) {
 
         {/* Logo */}
         <Link href="/" aria-label="Autoria — página inicial" className="shrink-0">
-          <Image
-            src={logoSrc}
-            alt="Autoria"
-            width={160}
-            height={40}
-            className="h-10 w-auto object-contain"
-            priority
-          />
+          <BrandLogo variant={logoVariant} height={40} priority />
         </Link>
 
         {/* Desktop nav */}
