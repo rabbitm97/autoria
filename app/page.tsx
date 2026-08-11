@@ -42,7 +42,7 @@ const PLANS = [
       "Diagnóstico editorial com IA",
       "Revisão gramatical e de estilo com IA",
       "Capa (frente) gerada por IA — até 2 imagens inclusas",
-      "Página de créditos e ficha catalográfica preenchida pelo autor",
+      "Página de créditos do livro preenchida por você",
       "Diagramação e EPUB pronto para as plataformas",
       "PDF digital sem marca d'água",
     ],
@@ -319,7 +319,6 @@ function FeatureEditorial() {
                 "Análise de coesão, coerência e estilo",
                 "Sugestões de ritmo e fluidez narrativa",
                 "Geração de sinopse em 3 formatos (curta, média, longa)",
-                "Campos da página de créditos preenchidos por você",
                 "Palavras-chave otimizadas para SEO editorial",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-white/70 text-base">
@@ -691,7 +690,7 @@ function Footer() {
               {[
                 { label: "Como funciona", href: "#como-funciona" },
                 { label: "Preços",        href: "#precos"        },
-                { label: "Ferramentas",   href: "#servicos"      },
+                { label: "Ferramentas",   href: "/ferramentas"   },
                 { label: "Dashboard",     href: "/dashboard"     },
               ].map((l) => (
                 <li key={l.label}>

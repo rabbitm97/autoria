@@ -11,7 +11,7 @@ const PLANS = [
       "Upload de manuscrito (.docx, .pdf, .txt)",
       "Diagnóstico editorial com IA",
       "Editor de capa profissional",
-      "Ficha catalográfica (CIP) preenchida por você",
+      "Página de créditos do livro preenchida por você",
       "Conversão RGB→CMYK e cálculo de lombada",
       "PDF digital de prévia (2 por dia, com marca d'água)",
       "Exportação DOCX",
