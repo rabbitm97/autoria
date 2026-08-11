@@ -6,6 +6,14 @@ import HowItWorks from "./_components/how-it-works";
 import PublicNavbar from "./_components/public-navbar";
 import { PLANO_PRECO_CENTAVOS, formatarPrecoPlano } from "@/lib/planos";
 import { FORMATOS_LIVRO } from "@/lib/formatos";
+import { TOOLS } from "@/components/ferramentas/registry";
+
+const FERRAMENTAS_HOME = [
+  "simulador-impressao",
+  "verificador-pdf",
+  "lombada-paginas",
+  "codigo-barras-isbn",
+] as const;
 
 export const metadata: Metadata = {
   title: "Autoria — Publique seu livro com IA, do manuscrito ao leitor",
@@ -702,6 +710,66 @@ function Pricing() {
   );
 }
 
+function FerramentasHome() {
+  const tools = FERRAMENTAS_HOME
+    .map((id) => TOOLS.find((t) => t.id === id))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t?.href_publico));
+
+  return (
+    <section id="ferramentas-gratis" className="bg-brand-surface py-28">
+      <div className="max-w-7xl mx-auto px-8">
+        <div className="text-center max-w-2xl mx-auto mb-16">
+          <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
+            Ferramentas gratuitas
+          </p>
+          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
+            Ferramentas de gráfica,<br />abertas pra qualquer autor.
+          </h2>
+          <p className="text-zinc-500 text-lg leading-relaxed">
+            Use direto no navegador, sem cadastro — as mesmas que a esteira da
+            Autoria usa por dentro.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          {tools.map((tool) => {
+            const Icon = tool.icon;
+            return (
+              <Link
+                key={tool.id}
+                href={tool.href_publico!}
+                className="flex flex-col gap-3 bg-white rounded-2xl border border-zinc-100 p-5 hover:border-brand-gold/40 hover:shadow-sm transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-brand-primary/5 flex items-center justify-center group-hover:bg-brand-gold/10 transition-colors shrink-0">
+                  <Icon />
+                </div>
+                <div className="flex-1">
+                  <p className="font-heading text-base text-brand-primary leading-tight mb-1 group-hover:text-brand-gold transition-colors">
+                    {tool.label}
+                  </p>
+                  <p className="text-xs text-zinc-500 leading-relaxed">
+                    {tool.desc}
+                  </p>
+                </div>
+                <p className="text-xs text-brand-gold font-semibold">Abrir →</p>
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="text-center">
+          <Link
+            href="/ferramentas"
+            className="inline-flex items-center gap-2 border border-brand-primary/20 text-brand-primary px-7 py-3 rounded-xl font-bold text-sm hover:bg-brand-primary hover:text-white active:scale-[0.98] transition-all"
+          >
+            Todas as ferramentas →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function FinalCTA() {
   return (
     <section className="bg-brand-primary py-28 relative overflow-hidden">
@@ -899,6 +967,7 @@ export default function Home() {
         <ExpressSection />
         <SimuladorBand />
         <Pricing />
+        <FerramentasHome />
         <FAQ />
         <FinalCTA />
       </main>
