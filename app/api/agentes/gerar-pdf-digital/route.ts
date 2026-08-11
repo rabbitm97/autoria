@@ -5,6 +5,8 @@ import puppeteer from "puppeteer-core";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
 import { aplicarMarcaPrevia } from "@/lib/pdf-marca";
+import { normalizarPdfMiolo } from "@/lib/pdf-normalizar";
+import { getFormatoDef } from "@/lib/formatos";
 import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -302,6 +304,12 @@ export async function POST(req: NextRequest) {
   if (ehFreemium) {
     pdfBuffer = await aplicarMarcaPrevia(pdfBuffer);
   }
+
+  // ── Normaliza medidas + declara boxes semânticas (NORMALIZA-PDF-01) ──────
+  // Chromium arredonda mm→pt na geração (evidência: 140,04×210,23 em vez de
+  // 140×210 no compacto digital) — reprovado no Clube de Autores por
+  // "formato divergente". Pós-processo garante corte exato + TrimBox.
+  pdfBuffer = await normalizarPdfMiolo(pdfBuffer, getFormatoDef(formato).specs, "digital");
 
   // ── Count real pages ──────────────────────────────────────────────────────
   // pdf-lib não depende de DOMMatrix; funciona em runtime Node serverless do Vercel.

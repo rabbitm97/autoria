@@ -5,6 +5,7 @@ import puppeteer from "puppeteer-core";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { PDFDocument } from "pdf-lib";
 import { aplicarMarcaPrevia } from "@/lib/pdf-marca";
+import { normalizarPdfMiolo } from "@/lib/pdf-normalizar";
 import { extrairDestinosCapitulos } from "@/lib/pdf-dests";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -19,7 +20,7 @@ const LIMITE_PDF_ESSENCIAL_DIA = 2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-import { estimarLombadaMm, type FormatoLivro } from "@/lib/formatos";
+import { estimarLombadaMm, getFormatoDef, type FormatoLivro } from "@/lib/formatos";
 export type { FormatoLivro as Formato } from "@/lib/formatos";
 export type { PdfResult } from "@/lib/project-data";
 
@@ -312,6 +313,13 @@ export async function POST(req: NextRequest) {
   if (!ehPro) {
     pdfBuffer = await aplicarMarcaPrevia(pdfBuffer);
   }
+
+  // ── Normaliza medidas + declara boxes semânticas (NORMALIZA-PDF-01) ──────
+  // Chromium arredonda mm→pt na geração (evidência: 146,05×216,24 em vez de
+  // 146×216 no compacto gráfico) e não declara TrimBox/BleedBox. Pós-processo
+  // corrige isso — sem tocar em conteúdo visual (apenas encolhe borda branca
+  // externa das marcas de corte em < 0,5mm).
+  pdfBuffer = await normalizarPdfMiolo(pdfBuffer, getFormatoDef(formato).specs, "grafica");
 
   // ── Count real pages ──────────────────────────────────────────────────────
   // pdf-lib não depende de DOMMatrix; funciona em runtime Node serverless do Vercel.
