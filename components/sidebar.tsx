@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/app/_components/brand-logo";
@@ -60,9 +60,135 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+// ─── Dashboard shell (SHELL-1B: drawer mobile + sidebar fixa no desktop) ──────
+
+export function DashboardShell({
+  children,
+  mobileLogo,
+}: {
+  children: React.ReactNode;
+  mobileLogo: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Fecha a gaveta quando a rota muda (cobre navegação normal via Link).
+  useEffect(() => { setOpen(false); }, [pathname]);
+
+  // Esc fecha.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // Foco: vai pro drawer ao abrir, volta pro botão ao fechar.
+  useEffect(() => {
+    if (open) drawerRef.current?.focus();
+    else      buttonRef.current?.focus();
+  }, [open]);
+
+  return (
+    <div className="flex h-dvh overflow-hidden bg-brand-surface">
+      {/* Sidebar fixa — desktop only */}
+      <Sidebar />
+
+      {/* Coluna direita: topo mobile + miolo rolável */}
+      <div className="flex-1 min-w-0 h-full flex flex-col">
+        {/* Topo mobile */}
+        <header className="lg:hidden shrink-0 h-14 bg-brand-primary border-b border-white/8 flex items-center justify-between px-4">
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Abrir menu"
+            aria-expanded={open}
+            aria-controls="dashboard-drawer"
+            className="p-2 -ml-2 rounded-lg text-white/80 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <MenuIcon />
+          </button>
+          <span aria-hidden="true">{mobileLogo}</span>
+          <span aria-hidden="true" className="w-9" />
+        </header>
+
+        {/* Miolo — única região de scroll */}
+        <div className="flex-1 min-w-0 overflow-y-auto scrollbar-brand [scrollbar-gutter:stable]">
+          {children}
+        </div>
+      </div>
+
+      {/* Backdrop */}
+      <div
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+        className={`lg:hidden fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 ${
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      />
+
+      {/* Drawer */}
+      <div
+        ref={drawerRef}
+        id="dashboard-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu de navegação"
+        aria-hidden={!open}
+        tabIndex={-1}
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] h-dvh outline-none transition-transform duration-200 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="relative h-full">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Fechar menu"
+            className="absolute top-3 right-3 z-10 p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <CloseIcon />
+          </button>
+          <Sidebar isDrawer onNavigate={() => setOpen(false)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="4" y1="7"  x2="20" y2="7"  />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="17" x2="20" y2="17" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6"  y2="18" />
+    </svg>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function Sidebar() {
+export function Sidebar({
+  isDrawer = false,
+  onNavigate,
+}: {
+  isDrawer?: boolean;
+  onNavigate?: () => void;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -75,11 +201,19 @@ export function Sidebar() {
     if (process.env.NODE_ENV !== "development") {
       await supabase.auth.signOut();
     }
+    onNavigate?.();
     router.push("/");
   }
 
+  // SHELL-1B: desktop = coluna fixa (hidden < lg); drawer = ocupa 100%
+  // do contêiner drawer (fixed) e não tem border-r (bordas já ficam
+  // sob o backdrop).
+  const wrapperCls = isDrawer
+    ? "flex flex-col h-full w-full bg-[#1a1a2e] overflow-y-auto scrollbar-brand"
+    : "hidden lg:flex flex-col w-60 shrink-0 h-full bg-[#1a1a2e] border-r border-white/8 overflow-y-auto scrollbar-brand";
+
   return (
-    <aside className="flex flex-col w-60 shrink-0 h-full bg-[#1a1a2e] border-r border-white/8 overflow-y-auto scrollbar-brand">
+    <aside className={wrapperCls}>
 
       {/* Logo */}
       <div className="px-5 py-5 border-b border-white/8">
@@ -102,6 +236,7 @@ export function Sidebar() {
                   <li key={href}>
                     <Link
                       href={href}
+                      onClick={onNavigate}
                       className={`
                         flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150
                         ${active
@@ -123,7 +258,7 @@ export function Sidebar() {
               })}
               {section === "PUBLICAÇÃO" && (
                 <li>
-                  <CartSidebarLink isActive={isActive("/carrinho", true)} />
+                  <CartSidebarLink isActive={isActive("/carrinho", true)} onNavigate={onNavigate} />
                 </li>
               )}
             </ul>
@@ -135,6 +270,7 @@ export function Sidebar() {
       <div className="px-3 pb-4 space-y-0.5 border-t border-white/8 pt-3">
         <Link
           href="/dashboard/perfil"
+          onClick={onNavigate}
           className={`
             flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150
             ${isActive("/dashboard/perfil")
@@ -166,7 +302,7 @@ export function Sidebar() {
 
 // ─── Cart link com badge (autoatualiza via CustomEvent 'cart:updated') ────────
 
-function CartSidebarLink({ isActive }: { isActive: boolean }) {
+function CartSidebarLink({ isActive, onNavigate }: { isActive: boolean; onNavigate?: () => void }) {
   const [count, setCount] = useState(0);
 
   const load = useCallback(async () => {
@@ -191,6 +327,7 @@ function CartSidebarLink({ isActive }: { isActive: boolean }) {
   return (
     <Link
       href="/carrinho"
+      onClick={onNavigate}
       className={`
         flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150
         ${isActive
