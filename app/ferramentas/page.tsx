@@ -14,10 +14,12 @@ export const metadata: Metadata = {
 };
 
 export default function FerramentasPublicPage() {
-  const gratisSemCadastro = TOOLS.filter(
+  // vitrine_publica === false esconde da vitrine pública sem tocar no hub logado.
+  const tools = TOOLS.filter(t => t.vitrine_publica !== false);
+  const gratisSemCadastro = tools.filter(
     t => t.estado === "gratis" && !!t.href_publico
   );
-  const gratisComCadastro = TOOLS.filter(
+  const gratisComCadastro = tools.filter(
     t => t.estado === "gratis" && !t.href_publico
   );
 
@@ -83,7 +85,7 @@ export default function FerramentasPublicPage() {
           </p>
           <div className="space-y-10">
             {CATEGORIAS_ORDEM.map(cat => {
-              const items = TOOLS.filter(t => t.categoria === cat && t.estado !== "gratis");
+              const items = tools.filter(t => t.categoria === cat && t.estado !== "gratis");
               if (items.length === 0) return null;
               return (
                 <div key={cat}>

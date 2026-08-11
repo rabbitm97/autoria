@@ -30,6 +30,8 @@ export interface FerramentaCard {
   };
   /** Limite honesto exibido no card grátis. Ausente = sem limite. */
   limite?: string;
+  /** false = não aparece na vitrine pública /ferramentas (hub logado mantém) */
+  vitrine_publica?: boolean;
   icon: () => React.ReactElement;
 }
 
@@ -52,6 +54,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     estado: "gratis",
     href: "/blog/ficha-catalografica-guia",
     href_publico: "/blog/ficha-catalografica-guia",
+    vitrine_publica: false,
     icon: FichaIcon,
   },
   {
