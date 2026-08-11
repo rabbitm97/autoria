@@ -44,14 +44,44 @@ const CORNER_ANALISE_MM = 20;
 const DARK_THRESHOLD = 100;
 const LINE_MIN_LEN = 3;
 
+// FASE 1 (instrumentação): quantos px iniciais coletar por eixo em modo debug.
+const DEBUG_FIRST_PX = 60;
+
+type DebugCandidato = {
+  pos: number;
+  maxRun: number;
+  aceita: boolean;
+  motivo?: "curto" | "longo";
+};
+
+type DebugCanto = {
+  linhas: DebugCandidato[];
+  colunas: DebugCandidato[];
+  histograma: number[];
+};
+
+function computarHistograma(gray: Uint8Array): number[] {
+  const buckets = new Array(8).fill(0);
+  for (let i = 0; i < gray.length; i++) {
+    const b = Math.min(7, gray[i] >> 5);
+    buckets[b]++;
+  }
+  return buckets;
+}
+
 /**
  * Analisa um canto rasterizado procurando padrão de marca de corte.
  * Portada verbatim de `lib/capa-analyzer.ts::analisarPadraoMarca`, adaptada
  * para receber grayscale já computado (Uint8Array) em vez do buffer sharp.
+ *
+ * Parâmetro `debug` opcional (FASE 1): quando presente, coleta candidatos
+ * dos primeiros `DEBUG_FIRST_PX` px de cada eixo sem alterar o resultado
+ * retornado (ainda escolhe a primeira linha aceita).
  */
 function analisarPadraoMarca(
   gray: Uint8Array,
   size: number,
+  debug?: DebugCanto,
 ): { detectada: boolean; distanciaBordaPx: number } {
   const LINE_MAX_LEN = Math.floor(size / 3);
 
@@ -67,10 +97,21 @@ function analisarPadraoMarca(
         consecutivos = 0;
       }
     }
-    if (maxConsecutivos >= LINE_MIN_LEN && maxConsecutivos <= LINE_MAX_LEN) {
-      linhaH = y;
-      break;
+    const aceita =
+      maxConsecutivos >= LINE_MIN_LEN && maxConsecutivos <= LINE_MAX_LEN;
+    if (debug && y < DEBUG_FIRST_PX && maxConsecutivos > 0) {
+      const motivo: DebugCandidato["motivo"] | undefined = aceita
+        ? undefined
+        : maxConsecutivos < LINE_MIN_LEN
+          ? "curto"
+          : "longo";
+      debug.linhas.push({ pos: y, maxRun: maxConsecutivos, aceita, motivo });
     }
+    if (aceita && linhaH == null) {
+      linhaH = y;
+      if (!debug) break;
+    }
+    if (debug && linhaH != null && y >= DEBUG_FIRST_PX - 1) break;
   }
 
   let linhaV: number | null = null;
@@ -85,10 +126,21 @@ function analisarPadraoMarca(
         consecutivos = 0;
       }
     }
-    if (maxConsecutivos >= LINE_MIN_LEN && maxConsecutivos <= LINE_MAX_LEN) {
-      linhaV = x;
-      break;
+    const aceita =
+      maxConsecutivos >= LINE_MIN_LEN && maxConsecutivos <= LINE_MAX_LEN;
+    if (debug && x < DEBUG_FIRST_PX && maxConsecutivos > 0) {
+      const motivo: DebugCandidato["motivo"] | undefined = aceita
+        ? undefined
+        : maxConsecutivos < LINE_MIN_LEN
+          ? "curto"
+          : "longo";
+      debug.colunas.push({ pos: x, maxRun: maxConsecutivos, aceita, motivo });
     }
+    if (aceita && linhaV == null) {
+      linhaV = x;
+      if (!debug) break;
+    }
+    if (debug && linhaV != null && x >= DEBUG_FIRST_PX - 1) break;
   }
 
   if (linhaH != null && linhaV != null) {
@@ -123,9 +175,22 @@ function extrairCantoGray(
   return out;
 }
 
+function debugAtivo(): boolean {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.localStorage !== "undefined" &&
+      window.localStorage.getItem("autoria:marcas-debug") === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function detectarMarcasMioloCliente(
   file: File,
 ): Promise<MarcasVisuaisHint | null> {
+  const debug = debugAtivo();
   try {
     // Import dinâmico: pdfjs-dist só pode carregar no browser, e queremos
     // que este módulo seja tree-shakable no server (o import "use client"
@@ -177,17 +242,37 @@ export async function detectarMarcasMioloCliente(
     if (cornerPxSafe < LINE_MIN_LEN * 2) return null;
 
     const cantos = [
-      { left: 0, top: 0 },
-      { left: widthPx - cornerPxSafe, top: 0 },
-      { left: 0, top: heightPx - cornerPxSafe },
-      { left: widthPx - cornerPxSafe, top: heightPx - cornerPxSafe },
-    ];
+      { nome: "superior-esq", left: 0, top: 0 },
+      { nome: "superior-dir", left: widthPx - cornerPxSafe, top: 0 },
+      { nome: "inferior-esq", left: 0, top: heightPx - cornerPxSafe },
+      {
+        nome: "inferior-dir",
+        left: widthPx - cornerPxSafe,
+        top: heightPx - cornerPxSafe,
+      },
+    ] as const;
 
     let detectados = 0;
     const distancias: number[] = [];
     for (const c of cantos) {
       const gray = extrairCantoGray(imgData, c.left, c.top, cornerPxSafe);
-      const r = analisarPadraoMarca(gray, cornerPxSafe);
+      const debugCanto: DebugCanto | undefined = debug
+        ? {
+            linhas: [],
+            colunas: [],
+            histograma: computarHistograma(gray),
+          }
+        : undefined;
+      const r = analisarPadraoMarca(gray, cornerPxSafe, debugCanto);
+      if (debug && debugCanto) {
+        console.log(`[marcas-debug] ${c.nome}`, {
+          linhas: debugCanto.linhas,
+          colunas: debugCanto.colunas,
+          histograma_gray_8b: debugCanto.histograma,
+          detectada: r.detectada,
+          distanciaBordaPx: r.distanciaBordaPx,
+        });
+      }
       if (r.detectada) {
         detectados++;
         distancias.push(r.distanciaBordaPx);
@@ -200,6 +285,18 @@ export async function detectarMarcasMioloCliente(
         : 0;
     const distancia_borda_mm =
       Math.round((distanciaMediaPx / DPI_RASTER) * 25.4 * 10) / 10;
+
+    if (debug) {
+      console.log("[marcas-debug] final", {
+        cantos_detectados: detectados,
+        distancia_borda_mm,
+        cornerPxSafe,
+        dpi: DPI_RASTER,
+        widthPx,
+        heightPx,
+        distancias_px: distancias,
+      });
+    }
 
     return {
       cantos_detectados: detectados,
