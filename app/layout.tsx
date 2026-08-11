@@ -1,22 +1,21 @@
 import type { Metadata } from "next";
-import { Syne, DM_Sans, Fraunces, DM_Mono } from "next/font/google";
+import { Fraunces, DM_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const syne = Syne({
-  variable: "--font-syne",
-  subsets: ["latin"],
-  weight: "800",
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
+const switzer = localFont({
+  src: "./fonts/Switzer-Variable.woff2",
+  variable: "--font-switzer",
+  display: "swap",
+  weight: "100 900",
 });
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
   display: "swap",
+  axes: ["SOFT", "WONK", "opsz"],
+  weight: "variable",
 });
 
 const dmMono = DM_Mono({
@@ -98,7 +97,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${syne.variable} ${dmSans.variable} ${fraunces.variable} ${dmMono.variable} h-full antialiased`}
+      className={`${switzer.variable} ${fraunces.variable} ${dmMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
