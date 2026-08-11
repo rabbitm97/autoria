@@ -26,13 +26,13 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://autoria.app"),
+  metadataBase: new URL("https://useautoria.com"),
   title: {
     default: "Autoria — Publique seu livro com IA, do manuscrito ao leitor",
     template: "%s | Autoria",
   },
   description:
-    "A plataforma brasileira de publicação com IA. Revisão, capa, diagramação, audiolivro e distribuição em 15+ plataformas — em horas, não semanas. A partir de R$197.",
+    "A plataforma brasileira de publicação com IA. Revisão, capa e diagramação para eBook e livro impresso — a partir de R$197 por obra, sem tiragem mínima.",
   keywords: [
     "publicar livro",
     "autopublicação",
@@ -40,7 +40,6 @@ export const metadata: Metadata = {
     "plataforma de publicação",
     "capa de livro ia",
     "revisão textual ia",
-    "audiolivro ia",
     "publicar no kindle",
     "amazon kdp",
     "epub",
@@ -52,11 +51,11 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "pt_BR",
-    url: "https://autoria.app",
+    url: "https://useautoria.com",
     siteName: "Autoria",
     title: "Autoria — Publique seu livro com IA",
     description:
-      "Do manuscrito ao leitor em horas. Revisão, capa, audiolivro e distribuição global — tudo com IA, em português, a partir de R$197.",
+      "Do manuscrito ao livro pronto. Revisão, capa e diagramação com IA, em português — a partir de R$197.",
     images: [
       {
         url: "/og-image.png",
@@ -69,7 +68,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Autoria — Publique seu livro com IA",
-    description: "Do manuscrito ao leitor em horas, a partir de R$197.",
+    description: "Do manuscrito ao livro pronto, a partir de R$197.",
     images: ["/og-image.png"],
   },
   icons: {
@@ -87,7 +86,7 @@ export const metadata: Metadata = {
     googleBot: { index: true, follow: true },
   },
   alternates: {
-    canonical: "https://autoria.app",
+    canonical: "https://useautoria.com",
   },
 };
 

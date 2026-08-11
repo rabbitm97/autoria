@@ -112,26 +112,26 @@ function Hero() {
               Sem editora.
             </p>
 
-            <div className="flex items-center gap-4 mb-14">
+            <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 href="/cadastro"
-                className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary px-8 py-4 rounded-xl font-bold text-base hover:bg-brand-gold-light active:scale-[0.98] transition-all shadow-xl shadow-brand-gold/20"
+                className="group flex-1 bg-brand-gold text-brand-primary rounded-xl px-6 py-4 font-bold text-sm hover:bg-brand-gold-light active:scale-[0.99] transition-all"
               >
-                Publicar meu livro
+                Tenho um manuscrito
+                <span className="block text-[11px] font-medium opacity-70 mt-0.5">Revisão, capa e diagramação com IA</span>
               </Link>
-              <a
-                href="#como-funciona"
-                className="text-white/50 text-sm hover:text-white/80 transition-colors flex items-center gap-2"
+              <Link
+                href={"/cadastro?next=" + encodeURIComponent("/dashboard/livro-pronto")}
+                className="group flex-1 border border-white/20 text-white rounded-xl px-6 py-4 font-bold text-sm hover:border-brand-gold/60 hover:text-brand-gold active:scale-[0.99] transition-all"
               >
-                <span className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-xs">▶</span>
-                Ver como funciona
-              </a>
+                Meu livro está pronto
+                <span className="block text-[11px] font-medium opacity-60 mt-0.5">Verifique, veja a prova e imprima</span>
+              </Link>
             </div>
 
-            {/* Trust signal */}
-            <div className="flex items-center gap-6 pt-8 border-t border-white/10">
-              <p className="text-white/40 text-xs">Diagnóstico gratuito</p>
-            </div>
+            <p className="font-mono text-white/40 text-xs tracking-wide mt-6">
+              a partir de 1 exemplar · produção em até 15 dias úteis, em contrato · R$ 197 por obra
+            </p>
           </div>
 
           {/* Right: floating dashboard */}
@@ -232,20 +232,6 @@ function Hero() {
           </div>
         </div>
 
-        {/* Stats bar at bottom of hero */}
-        <div className="grid grid-cols-4 border-t border-white/5 -mx-8">
-          {[
-            { value: "R$197", label: "A partir de, por obra"      },
-            { value: "100%",  label: "Direitos autorais do autor" },
-            { value: "0",     label: "Tiragem mínima"             },
-            { value: "PT-BR", label: "Esteira editorial em português" },
-          ].map((s) => (
-            <div key={s.label} className="px-8 py-7 border-r border-white/5 last:border-0">
-              <div className="font-heading text-3xl text-brand-gold mb-1">{s.value}</div>
-              <div className="text-white/35 text-sm">{s.label}</div>
-            </div>
-          ))}
-        </div>
       </div>
     </section>
   );
@@ -898,10 +884,11 @@ function Footer() {
             <p className="text-white/20 text-xs font-semibold uppercase tracking-widest mb-5">Produto</p>
             <ul className="space-y-3">
               {[
-                { label: "Como funciona", href: "#como-funciona" },
-                { label: "Preços",        href: "#precos"        },
-                { label: "Ferramentas",   href: "/ferramentas"   },
-                { label: "Dashboard",     href: "/dashboard"     },
+                { label: "Como funciona",        href: "#como-funciona" },
+                { label: "Planos",               href: "#precos"        },
+                { label: "Ferramentas",          href: "/ferramentas"   },
+                { label: "Perguntas frequentes", href: "#faq"           },
+                { label: "Dashboard",            href: "/dashboard"     },
               ].map((l) => (
                 <li key={l.label}>
                   <a href={l.href} className="text-white/35 hover:text-white/65 text-sm transition-colors">{l.label}</a>

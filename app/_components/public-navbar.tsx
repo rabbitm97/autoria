@@ -11,13 +11,11 @@ interface NavLink {
 }
 
 const NAV_LINKS: NavLink[] = [
-  { label: "Como funciona",      href: "/#como-funciona"                   },
-  { label: "Serviços",           href: "/#servicos"                        },
-  { label: "Ferramentas",        href: "/ferramentas"                      },
-  { label: "Simulador de preço", href: "/simulador",     destaque: true    },
-  { label: "Preços",             href: "/#precos"                          },
-  { label: "Blog",               href: "/blog"                             },
-  { label: "FAQ",                href: "/#faq"                             },
+  { label: "Como funciona", href: "#como-funciona"                },
+  { label: "Ferramentas",   href: "/ferramentas"                  },
+  { label: "Simulador",     href: "/simulador",   destaque: true  },
+  { label: "Planos",        href: "#precos"                       },
+  { label: "Blog",          href: "/blog"                         },
 ];
 
 export default function PublicNavbar() {
@@ -76,10 +74,10 @@ export default function PublicNavbar() {
             Entrar
           </Link>
           <Link
-            href="/login"
+            href="/cadastro"
             className="bg-brand-gold text-brand-primary text-sm font-bold px-5 py-2.5 rounded-lg hover:bg-brand-gold-light active:scale-95 transition-all tracking-wide"
           >
-            Começar grátis
+            Publicar meu livro
           </Link>
         </div>
 
@@ -123,11 +121,11 @@ export default function PublicNavbar() {
               Entrar
             </Link>
             <Link
-              href="/login"
+              href="/cadastro"
               onClick={() => setOpen(false)}
               className="text-center bg-brand-gold text-brand-primary text-sm font-bold py-2.5 rounded-lg hover:bg-brand-gold-light transition-all"
             >
-              Começar grátis
+              Publicar meu livro
             </Link>
           </div>
         </div>
