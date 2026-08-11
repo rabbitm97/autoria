@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-const SRC = { gold: "/logo-amarelo.png", navy: "/logo-azul.png" } as const;
+const SRC = { gold: "/logo-amarelo-v2.png", navy: "/logo-azul-v2.png" } as const;
 
 export default function BrandLogo({
   variant,
