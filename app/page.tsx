@@ -109,7 +109,6 @@ function Hero() {
             <p className="text-white/60 text-xl leading-relaxed mb-10 max-w-lg">
               A Autoria usa inteligência artificial para transformar seu manuscrito
               em livro pronto para publicar — com revisão, capa e diagramação.
-              Sem editora.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
@@ -128,10 +127,6 @@ function Hero() {
                 <span className="block text-[11px] font-medium opacity-60 mt-0.5">Verifique, veja a prova e imprima</span>
               </Link>
             </div>
-
-            <p className="font-mono text-white/40 text-xs tracking-wide mt-6">
-              a partir de 1 exemplar · produção em até 15 dias úteis, em contrato · R$ 197 por obra
-            </p>
           </div>
 
           {/* Right: floating dashboard */}

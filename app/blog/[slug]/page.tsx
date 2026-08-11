@@ -85,7 +85,7 @@ export default async function PostPage({ params }: Props) {
         <div className="mt-10 bg-brand-primary rounded-2xl p-10 text-center">
           <h3 className="font-heading text-2xl text-white mb-3">Pronto para publicar seu livro?</h3>
           <p className="text-white/50 text-sm mb-6">
-            Do manuscrito ao leitor em horas — revisão, capa, audiolivro e distribuição em 15+ plataformas.
+            Do manuscrito ao livro pronto — revisão, capa e diagramação com IA, a partir de R$ 197.
           </p>
           <Link
             href="/login"

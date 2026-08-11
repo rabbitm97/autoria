@@ -98,13 +98,19 @@ function LoginInner() {
         <Link href="/" className="font-heading text-2xl text-brand-gold">Autoria</Link>
         <div>
           <div className="w-12 h-1 bg-brand-gold rounded-full mb-8" />
-          <blockquote className="text-white/70 text-xl leading-relaxed mb-6">
-            &ldquo;Enviei meu manuscrito às 9h e às 17h tinha a capa, o EPUB e a sinopse prontos.&rdquo;
-          </blockquote>
-          <p className="text-white/40 text-sm">— Fernanda Oliveira, autora de romance contemporâneo</p>
+          <h2 className="font-heading text-3xl text-white mb-4">
+            Publique seu livro<br />com inteligência.
+          </h2>
+          <p className="text-white/50 text-sm leading-relaxed">
+            Diagnóstico gratuito, revisão, capa e diagramação — do manuscrito ao livro pronto, em uma só ferramenta.
+          </p>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          {[{ value: "15+", label: "Plataformas" }, { value: "85%", label: "Royalties" }, { value: "24h", label: "Publicação" }].map(s => (
+          {[
+            { value: "R$ 197", label: "a partir de, por obra" },
+            { value: "100%",   label: "direitos do autor" },
+            { value: "1",      label: "exemplar mínimo de impressão" },
+          ].map(s => (
             <div key={s.label} className="bg-white/5 rounded-xl p-4 border border-white/5">
               <div className="font-heading text-2xl text-brand-gold">{s.value}</div>
               <div className="text-white/40 text-xs mt-1">{s.label}</div>
