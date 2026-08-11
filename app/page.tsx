@@ -84,10 +84,10 @@ const PLANS = [
 
 function Hero() {
   return (
-    <section className="relative bg-white overflow-hidden">
+    <section className="relative bg-white overflow-hidden min-h-[100dvh] flex flex-col items-center justify-center pt-16">
       <TypeField />
-      <div className="relative z-10 max-w-4xl mx-auto px-6 md:px-8 pt-40 pb-32 text-center">
-        <h1 className="font-heading text-brand-primary text-6xl md:text-7xl xl:text-8xl leading-[1.02] mb-8">
+      <div className="relative z-10 w-full max-w-4xl mx-auto px-6 md:px-8 py-10 text-center">
+        <h1 className="font-heading text-brand-primary text-4xl sm:text-5xl lg:text-7xl xl:text-8xl leading-[1.02] mb-8">
           Do manuscrito{" "}
           <span className="text-brand-gold">ao livro</span>{" "}
           pronto.
@@ -121,12 +121,12 @@ function Hero() {
 
 function FeatureEditorial() {
   return (
-    <section id="servicos" className="bg-white py-28 overflow-x-clip border-t border-brand-primary/8">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="grid grid-cols-2 gap-20 items-center">
+    <section id="servicos" className="bg-white py-20 lg:py-28 overflow-x-clip border-t border-brand-primary/8">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
 
           {/* Visual — o mockup escuro FICA escuro (objeto de contraste sobre papel) */}
-          <div className="relative" aria-hidden="true">
+          <div className="relative order-2 lg:order-1" aria-hidden="true">
             <div className="absolute -inset-4 bg-brand-primary/10 rounded-3xl blur-2xl" />
             <div className="relative bg-brand-primary border border-brand-primary/10 rounded-2xl overflow-hidden shadow-2xl shadow-brand-primary/10">
               {/* Header bar */}
@@ -174,11 +174,11 @@ function FeatureEditorial() {
           </div>
 
           {/* Text */}
-          <div>
+          <div className="order-1 lg:order-2">
             <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-4">
               Revisão Editorial
             </p>
-            <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-6">
+            <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-6">
               IA que entende<br />o português<br />do jeito certo
             </h2>
             <p className="text-brand-primary/70 text-lg leading-relaxed mb-8">
@@ -217,16 +217,16 @@ function FeatureEditorial() {
 
 function FeatureCapa() {
   return (
-    <section className="bg-brand-surface py-28 overflow-x-clip border-t border-brand-primary/8">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="grid grid-cols-2 gap-20 items-center">
+    <section className="bg-brand-surface py-20 lg:py-28 overflow-x-clip border-t border-brand-primary/8">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
 
           {/* Text */}
           <div>
             <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-4">
               Design de Capa
             </p>
-            <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-6">
+            <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-6">
               Capas que vendem.<br />Criadas por IA<br />em minutos.
             </h2>
             <p className="text-zinc-500 text-lg leading-relaxed mb-8">
@@ -307,13 +307,13 @@ function FeatureCapa() {
 function FeatureFormatos() {
   const formatosDisponiveis = FORMATOS_LIVRO.map(f => f.dimensoes).join(", ");
   return (
-    <section className="bg-white py-28 border-t border-brand-primary/8">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16">
+    <section className="bg-white py-20 lg:py-28 border-t border-brand-primary/8">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-12 lg:mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
             Formatos
           </p>
-          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
+          <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-5">
             Um manuscrito.<br />Dois formatos.
           </h2>
           <p className="text-brand-primary/60 text-lg leading-relaxed">
@@ -322,7 +322,7 @@ function FeatureFormatos() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
             {
               icon: "◈",
@@ -395,13 +395,13 @@ function ExpressSection() {
   ];
 
   return (
-    <section id="livro-pronto" className="bg-brand-surface py-28 border-t border-brand-primary/8">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="text-center max-w-3xl mx-auto mb-16">
+    <section id="livro-pronto" className="bg-brand-surface py-20 lg:py-28 border-t border-brand-primary/8">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="text-center max-w-3xl mx-auto mb-12 lg:mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
             Já tem o livro pronto?
           </p>
-          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
+          <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-5">
             Publique em minutos.<br />Imprima com preço de gráfica.
           </h2>
           <p className="text-zinc-500 text-lg leading-relaxed">
@@ -412,7 +412,7 @@ function ExpressSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-10">
           {cards.map((c) => {
             const body = (
               <>
@@ -506,11 +506,11 @@ function SimuladorBand() {
 
 function Pricing() {
   return (
-    <section id="precos" className="bg-brand-primary py-28">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16">
+    <section id="precos" className="bg-brand-primary py-20 lg:py-28">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-12 lg:mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">Preços</p>
-          <h2 className="font-heading text-5xl text-white leading-tight mb-5">
+          <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-white leading-tight mb-5">
             Pague uma vez.<br />Publique para sempre.
           </h2>
           <p className="text-white/55 text-lg">
@@ -518,13 +518,13 @@ function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 items-start max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start max-w-4xl mx-auto">
           {PLANS.map((plan) => (
             <article
               key={plan.name}
               className={`rounded-2xl border-2 relative overflow-hidden ${
                 plan.highlight
-                  ? "border-brand-gold bg-white scale-105 shadow-2xl shadow-brand-gold/20"
+                  ? "border-brand-gold bg-white lg:scale-105 shadow-2xl shadow-brand-gold/20"
                   : "bg-white/5 border-white/10 hover:border-white/20 transition-colors"
               }`}
             >
@@ -600,13 +600,13 @@ function FerramentasHome() {
     .filter((t): t is NonNullable<typeof t> => Boolean(t?.href_publico));
 
   return (
-    <section id="ferramentas-gratis" className="bg-white py-28">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16">
+    <section id="ferramentas-gratis" className="bg-white py-20 lg:py-28">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="text-center max-w-2xl mx-auto mb-12 lg:mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
             Ferramentas gratuitas
           </p>
-          <h2 className="font-heading text-5xl text-brand-primary leading-tight mb-5">
+          <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-5">
             Ferramentas de gráfica,<br />abertas pra qualquer autor.
           </h2>
           <p className="text-zinc-500 text-lg leading-relaxed">
@@ -674,14 +674,14 @@ function FinalCTA() {
         ))}
       </div>
 
-      <div className="relative max-w-7xl mx-auto px-8">
-        <div className="grid grid-cols-[1fr_480px] gap-20 items-center">
+      <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_480px] gap-12 lg:gap-20 items-center">
           <div>
             <div className="inline-flex items-center gap-2 bg-brand-gold/10 border border-brand-gold/25 rounded-full px-4 py-1.5 text-brand-gold text-xs font-semibold uppercase tracking-widest mb-8">
               <span className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse" />
               Diagnóstico gratuito disponível agora
             </div>
-            <h2 className="font-heading text-6xl text-white leading-[1.02] mb-6">
+            <h2 className="font-heading text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.02] mb-6">
               Seu manuscrito<br />merece existir<br />
               <span className="text-brand-gold">como livro.</span>
             </h2>
@@ -752,8 +752,8 @@ function Footer() {
   const year = new Date().getFullYear();
   return (
     <footer className="bg-[#0d0d1a] pt-16 pb-8">
-      <div className="max-w-7xl mx-auto px-8">
-        <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-12 mb-14">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-10 lg:gap-12 mb-14">
           <div>
             <BrandLogo variant="gold" height={108} />
             <p className="text-white/35 text-sm leading-relaxed mt-5 max-w-xs">

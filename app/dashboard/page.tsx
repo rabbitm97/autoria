@@ -138,8 +138,8 @@ export default async function DashboardPage({
     <div className="min-h-full bg-brand-surface">
 
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-zinc-100 px-8 py-5">
-        <div className="max-w-6xl mx-auto flex items-center gap-6">
+      <div className="bg-white border-b border-zinc-100 px-4 lg:px-8 py-5">
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row items-stretch lg:items-center gap-4 lg:gap-6">
 
           {/* Greeting */}
           <div className="shrink-0">
@@ -153,10 +153,10 @@ export default async function DashboardPage({
           <ProjectsThumbnails projetos={projetos} activeId={projetoAtivo?.id} />
 
           {/* CTAs de criação */}
-          <div className="shrink-0 ml-auto flex items-center gap-2">
+          <div className="w-full lg:w-auto lg:ml-auto grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-2">
             <Link
               href="/dashboard/novo-projeto"
-              className="shrink-0 flex flex-col items-center justify-center w-36 h-[5.5rem] px-2 rounded-xl bg-brand-gold text-brand-primary font-semibold text-xs text-center leading-tight hover:bg-brand-gold-light transition-colors gap-0.5"
+              className="flex flex-col items-center justify-center w-full lg:w-36 h-[5.5rem] px-2 rounded-xl bg-brand-gold text-brand-primary font-semibold text-xs text-center leading-tight hover:bg-brand-gold-light transition-colors gap-0.5"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -166,7 +166,7 @@ export default async function DashboardPage({
             </Link>
             <Link
               href="/dashboard/livro-pronto"
-              className="shrink-0 flex flex-col items-center justify-center w-36 h-[5.5rem] px-2 rounded-xl bg-brand-primary border border-brand-gold/40 text-brand-gold font-semibold text-xs text-center leading-tight hover:border-brand-gold hover:bg-brand-primary/90 transition-colors gap-0.5"
+              className="flex flex-col items-center justify-center w-full lg:w-36 h-[5.5rem] px-2 rounded-xl bg-brand-primary border border-brand-gold/40 text-brand-gold font-semibold text-xs text-center leading-tight hover:border-brand-gold hover:bg-brand-primary/90 transition-colors gap-0.5"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -179,15 +179,15 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 lg:px-8 py-6 lg:py-8 space-y-8">
 
         {/* ── Active project card ────────────────────────────────────────────── */}
         {projetoAtivo ? (
           <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <div className="flex gap-0">
+            <div className="flex flex-col lg:flex-row gap-0">
 
               {/* Book cover */}
-              <div className="w-44 shrink-0 flex flex-col items-center justify-center p-6 border-r border-zinc-100 bg-zinc-50">
+              <div className="w-full lg:w-44 shrink-0 flex flex-col items-center justify-center p-6 border-b lg:border-b-0 lg:border-r border-zinc-100 bg-zinc-50">
                 <div className="w-24 h-36 rounded-lg shadow-lg overflow-hidden relative"
                   style={{ background: "linear-gradient(160deg, #1a1a2e 0%, #2d2d5e 100%)" }}>
                   <CapaFrenteThumb projectId={projetoAtivo.id} alt={`Capa de ${nomeAtivo}`}>
@@ -274,7 +274,7 @@ export default async function DashboardPage({
 
                 <Link
                   href={continueHref}
-                  className="inline-flex items-center gap-2 bg-brand-primary text-brand-gold px-7 py-3 rounded-xl font-semibold text-sm hover:bg-brand-primary/90 transition-colors"
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 bg-brand-primary text-brand-gold px-7 py-3 rounded-xl font-semibold text-sm hover:bg-brand-primary/90 transition-colors"
                 >
                   Continuar processo
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -284,7 +284,7 @@ export default async function DashboardPage({
               </div>
 
               {/* Right panel: plan upgrade + other projects */}
-              <div className="w-52 shrink-0 border-l border-zinc-100 p-5 flex flex-col gap-4">
+              <div className="w-full lg:w-52 shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-100 p-5 flex flex-col gap-4">
 
                 {/* Upgrade banner */}
                 {userPlano !== "pro" && !isExpressAtivo && (
@@ -382,7 +382,7 @@ export default async function DashboardPage({
               Ver todas as ferramentas →
             </Link>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {TOOLS.map((tool) => (
               <Link
                 key={tool.href}

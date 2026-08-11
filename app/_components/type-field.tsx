@@ -47,10 +47,10 @@ export default function TypeField({ className }: { className?: string }) {
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const n = Math.max(90, Math.min(220, Math.round((w * h) / 9000)));
+      const n = Math.max(90, Math.min(320, Math.round((w * h) / 5200)));
       parts = Array.from({ length: n }, () => {
         const r = Math.random();
-        const kind: P["kind"] = r < 0.7 ? "glyph" : r < 0.85 ? "crop" : "cmyk";
+        const kind: P["kind"] = r < 0.6 ? "glyph" : r < 0.75 ? "crop" : "cmyk";
         const gold = Math.random() < 0.18;
         return {
           x: Math.random() * w,
@@ -63,9 +63,9 @@ export default function TypeField({ className }: { className?: string }) {
           vr: (Math.random() - 0.5) * 0.004,
           kind,
           glyph: GLYPHS[(Math.random() * GLYPHS.length) | 0],
-          size: kind === "cmyk" ? 3 + Math.random() * 2 : 10 + Math.random() * 14,
+          size: kind === "cmyk" ? 3 + Math.random() * 3 : 10 + Math.random() * 14,
           color: kind === "cmyk" ? CMYK[(Math.random() * 4) | 0] : gold ? GOLD : INK,
-          alpha: kind === "cmyk" ? 0.3 : 0.10 + Math.random() * 0.16,
+          alpha: kind === "cmyk" ? 0.5 : 0.14 + Math.random() * 0.18,
         };
       });
     };
