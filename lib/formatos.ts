@@ -174,7 +174,10 @@ export const EXTRAS_PADRAO = 6;
  * Vivia hardcoded em 3 lugares (miolo page, capa page, prova route).
  * Centralizado aqui para que ajustes futuros sejam decisão única.
  */
-export const LIMITE_DIVERGENCIA_LOMBADA_MM = 2;
+/** Divergência máxima tolerada entre lombada deduzida da capa e a do
+ *  miolo (mm). 2→1 em 11/ago/2026 (decisão Graphium, pós
+ *  FIX-CAPA-MARCAS-01). */
+export const LIMITE_DIVERGENCIA_LOMBADA_MM = 1;
 
 /**
  * Calcula cpp ajustado para o corpo_pt efetivamente usado no livro.

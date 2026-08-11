@@ -9,8 +9,9 @@ import type { CapaGeradaResult } from "@/app/api/agentes/gerar-capa/route";
 
 // ─── POST /api/agentes/ajustar-lombada ───────────────────────────────────────
 // Detects spine divergence between miolo (real) and capa (used at generation
-// time) and, if > 2 mm, regenerates ONLY the spine element and recomposes the
-// full cover. No credit charge — this is a correction, not aesthetic regen.
+// time) and, if above LIMITE_DIVERGENCIA_LOMBADA_MM, regenerates ONLY the
+// spine element and recomposes the full cover. No credit charge — this is a
+// correction, not aesthetic regen.
 
 export async function POST(req: NextRequest) {
   let userId: string;
