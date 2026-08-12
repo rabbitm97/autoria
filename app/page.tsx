@@ -532,18 +532,20 @@ function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
           {/* Tier gratuito — deliberadamente mais quieto */}
-          <article className="rounded-2xl border border-white/15 relative overflow-hidden bg-transparent hover:border-white/25 transition-colors">
-            <div className="p-8">
-              <h3 className="font-heading text-2xl mb-1 text-white">Comece grátis</h3>
-              <p className="text-sm mb-8 text-white/40">Conheça a esteira sem cartão</p>
+          <article className="rounded-2xl border border-white/15 relative bg-transparent hover:border-white/25 transition-colors h-full flex flex-col">
+            <div className="p-8 flex-1 flex flex-col">
+              <div className="mb-8 min-h-[76px]">
+                <h3 className="font-heading text-2xl mb-1 text-white">Comece grátis</h3>
+                <p className="text-sm text-white/40">Conheça a esteira sem cartão</p>
+              </div>
 
               <div className="flex items-baseline gap-2 mb-8">
                 <span className="font-heading text-5xl text-white">R$ 0</span>
               </div>
 
-              <ul className="space-y-3 mb-8">
+              <ul className="space-y-3 mb-8 flex-1">
                 {[
                   "Diagnóstico editorial completo do seu manuscrito",
                   "Ferramentas de gráfica ilimitadas",
@@ -559,7 +561,7 @@ function Pricing() {
 
               <Link
                 href="/cadastro"
-                className="block text-center py-3.5 rounded-xl font-bold text-sm border border-white/15 text-white hover:border-brand-gold transition-all active:scale-[0.98]"
+                className="mt-auto block text-center py-3.5 rounded-xl font-bold text-sm border border-white/15 text-white hover:border-brand-gold transition-all active:scale-[0.98]"
               >
                 Criar conta grátis
               </Link>
@@ -569,25 +571,27 @@ function Pricing() {
           {PLANS.map((plan) => (
             <article
               key={plan.name}
-              className={`rounded-2xl border-2 relative overflow-hidden ${
+              className={`rounded-2xl border-2 relative h-full flex flex-col ${
                 plan.highlight
                   ? "border-brand-gold bg-white lg:scale-105 shadow-2xl shadow-brand-gold/20"
                   : "bg-white/5 border-white/10 hover:border-white/20 transition-colors"
               }`}
             >
               {plan.badge && (
-                <div className="bg-brand-gold text-brand-primary text-xs font-bold py-2.5 text-center tracking-widest uppercase">
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-brand-gold text-brand-primary text-xs font-bold px-4 py-1.5 rounded-full tracking-widest uppercase whitespace-nowrap shadow-lg shadow-brand-gold/30">
                   {plan.badge}
                 </div>
               )}
 
-              <div className="p-8">
-                <h3 className={`font-heading text-2xl mb-1 ${plan.highlight ? "text-brand-primary" : "text-white"}`}>
-                  {plan.name}
-                </h3>
-                <p className={`text-sm mb-8 ${plan.highlight ? "text-zinc-400" : "text-white/40"}`}>
-                  {plan.desc}
-                </p>
+              <div className="p-8 flex-1 flex flex-col">
+                <div className="mb-8 min-h-[76px]">
+                  <h3 className={`font-heading text-2xl mb-1 ${plan.highlight ? "text-brand-primary" : "text-white"}`}>
+                    {plan.name}
+                  </h3>
+                  <p className={`text-sm ${plan.highlight ? "text-zinc-400" : "text-white/40"}`}>
+                    {plan.desc}
+                  </p>
+                </div>
 
                 <div className="flex items-baseline gap-2 mb-8">
                   <span className={`font-heading text-5xl ${plan.highlight ? "text-brand-primary" : "text-white"}`}>
@@ -598,7 +602,7 @@ function Pricing() {
                   </span>
                 </div>
 
-                <ul className="space-y-3 mb-8">
+                <ul className="space-y-3 mb-8 flex-1">
                   {plan.items.map((item) => (
                     <li key={item} className="flex items-start gap-3">
                       <span className="text-brand-gold mt-0.5 shrink-0 text-sm">✓</span>
@@ -611,7 +615,7 @@ function Pricing() {
 
                 <Link
                   href="/cadastro"
-                  className={`block text-center py-3.5 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
+                  className={`mt-auto block text-center py-3.5 rounded-xl font-bold text-sm transition-all active:scale-[0.98] ${
                     plan.highlight
                       ? "bg-brand-primary text-white hover:bg-[#2a2a4e]"
                       : "bg-brand-gold text-brand-primary hover:bg-brand-gold-light"
