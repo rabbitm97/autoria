@@ -532,7 +532,40 @@ function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start max-w-6xl mx-auto">
+          {/* Tier gratuito — deliberadamente mais quieto */}
+          <article className="rounded-2xl border border-white/15 relative overflow-hidden bg-transparent hover:border-white/25 transition-colors">
+            <div className="p-8">
+              <h3 className="font-heading text-2xl mb-1 text-white">Comece grátis</h3>
+              <p className="text-sm mb-8 text-white/40">Conheça a esteira sem cartão</p>
+
+              <div className="flex items-baseline gap-2 mb-8">
+                <span className="font-heading text-5xl text-white">R$ 0</span>
+              </div>
+
+              <ul className="space-y-3 mb-8">
+                {[
+                  "Diagnóstico editorial completo do seu manuscrito",
+                  "Ferramentas de gráfica ilimitadas",
+                  "Livro pronto: verificação e pré-visualização sem custo",
+                  "Sem cartão de crédito",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <span className="text-brand-gold mt-0.5 shrink-0 text-sm">✓</span>
+                    <span className="text-sm leading-snug text-white/60">{item}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href="/cadastro"
+                className="block text-center py-3.5 rounded-xl font-bold text-sm border border-white/15 text-white hover:border-brand-gold transition-all active:scale-[0.98]"
+              >
+                Criar conta grátis
+              </Link>
+            </div>
+          </article>
+
           {PLANS.map((plan) => (
             <article
               key={plan.name}
