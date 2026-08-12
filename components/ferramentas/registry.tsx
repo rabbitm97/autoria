@@ -191,7 +191,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Cole o ISBN e baixe o EAN-13 em SVG ou PNG, pronto pra capa.",
     categoria: "Capa e imagem",
     estado: "gratis",
-    href: "/ferramentas/codigo-barras-isbn",
+    href: "/dashboard/ferramentas/codigo-barras-isbn",
     href_publico: "/ferramentas/codigo-barras-isbn",
     icon: BarcodeIcon,
   },

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { CreditosConfig, CreditosFormato } from "@/app/api/ferramentas/creditos/route";
 import type { FichaOficialCRB, PropositoPublicacao } from "@/app/api/agentes/creditos/route";
@@ -338,6 +339,19 @@ export default function CreditosFerramenta() {
             <Field label="Título original" hint="Apenas para traduções" value={tituloOriginal} onChange={setTituloOriginal} placeholder="El título original" />
             <Field label="Idioma original" value={idiomaOriginal} onChange={setIdiomaOriginal} placeholder="Espanhol" />
             <Field label="ISBN" value={isbn} onChange={setIsbn} placeholder="978-65-XXXXX-XX-X" />
+          </div>
+
+          <div className="mt-5 rounded-xl border border-brand-primary/10 bg-brand-primary/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-zinc-600 leading-relaxed">
+              Já tem o ISBN? Gere o código de barras EAN-13 da capa gratuitamente
+              — em SVG vetorial ou PNG.
+            </p>
+            <Link
+              href="/dashboard/ferramentas/codigo-barras-isbn"
+              className="shrink-0 text-sm font-medium text-brand-primary hover:text-brand-gold transition-colors whitespace-nowrap"
+            >
+              Gerar código de barras →
+            </Link>
           </div>
         </section>
 
