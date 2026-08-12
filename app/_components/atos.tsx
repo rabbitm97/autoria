@@ -48,12 +48,12 @@ const ATOS: Array<{
   },
   {
     n: 4,
-    label: "Ato 4 — Publique e imprima",
+    label: "Ato 4 — Finalize e imprima",
     title: "Do seu painel pra estante",
     bullets: [
       "Prova visual do livro montado antes de qualquer pagamento",
       "Impressão a partir de 1 exemplar, com preço de gráfica",
-      "Produção em até 15 dias úteis, garantida em contrato",
+      "Impressão com preço de gráfica, direto do seu painel",
     ],
     visual: ProvaVisual,
     chip: "Audiolivro — em breve",

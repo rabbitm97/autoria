@@ -53,7 +53,7 @@ const PLANS = [
     name: "Essencial",
     price: formatarPrecoPlano("essencial"),
     period: "por obra",
-    desc: "Publique seu primeiro eBook",
+    desc: "Seu primeiro eBook, pronto pra publicar",
     highlight: false,
     cta: "Começar com Essencial",
     items: [
@@ -77,7 +77,7 @@ const PLANS = [
       "Tudo do Essencial",
       "Capa completa com IA (frente e verso ou arte única) — até 8 imagens inclusas",
       "PDF de impressão com sangria e marcas de corte",
-      "Prova de impressão e simulação de tiragem",
+      "Pré-visualização de impressão e simulação de tiragem",
     ],
   },
 ];
@@ -110,7 +110,7 @@ function Hero() {
             className="group flex-1 border border-brand-primary/25 text-brand-primary rounded-xl px-6 py-4 font-bold text-sm hover:border-brand-gold hover:text-brand-primary active:scale-[0.99] transition-all"
           >
             Meu livro está pronto
-            <span className="block text-[11px] font-medium opacity-60 mt-0.5">Verifique, veja a prova e imprima</span>
+            <span className="block text-[11px] font-medium opacity-60 mt-0.5">Verifique, veja na tela e imprima</span>
           </Link>
         </div>
       </div>
@@ -179,21 +179,19 @@ function FeatureEditorial() {
               Revisão Editorial
             </p>
             <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-6">
-              IA que entende<br />o português<br />do jeito certo
+              A IA propõe.<br />Você decide.
             </h2>
             <p className="text-brand-primary/70 text-lg leading-relaxed mb-8">
-              Enquanto outras plataformas usam ferramentas genéricas em inglês,
-              a Autoria usa o modelo Claude Sonnet, da Anthropic,
-              ajustado especificamente para o português brasileiro. Cada sugestão
-              considera seu estilo, gênero e tom narrativo.
+              A revisão da Autoria trabalha sugestão a sugestão: ortografia,
+              estilo, ritmo e coesão — cada mudança explicada, e nada entra no
+              seu texto sem a sua aprovação. O livro continua com a sua voz.
             </p>
             <ul className="space-y-4 mb-10">
               {[
-                "Revisão gramatical e ortográfica em PT-BR",
-                "Análise de coesão, coerência e estilo",
-                "Sugestões de ritmo e fluidez narrativa",
-                "Geração de sinopse em 3 formatos (curta, média, longa)",
-                "Palavras-chave otimizadas para SEO editorial",
+                "Ortografia, gramática e estilo, sugestão a sugestão",
+                "Análise de coesão, ritmo e fluidez narrativa",
+                "Sinopse em 3 tamanhos (curta, média, longa)",
+                "Palavras-chave pro cadastro nas lojas",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-brand-primary/70 text-base">
                   <span className="text-brand-gold mt-1 shrink-0 text-sm">✓</span>
@@ -227,21 +225,20 @@ function FeatureCapa() {
               Design de Capa
             </p>
             <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-6">
-              Capas que vendem.<br />Criadas por IA<br />em minutos.
+              Gerada por IA.<br />Sua até o último detalhe.
             </h2>
             <p className="text-zinc-500 text-lg leading-relaxed mb-8">
-              A capa é o principal fator de compra de um livro. Descreva a atmosfera
-              que você imagina ou envie uma referência visual — a IA gera opções
-              profissionais que competem com as melhores livrarias do mundo.
+              A capa é o principal fator de compra de um livro. A IA gera opções
+              profissionais a partir do seu gênero e das suas referências — e o
+              editor da Autoria deixa você ajustar tudo: fontes, cores, imagens,
+              cada elemento. No fim, sai a arte-final completa, pronta pra gráfica.
             </p>
             <ul className="space-y-4 mb-10">
               {[
-                "Frente, contra-capa, lombada e orelhas completas",
-                "5 formatos de livro: 16×23, 14×21, 11×18, 20×20, A4",
-                "Calibragem automática da lombada pela contagem de páginas",
-                "Upload de imagem de referência para guiar o estilo",
-                "Alta resolução para impressão CMYK profissional",
-                "Arte-final completa montada e pronta para envio",
+                "Editor completo: fontes, cores, imagens e layout",
+                "Frente, contracapa, lombada e orelhas — lombada calibrada pela contagem de páginas",
+                "Referência visual sua pra guiar o estilo",
+                "Arte-final em alta resolução, CMYK de gráfica",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-zinc-600 text-base">
                   <span className="text-brand-gold mt-1 shrink-0 text-sm">✓</span>
@@ -305,7 +302,23 @@ function FeatureCapa() {
 }
 
 function FeatureFormatos() {
-  const formatosDisponiveis = FORMATOS_LIVRO.map(f => f.dimensoes).join(", ");
+  const destinos = [
+    {
+      icon: "◈",
+      title: "eBook",
+      sub: "EPUB 3.0 + PDF",
+      desc: "EPUB 3.0 com tipografia editorial, detecção automática de capítulos, notas de rodapé e índice.",
+      items: ["Padrão EPUB 3 global", "Tipografia editorial", "Detecção de capítulos, notas e índice"],
+    },
+    {
+      icon: "⊟",
+      title: "Livro Físico",
+      sub: "PDF para impressão",
+      desc: "PDF/X para gráficas sob demanda e impressão offset. Formatação automática com margens, sangria e páginas de rosto profissionais.",
+      items: [`Formatos: ${FORMATOS_LIVRO.map(f => f.dimensoes).join(", ")}`, "Alta resolução 300 DPI", "Sangria e marcas de corte"],
+    },
+  ];
+
   return (
     <section className="bg-white py-20 lg:py-28 border-t border-brand-primary/8">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -314,31 +327,16 @@ function FeatureFormatos() {
             Formatos
           </p>
           <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-5">
-            Um manuscrito.<br />Dois formatos.
+            Um manuscrito.<br />Três destinos.
           </h2>
           <p className="text-brand-primary/60 text-lg leading-relaxed">
-            eBook e livro físico gerados a partir do mesmo arquivo,
-            em um único fluxo de trabalho.
+            eBook, livro físico e, em breve, audiolivro — todos a partir do
+            mesmo arquivo.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[
-            {
-              icon: "◈",
-              title: "eBook",
-              sub: "EPUB 3.0 + PDF",
-              desc: "EPUB 3.0 com tipografia editorial, detecção automática de capítulos, notas de rodapé e índice.",
-              items: ["Padrão EPUB 3 global", "Tipografia editorial", "Detecção de capítulos", "Notas de rodapé e índice"],
-            },
-            {
-              icon: "⊟",
-              title: "Livro Físico",
-              sub: "PDF para impressão",
-              desc: "PDF/X para gráficas sob demanda e impressão offset. Formatação automática com margens, sangria e páginas de rosto profissionais.",
-              items: ["Impressão sob demanda, sem tiragem mínima", `Formatos: ${formatosDisponiveis}`, "Alta resolução 300 DPI", "Sangria e marcas de corte"],
-            },
-          ].map((f) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {destinos.map((f) => (
             <div key={f.title} className="bg-white border border-brand-primary/15 rounded-2xl p-8 shadow-sm shadow-brand-primary/5 hover:border-brand-gold/40 hover:shadow-md transition-all group">
               <div className="flex items-center justify-between mb-6">
                 <div className="w-12 h-12 rounded-xl bg-brand-gold/10 border border-brand-gold/20 flex items-center justify-center text-brand-gold text-2xl">
@@ -360,6 +358,28 @@ function FeatureFormatos() {
               </ul>
             </div>
           ))}
+
+          {/* Audiolivro — em breve */}
+          <div className="rounded-2xl p-8 border-2 border-dashed border-brand-primary/25 bg-brand-primary/[0.02] flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <div className="w-12 h-12 rounded-xl bg-brand-primary/5 border border-brand-primary/15 flex items-center justify-center text-brand-primary/60">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 14v-3a9 9 0 0 1 18 0v3" />
+                  <path d="M21 14a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2v2z" />
+                  <path d="M3 14a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2v2z" />
+                </svg>
+              </div>
+              <span className="text-brand-primary/60 text-[10px] font-bold uppercase tracking-widest bg-white border border-brand-primary/15 px-3 py-1 rounded-full">
+                EM BREVE
+              </span>
+            </div>
+
+            <h3 className="font-heading text-2xl text-brand-primary/70 mb-3">Audiolivro</h3>
+            <p className="text-brand-primary/55 text-sm leading-relaxed">
+              Seu livro narrado, pronto pras plataformas de áudio. Em
+              desenvolvimento.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -381,16 +401,16 @@ function ExpressSection() {
       link: { label: "Simular preço →", href: "/simulador" },
     },
     {
-      titulo: "Prova visual grátis",
+      titulo: "Veja antes de pagar",
       texto:
-        "Veja o livro montado, página a página, antes de pagar qualquer coisa.",
+        "Pré-visualização digital do livro montado, página a página, sem custo.",
       link: null as { label: string; href: string } | null,
     },
     {
-      titulo: "Prazo por escrito",
+      titulo: "A partir de 1 exemplar",
       texto:
-        "Produção em até 15 dias úteis para tiragens de até 300 exemplares — garantido em contrato, não em promessa.",
-      link: { label: "Ler no contrato →", href: "/contrato-servicos" },
+        "Imprima 1 pra revisar ou 300 pra lançar — sem tiragem mínima, com preço de gráfica.",
+      link: null as { label: string; href: string } | null,
     },
   ];
 
@@ -402,12 +422,12 @@ function ExpressSection() {
             Já tem o livro pronto?
           </p>
           <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-brand-primary leading-tight mb-5">
-            Publique em minutos.<br />Imprima com preço de gráfica.
+            Do PDF pronto<br />ao livro impresso.
           </h2>
           <p className="text-zinc-500 text-lg leading-relaxed">
             Se o seu PDF já está diagramado, você não precisa da esteira
             completa: suba o arquivo, confira a verificação técnica na hora,
-            veja a prova visual do livro montado — e imprima a partir de 1
+            veja a pré-visualização do livro montado — e imprima a partir de 1
             exemplar.
           </p>
         </div>
@@ -453,18 +473,12 @@ function ExpressSection() {
           })}
         </div>
 
-        <div className="text-center mb-10">
-          <span className="inline-flex items-center gap-2 bg-brand-gold/10 border border-brand-gold/30 rounded-full px-4 py-1.5 text-brand-primary text-xs font-semibold uppercase tracking-widest">
-            Sem tiragem mínima — a partir de 1 exemplar
-          </span>
-        </div>
-
         <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
           <Link
             href="/cadastro?next=%2Fdashboard%2Flivro-pronto"
             className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary px-8 py-4 rounded-xl font-bold text-sm hover:bg-brand-gold-light active:scale-[0.98] transition-all shadow-xl shadow-brand-gold/20"
           >
-            Publicar meu livro pronto →
+            Imprimir meu livro pronto →
           </Link>
           <a
             href="#servicos"
@@ -511,10 +525,10 @@ function Pricing() {
         <div className="text-center max-w-2xl mx-auto mb-12 lg:mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">Preços</p>
           <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl text-white leading-tight mb-5">
-            Pague uma vez.<br />Publique para sempre.
+            Um pagamento por obra.
           </h2>
           <p className="text-white/55 text-lg">
-            Sem assinatura. Diagnóstico gratuito antes de qualquer cobrança.
+            Sem assinatura, sem mensalidade.
           </p>
         </div>
 
@@ -582,12 +596,6 @@ function Pricing() {
           <a href="mailto:contato@useautoria.com" className="text-brand-gold hover:underline">
             contato@useautoria.com
           </a>
-        </p>
-
-        <p className="text-center text-white/30 text-xs mt-3">
-          <Link href="/contrato-servicos#clausula-7" className="hover:text-white/60 underline underline-offset-4">
-            Arrependimento em 7 dias, conforme o Contrato de Serviços
-          </Link>
         </p>
       </div>
     </section>

@@ -13,7 +13,7 @@ const ITEMS = [
   },
   {
     q: "Quanto tempo leva a esteira editorial?",
-    a: "A etapa de processamento com IA — revisão, sinopse, capa e diagramação — é concluída em poucas horas na esteira editorial da Autoria. A distribuição em canais externos (livrarias, marketplaces, bibliotecas) depende de cada canal e não faz parte do serviço.",
+    a: "A esteira digital — revisão, sinopse, capa e diagramação — roda no seu ritmo dentro do painel, uma etapa por vez: quem aprova cada passo é você. Se o plano inclui impressão, o prazo de produção da impressão é combinado no pedido e o frete é calculado pro seu CEP. A distribuição em canais externos (livrarias, marketplaces, bibliotecas) depende de cada canal e não faz parte do serviço.",
   },
   {
     q: "A revisão da IA substitui um revisor humano?",
