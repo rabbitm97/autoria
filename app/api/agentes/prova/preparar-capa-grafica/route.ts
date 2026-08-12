@@ -5,11 +5,8 @@ import { requireAuth } from "@/lib/supabase-server";
 import { updateProject } from "@/lib/supabase-helpers";
 import { validarProjectData } from "@/lib/project-data";
 import { createClient } from "@supabase/supabase-js";
-import sharp from "sharp";
-import {
-  buildGraficaPdf,
-  ICC_PROFILE_PATH,
-} from "@/app/editor/capa/[project_id]/lib/cover-grafica-pdf";
+import { buildGraficaPdf } from "@/app/editor/capa/[project_id]/lib/cover-grafica-pdf";
+import { converterImagemParaCmyk } from "@/lib/cmyk-imagem";
 import {
   clampOrelhaMm,
   getOrelhaDefault,
@@ -332,11 +329,8 @@ export async function POST(req: NextRequest) {
 
     let pdfBytes: Uint8Array;
     try {
-      // Sharp aplica o ICC profile FOGRA39 para CMYK, mesmo fluxo do editor.
-      const cmykJpegBuffer = await sharp(coverBuffer)
-        .withIccProfile(ICC_PROFILE_PATH)
-        .jpeg({ quality: 95 })
-        .toBuffer();
+      // Núcleo compartilhado com editor e ferramenta pública (lib/cmyk-imagem).
+      const cmykJpegBuffer = await converterImagemParaCmyk(coverBuffer);
 
       pdfBytes = await buildGraficaPdf(cmykJpegBuffer, {
         format: formatoAtual,

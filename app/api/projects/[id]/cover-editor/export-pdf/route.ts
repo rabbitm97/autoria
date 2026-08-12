@@ -5,10 +5,8 @@ import { requireAuth, createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
-import {
-  buildGraficaPdf,
-  ICC_PROFILE_PATH,
-} from "@/app/editor/capa/[project_id]/lib/cover-grafica-pdf";
+import { buildGraficaPdf } from "@/app/editor/capa/[project_id]/lib/cover-grafica-pdf";
+import { converterImagemParaCmyk } from "@/lib/cmyk-imagem";
 import type { EditorData } from "@/app/editor/capa/[project_id]/lib/editor-serializer";
 import type { AnyElement, TextElement } from "@/app/editor/capa/[project_id]/lib/elements";
 import {
@@ -161,11 +159,8 @@ export async function POST(
   let pdfBuffer: Buffer;
 
   if (versao === "grafica") {
-    // CMYK: converte usando ICC profile FOGRA39 (comportamento atual, intocado)
-    const cmykJpegBuffer = await sharp(fullCoverBuffer)
-      .withIccProfile(ICC_PROFILE_PATH)
-      .jpeg({ quality: 95 })
-      .toBuffer();
+    // CMYK: núcleo compartilhado com a ferramenta RGB→CMYK (lib/cmyk-imagem).
+    const cmykJpegBuffer = await converterImagemParaCmyk(fullCoverBuffer);
 
     const pdfBytes = await buildGraficaPdf(cmykJpegBuffer, {
       format, pages, orelhaMm, projectName,

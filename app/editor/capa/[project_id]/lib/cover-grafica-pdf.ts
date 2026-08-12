@@ -9,7 +9,6 @@
  */
 
 import { PDFDocument, cmyk, StandardFonts } from "pdf-lib";
-import { join } from "path";
 import { FORMATS, SANGRIA_MM, calcularLombada } from "./dimensions";
 import type { FormatKey } from "../types";
 
@@ -19,10 +18,6 @@ const CROP_LEN = 5;
 const REG_R_MM = 2.5;
 const COLOR_BAR_H_MM = 4;
 const STROKE_MM = 0.25;
-
-// Path to the CMYK ICC profile used for Sharp conversion.
-// Replace with the real CoatedFOGRA39.icc from eci.org if available.
-export const ICC_PROFILE_PATH = join(process.cwd(), "public", "icc", "CoatedFOGRA39.icc");
 
 function mmToPt(mm: number): number {
   return (mm * 72) / 25.4;

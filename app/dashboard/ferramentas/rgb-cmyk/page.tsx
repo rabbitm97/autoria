@@ -4,7 +4,7 @@ import RgbCmykTool from "@/components/ferramentas/rgb-cmyk-tool";
 export default function RgbCmykPage() {
   return (
     <div>
-      <RgbCmykTool />
+      <RgbCmykTool permitirArquivo />
       <div className="mt-4 mb-10 text-center">
         <Link
           href="/dashboard/ferramentas"
