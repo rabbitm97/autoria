@@ -407,8 +407,9 @@ function ResultadoView({
       </div>
 
       <div className="bg-brand-primary/5 rounded-xl border border-brand-primary/10 px-4 py-3 mb-4">
-        <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-0.5">Produção</p>
-        <p className="text-sm text-brand-primary font-semibold">Até 15 dias úteis</p>
+        <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-1.5">Produção e envio</p>
+        <p className="text-sm text-brand-primary font-semibold">Produção: até 15 dias úteis (tiragens até 300)</p>
+        <p className="text-xs text-zinc-500 mt-1">Frete: somado no pedido, conforme o CEP</p>
       </div>
 
       <details className="group">

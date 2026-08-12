@@ -196,7 +196,7 @@ export default function CheckoutPage() {
               <div className="mt-5 rounded-lg bg-white/5 border border-white/10 p-3 text-[11px] leading-relaxed text-white/80 space-y-2">
                 <p>
                   <strong className="text-brand-gold">Cláusula 5 —</strong>{" "}
-                  ao aprovar a prova, o risco editorial (erros de texto,
+                  ao aprovar a pré-visualização, o risco editorial (erros de texto,
                   ortografia, ordem de capítulos, dados da página de créditos)
                   passa a ser seu.
                 </p>

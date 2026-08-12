@@ -156,7 +156,7 @@ export const POSTS: Post[] = [
       },
       {
         type: "p",
-        text: "A Autoria utiliza Claude Sonnet, um dos modelos de linguagem mais avançados disponíveis, treinado e ajustado especificamente para o português brasileiro. O resultado é uma revisão que entende regionalismos, expressões idiomáticas e nuances do nosso idioma.",
+        text: "A Autoria utiliza um dos modelos de linguagem mais avançados disponíveis, ajustado para o português brasileiro. O resultado é uma revisão que entende regionalismos, expressões idiomáticas e nuances do nosso idioma.",
       },
       {
         type: "p",
