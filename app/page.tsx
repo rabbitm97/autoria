@@ -520,7 +520,7 @@ function SimuladorBand() {
 
 function Pricing() {
   return (
-    <section id="precos" className="bg-brand-primary py-20 lg:py-28">
+    <section id="precos" className="scroll-mt-24 bg-brand-primary py-20 lg:py-28">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="text-center max-w-2xl mx-auto mb-12 lg:mb-16">
           <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">Preços</p>
@@ -773,10 +773,10 @@ function Footer() {
             <p className="text-white/20 text-xs font-semibold uppercase tracking-widest mb-5">Produto</p>
             <ul className="space-y-3">
               {[
-                { label: "Como funciona",        href: "#como-funciona" },
-                { label: "Planos",               href: "#precos"        },
-                { label: "Ferramentas",          href: "/ferramentas"   },
-                { label: "Perguntas frequentes", href: "#faq"           },
+                { label: "Como funciona",        href: "/#como-funciona" },
+                { label: "Planos",               href: "/#precos"        },
+                { label: "Ferramentas",          href: "/ferramentas"    },
+                { label: "Perguntas frequentes", href: "/#faq"           },
                 { label: "Dashboard",            href: "/dashboard"     },
               ].map((l) => (
                 <li key={l.label}>

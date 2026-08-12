@@ -86,7 +86,7 @@ export default function Atos({
   const Visual = ato.visual;
 
   return (
-    <section id="como-funciona" className="bg-brand-surface py-28">
+    <section id="como-funciona" className="scroll-mt-24 bg-brand-surface py-28">
       <div className="max-w-6xl mx-auto px-6 lg:px-8">
 
         {/* Header */}
@@ -337,7 +337,7 @@ function ProvaVisual() {
           <div className="flex items-center gap-1.5 text-[10px] text-brand-primary/70">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-gold" /> 1 exemplar em produção
           </div>
-          <div className="text-[9px] text-brand-primary/40 mt-2">Entrega em até 15 dias úteis</div>
+          <div className="text-[9px] text-brand-primary/40 mt-2">Impressão a partir de 1 exemplar</div>
         </div>
       </div>
       <div className="mt-3 bg-brand-primary text-white text-[10px] font-bold text-center py-1.5 rounded">

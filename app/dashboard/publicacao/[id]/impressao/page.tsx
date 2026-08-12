@@ -517,7 +517,7 @@ export default function ImpressaoPage() {
                     </span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1">
-                    Prazo de produção: {orcamento.prazo_producao_dias} dias úteis
+                    Produção: até {orcamento.prazo_producao_dias} dias úteis · Frete: calculado pro seu CEP, somado no pedido
                   </div>
                 </div>
 

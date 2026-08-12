@@ -11,10 +11,10 @@ interface NavLink {
 }
 
 const NAV_LINKS: NavLink[] = [
-  { label: "Como funciona", href: "#como-funciona"                },
+  { label: "Como funciona", href: "/#como-funciona"               },
   { label: "Ferramentas",   href: "/ferramentas"                  },
   { label: "Simulador",     href: "/simulador",   destaque: true  },
-  { label: "Planos",        href: "#precos"                       },
+  { label: "Planos",        href: "/#precos"                      },
   { label: "Blog",          href: "/blog"                         },
 ];
 
