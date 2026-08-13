@@ -1,6 +1,12 @@
 import Image from "next/image";
 
-const SRC = { gold: "/logo-amarelo-v2.png", navy: "/logo-azul-v2.png" } as const;
+// Wordmark v3 em Fraunces (13/ago/2026). Chaves gold/navy mantêm nome
+// por compat de API; "gold" agora aponta pro offwhite (superfícies escuras:
+// sidebar, auth, footer). "navy" segue nas superfícies claras (navbar home, cards).
+const SRC = {
+  gold: "/logo-offwhite-v3.png",
+  navy: "/logo-azul-v3.png",
+} as const;
 
 export default function BrandLogo({
   variant,
