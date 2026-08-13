@@ -12,6 +12,11 @@ import type {
 } from "@/lib/impressao-pricing";
 import { FORMATO_LABELS } from "@/lib/impressao-pricing";
 import type { FormatoLivro } from "@/lib/formatos";
+import {
+  LIMITE_DIVERGENCIA_LOMBADA_MM,
+  estimarLombadaCapaMm,
+  lombadaPorPapelPedido,
+} from "@/lib/formatos";
 
 /**
  * BLOCO-02-C — Orçamento de impressão POD.
@@ -64,6 +69,19 @@ interface ProjectMeta {
   com_orelhas_projeto: boolean;
   qa_grafica_aprovado: boolean;
   qa_grafica_pendencias: string[];
+  /** Fonte da capa: ia (gerada), upload (subida pronta), editor (feita no editor). */
+  capa_source: "ia" | "upload" | "editor" | null;
+  /** Modo da capa (dados_capa.modo). "ia" ou "upload". */
+  capa_modo: "ia" | "upload" | null;
+  /**
+   * Lombada da capa hoje, em mm. Prioridade:
+   *   1. analise_tecnica.lombada_deduzida_mm (medida do arquivo real)
+   *   2. dados_capa.lombada_mm (usada na geração)
+   *   3. estimarLombadaCapaMm(paginas) — fallback 75g fixo
+   */
+  lombada_capa_mm: number;
+  /** Papel do miolo persistido do último pedido, se houver. */
+  papel_miolo_pedido: PapelMiolo | null;
 }
 
 function formatBRL(reais: number): string {
@@ -96,7 +114,7 @@ export default function ImpressaoPage() {
       const { data, error } = await supabase
         .from("projects")
         .select(`
-          formato, dados_capa, dados_miolo, dados_qa,
+          formato, dados_capa, dados_miolo, dados_qa, papel_miolo_pedido,
           manuscripts(titulo, autor_primeiro_nome, autor_sobrenome)
         `)
         .eq("id", id)
@@ -119,12 +137,17 @@ export default function ImpressaoPage() {
         editor_data?: { orelhaMm?: number; comOrelhas?: boolean };
         orelha_mm?: number;
         usar_orelhas?: boolean;
+        source?: string;
+        modo?: string;
+        lombada_mm?: number;
+        analise_tecnica?: { lombada_deduzida_mm?: number | null };
         exports?: { jpeg_ebook?: { storage_path?: string } };
       } | null;
       const miolo = data.dados_miolo as { paginas_reais?: number } | null;
       const qa = data.dados_qa as {
         grafica?: { aprovado?: boolean; pendencias?: Array<{ mensagem: string }> };
       } | null;
+      const papelPersistido = (data as { papel_miolo_pedido?: string | null }).papel_miolo_pedido ?? null;
 
       const paginas = miolo?.paginas_reais ?? 0;
       if (!paginas) {
@@ -154,6 +177,23 @@ export default function ImpressaoPage() {
       if (cancel) return;
 
       if (!data.formato) console.warn("[impressao] [formato-fallback] formato nulo — não deveria acontecer pós FIX-01.");
+
+      const lombadaDeduzida = capa?.analise_tecnica?.lombada_deduzida_mm ?? null;
+      const lombadaGerada = typeof capa?.lombada_mm === "number" ? capa.lombada_mm : null;
+      const lombadaCapaMm =
+        (typeof lombadaDeduzida === "number" ? lombadaDeduzida : null) ??
+        lombadaGerada ??
+        estimarLombadaCapaMm(paginas);
+
+      const source = (capa?.source ?? null) as ProjectMeta["capa_source"];
+      const modo = (capa?.modo ?? null) as ProjectMeta["capa_modo"];
+
+      const PAPEIS_VALIDOS: PapelMiolo[] = ["offset_75g", "avena_80g", "polen_bold_90g", "couche_fosco_90g"];
+      const papelPedidoInicial: PapelMiolo | null =
+        papelPersistido && (PAPEIS_VALIDOS as string[]).includes(papelPersistido)
+          ? (papelPersistido as PapelMiolo)
+          : null;
+
       setMeta({
         titulo,
         autor,
@@ -163,7 +203,17 @@ export default function ImpressaoPage() {
         com_orelhas_projeto: comOrelhasProjeto,
         qa_grafica_aprovado: qa?.grafica?.aprovado ?? false,
         qa_grafica_pendencias: qa?.grafica?.pendencias?.map(p => p.mensagem) ?? [],
+        capa_source: source,
+        capa_modo: modo,
+        lombada_capa_mm: lombadaCapaMm,
+        papel_miolo_pedido: papelPedidoInicial,
       });
+
+      // Hidrata form com papel do último pedido, se houver.
+      if (papelPedidoInicial) {
+        setForm(prev => ({ ...prev, papel_miolo: papelPedidoInicial }));
+      }
+
       setLoadingMeta(false);
     })();
     return () => { cancel = true; };
@@ -247,6 +297,80 @@ export default function ImpressaoPage() {
   const papelDisabled = useCallback((p: Papel): boolean => {
     return p === "couche_fosco_90g" && form.cor_miolo === "pb" ? false : false;
   }, [form.cor_miolo]);
+
+  // ── Lombada do papel escolhido vs lombada atual da capa ────────────────
+  // O papel do PEDIDO manda na lombada. Se a troca desloca > 1mm, o pedido
+  // não avança até a capa ser ajustada e o autor confirmar.
+  const lombadaAlvoMm = useMemo(() => {
+    if (!meta) return null;
+    return lombadaPorPapelPedido(meta.paginas, form.papel_miolo);
+  }, [meta, form.papel_miolo]);
+
+  const lombadaDivergenteMm = useMemo(() => {
+    if (!meta || lombadaAlvoMm === null) return null;
+    const diff = Math.abs(lombadaAlvoMm - meta.lombada_capa_mm);
+    return diff > LIMITE_DIVERGENCIA_LOMBADA_MM ? diff : null;
+  }, [meta, lombadaAlvoMm]);
+
+  const [modalAjuste, setModalAjuste] = useState<
+    | { tipo: "ia"; alvoMm: number; atualMm: number }
+    | { tipo: "manual"; alvoMm: number; atualMm: number; destino: string }
+    | null
+  >(null);
+  const [ajusteStatus, setAjusteStatus] = useState<"idle" | "loading" | "erro">("idle");
+  const [ajusteErro, setAjusteErro] = useState<string | null>(null);
+
+  const abrirModalAjuste = useCallback(() => {
+    if (!meta || lombadaAlvoMm === null) return;
+    // IA e editor têm ajuste automático via ajustar-lombada; upload precisa
+    // refazer manualmente (rota rejeita upload). Editor cai no fluxo manual
+    // porque a lombada é definida pelo layout do editor, não pelo agente.
+    if (meta.capa_modo === "ia") {
+      setModalAjuste({ tipo: "ia", alvoMm: lombadaAlvoMm, atualMm: meta.lombada_capa_mm });
+    } else if (meta.capa_source === "editor") {
+      setModalAjuste({
+        tipo: "manual",
+        alvoMm: lombadaAlvoMm,
+        atualMm: meta.lombada_capa_mm,
+        destino: `/editor/capa/${id}`,
+      });
+    } else {
+      setModalAjuste({
+        tipo: "manual",
+        alvoMm: lombadaAlvoMm,
+        atualMm: meta.lombada_capa_mm,
+        destino: `/dashboard/capa/${id}`,
+      });
+    }
+  }, [meta, lombadaAlvoMm, id]);
+
+  const confirmarAjusteIa = useCallback(async () => {
+    if (!modalAjuste || modalAjuste.tipo !== "ia") return;
+    setAjusteStatus("loading");
+    setAjusteErro(null);
+    try {
+      const res = await fetch("/api/agentes/ajustar-lombada", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: id, papel_pedido: form.papel_miolo }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) {
+        setAjusteStatus("erro");
+        setAjusteErro(json.error ?? "Falha ao ajustar a lombada.");
+        return;
+      }
+      // Reload meta pra pegar a nova lombada_capa_mm e limpar a divergência.
+      setModalAjuste(null);
+      setAjusteStatus("idle");
+      setMeta(prev => prev
+        ? { ...prev, lombada_capa_mm: (json.lombada_nova as number) ?? modalAjuste.alvoMm, papel_miolo_pedido: form.papel_miolo }
+        : prev);
+    } catch {
+      setAjusteStatus("erro");
+      setAjusteErro("Falha de rede ao ajustar a lombada.");
+    }
+  }, [modalAjuste, id, form.papel_miolo]);
 
   const summaryText = useMemo(() => {
     if (!orcamento) return "";
@@ -361,6 +485,43 @@ export default function ImpressaoPage() {
                 );
               })}
             </div>
+
+            {lombadaAlvoMm !== null && (
+              <p className="mt-3 text-xs text-slate-600">
+                Lombada dessa configuração:{" "}
+                <strong className="text-slate-900">{lombadaAlvoMm.toFixed(1)}mm</strong>
+                {" "}({meta.paginas} páginas em {PAPEL_OPTIONS.find(p => p.value === form.papel_miolo)?.label ?? form.papel_miolo}).
+              </p>
+            )}
+
+            {lombadaDivergenteMm !== null && lombadaAlvoMm !== null && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="flex items-start gap-2.5">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-700 shrink-0 mt-0.5">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  <div className="flex-1 text-xs text-amber-900 leading-relaxed">
+                    <p className="font-semibold mb-1">
+                      Este papel muda a lombada em {lombadaDivergenteMm.toFixed(1)}mm.
+                    </p>
+                    <p className="mb-2">
+                      Sua capa hoje foi montada para <strong>{meta.lombada_capa_mm.toFixed(1)}mm</strong>,
+                      mas com este papel a lombada correta é <strong>{lombadaAlvoMm.toFixed(1)}mm</strong>.
+                      Sem ajustar a capa, o texto da lombada sai torto na gráfica.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={abrirModalAjuste}
+                      className="text-xs font-medium text-amber-900 underline hover:text-amber-950"
+                    >
+                      {meta.capa_modo === "ia" ? "Ajustar capa para o papel escolhido" : "Ver como ajustar a capa"} →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Cor do miolo */}
@@ -524,11 +685,13 @@ export default function ImpressaoPage() {
                 <button
                   type="button"
                   onClick={handleAddCarrinho}
-                  disabled={addStatus === "loading"}
-                  className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-medium text-sm transition"
+                  disabled={addStatus === "loading" || lombadaDivergenteMm !== null}
+                  className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium text-sm transition"
+                  title={lombadaDivergenteMm !== null ? "Ajuste a capa para o papel escolhido antes de adicionar ao carrinho." : undefined}
                 >
                   {addStatus === "loading" ? "Adicionando…"
                     : addStatus === "ok" ? "Adicionado ✓"
+                    : lombadaDivergenteMm !== null ? "Ajuste a capa antes"
                     : "Adicionar ao carrinho"}
                 </button>
 
@@ -541,6 +704,83 @@ export default function ImpressaoPage() {
           </div>
         </aside>
       </div>
+
+      {modalAjuste && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => { if (ajusteStatus !== "loading") { setModalAjuste(null); setAjusteErro(null); } }}
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-2xl bg-white shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-7 py-6">
+              <h2 className="text-lg font-semibold text-slate-900 mb-2">
+                {modalAjuste.tipo === "ia" ? "Regerar a lombada da capa?" : "Ajuste manual necessário"}
+              </h2>
+
+              {modalAjuste.tipo === "ia" ? (
+                <>
+                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                    Isso vai regerar a lombada da sua capa de{" "}
+                    <strong className="text-slate-900">{modalAjuste.atualMm.toFixed(1)}mm</strong> para{" "}
+                    <strong className="text-slate-900">{modalAjuste.alvoMm.toFixed(1)}mm</strong>{" "}
+                    ({PAPEL_OPTIONS.find(p => p.value === form.papel_miolo)?.label ?? form.papel_miolo}, {meta.paginas} páginas).
+                    A frente e a contracapa não mudam. Prosseguir?
+                  </p>
+                  {ajusteErro && (
+                    <div className="mb-3 p-2.5 rounded-md bg-red-50 border border-red-200 text-xs text-red-800">
+                      {ajusteErro}
+                    </div>
+                  )}
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setModalAjuste(null); setAjusteErro(null); }}
+                      disabled={ajusteStatus === "loading"}
+                      className="px-4 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmarAjusteIa}
+                      disabled={ajusteStatus === "loading"}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-medium"
+                    >
+                      {ajusteStatus === "loading" ? "Regerando…" : "Regerar lombada"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                    {meta.capa_source === "editor"
+                      ? <>Sua capa foi feita no editor e a lombada segue o layout que você escolheu. Para o papel <strong>{PAPEL_OPTIONS.find(p => p.value === form.papel_miolo)?.label ?? form.papel_miolo}</strong>, a lombada correta é <strong>{modalAjuste.alvoMm.toFixed(1)}mm</strong>. Abra o editor pra ajustar antes de continuar.</>
+                      : <>Sua capa foi enviada pronta (upload). Para o papel <strong>{PAPEL_OPTIONS.find(p => p.value === form.papel_miolo)?.label ?? form.papel_miolo}</strong>, a lombada correta é <strong>{modalAjuste.alvoMm.toFixed(1)}mm</strong>. Refaça o upload com a lombada correta antes de continuar.</>
+                    }
+                  </p>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setModalAjuste(null)}
+                      className="px-4 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-100"
+                    >
+                      Fechar
+                    </button>
+                    <Link
+                      href={modalAjuste.destino}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium"
+                    >
+                      {meta.capa_source === "editor" ? "Abrir editor" : "Ir para Capa"}
+                    </Link>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

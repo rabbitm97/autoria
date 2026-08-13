@@ -386,3 +386,37 @@ export function estimarLombadaPapelMm(
   }
   return Math.round((paginas * (papel.mm_por_caderno_32 ?? 0) / 32) * 10) / 10;
 }
+
+// ── Papel do pedido → papel da calculadora ────────────────────────────────
+// Mapa 1:1 entre os 4 papéis do pricing (PapelMiolo em lib/impressao-pricing.ts)
+// e as entradas de PAPEIS_CALCULADORA. Único ponto de verdade que liga a
+// escolha do autor no pedido à fórmula de lombada. "couche_fosco_90g" é
+// laminação da capa (fosco vs brilho), não altera lombada — mapeia para
+// couche_90 mesmo assim, seguindo a constante empírica única do papel-base.
+export const PAPEL_PEDIDO_PARA_CALCULADORA: Record<string, string> = {
+  offset_75g: "offset_75",
+  avena_80g: "avena_80",
+  polen_bold_90g: "polen_bold_90",
+  couche_fosco_90g: "couche_90",
+};
+
+/**
+ * Lombada em mm a partir do papel escolhido no PEDIDO (radio-card na página
+ * de impressão). Retorna `null` se `papelPedido` for null/undefined ou não
+ * existir no mapa — caller decide se cai no fallback (miolo.lombada_mm com
+ * PAPEL_GRAMATURA_PADRAO_GSM fixo).
+ *
+ * Fonte única — não duplicar cálculo em rota/UI. Delega para
+ * estimarLombadaPapelMm.
+ */
+export function lombadaPorPapelPedido(
+  paginas: number,
+  papelPedido: string | null | undefined,
+): number | null {
+  if (!papelPedido) return null;
+  const calcId = PAPEL_PEDIDO_PARA_CALCULADORA[papelPedido];
+  if (!calcId) return null;
+  const papel = PAPEIS_CALCULADORA.find((p) => p.id === calcId);
+  if (!papel) return null;
+  return estimarLombadaPapelMm(paginas, papel);
+}

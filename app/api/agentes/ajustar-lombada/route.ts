@@ -6,6 +6,7 @@ import { updateProject } from "@/lib/supabase-helpers";
 import { isDev } from "@/lib/anthropic";
 import { validarProjectData } from "@/lib/project-data";
 import type { CapaGeradaResult } from "@/app/api/agentes/gerar-capa/route";
+import { lombadaPorPapelPedido, PAPEL_PEDIDO_PARA_CALCULADORA } from "@/lib/formatos";
 
 // ─── POST /api/agentes/ajustar-lombada ───────────────────────────────────────
 // Detects spine divergence between miolo (real) and capa (used at generation
@@ -30,23 +31,46 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let body: { project_id: string };
+  let body: { project_id: string; papel_pedido?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const { project_id } = body;
+  const { project_id, papel_pedido: papelPedidoBody } = body;
   if (!project_id) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
+  }
+
+  // PAPEL-PEDIDO-1: se veio papel no body, valida contra o mapa (aceita
+  // apenas os 4 papéis do pricing) e persiste no projeto ANTES de regenerar.
+  // Se não veio, mantém o que já estava gravado (comportamento retrocompatível).
+  if (papelPedidoBody && !(papelPedidoBody in PAPEL_PEDIDO_PARA_CALCULADORA)) {
+    return NextResponse.json(
+      { error: `Papel do pedido inválido: ${papelPedidoBody}.` },
+      { status: 400 },
+    );
+  }
+  if (papelPedidoBody) {
+    const { error: papelErr } = await supabase
+      .from("projects")
+      .update({ papel_miolo_pedido: papelPedidoBody })
+      .eq("id", project_id)
+      .eq("user_id", userId);
+    if (papelErr) {
+      return NextResponse.json(
+        { error: "Falha ao persistir papel do pedido antes do ajuste." },
+        { status: 500 },
+      );
+    }
   }
 
   // ── Load project ────────────────────────────────────────────────────────────
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("dados_capa, dados_miolo")
+    .select("dados_capa, dados_miolo, papel_miolo_pedido")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -57,6 +81,7 @@ export async function POST(req: NextRequest) {
 
   const dados_capa = project.dados_capa as (CapaGeradaResult & Record<string, unknown>) | null;
   const dados_miolo = project.dados_miolo as { paginas_reais?: number; lombada_mm?: number } | null;
+  const papelPedidoAtual = (project as { papel_miolo_pedido?: string | null }).papel_miolo_pedido ?? null;
 
   // ── Validate preconditions ───────────────────────────────────────────────────
 
@@ -70,11 +95,16 @@ export async function POST(req: NextRequest) {
 
   const modo = (dados_capa as { modo?: string }).modo;
 
+  // PAPEL-PEDIDO-1: alvo é a lombada do papel escolhido no pedido, se houver.
+  // Sem pedido gravado, fallback = miolo.lombada_mm (75g fixo).
+  const lombadaAlvo =
+    lombadaPorPapelPedido(dados_miolo.paginas_reais, papelPedidoAtual) ??
+    dados_miolo.lombada_mm;
+
   if (modo === "upload") {
-    const lombadaCorreta = dados_miolo.lombada_mm;
     return NextResponse.json(
       {
-        error: `Capa enviada por upload não pode ser ajustada automaticamente. Refaça o upload com a lombada correta de ${lombadaCorreta}mm.`,
+        error: `Capa enviada por upload não pode ser ajustada automaticamente. Refaça o upload com a lombada correta de ${lombadaAlvo.toFixed(1)}mm.`,
       },
       { status: 422 }
     );
@@ -90,15 +120,14 @@ export async function POST(req: NextRequest) {
   // ── Check divergence ─────────────────────────────────────────────────────────
 
   const lombadaCapa: number = (dados_capa.lombada_mm as number | undefined) ?? 0;
-  const lombadaMiolo = dados_miolo.lombada_mm;
-  const diff = Math.abs(lombadaCapa - lombadaMiolo);
+  const diff = Math.abs(lombadaCapa - lombadaAlvo);
 
   if (diff <= 2) {
     return NextResponse.json({
       ajustado: false,
       mensagem: "Lombada já dentro da tolerância — nenhum ajuste necessário.",
       lombada_atual: lombadaCapa,
-      lombada_correta: lombadaMiolo,
+      lombada_correta: lombadaAlvo,
     });
   }
 
@@ -139,7 +168,7 @@ export async function POST(req: NextRequest) {
 
   const dadosCapaAtualizado: Record<string, unknown> = {
     ...dados_capa,
-    lombada_mm: lombadaMiolo,
+    lombada_mm: lombadaAlvo,
     paginas_estimadas: dados_miolo.paginas_reais,
     lombada_url_ajustada: novaLombada.url,
     lombada_storage_path_ajustada: novaLombada.storage_path,
@@ -194,9 +223,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ajustado: true,
     lombada_anterior: lombadaCapa,
-    lombada_nova: lombadaMiolo,
+    lombada_nova: lombadaAlvo,
     diff_mm: diff,
     nova_capa_url: (dadosCapaAtualizado.url_capa_completa as string | undefined) ?? null,
-    mensagem: `Lombada ajustada de ${lombadaCapa}mm para ${lombadaMiolo}mm. A capa foi recomposta automaticamente.`,
+    mensagem: `Lombada ajustada de ${lombadaCapa}mm para ${lombadaAlvo.toFixed(1)}mm. A capa foi recomposta automaticamente.`,
   });
 }

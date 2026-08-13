@@ -13,7 +13,7 @@ import {
   type FormatKey,
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
-import { LIMITE_DIVERGENCIA_LOMBADA_MM } from "@/lib/formatos";
+import { LIMITE_DIVERGENCIA_LOMBADA_MM, lombadaPorPapelPedido } from "@/lib/formatos";
 
 /**
  * Extrai o storage path de uma URL signed do Supabase.
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   // Carrega o projeto
   const { data: project, error: projectErr } = await supabase
     .from("projects")
-    .select("id, user_id, formato, dados_capa, dados_miolo")
+    .select("id, user_id, formato, dados_capa, dados_miolo, papel_miolo_pedido")
     .eq("id", projectId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -115,19 +115,22 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Bloqueio: lombada divergente ──────────────────────────────────────
-  // A lombada da capa (deduzida das dimensões) precisa bater com a lombada
-  // real do miolo (calculada com páginas reais). Se divergir acima da
-  // tolerância, a capa vai sair torta na gráfica — não é algo que a
-  // plataforma resolve, é decisão do autor alterar a capa.
+  // PAPEL-PEDIDO-1: se o autor escolheu papel no pedido, a lombada alvo é
+  // calculada com esse papel (lombadaPorPapelPedido). Sem pedido gravado,
+  // fallback = miolo.lombada_mm (comportamento pré-PAPEL-PEDIDO-1, 75g fixo).
+  const papelPedidoGate = (project as { papel_miolo_pedido?: string | null }).papel_miolo_pedido ?? null;
+  const lombadaAlvoGate =
+    lombadaPorPapelPedido(paginasReais, papelPedidoGate) ?? miolo?.lombada_mm ?? null;
+
   if (
     analiseTec &&
     analiseTec.lombada_deduzida_mm !== null &&
-    miolo?.lombada_mm !== undefined &&
-    Math.abs(analiseTec.lombada_deduzida_mm - miolo.lombada_mm) > LIMITE_DIVERGENCIA_LOMBADA_MM
+    lombadaAlvoGate !== null &&
+    Math.abs(analiseTec.lombada_deduzida_mm - lombadaAlvoGate) > LIMITE_DIVERGENCIA_LOMBADA_MM
   ) {
     return NextResponse.json(
       {
-        error: `A lombada da capa (${analiseTec.lombada_deduzida_mm.toFixed(1)}mm) diverge da lombada real do miolo (${miolo.lombada_mm.toFixed(1)}mm). Envie uma capa com a lombada correta.`,
+        error: `A lombada da capa (${analiseTec.lombada_deduzida_mm.toFixed(1)}mm) diverge da lombada necessária (${lombadaAlvoGate.toFixed(1)}mm) para o papel escolhido. Ajuste a capa antes de continuar.`,
         action: capa.source === "editor" ? "ir_para_editor" : "ir_para_capa",
       },
       { status: 422 },

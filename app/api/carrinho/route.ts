@@ -150,6 +150,21 @@ export async function POST(req: NextRequest) {
 
   const precoCentavos = resultado.orcamento.total_centavos;
 
+  // PAPEL-PEDIDO-1: persistir o papel escolhido no projeto para que o gate
+  // de preparar-capa-grafica e o ajustar-lombada leiam a mesma verdade.
+  // Best-effort — falha aqui NÃO impede o item de entrar no carrinho, mas
+  // o gate cairá no fallback (miolo.lombada_mm com 75g fixo).
+  {
+    const { error: papelErr } = await supabase
+      .from("projects")
+      .update({ papel_miolo_pedido: config.papel_miolo })
+      .eq("id", body.project_id)
+      .eq("user_id", user.id);
+    if (papelErr) {
+      console.warn("[carrinho] falha ao persistir papel_miolo_pedido:", papelErr.message);
+    }
+  }
+
   // Upsert por (user_id, project_id, tipo) — sobrescreve item existente
   // para não acumular vários orçamentos do mesmo livro.
   const { data: existing } = await supabase

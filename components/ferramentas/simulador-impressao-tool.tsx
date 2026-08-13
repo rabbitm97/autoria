@@ -198,6 +198,13 @@ export default function SimuladorImpressaoTool() {
                 </option>
               ))}
             </select>
+            {papelMiolo !== "offset_75g" && (
+              <p className="text-xs text-zinc-500 mt-1.5 leading-relaxed">
+                Este papel muda a espessura da lombada. Na esteira do
+                Autoria, isso pode exigir ajuste da capa antes de fechar
+                o pedido.
+              </p>
+            )}
           </div>
 
           {/* Acabamento da capa */}
