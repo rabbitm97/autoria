@@ -130,9 +130,9 @@ export default async function DashboardPage({
   }
 
   const expressStep = projetoAtivo?.qa_aprovado_em ? 3 : capaExpressPronta ? 2 : 1;
-  const EXPRESS_STEPS = ["Arquivo do livro", "Capa", "Prova"] as const;
+  const EXPRESS_STEPS = ["Arquivo do livro", "Capa", "Conferência final"] as const;
   const expressEtapaLabel =
-    expressStep >= 2 ? "Prova" : "Capa";
+    expressStep >= 2 ? "Conferência final" : "Capa";
 
   return (
     <div className="min-h-full bg-brand-surface">
@@ -172,8 +172,8 @@ export default async function DashboardPage({
                 <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
               </svg>
-              Publicar livro pronto
-              <span className="text-[9px] font-normal opacity-80">Já tenho o PDF diagramado e a capa</span>
+              Livro pronto
+              <span className="text-[9px] font-normal opacity-80">Já tenho o PDF diagramado</span>
             </Link>
           </div>
         </div>
@@ -220,7 +220,11 @@ export default async function DashboardPage({
                 <p className="text-sm text-zinc-400 mb-6">
                   Etapa atual:{" "}
                   <span className="text-brand-primary font-medium">
-                    {isExpressAtivo ? expressEtapaLabel : STEPS[stepAtivo]?.label}
+                    {isExpressAtivo
+                      ? expressEtapaLabel
+                      : STEPS[stepAtivo]?.key === "qa"
+                        ? "Conferência final"
+                        : STEPS[stepAtivo]?.label}
                   </span>
                 </p>
 
@@ -228,7 +232,11 @@ export default async function DashboardPage({
                 <div className="flex items-center gap-0 mb-7 overflow-x-auto">
                   {(isExpressAtivo
                     ? EXPRESS_STEPS.map((label, i) => ({ key: `express-${i}`, label, i }))
-                    : STEPS.map((step, i) => ({ key: step.key, label: step.label, i }))
+                    : STEPS.map((step, i) => ({
+                        key: step.key,
+                        label: step.key === "qa" ? "Conferência final" : step.label,
+                        i,
+                      }))
                   ).map(({ key, label, i }) => {
                     const currentStep = isExpressAtivo ? expressStep : stepAtivo;
                     const done    = i < currentStep;
@@ -366,9 +374,9 @@ export default async function DashboardPage({
                   href="/dashboard/livro-pronto"
                   className="inline-flex items-center gap-2 bg-white border border-brand-primary/20 text-brand-primary px-7 py-3 rounded-xl font-semibold text-sm hover:border-brand-gold transition-colors"
                 >
-                  Publicar livro pronto
+                  Livro pronto
                 </Link>
-                <p className="text-[11px] text-zinc-400 mt-2">Já tenho o PDF diagramado e a capa</p>
+                <p className="text-[11px] text-zinc-400 mt-2">Já tenho o PDF diagramado</p>
               </div>
             </div>
           </div>

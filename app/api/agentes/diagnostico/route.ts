@@ -1,9 +1,11 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
-import { anthropic, parseLLMJson, extractText, traceClaudeCall } from "@/lib/anthropic";
+import { createClient } from "@supabase/supabase-js";
+import { anthropic, parseLLMJson, extractText, traceClaudeCall, isDev } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
+import { planoAtende } from "@/lib/planos";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { validarProjectData } from "@/lib/project-data";
 import {
@@ -59,6 +61,13 @@ const WPM_LEITURA = 200;
 const WPM_NARRACAO = 150;
 const MIN_PAGINAS = 192;
 const MAX_PAGINAS_PADRAO_BR = 400;
+
+// Rate limit da execução do diagnóstico para plano freemium (PRE-POST-1 M1).
+// Espelha o mecanismo do pdf-para-docx: count por agent_name+user_id+dia UTC.
+// Contamos por execução INICIADA, não por projeto — o log é gravado no
+// momento em que o autor envia texto novo (branch `if (texto...)`).
+const AGENT_LIMITE_DIAGNOSTICO = "diagnostico-execucao";
+const LIMITE_DIA_DIAGNOSTICO = 3;
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
 
@@ -422,7 +431,7 @@ export async function POST(request: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, diagnostico, manuscripts(titulo, texto, nome)")
+    .select("id, manuscript_id, diagnostico, plano, manuscripts(titulo, texto, nome)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -438,6 +447,43 @@ export async function POST(request: NextRequest) {
 
   // ── INÍCIO: texto novo veio no body, resetar estado ─────────────────────
   if (texto && texto.trim().length >= 50) {
+    // Rate limit para plano freemium (PRE-POST-1 M1). Isento pra quem já tem
+    // essencial/pro no projeto — nada muda pra quem paga. Fail-open em erro
+    // de count (não trava o autor por telemetria).
+    if (!isDev() && !planoAtende((project as { plano?: unknown }).plano, "essencial")) {
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const inicioDoDia = new Date();
+      inicioDoDia.setUTCHours(0, 0, 0, 0);
+      const { count, error: cntErr } = await admin
+        .from("usage_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("agent_name", AGENT_LIMITE_DIAGNOSTICO)
+        .eq("user_id", user.id)
+        .gte("created_at", inicioDoDia.toISOString());
+      if (cntErr) {
+        console.error("[diagnostico] contagem do limite falhou:", cntErr.message);
+      } else if ((count ?? 0) >= LIMITE_DIA_DIAGNOSTICO) {
+        return NextResponse.json(
+          {
+            erro: `Você usou os ${LIMITE_DIA_DIAGNOSTICO} diagnósticos gratuitos de hoje. Amanhã tem mais — ou destrave a esteira completa com um plano.`,
+            link_planos: "/dashboard/planos",
+          },
+          { status: 429 },
+        );
+      }
+
+      // Best-effort: erro de log não trava o início da execução.
+      const { error: logErr } = await admin.from("usage_logs").insert({
+        agent_name: AGENT_LIMITE_DIAGNOSTICO,
+        user_id: user.id,
+        metadata: { project_id, chars: texto.length },
+      });
+      if (logErr) console.error("[diagnostico] usage_logs falhou:", logErr.message);
+    }
+
     textoCompleto = texto;
 
     // Persistir texto em manuscripts (commit imediato)

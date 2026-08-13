@@ -1040,7 +1040,7 @@ function ModoUpload({
                     : undefined
           }
         >
-          {isExpress ? "Continuar para a Prova →" : "Continuar para Créditos →"}
+          {isExpress ? "Continuar para a Conferência final →" : "Continuar para Créditos →"}
         </button>
       )}
     </div>
@@ -3249,7 +3249,7 @@ function CapaExistenteCard({
                   <button onClick={onAvancarCreditos}
                     className="px-5 py-2.5 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                       hover:bg-brand-primary/90 transition-colors">
-                    {isExpress ? "Avançar para a Prova →" : "Avançar para Créditos →"}
+                    {isExpress ? "Avançar para a Conferência final →" : "Avançar para Créditos →"}
                   </button>
                   <button onClick={handleAbrirEditor}
                     className="px-5 py-2.5 rounded-xl border border-zinc-200 text-brand-primary font-medium text-sm

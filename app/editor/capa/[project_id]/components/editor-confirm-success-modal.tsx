@@ -169,7 +169,7 @@ export function EditorConfirmSuccessModal({
               }}
               className="w-full rounded-xl bg-[#1a1a2e] px-5 py-3 text-sm font-medium text-[#c9a84c] transition-opacity hover:opacity-90"
             >
-              {isExpress ? "Próximo passo: Prova →" : "Próximo passo: Créditos →"}
+              {isExpress ? "Próximo passo: Conferência final →" : "Próximo passo: Créditos →"}
             </button>
             <button
               onClick={onClose}

@@ -1243,7 +1243,7 @@ export default function MioloPage() {
                 </button>
               </div>
             ) : (
-              <p className="text-zinc-400 text-xs hidden sm:block">Próxima etapa: Prova final.</p>
+              <p className="text-zinc-400 text-xs hidden sm:block">Próxima etapa: Conferência final.</p>
             )}
             <button
               onClick={async () => {
@@ -1252,7 +1252,7 @@ export default function MioloPage() {
               }}
               className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
             >
-              Continuar para Prova →
+              Continuar para Conferência final →
             </button>
           </div>
         </main>

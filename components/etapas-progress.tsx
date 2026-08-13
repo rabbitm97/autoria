@@ -15,7 +15,7 @@ const ETAPAS: { label: string; path: string }[] = [
   { label: "Capa",         path: "capa"         },
   { label: "Créditos",     path: "creditos"     },
   { label: "Diagramação",  path: "miolo"        },
-  { label: "Prova",        path: "prova"        },
+  { label: "Conferência final", path: "prova"   },
   { label: "Publicação",   path: "publicacao"   },
 ];
 

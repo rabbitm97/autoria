@@ -14,7 +14,7 @@ import Link from "next/link";
 const ETAPAS: { label: string; path: string | null }[] = [
   { label: "Arquivo do livro", path: null   },
   { label: "Capa",             path: "capa" },
-  { label: "Prova",            path: null   },
+  { label: "Conferência final", path: null   },
 ];
 
 export function ExpressProgress({

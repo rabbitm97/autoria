@@ -326,7 +326,7 @@ export default function ImpressaoPage() {
                 href={`/dashboard/prova/${id}`}
                 className="text-xs font-medium text-amber-900 hover:underline"
               >
-                Ir para a Prova →
+                Ir para a Conferência final →
               </Link>
             </div>
           </div>

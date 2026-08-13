@@ -1040,7 +1040,7 @@ export default function ProvaPage() {
           <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
             {isExpress ? "Publicação direta" : "Etapa final"}
           </p>
-          <h1 className="font-heading text-3xl text-brand-primary">Prova</h1>
+          <h1 className="font-heading text-3xl text-brand-primary">Conferência final</h1>
           <p className="text-zinc-500 mt-2 text-sm leading-relaxed max-w-xl">
             {isExpress
               ? "Confira sua capa e seu miolo lado a lado antes de pedir a impressão."

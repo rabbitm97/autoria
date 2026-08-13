@@ -32,7 +32,7 @@ const NAV_SECTIONS: NavSection[] = [
     section: "PROJETOS",
     items: [
       { href: "/dashboard/novo-projeto",  label: "Novo Projeto",         icon: PlusIcon },
-      { href: "/dashboard/livro-pronto",  label: "Publicar livro pronto", icon: EpubIcon },
+      { href: "/dashboard/livro-pronto",  label: "Livro pronto",          icon: EpubIcon },
     ],
   },
   {

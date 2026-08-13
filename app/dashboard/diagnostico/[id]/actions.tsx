@@ -18,6 +18,8 @@ interface PollResponse {
   progresso?: { atual: number; total: number };
   diagnostico?: unknown;
   erro?: string;
+  error?: string;
+  link_planos?: string;
 }
 
 export function DiagnosticoActions({
@@ -33,6 +35,7 @@ export function DiagnosticoActions({
   const [status, setStatus] = useState<ProcessingStatus>("idle");
   const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorLink, setErrorLink] = useState<string | null>(null);
   const [tempoDecorrido, setTempoDecorrido] = useState(0);
 
   // ─── Polling loop ──────────────────────────────────────────────────────────
@@ -48,7 +51,8 @@ export function DiagnosticoActions({
 
       if (!res.ok) {
         setStatus("erro");
-        setError(data.erro ?? `Erro HTTP ${res.status}`);
+        setError(data.erro ?? data.error ?? `Erro HTTP ${res.status}`);
+        setErrorLink(data.link_planos ?? null);
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         return;
       }
@@ -103,6 +107,7 @@ export function DiagnosticoActions({
     if (!file) return;
 
     setError(null);
+    setErrorLink(null);
     setProgresso(null);
 
     try {
@@ -120,7 +125,10 @@ export function DiagnosticoActions({
         body: JSON.stringify({ texto: parseData.texto, project_id: projectId }),
       });
       const diagData = await diagRes.json() as PollResponse;
-      if (!diagRes.ok) throw new Error(diagData.erro ?? "Erro ao iniciar diagnóstico.");
+      if (!diagRes.ok) {
+        setErrorLink(diagData.link_planos ?? null);
+        throw new Error(diagData.erro ?? diagData.error ?? "Erro ao iniciar diagnóstico.");
+      }
 
       if (diagData.progresso) setProgresso(diagData.progresso);
       setStatus("processando_capitulos");
@@ -179,7 +187,19 @@ export function DiagnosticoActions({
         {isLoading && tempoDecorrido > 0 && (
           <p className="text-xs text-zinc-400">Tempo decorrido: {tempoDecorrido}s</p>
         )}
-        {error && <p className="text-red-500 text-xs max-w-xs">{error}</p>}
+        {error && (
+          <p className="text-red-500 text-xs max-w-xs">
+            {error}
+            {errorLink && (
+              <>
+                {" "}
+                <Link href={errorLink} className="underline hover:text-red-700">
+                  Ver planos
+                </Link>
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       <Link
