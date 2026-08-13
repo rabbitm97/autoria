@@ -68,11 +68,13 @@ export default async function DashboardPage({
   let projetos: Projeto[] = [];
   let userName = "Autor";
   let userPlano = "freemium";
+  let userCreditos = 0;
 
   if (isDev()) {
     projetos = MOCK_PROJETOS;
     userName = "Mateus";
     userPlano = "pro";
+    userCreditos = 150;
   } else {
     const supabase = await createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -80,7 +82,7 @@ export default async function DashboardPage({
     if (user) {
       const { data: profile, error: profileErr } = await supabase
         .from("users")
-        .select("nome, plano")
+        .select("nome, plano, creditos")
         .eq("id", user.id)
         .maybeSingle();
       if (profileErr) {
@@ -88,6 +90,7 @@ export default async function DashboardPage({
       }
       userName = profile?.nome ?? user.email?.split("@")[0] ?? "Autor";
       userPlano = profile?.plano ?? "freemium";
+      userCreditos = profile?.creditos ?? 0;
 
       const { data } = await supabase
         .from("projects")
@@ -147,6 +150,17 @@ export default async function DashboardPage({
               Olá, {userName}!
             </h1>
             <p className="text-zinc-400 text-sm mt-0.5">Bem-vindo ao seu painel</p>
+            <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-brand-gold/10 border border-brand-gold/25 px-2.5 py-1">
+              <span className="text-xs font-semibold text-brand-primary">
+                Créditos: {userCreditos}
+              </span>
+              <Link
+                href="/dashboard/ferramentas"
+                className="text-[11px] text-brand-gold hover:underline underline-offset-2"
+              >
+                ver ferramentas
+              </Link>
+            </div>
           </div>
 
           {/* Project thumbnails strip */}
