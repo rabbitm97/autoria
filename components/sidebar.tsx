@@ -41,8 +41,9 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/dashboard/ferramentas",                 label: "Todas as ferramentas", icon: ToolsIcon,       exact: true },
       { href: "/dashboard/ferramentas/lombada-paginas", label: "Lombada e páginas",    icon: ScanIcon      },
       { href: "/dashboard/ferramentas/pdf-docx",        label: "PDF → DOCX",           icon: ConvertIcon   },
-      { href: "/dashboard/ferramentas/creditos",        label: "Ficha de créditos",    icon: CheckEditIcon },
-      { href: "/dashboard/ferramentas/rgb-cmyk",        label: "RGB → CMYK",           icon: PaletteIcon   },
+      { href: "/dashboard/ferramentas/creditos",           label: "Ficha de créditos",    icon: CheckEditIcon },
+      { href: "/dashboard/ferramentas/codigo-barras-isbn", label: "Código de barras",     icon: BarcodeIcon   },
+      { href: "/dashboard/ferramentas/rgb-cmyk",           label: "RGB → CMYK",           icon: PaletteIcon   },
     ],
   },
   {
@@ -466,6 +467,20 @@ function ScanIcon() {
       <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" />
       <path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" />
       <rect x="7" y="7" width="10" height="10" />
+    </svg>
+  );
+}
+
+function BarcodeIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4"  y1="5" x2="4"  y2="19" />
+      <line x1="7"  y1="5" x2="7"  y2="19" />
+      <line x1="10" y1="5" x2="10" y2="19" />
+      <line x1="14" y1="5" x2="14" y2="19" />
+      <line x1="17" y1="5" x2="17" y2="19" />
+      <line x1="20" y1="5" x2="20" y2="19" />
     </svg>
   );
 }

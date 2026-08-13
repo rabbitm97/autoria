@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,10 +49,18 @@ function rgbToHex(r: number, g: number, b: number): string {
   );
 }
 
+// ─── Constantes de arquivo ────────────────────────────────────────────────────
+
+const MAX_ARQUIVO_BYTES = 10 * 1024 * 1024;        // 10 MB (ceteris paribus)
+const LIMITE_BODY_DIRETO_BYTES = 3.5 * 1024 * 1024; // acima disso usa signed upload
+const PDF_MAX_PAGINAS = 2;
+const PDF_DPI = 300;
+const JPEG_QUALITY = 0.95;
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface RgbCmykToolProps {
-  /** Quando true, exibe a seção de conversão de arquivo (JPG/PNG → JPEG CMYK).
+  /** Quando true, exibe a seção de conversão de arquivo (JPG/PNG/PDF → CMYK).
    *  Requer usuário logado. Default false = versão pública com teaser. */
   permitirArquivo?: boolean;
 }
@@ -88,55 +97,199 @@ export default function RgbCmykTool({ permitirArquivo = false }: RgbCmykToolProp
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
   const [convertendo, setConvertendo] = useState(false);
+  const [progresso, setProgresso] = useState<string | null>(null);
   const [erroArquivo, setErroArquivo] = useState<string | null>(null);
 
-  function validarArquivoLocal(f: File): string | null {
+  function tipoDoArquivo(f: File): "jpeg" | "png" | "pdf" | null {
     const nome = f.name.toLowerCase();
-    const tipoOk = f.type === "image/jpeg" || f.type === "image/png";
-    const nomeOk = nome.endsWith(".jpg") || nome.endsWith(".jpeg") || nome.endsWith(".png");
-    if (!tipoOk && !nomeOk) return "Apenas JPG ou PNG são aceitos.";
-    if (f.size > 4 * 1024 * 1024) return "Arquivo muito grande. Máximo: 4 MB.";
+    if (f.type === "application/pdf" || nome.endsWith(".pdf")) return "pdf";
+    if (f.type === "image/png" || nome.endsWith(".png")) return "png";
+    if (f.type === "image/jpeg" || nome.endsWith(".jpg") || nome.endsWith(".jpeg")) return "jpeg";
+    return null;
+  }
+
+  function validarArquivoLocal(f: File): string | null {
+    if (!tipoDoArquivo(f)) return "Apenas JPG, PNG ou PDF são aceitos.";
+    if (f.size > MAX_ARQUIVO_BYTES) return "Arquivo muito grande. Máximo: 10 MB.";
     return null;
   }
 
   function onSelecionarArquivo(f: File | null) {
     setErroArquivo(null);
+    setProgresso(null);
     if (!f) { setArquivoSelecionado(null); return; }
     const erro = validarArquivoLocal(f);
     if (erro) { setArquivoSelecionado(null); setErroArquivo(erro); return; }
     setArquivoSelecionado(f);
   }
 
-  async function converterArquivo() {
-    if (!arquivoSelecionado) return;
-    setConvertendo(true);
-    setErroArquivo(null);
-    try {
-      const form = new FormData();
-      form.append("arquivo", arquivoSelecionado);
+  /** Converte um único JPEG (Blob) via API — usa signed upload para > 3.5 MB.
+   *  Retorna o Blob JPEG CMYK devolvido pelo servidor. */
+  async function converterUmJpeg(blob: Blob): Promise<Blob> {
+    if (blob.size > LIMITE_BODY_DIRETO_BYTES) {
+      // Fluxo via storage — assina, sobe, chama rota com storage_path.
+      const presignRes = await fetch("/api/ferramentas/rgb-cmyk-arquivo/upload-url", {
+        method: "POST",
+      });
+      if (!presignRes.ok) {
+        const d = (await presignRes.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error ?? "Falha ao obter URL de upload.");
+      }
+      const { path, signed_url, token } = (await presignRes.json()) as {
+        path: string;
+        signed_url: string | null;
+        token: string | null;
+      };
+
+      if (signed_url && token) {
+        const { error: upErr } = await supabase.storage
+          .from("editor-assets")
+          .uploadToSignedUrl(path, token, blob, { contentType: "image/jpeg" });
+        if (upErr) throw new Error(`Falha ao enviar arquivo: ${upErr.message}`);
+      }
+
       const res = await fetch("/api/ferramentas/rgb-cmyk-arquivo", {
         method: "POST",
-        body: form,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storage_path: path }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Erro desconhecido." }));
-        setErroArquivo(body.error ?? "Falha ao converter.");
-        return;
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error ?? "Falha ao converter.");
       }
-      const blob = await res.blob();
-      const nomeBase = arquivoSelecionado.name.replace(/\.(jpe?g|png)$/i, "");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${nomeBase}-CMYK-fogra39.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      return await res.blob();
+    }
+
+    // Fluxo body direto.
+    const form = new FormData();
+    form.append("arquivo", blob, "pagina.jpg");
+    const res = await fetch("/api/ferramentas/rgb-cmyk-arquivo", {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(d.error ?? "Falha ao converter.");
+    }
+    return await res.blob();
+  }
+
+  /** Rasteriza páginas do PDF a 300 dpi via pdfjs (client only) e devolve
+   *  { jpegs, sizesPt } — o tamanho original em pontos é essencial para
+   *  reembalar sem escalar o resultado. */
+  async function rasterizarPdf(file: File): Promise<{ jpegs: Blob[]; sizesPt: { widthPt: number; heightPt: number }[] }> {
+    const pdfjs = await import("pdfjs-dist");
+    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+    const buffer = await file.arrayBuffer();
+    const doc = await pdfjs.getDocument({ data: buffer }).promise;
+    if (doc.numPages > PDF_MAX_PAGINAS) {
+      doc.destroy();
+      throw new Error(`PDF tem ${doc.numPages} páginas. Máximo aceito: ${PDF_MAX_PAGINAS}.`);
+    }
+
+    const jpegs: Blob[] = [];
+    const sizesPt: { widthPt: number; heightPt: number }[] = [];
+
+    for (let i = 1; i <= doc.numPages; i++) {
+      setProgresso(`Convertendo página ${i} de ${doc.numPages}…`);
+      const page = await doc.getPage(i);
+
+      const viewportPt = page.getViewport({ scale: 1 });   // pontos originais
+      sizesPt.push({ widthPt: viewportPt.width, heightPt: viewportPt.height });
+
+      const viewport = page.getViewport({ scale: PDF_DPI / 72 });
+      const widthPx = Math.floor(viewport.width);
+      const heightPx = Math.floor(viewport.height);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = widthPx;
+      canvas.height = heightPx;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { page.cleanup(); doc.destroy(); throw new Error("Canvas indisponível no navegador."); }
+
+      // Fundo branco: páginas sem cor de fundo renderizam transparente em canvas.
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, widthPx, heightPx);
+
+      await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+      );
+      page.cleanup();
+      if (!blob) { doc.destroy(); throw new Error("Falha ao gerar JPEG da página."); }
+      jpegs.push(blob);
+    }
+
+    doc.destroy();
+    return { jpegs, sizesPt };
+  }
+
+  /** Empacota JPEGs CMYK em um único PDF preservando o tamanho original em pt. */
+  async function empacotarPdf(jpegs: Blob[], sizesPt: { widthPt: number; heightPt: number }[]): Promise<Blob> {
+    const { PDFDocument } = await import("pdf-lib");
+    const pdf = await PDFDocument.create();
+    for (let i = 0; i < jpegs.length; i++) {
+      const bytes = new Uint8Array(await jpegs[i].arrayBuffer());
+      const img = await pdf.embedJpg(bytes);
+      const { widthPt, heightPt } = sizesPt[i];
+      const page = pdf.addPage([widthPt, heightPt]);
+      page.drawImage(img, { x: 0, y: 0, width: widthPt, height: heightPt });
+    }
+    const out = await pdf.save();
+    return new Blob([new Uint8Array(out)], { type: "application/pdf" });
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function converterArquivo() {
+    if (!arquivoSelecionado) return;
+    const tipo = tipoDoArquivo(arquivoSelecionado);
+    if (!tipo) return;
+
+    setConvertendo(true);
+    setErroArquivo(null);
+    setProgresso(null);
+
+    try {
+      const nomeBase = arquivoSelecionado.name.replace(/\.(jpe?g|png|pdf)$/i, "");
+
+      if (tipo === "pdf") {
+        setProgresso("Lendo o PDF…");
+        const { jpegs, sizesPt } = await rasterizarPdf(arquivoSelecionado);
+
+        const jpegsCmyk: Blob[] = [];
+        for (let i = 0; i < jpegs.length; i++) {
+          setProgresso(`Convertendo página ${i + 1} de ${jpegs.length}…`);
+          const cmyk = await converterUmJpeg(jpegs[i]);
+          jpegsCmyk.push(cmyk);
+        }
+
+        setProgresso("Montando PDF final…");
+        const pdfFinal = await empacotarPdf(jpegsCmyk, sizesPt);
+        downloadBlob(pdfFinal, `${nomeBase}-CMYK-fogra39.pdf`);
+      } else {
+        setProgresso("Convertendo imagem…");
+        const cmyk = await converterUmJpeg(arquivoSelecionado);
+        downloadBlob(cmyk, `${nomeBase}-CMYK-fogra39.jpg`);
+      }
+
       setArquivoSelecionado(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      setProgresso(null);
     } catch (e) {
       setErroArquivo(e instanceof Error ? e.message : "Falha ao converter.");
+      setProgresso(null);
     } finally {
       setConvertendo(false);
     }
@@ -144,7 +297,6 @@ export default function RgbCmykTool({ permitirArquivo = false }: RgbCmykToolProp
 
   return (
     <div>
-
       <main className="max-w-3xl mx-auto px-8 py-10">
         <div className="mb-8">
           <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
@@ -154,7 +306,108 @@ export default function RgbCmykTool({ permitirArquivo = false }: RgbCmykToolProp
             Conversor RGB → CMYK
           </h1>
           <p className="text-zinc-500 text-sm">
-            Converta cores para impressão. CMYK é exigido em capas para Amazon KDP e gráficas.
+            Converta capas para impressão. CMYK é exigido em capas para Amazon KDP e gráficas.
+          </p>
+        </div>
+
+        {/* ─── SEÇÃO PRIMÁRIA: conversão de arquivo ───────────────────────── */}
+        {permitirArquivo ? (
+          <section className="bg-white rounded-2xl border border-zinc-100 p-6">
+            <div className="flex items-baseline justify-between mb-1">
+              <h2 className="font-heading text-xl text-brand-primary">Converter arquivo</h2>
+              <span className="text-xs text-zinc-400">3 conversões por dia</span>
+            </div>
+            <p className="text-sm text-zinc-500 mb-5">
+              Envie um JPG, PNG ou PDF de capa (até 10 MB). Devolvemos o arquivo em CMYK
+              com perfil <strong>Coated FOGRA39</strong> embutido — a mesma conversão do
+              editor de capa da Autoria.
+            </p>
+
+            <label
+              htmlFor="rgb-cmyk-arquivo-input"
+              className={`block border-2 border-dashed border-zinc-200 rounded-xl px-6 py-8 text-center transition-colors ${
+                convertendo
+                  ? "opacity-60 cursor-not-allowed"
+                  : "cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                id="rgb-cmyk-arquivo-input"
+                type="file"
+                accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+                className="hidden"
+                onChange={(e) => onSelecionarArquivo(e.target.files?.[0] ?? null)}
+                disabled={convertendo}
+              />
+              {arquivoSelecionado ? (
+                <div>
+                  <p className="text-sm text-zinc-700 font-medium">{arquivoSelecionado.name}</p>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {(arquivoSelecionado.size / 1024 / 1024).toFixed(2)} MB — clique para trocar
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-zinc-600">Clique para escolher um arquivo</p>
+                  <p className="text-xs text-zinc-400 mt-1">JPG, PNG ou PDF, até 10 MB</p>
+                </div>
+              )}
+            </label>
+
+            <p className="mt-3 text-xs text-zinc-500 leading-relaxed">
+              <strong className="text-zinc-600">PDF:</strong> capas de até 2 páginas — cada
+              página é convertida a 300 dpi, padrão de gráfica. Miolo/texto vetorial deve
+              ser convertido no software de origem.
+            </p>
+
+            {erroArquivo && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-sm text-red-700">{erroArquivo}</p>
+              </div>
+            )}
+
+            {progresso && !erroArquivo && (
+              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                <p className="text-sm text-zinc-600">{progresso}</p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={converterArquivo}
+              disabled={!arquivoSelecionado || convertendo}
+              className="mt-4 w-full rounded-xl bg-brand-primary text-white font-medium py-3 hover:bg-brand-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {convertendo ? "Convertendo…" : "Converter e baixar CMYK"}
+            </button>
+          </section>
+        ) : (
+          <section className="bg-white rounded-2xl border border-zinc-100 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="font-heading text-lg text-brand-primary mb-1">
+                Converter capa (JPG, PNG ou PDF) para CMYK
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Arquivo CMYK com perfil FOGRA39 embutido — grátis com conta (3 por dia).
+              </p>
+            </div>
+            <Link
+              href="/cadastro?next=%2Fdashboard%2Fferramentas%2Frgb-cmyk"
+              className="shrink-0 rounded-xl bg-brand-primary text-white text-sm font-medium px-5 py-2.5 hover:bg-brand-primary/90 transition-colors"
+            >
+              Criar conta grátis
+            </Link>
+          </section>
+        )}
+
+        {/* ─── SEÇÃO SECUNDÁRIA: conversor de cor rápido ──────────────────── */}
+        <div className="mt-10 mb-4">
+          <h2 className="font-heading text-lg text-brand-primary mb-1">
+            Conversor de cor rápido
+          </h2>
+          <p className="text-sm text-zinc-500">
+            Só precisa saber o CMYK de uma cor? Use o conversor abaixo.
           </p>
         </div>
 
@@ -162,7 +415,7 @@ export default function RgbCmykTool({ permitirArquivo = false }: RgbCmykToolProp
 
           {/* Input card */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-            <h2 className="font-heading text-lg text-brand-primary mb-5">Entrada RGB</h2>
+            <h3 className="font-heading text-base text-brand-primary mb-5">Entrada RGB</h3>
 
             {/* Color picker */}
             <div className="flex items-center gap-4 mb-6">
@@ -230,7 +483,7 @@ export default function RgbCmykTool({ permitirArquivo = false }: RgbCmykToolProp
 
           {/* Result card */}
           <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-            <h2 className="font-heading text-lg text-brand-primary mb-5">Resultado CMYK</h2>
+            <h3 className="font-heading text-base text-brand-primary mb-5">Resultado CMYK</h3>
 
             {/* Color preview */}
             <div
@@ -300,85 +553,6 @@ export default function RgbCmykTool({ permitirArquivo = false }: RgbCmykToolProp
             funcionalidade de Diagramação da Autoria.
           </p>
         </div>
-
-        {/* ─── Conversão de arquivo (logado) OU teaser (público) ─────────── */}
-        {permitirArquivo ? (
-          <div className="mt-8 bg-white rounded-2xl border border-zinc-100 p-6">
-            <div className="flex items-baseline justify-between mb-1">
-              <h2 className="font-heading text-lg text-brand-primary">Converter arquivo</h2>
-              <span className="text-xs text-zinc-400">3 conversões por dia</span>
-            </div>
-            <p className="text-sm text-zinc-500 mb-5">
-              Envie um JPG ou PNG (até 4 MB). Devolvemos um JPEG CMYK com perfil{" "}
-              <strong>Coated FOGRA39</strong> embutido — a mesma conversão do editor de capa da Autoria.
-            </p>
-
-            <label
-              htmlFor="rgb-cmyk-arquivo-input"
-              className="block border-2 border-dashed border-zinc-200 rounded-xl px-6 py-8 text-center cursor-pointer hover:border-brand-gold/50 hover:bg-zinc-50 transition-colors"
-            >
-              <input
-                ref={fileInputRef}
-                id="rgb-cmyk-arquivo-input"
-                type="file"
-                accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                className="hidden"
-                onChange={(e) => onSelecionarArquivo(e.target.files?.[0] ?? null)}
-                disabled={convertendo}
-              />
-              {arquivoSelecionado ? (
-                <div>
-                  <p className="text-sm text-zinc-700 font-medium">{arquivoSelecionado.name}</p>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    {(arquivoSelecionado.size / 1024 / 1024).toFixed(2)} MB — clique para trocar
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm text-zinc-600">Clique para escolher um arquivo</p>
-                  <p className="text-xs text-zinc-400 mt-1">JPG ou PNG, até 4 MB</p>
-                </div>
-              )}
-            </label>
-
-            {erroArquivo && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                <p className="text-sm text-red-700">{erroArquivo}</p>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={converterArquivo}
-              disabled={!arquivoSelecionado || convertendo}
-              className="mt-4 w-full rounded-xl bg-brand-primary text-white font-medium py-3 hover:bg-brand-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {convertendo ? "Convertendo…" : "Converter e baixar JPEG CMYK"}
-            </button>
-
-            <p className="mt-4 text-xs text-zinc-500 leading-relaxed">
-              Arte vetorial (PDF/AI) deve ser convertida no software de origem —
-              rasterizar aqui degradaria seu arquivo.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-8 bg-white rounded-2xl border border-zinc-100 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="font-heading text-base text-brand-primary mb-1">
-                Converter arquivo JPG ou PNG para CMYK
-              </h2>
-              <p className="text-sm text-zinc-500">
-                JPEG CMYK com perfil FOGRA39 embutido — grátis com conta (3 por dia).
-              </p>
-            </div>
-            <Link
-              href="/cadastro?next=%2Fdashboard%2Fferramentas%2Frgb-cmyk"
-              className="shrink-0 rounded-xl bg-brand-primary text-white text-sm font-medium px-5 py-2.5 hover:bg-brand-primary/90 transition-colors"
-            >
-              Criar conta grátis
-            </Link>
-          </div>
-        )}
 
       </main>
     </div>
