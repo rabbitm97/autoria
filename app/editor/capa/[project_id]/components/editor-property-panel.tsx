@@ -2,7 +2,7 @@
 
 import { useEditorStore } from "../lib/editor-store";
 import { FONT_CATALOG } from "../lib/fonts";
-import { generateBarcodeDataUrl } from "../lib/barcode";
+import { gerarBarcodePngDataUrl } from "@/lib/barcode-isbn-cliente";
 import type { TextElement, ImageElement, LogoElement, BarcodeElement, ShapeElement, AnyElement } from "../lib/elements";
 import { MM_TO_PX } from "../lib/dimensions";
 
@@ -238,8 +238,8 @@ function BarcodePanel({ el }: { el: BarcodeElement }) {
   const { updateElement } = useEditorStore();
   const up = (patch: Partial<BarcodeElement>) => updateElement(el.id, patch as any);
   async function regenerate(isbn: string) {
-    const dataUrl = await generateBarcodeDataUrl(isbn);
-    if (dataUrl) up({ isbn, cachedDataUrl: dataUrl });
+    const resultado = await gerarBarcodePngDataUrl(isbn);
+    if (resultado) up({ isbn, cachedDataUrl: resultado.dataUrl });
     else alert("ISBN inválido.");
   }
   return (

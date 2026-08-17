@@ -7,3 +7,9 @@ export function isEditableTarget(e: KeyboardEvent): boolean {
   if (target.closest("[data-konva-text-edit]")) return true;
   return false;
 }
+
+/** EDITOR-FIX-1: shift, ctrl e cmd são todos modificadores de
+ *  multi-seleção (padrão Figma/Canva). */
+export function isMultiSelectClick(evt: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }): boolean {
+  return Boolean(evt.shiftKey || evt.ctrlKey || evt.metaKey);
+}

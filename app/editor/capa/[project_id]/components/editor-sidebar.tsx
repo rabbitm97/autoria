@@ -11,7 +11,7 @@ import {
   getOrelhaMax,
 } from "../lib/dimensions";
 import { FONT_CATALOG, FONT_CATALOG_BY_ID } from "../lib/fonts";
-import { generateBarcodeDataUrl } from "../lib/barcode";
+import { gerarBarcodePngDataUrl } from "@/lib/barcode-isbn-cliente";
 import { createSmartFieldElement, type SmartFieldContentMap } from "../lib/smart-field-layout";
 import { createImageElement, createLogoElement, createBarcodeElement, createShapeElement } from "../lib/elements";
 import type { ShapeKind } from "../lib/elements";
@@ -334,15 +334,31 @@ function SectionImagens({ projectId }: { projectId: string }) {
       const res = await fetch(`/api/projects/${projectId}/images`, { method: "POST", body });
       if (!res.ok) throw new Error("Falha no upload");
       const { url } = await res.json();
+      // EDITOR-FIX-1: dimensiona a caixa pelo aspect REAL da imagem, contida
+      // na área útil da frente — nunca corta. (objectFit cover + caixa no
+      // aspect da imagem = render 1:1, sem crop.)
+      const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+        const probe = new window.Image();
+        probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight });
+        probe.onerror = () => reject(new Error("Imagem ilegível"));
+        probe.src = url;
+      });
       const f = FORMATS[format];
+      const maxW = f.width_mm - 10;
+      const maxH = f.height_mm - 10;
+      const escala = Math.min(maxW / dims.w, maxH / dims.h, 1_000);
+      const wMm = Math.max(5, dims.w * escala);
+      const hMm = Math.max(5, dims.h * escala);
+      const { pages } = useEditorStore.getState();
+      const xFrenteStart = SANGRIA_MM + orelhaMm + f.width_mm + calcularLombada(pages);
       addElement(
         createImageElement({
           id: nanoid(),
           src: url,
-          x_mm: SANGRIA_MM + orelhaMm + f.width_mm + 3,
-          y_mm: SANGRIA_MM + 3,
-          width_mm: f.width_mm - 6,
-          height_mm: f.height_mm - 6,
+          x_mm: xFrenteStart + (f.width_mm - wMm) / 2,
+          y_mm: SANGRIA_MM + (f.height_mm - hMm) / 2,
+          width_mm: wMm,
+          height_mm: hMm,
         }),
       );
     } catch (err) {
@@ -422,7 +438,7 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
         x_mm: xCapaStart + f.width_mm - 35,
         y_mm: SANGRIA_MM + f.height_mm - 20,
         width_mm: 30,
-        height_mm: 12,
+        height_mm: 5.5,
       }),
     );
   }
@@ -431,23 +447,25 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
     const val = isbnInput.trim();
     if (!val) return;
     setGenerating(true);
-    const dataUrl = await generateBarcodeDataUrl(val);
+    const resultado = await gerarBarcodePngDataUrl(val);
     setGenerating(false);
-    if (!dataUrl) {
-      alert("ISBN inválido. Use 10 ou 13 dígitos.");
+    if (!resultado) {
+      alert("ISBN inválido. Confira os dígitos (ISBN-10 ou ISBN-13).");
       return;
     }
+    const LARGURA_BARCODE_MM = 37; // tamanho nominal EAN-13 (mesma dica da ferramenta)
+    const alturaMm = Math.round(LARGURA_BARCODE_MM * (resultado.height / resultado.width) * 10) / 10;
     const f = FORMATS[format];
     const xContraStart = SANGRIA_MM + orelhaMm;
     addElement(
       createBarcodeElement({
         id: nanoid(),
         isbn: val,
-        cachedDataUrl: dataUrl,
-        x_mm: xContraStart + f.width_mm - 40,
-        y_mm: SANGRIA_MM + f.height_mm - 35,
-        width_mm: 35,
-        height_mm: 28,
+        cachedDataUrl: resultado.dataUrl,
+        x_mm: xContraStart + f.width_mm - LARGURA_BARCODE_MM - 5,
+        y_mm: SANGRIA_MM + f.height_mm - alturaMm - 7,
+        width_mm: LARGURA_BARCODE_MM,
+        height_mm: alturaMm,
       }),
     );
     setIsbn(val);
@@ -463,16 +481,16 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
             className="flex flex-col items-center gap-1.5 rounded-lg border border-[#e0ddd2] p-2 text-center transition-colors hover:border-zinc-300"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-autoria-dourado.png" alt="" className="h-8 w-auto object-contain" />
-            <span className="text-[10px] text-zinc-400">Dourado</span>
+            <img src="/logo-offwhite-v3.png" alt="" className="h-8 w-auto object-contain rounded bg-[#1a1a2e] px-1.5 py-0.5" />
+            <span className="text-[10px] text-zinc-400">Claro (fundo escuro)</span>
           </button>
           <button
             onClick={() => addLogo("azul")}
             className="flex flex-col items-center gap-1.5 rounded-lg border border-[#e0ddd2] p-2 text-center transition-colors hover:border-zinc-300"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-autoria-azul.png" alt="" className="h-8 w-auto object-contain" />
-            <span className="text-[10px] text-zinc-400">Azul</span>
+            <img src="/logo-azul-v3.png" alt="" className="h-8 w-auto object-contain" />
+            <span className="text-[10px] text-zinc-400">Navy (fundo claro)</span>
           </button>
         </div>
 

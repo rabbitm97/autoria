@@ -36,7 +36,7 @@ import {
 } from "../lib/constants";
 import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
-import { isEditableTarget } from "../lib/keyboard-utils";
+import { isEditableTarget, isMultiSelectClick } from "../lib/keyboard-utils";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
 import {
   getFillRect,
@@ -122,13 +122,21 @@ function ImageNode({
       opacity={el.opacity}
       visible={el.visible}
       draggable={!el.locked}
-      onClick={(e) => onSelect(e.evt.shiftKey)}
-      onTap={(e) => onSelect(e.evt.shiftKey)}
+      onClick={(e) => onSelect(isMultiSelectClick(e.evt))}
+      onTap={(e) => onSelect(isMultiSelectClick(e.evt))}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
     />
   );
 }
+
+// EDITOR-FIX-1: wordmarks v3 (mesmos assets do BrandLogo). Chaves
+// legadas do LogoElement mantidas por compat de dados_capa:
+// "dourado" (fundos escuros) → offwhite-v3 · "azul" (claros) → azul-v3.
+const LOGO_SRC: Record<LogoElement["variant"], string> = {
+  dourado: "/logo-offwhite-v3.png",
+  azul: "/logo-azul-v3.png",
+};
 
 // ── Logo element node ─────────────────────────────────────────────────────────
 function LogoNode({
@@ -143,7 +151,7 @@ function LogoNode({
   onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
 }) {
-  const src = `/brand/logo-autoria-${el.variant}.png`;
+  const src = LOGO_SRC[el.variant];
   const [img] = useImage(src, "anonymous");
   if (!img) return null;
   return (
@@ -158,8 +166,8 @@ function LogoNode({
       opacity={el.opacity}
       visible={el.visible}
       draggable={!el.locked}
-      onClick={(e) => onSelect(e.evt.shiftKey)}
-      onTap={(e) => onSelect(e.evt.shiftKey)}
+      onClick={(e) => onSelect(isMultiSelectClick(e.evt))}
+      onTap={(e) => onSelect(isMultiSelectClick(e.evt))}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
     />
@@ -192,8 +200,8 @@ function BarcodeNode({
       opacity={el.opacity}
       visible={el.visible}
       draggable={!el.locked}
-      onClick={(e) => onSelect(e.evt.shiftKey)}
-      onTap={(e) => onSelect(e.evt.shiftKey)}
+      onClick={(e) => onSelect(isMultiSelectClick(e.evt))}
+      onTap={(e) => onSelect(isMultiSelectClick(e.evt))}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
     />
@@ -224,8 +232,8 @@ function ShapeNode({
     rotation: el.rotation_deg,
     visible: el.visible,
     draggable: !el.locked,
-    onClick: (e: any) => onSelect(e.evt.shiftKey),
-    onTap: (e: any) => onSelect(e.evt.shiftKey),
+    onClick: (e: any) => onSelect(isMultiSelectClick(e.evt)),
+    onTap: (e: any) => onSelect(isMultiSelectClick(e.evt)),
     onDragMove,
     onDragEnd,
   };
@@ -615,7 +623,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
 
     if (e.target === e.target.getStage()) {
       // Clicked on empty canvas
-      if (!e.evt.shiftKey) {
+      if (!isMultiSelectClick(e.evt)) {
         clearSelection();
       }
       // Start marquee
@@ -660,7 +668,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
 
       if (intersecting.length > 0) {
         const newIds = intersecting.map((el) => el.id);
-        if (e.evt.shiftKey) {
+        if (isMultiSelectClick(e.evt)) {
           const current = useEditorStore.getState().selectedIds;
           selectElements([...new Set([...current, ...newIds])]);
         } else {
@@ -810,8 +818,8 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
                   visible={t.visible}
                   draggable={!t.locked}
                   wrap="word"
-                  onClick={(e) => handleSelect(e.evt.shiftKey)}
-                  onTap={(e) => handleSelect(e.evt.shiftKey)}
+                  onClick={(e) => handleSelect(isMultiSelectClick(e.evt))}
+                  onTap={(e) => handleSelect(isMultiSelectClick(e.evt))}
                   onDblClick={() => openInlineEdit(t)}
                   {...commonDragProps}
                 />
