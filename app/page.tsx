@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import BrandLogo from "./_components/brand-logo";
 import Link from "next/link";
 import Atos from "./_components/atos";
+import CapaPromptRotativo from "./_components/capa-prompt-rotativo";
 import FAQ from "./_components/faq";
 import PublicNavbar from "./_components/public-navbar";
 import TypeField from "./_components/type-field";
@@ -26,16 +27,16 @@ const FERRAMENTAS_HOME = [
   "codigo-barras-isbn",
 ] as const;
 
-/** CAPAS-HOME-01: vitrine de capas de demonstração geradas e
- *  finalizadas na esteira (Capa IA + editor). Ordem alterna
- *  temperatura/densidade; `aberta` = spread verso+lombada+frente. */
+/** CAPAS-HOME-01B: vitrine de capas de demonstração geradas e
+ *  finalizadas na esteira (Capa IA + editor). Só frentes (2:3);
+ *  spreads -aberta ficam em public/ pra uso futuro (Instagram). */
 const CAPAS_VITRINE = [
-  { src: "/capas-home/capa-fantasia-frente.webp", w: 667,  h: 1000 },
-  { src: "/capas-home/capa-romance-aberta.webp",  w: 1600, h: 1193 },
-  { src: "/capas-home/capa-suspense-frente.webp", w: 667,  h: 1000 },
-  { src: "/capas-home/capa-infantil-aberta.webp", w: 1600, h: 1193 },
-  { src: "/capas-home/capa-negocios-frente.webp", w: 667,  h: 1000 },
-  { src: "/capas-home/capa-poesia-frente.webp",   w: 667,  h: 1000 },
+  "/capas-home/capa-fantasia-frente.webp",
+  "/capas-home/capa-romance-frente.webp",
+  "/capas-home/capa-suspense-frente.webp",
+  "/capas-home/capa-infantil-frente.webp",
+  "/capas-home/capa-negocios-frente.webp",
+  "/capas-home/capa-poesia-frente.webp",
 ] as const;
 
 export const metadata: Metadata = {
@@ -275,14 +276,14 @@ function FeatureCapa() {
                 className="overflow-hidden rounded-2xl mb-4 [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
               >
                 <div className="flex w-max gap-5 animate-[capas-scroll_45s_linear_infinite] hover:[animation-play-state:paused] motion-reduce:animate-none">
-                  {[...CAPAS_VITRINE, ...CAPAS_VITRINE].map((c, i) => (
+                  {[...CAPAS_VITRINE, ...CAPAS_VITRINE].map((src, i) => (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={i}
-                      src={c.src}
+                      src={src}
                       alt=""
-                      width={c.w}
-                      height={c.h}
+                      width={667}
+                      height={1000}
                       loading="lazy"
                       className="h-64 lg:h-72 w-auto rounded-lg border border-black/5 shadow-xl"
                     />
@@ -296,9 +297,7 @@ function FeatureCapa() {
               {/* Prompt box */}
               <div className="bg-white rounded-2xl border border-zinc-200 p-5 shadow-lg">
                 <p className="text-zinc-400 text-xs mb-2 uppercase tracking-wider">Seu prompt</p>
-                <p className="text-zinc-700 text-sm leading-relaxed italic">
-                  &ldquo;Floresta densa ao entardecer, névoa baixa azulada entre troncos altos, uma jovem em silhueta caminhando em direção a uma luz dourada entre as árvores...&rdquo;
-                </p>
+                <CapaPromptRotativo />
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100">
                   <span className="text-xs text-zinc-400">3 opções geradas</span>
                   <span className="text-brand-gold text-xs font-semibold">Gerar novamente →</span>
