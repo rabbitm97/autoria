@@ -26,6 +26,18 @@ const FERRAMENTAS_HOME = [
   "codigo-barras-isbn",
 ] as const;
 
+/** CAPAS-HOME-01: vitrine de capas de demonstração geradas e
+ *  finalizadas na esteira (Capa IA + editor). Ordem alterna
+ *  temperatura/densidade; `aberta` = spread verso+lombada+frente. */
+const CAPAS_VITRINE = [
+  { src: "/capas-home/capa-fantasia-frente.webp", w: 667,  h: 1000 },
+  { src: "/capas-home/capa-romance-aberta.webp",  w: 1600, h: 1193 },
+  { src: "/capas-home/capa-suspense-frente.webp", w: 667,  h: 1000 },
+  { src: "/capas-home/capa-infantil-aberta.webp", w: 1600, h: 1193 },
+  { src: "/capas-home/capa-negocios-frente.webp", w: 667,  h: 1000 },
+  { src: "/capas-home/capa-poesia-frente.webp",   w: 667,  h: 1000 },
+] as const;
+
 export const metadata: Metadata = {
   title: "Autoria — Publique seu livro com IA, do manuscrito ao leitor",
 };
@@ -258,38 +270,37 @@ function FeatureCapa() {
           <div className="relative" aria-hidden="true">
             <div className="absolute inset-0 bg-brand-primary/5 rounded-3xl blur-3xl" />
             <div className="relative">
-              {/* Cover grid */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                {[
-                  { from: "from-indigo-600 to-purple-900",  title: "Romance" },
-                  { from: "from-amber-600 to-red-900",      title: "Suspense" },
-                  { from: "from-teal-500 to-cyan-900",      title: "Fantasia" },
-                ].map((c, i) => (
-                  <div key={i} className={`aspect-[2/3] rounded-xl bg-gradient-to-br ${c.from} shadow-xl relative overflow-hidden border border-white/10`}>
-                    <div className="absolute inset-0 opacity-20">
-                      {[...Array(6)].map((_, j) => (
-                        <div key={j} className="h-px bg-white/30 mt-8" style={{ marginTop: j * 20 + 16 }} />
-                      ))}
-                    </div>
-                    <div className="absolute bottom-0 inset-x-0 p-3">
-                      <div className="h-1 w-8 bg-white/60 rounded mb-1.5" />
-                      <div className="h-0.5 w-6 bg-white/30 rounded" />
-                    </div>
-                    {i === 0 && (
-                      <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-brand-gold flex items-center justify-center text-brand-primary text-xs font-bold">✓</div>
-                    )}
-                  </div>
-                ))}
+              {/* CAPAS-HOME-01: vitrine de capas reais em marquee */}
+              <div
+                className="overflow-hidden rounded-2xl mb-4 [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]"
+              >
+                <div className="flex w-max gap-5 animate-[capas-scroll_45s_linear_infinite] hover:[animation-play-state:paused] motion-reduce:animate-none">
+                  {[...CAPAS_VITRINE, ...CAPAS_VITRINE].map((c, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={i}
+                      src={c.src}
+                      alt=""
+                      width={c.w}
+                      height={c.h}
+                      loading="lazy"
+                      className="h-64 lg:h-72 w-auto rounded-lg border border-black/5 shadow-xl"
+                    />
+                  ))}
+                </div>
               </div>
+              <p className="text-zinc-400 text-[11px] text-center mb-4 -mt-1">
+                Capas de demonstração — geradas e finalizadas na esteira da Autoria
+              </p>
 
               {/* Prompt box */}
               <div className="bg-white rounded-2xl border border-zinc-200 p-5 shadow-lg">
                 <p className="text-zinc-400 text-xs mb-2 uppercase tracking-wider">Seu prompt</p>
                 <p className="text-zinc-700 text-sm leading-relaxed italic">
-                  &ldquo;Floresta escura com névoa ao entardecer, tons de azul profundo e dourado, silhueta de uma figura solitária...&rdquo;
+                  &ldquo;Floresta densa ao entardecer, névoa baixa azulada entre troncos altos, uma jovem em silhueta caminhando em direção a uma luz dourada entre as árvores...&rdquo;
                 </p>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100">
-                  <span className="text-xs text-zinc-400">3 opções geradas • 28 seg</span>
+                  <span className="text-xs text-zinc-400">3 opções geradas</span>
                   <span className="text-brand-gold text-xs font-semibold">Gerar novamente →</span>
                 </div>
               </div>

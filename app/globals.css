@@ -169,3 +169,9 @@
 /* SHELL-1: carrossel horizontal sem barra visível (usar com snap). */
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* CAPAS-HOME-01: marquee da vitrine de capas da home */
+@keyframes capas-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
