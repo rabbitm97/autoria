@@ -28,8 +28,8 @@ export function EtapasProgress({
 }) {
   return (
     <div className="bg-brand-primary border-b border-white/5">
-      <div className="max-w-4xl mx-auto px-4 py-4">
-        <ol className="flex items-center overflow-x-auto">
+      <div className="max-w-6xl mx-auto px-4 py-4 overflow-x-auto">
+        <ol className="flex w-max mx-auto items-center">
           {ETAPAS.map((etapa, i) => {
             const done   = i < currentStep;
             const active = i === currentStep;
@@ -47,7 +47,7 @@ export function EtapasProgress({
 
             const label = (
               <span
-                className={`text-xs
+                className={`text-xs ${active ? "" : "hidden md:inline"}
                   ${done   ? "text-emerald-400" :
                     active ? "text-brand-gold font-medium" :
                              "text-white/30"}`}
