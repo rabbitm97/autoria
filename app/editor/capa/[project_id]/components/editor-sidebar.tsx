@@ -450,7 +450,7 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
     const resultado = await gerarBarcodePngDataUrl(val);
     setGenerating(false);
     if (!resultado) {
-      alert("ISBN inválido. Confira os dígitos (ISBN-10 ou ISBN-13).");
+      alert("ISBN inválido. Confira os 13 dígitos (formato 978/979).");
       return;
     }
     const LARGURA_BARCODE_MM = 37; // tamanho nominal EAN-13 (mesma dica da ferramenta)

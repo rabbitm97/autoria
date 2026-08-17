@@ -19,7 +19,7 @@ export default function IsbnBarcodeTool() {
   const [entrada, setEntrada] = useState("");
   const [validacao, setValidacao] = useState<ValidacaoIsbn>(() => validarIsbn(""));
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [baixando, setBaixando] = useState<"svg" | "png" | null>(null);
+  const [baixando, setBaixando] = useState<"png" | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -62,21 +62,6 @@ export default function IsbnBarcodeTool() {
   const aplicarSugestao = useCallback(() => {
     if (!validacao.ok && validacao.sugestao) setEntrada(validacao.sugestao);
   }, [validacao]);
-
-  async function baixarSvg() {
-    if (!validacao.ok) return;
-    setBaixando("svg");
-    try {
-      const bwipjs = await loadBwip();
-      const svg = bwipjs.toSVG(opcoesBarcode(validacao, entrada, 3));
-      baixarBlob(new Blob([svg], { type: "image/svg+xml" }), `isbn-${validacao.codigo}.svg`);
-    } catch (err) {
-      console.warn("[isbn-barcode] svg:", err);
-      setRenderError("Falha ao gerar SVG.");
-    } finally {
-      setBaixando(null);
-    }
-  }
 
   async function baixarPng() {
     if (!validacao.ok) return;
@@ -206,22 +191,12 @@ export default function IsbnBarcodeTool() {
 
             <div className="space-y-2">
               <button
-                onClick={baixarSvg}
+                onClick={baixarPng}
                 disabled={disabled}
                 className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <span>Baixar SVG (vetor)</span>
-                <span className="text-xs opacity-70">
-                  {baixando === "svg" ? "Gerando…" : "para InDesign, Illustrator"}
-                </span>
-              </button>
-              <button
-                onClick={baixarPng}
-                disabled={disabled}
-                className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-zinc-200 text-brand-primary text-sm font-semibold hover:border-brand-gold/40 hover:bg-zinc-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
                 <span>Baixar PNG (alta resolução)</span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs opacity-70">
                   {baixando === "png" ? "Gerando…" : "≈ 300 dpi"}
                 </span>
               </button>

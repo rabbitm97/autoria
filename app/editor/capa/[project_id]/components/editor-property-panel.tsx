@@ -239,8 +239,15 @@ function BarcodePanel({ el }: { el: BarcodeElement }) {
   const up = (patch: Partial<BarcodeElement>) => updateElement(el.id, patch as any);
   async function regenerate(isbn: string) {
     const resultado = await gerarBarcodePngDataUrl(isbn);
-    if (resultado) up({ isbn, cachedDataUrl: resultado.dataUrl });
-    else alert("ISBN inválido.");
+    if (resultado) {
+      up({
+        isbn,
+        cachedDataUrl: resultado.dataUrl,
+        height_mm: Number((el.width_mm * (resultado.height / resultado.width)).toFixed(1)),
+      });
+    } else {
+      alert("ISBN inválido. Confira os 13 dígitos (formato 978/979).");
+    }
   }
   return (
     <div className="space-y-2.5">
