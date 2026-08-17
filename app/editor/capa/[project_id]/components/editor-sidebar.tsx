@@ -438,7 +438,7 @@ function SectionMarca({ projectData }: { projectData: ProjectData }) {
         x_mm: xCapaStart + f.width_mm - 35,
         y_mm: SANGRIA_MM + f.height_mm - 20,
         width_mm: 30,
-        height_mm: 5.5,
+        height_mm: 4.9, // ratio real do wordmark v3 (2239×367)
       }),
     );
   }

@@ -37,6 +37,7 @@ import {
 import { getStructuralGuides, snapToGuides } from "../lib/snap";
 import { FONT_CATALOG_BY_ID, useFontsReady } from "../lib/fonts";
 import { isEditableTarget, isMultiSelectClick } from "../lib/keyboard-utils";
+import { useImagemSuavizada } from "../lib/use-imagem-suavizada";
 import { hasElementsInXRange, shouldShowLabel } from "../lib/region-utils";
 import {
   getFillRect,
@@ -87,7 +88,7 @@ function ImageNode({
   onDragMove: (e: any) => void;
   onDragEnd: (e: any) => void;
 }) {
-  const [img] = useImage(el.src, "anonymous");
+  const img = useImagemSuavizada(el.src, el.width_mm * MM_TO_PX);
   if (!img) return null;
   const w = el.width_mm * MM_TO_PX;
   const h = el.height_mm * MM_TO_PX;
@@ -95,8 +96,8 @@ function ImageNode({
   // REAL da imagem (naturalWidth/naturalHeight) para cropar o source centrado
   // preservando o rect de destino. Nunca depende do ratio pedido/prometido
   // ao modelo — a saída generativa é insumo, o encaixe é nosso.
-  const nw = img.naturalWidth;
-  const nh = img.naturalHeight;
+  const nw = "naturalWidth" in img ? img.naturalWidth : img.width;
+  const nh = "naturalHeight" in img ? img.naturalHeight : img.height;
   let crop: { x: number; y: number; width: number; height: number } | undefined;
   if (el.objectFit === "cover" && nw > 0 && nh > 0 && w > 0 && h > 0) {
     const imgAspect = nw / nh;
@@ -152,7 +153,7 @@ function LogoNode({
   onDragEnd: (e: any) => void;
 }) {
   const src = LOGO_SRC[el.variant];
-  const [img] = useImage(src, "anonymous");
+  const img = useImagemSuavizada(src, el.width_mm * MM_TO_PX);
   if (!img) return null;
   return (
     <KonvaImage
@@ -703,8 +704,19 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
   const hasRotatedInSelection = selectedIds.length >= 2 && elements.some(
     (e) => selectedIds.includes(e.id) && e.rotation_deg !== 0,
   );
+  // EDITOR-FIX-1C: image/logo/barcode nunca mudam de aspect no resize —
+  // caixa acompanha a mídia, cover nunca cropa, barcode nunca distorce.
+  const unicoSelecionado =
+    selectedIds.length === 1 ? elements.find((e) => e.id === selectedIds[0]) : null;
+  const ratioTravado =
+    !!unicoSelecionado &&
+    (unicoSelecionado.type === "image" ||
+      unicoSelecionado.type === "logo" ||
+      unicoSelecionado.type === "barcode");
   const transformerAnchors = hasRotatedInSelection
     ? []
+    : ratioTravado
+    ? ["top-left", "top-right", "bottom-left", "bottom-right"]
     : ["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"];
 
   return (
@@ -920,7 +932,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
             ref={transformerRef}
             rotateEnabled={true}
             resizeEnabled={true}
-            keepRatio={false}
+            keepRatio={ratioTravado}
             enabledAnchors={transformerAnchors}
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < 20 || newBox.height < 20) return oldBox;
