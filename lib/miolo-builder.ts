@@ -418,23 +418,34 @@ body {
 }
 .toc ol { list-style: none; }
 .toc ol li {
-  position: relative;
+  display: flex;
+  align-items: baseline;
   margin-bottom: 0.9em;
   font-size: 0.98em;
-  padding-right: 2.4em;
-  background-image: repeating-linear-gradient(to right, #999 0, #999 1px, transparent 1px, transparent 4px);
-  background-size: 100% 1px;
-  background-repeat: no-repeat;
-  background-position: left 0 bottom 0.3em;
+}
+.toc ol li > a {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .toc ol li .toc-title {
   white-space: normal; overflow-wrap: break-word;
-  background: #fff; padding-right: 0.35em;
 }
-.toc ol li .toc-dots { display: none; }
+/* Leader: linha pontilhada vetorial — renderização idêntica em pdf.js,
+   Chrome, Acrobat e RIP de gráfica. NUNCA usar gradient como leader:
+   vira shading pattern no PDF e o pdf.js degrada pra linha vermelha
+   (bug MIOLO-TOC-01, 18/ago). */
+.toc ol li .toc-dots {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 1.5em;
+  margin: 0 0.35em;
+  align-self: flex-end;
+  margin-bottom: 0.28em;
+  border-bottom: 1px dotted #999;
+}
 .toc ol li .toc-pg {
-  position: absolute; right: 0; bottom: 0;
-  background: #fff; padding-left: 0.4em; white-space: nowrap;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Links sem formatação visual — preserva navegação em PDF digital,
