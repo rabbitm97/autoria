@@ -274,17 +274,25 @@ function RevisaoVisual() {
 function CapaVisual() {
   return (
     <div className="h-full p-4 flex flex-col">
-      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-3">Capas geradas e finalizadas na Autoria</div>
-      <div className="flex-1 grid grid-cols-4 gap-2">
+      <div className="flex items-center justify-center gap-1.5 mb-3">
+        {["Aquarela", "Acolhedora", "Terracota"].map((chip) => (
+          <span key={chip} className="text-[8px] text-brand-primary/60 bg-brand-surface border border-brand-primary/10 rounded-full px-2 py-0.5">
+            {chip}
+          </span>
+        ))}
+      </div>
+      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-2">
+        3 opções geradas pro seu briefing
+      </div>
+      <div className="flex-1 grid grid-cols-3 gap-2">
         {[
-          { src: "/capas-home/capa-fantasia-frente.webp", active: false },
-          { src: "/capas-home/capa-romance-frente.webp", active: true },
-          { src: "/capas-home/capa-suspense-frente.webp", active: false },
-          { src: "/capas-home/capa-poesia-frente.webp", active: false },
+          { bg: "bg-gradient-to-br from-rose-200 via-orange-200 to-amber-100", active: false },
+          { bg: "bg-gradient-to-br from-orange-300 via-rose-300 to-amber-200", active: true },
+          { bg: "bg-gradient-to-br from-amber-200 via-orange-100 to-rose-200", active: false },
         ].map((c, i) => (
-          <div key={i} className={`relative rounded-lg overflow-hidden ${c.active ? "ring-2 ring-brand-gold" : ""}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={c.src} alt="" width={667} height={1000} loading="lazy" className="w-full h-full object-cover" />
+          <div key={i} className={`rounded-lg ${c.bg} flex flex-col items-center justify-end p-2 relative ${c.active ? "ring-2 ring-brand-gold" : ""}`}>
+            <div className="w-8 h-2 bg-white/70 rounded-sm mb-1" />
+            <div className="w-6 h-1.5 bg-white/50 rounded-sm" />
             {c.active && (
               <div className="absolute top-1 right-1 w-3 h-3 bg-brand-gold rounded-full flex items-center justify-center">
                 <svg width="6" height="5" viewBox="0 0 6 5" fill="none"><path d="M1 2.5l1.5 1.5L5 1" stroke="#1a1a2e" strokeWidth="1.2" strokeLinecap="round" /></svg>
@@ -295,10 +303,10 @@ function CapaVisual() {
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="bg-brand-surface border border-brand-primary/10 rounded text-[9px] text-brand-primary/70 px-2 py-1.5 text-center">
-          EPUB pronto
+          Ajustar no editor
         </div>
         <div className="bg-brand-gold text-brand-primary text-[9px] font-bold text-center py-1.5 rounded">
-          Baixar PDF →
+          Usar esta capa →
         </div>
       </div>
     </div>
@@ -308,12 +316,16 @@ function CapaVisual() {
 function ConferenciaVisual() {
   return (
     <div className="h-full p-4 flex flex-col">
-      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-3">Conferência final</div>
+      <div className="flex items-center justify-center gap-3 mb-3 text-[9px]">
+        <span className="text-brand-primary font-semibold border-b-2 border-brand-gold pb-0.5">Livro 3D</span>
+        <span className="text-brand-primary/40">Capa aberta</span>
+        <span className="text-brand-primary/40">Miolo</span>
+      </div>
       <div className="flex-1 flex items-center justify-center gap-3">
-        <div className="relative w-20 shrink-0 rounded-md overflow-hidden shadow-lg">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/capas-home/capa-negocios-frente.webp" alt="" width={667} height={1000} className="w-full h-auto block" />
-          <div className="absolute inset-y-0 left-0 w-1 bg-black/25" />
+        <div className="relative w-20 h-28 rounded-r-md rounded-l-sm bg-gradient-to-br from-brand-primary via-[#2e3a5c] to-brand-gold/70 shadow-lg shrink-0">
+          <div className="absolute inset-y-0 left-0 w-1.5 bg-black/30 rounded-l-sm" />
+          <div className="absolute left-4 right-3 top-4 h-2 bg-white/70 rounded-sm" />
+          <div className="absolute left-4 right-6 top-7 h-1.5 bg-white/40 rounded-sm" />
         </div>
         <div className="flex-1 space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] text-brand-primary/70">
