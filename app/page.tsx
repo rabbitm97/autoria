@@ -10,16 +10,6 @@ import { PLANO_PRECO_CENTAVOS, formatarPrecoPlano } from "@/lib/planos";
 import { FORMATOS_LIVRO } from "@/lib/formatos";
 import { TOOLS } from "@/components/ferramentas/registry";
 
-/** Cortes de vídeo dos atos (DESIGN-2B). Preencher com os paths em
- *  /public/media quando o Mateus entregar os cortes; null = mostra o
- *  visual estático atual do ato. */
-const VIDEOS_ATOS: Record<1 | 2 | 3 | 4, string | null> = {
-  1: null,
-  2: null,
-  3: null,
-  4: null,
-};
-
 const FERRAMENTAS_HOME = [
   "simulador-impressao",
   "verificador-pdf",
@@ -901,7 +891,7 @@ export default function Home() {
       <main>
         <Hero />
         <div className="border-t border-brand-primary/8">
-          <Atos videos={VIDEOS_ATOS} />
+          <Atos />
         </div>
         <FeatureEditorial />
         <FeatureCapa />

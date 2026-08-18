@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import TutorialVideo from "./tutorial-video";
 
 type AtoIndex = 1 | 2 | 3 | 4;
 
@@ -51,20 +52,16 @@ const ATOS: Array<{
     label: "Ato 4 — Finalize e imprima",
     title: "Do seu painel pra estante",
     bullets: [
-      "Prova visual do livro montado antes de qualquer pagamento",
+      "Pré-visualização do livro montado — 3D, capa e miolo — antes de qualquer pagamento",
       "Impressão a partir de 1 exemplar, com preço de gráfica",
-      "Impressão com preço de gráfica, direto do seu painel",
+      "Arquivos finais em todos os formatos: PDF de gráfica, EPUB e capa",
     ],
-    visual: ProvaVisual,
+    visual: ConferenciaVisual,
     chip: "Audiolivro — em breve",
   },
 ];
 
-export default function Atos({
-  videos,
-}: {
-  videos: Record<AtoIndex, string | null>;
-}) {
+export default function Atos() {
   const [active, setActive] = useState<AtoIndex>(1);
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,7 +79,6 @@ export default function Atos({
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  const videoSrc = videos[active];
   const Visual = ato.visual;
 
   return (
@@ -162,53 +158,43 @@ export default function Atos({
               </div>
             </div>
 
-            {/* Right — video or static visual */}
+            {/* Right — static visual */}
             <div className="bg-brand-paper-deep flex items-center justify-center p-6 md:p-8">
-              {videoSrc ? (
-                <video
-                  key={videoSrc}
-                  src={videoSrc}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="rounded-2xl border border-brand-primary/10 w-full"
-                />
-              ) : (
-                <div className="w-full h-full max-w-[440px] bg-white rounded-xl border border-brand-primary/10 shadow-md flex flex-col overflow-hidden">
-                  {/* Browser chrome */}
-                  <div className="shrink-0 bg-brand-surface border-b border-brand-primary/10 px-4 py-2.5 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-brand-primary/15" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-brand-primary/15" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-brand-primary/15" />
-                    <div className="flex-1 flex items-center justify-center gap-1 mx-4">
-                      {ATOS.map((a) => (
-                        <div key={a.n} className="flex items-center gap-1">
-                          <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                              a.n <= active
-                                ? "bg-brand-gold text-brand-primary"
-                                : "bg-brand-primary/10 text-brand-primary/40"
-                            }`}
-                          >
-                            {a.n}
-                          </div>
-                          {a.n < 4 && (
-                            <div className={`w-6 h-0.5 ${a.n < active ? "bg-brand-gold" : "bg-brand-primary/10"}`} />
-                          )}
+              <div className="w-full h-full max-w-[440px] bg-white rounded-xl border border-brand-primary/10 shadow-md flex flex-col overflow-hidden">
+                {/* Browser chrome */}
+                <div className="shrink-0 bg-brand-surface border-b border-brand-primary/10 px-4 py-2.5 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-brand-primary/15" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-brand-primary/15" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-brand-primary/15" />
+                  <div className="flex-1 flex items-center justify-center gap-1 mx-4">
+                    {ATOS.map((a) => (
+                      <div key={a.n} className="flex items-center gap-1">
+                        <div
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                            a.n <= active
+                              ? "bg-brand-gold text-brand-primary"
+                              : "bg-brand-primary/10 text-brand-primary/40"
+                          }`}
+                        >
+                          {a.n}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <Visual />
+                        {a.n < 4 && (
+                          <div className={`w-6 h-0.5 ${a.n < active ? "bg-brand-gold" : "bg-brand-primary/10"}`} />
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )}
+                <div className="flex-1 overflow-hidden">
+                  <Visual />
+                </div>
+              </div>
             </div>
 
           </div>
         </div>
+
+        <TutorialVideo />
 
       </div>
     </section>
@@ -229,10 +215,10 @@ function UploadVisual() {
       </div>
       <div className="w-40 space-y-2">
         {[
-          { label: "Título do livro", value: "O Último Horizonte" },
-          { label: "Gênero", value: "Ficção Contemporânea" },
-          { label: "Formato sugerido", value: "14×21 cm" },
-          { label: "Nome do autor", value: "M. R. Coelho" },
+          { label: "Título do livro", value: "Cartas que Não Enviei" },
+          { label: "Gênero", value: "Romance" },
+          { label: "Formato sugerido", value: "Compacto · 14×21" },
+          { label: "Nome do autor", value: "Helena Duarte" },
         ].map((f) => (
           <div key={f.label}>
             <div className="text-[10px] text-brand-primary/40 mb-0.5">{f.label}</div>
@@ -288,17 +274,17 @@ function RevisaoVisual() {
 function CapaVisual() {
   return (
     <div className="h-full p-4 flex flex-col">
-      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-3">Escolha o estilo de capa</div>
+      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-3">Capas geradas e finalizadas na Autoria</div>
       <div className="flex-1 grid grid-cols-4 gap-2">
         {[
-          { bg: "bg-gradient-to-br from-purple-300 to-pink-300", active: false },
-          { bg: "bg-gradient-to-br from-yellow-200 to-orange-300", active: true },
-          { bg: "bg-gradient-to-br from-blue-300 to-cyan-300", active: false },
-          { bg: "bg-gradient-to-br from-emerald-200 to-teal-300", active: false },
+          { src: "/capas-home/capa-fantasia-frente.webp", active: false },
+          { src: "/capas-home/capa-romance-frente.webp", active: true },
+          { src: "/capas-home/capa-suspense-frente.webp", active: false },
+          { src: "/capas-home/capa-poesia-frente.webp", active: false },
         ].map((c, i) => (
-          <div key={i} className={`rounded-lg ${c.bg} flex flex-col items-center justify-end p-2 relative ${c.active ? "ring-2 ring-brand-gold" : ""}`}>
-            <div className="w-6 h-2 bg-white/60 rounded-sm mb-1" />
-            <div className="w-8 h-1.5 bg-white/40 rounded-sm" />
+          <div key={i} className={`relative rounded-lg overflow-hidden ${c.active ? "ring-2 ring-brand-gold" : ""}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={c.src} alt="" width={667} height={1000} loading="lazy" className="w-full h-full object-cover" />
             {c.active && (
               <div className="absolute top-1 right-1 w-3 h-3 bg-brand-gold rounded-full flex items-center justify-center">
                 <svg width="6" height="5" viewBox="0 0 6 5" fill="none"><path d="M1 2.5l1.5 1.5L5 1" stroke="#1a1a2e" strokeWidth="1.2" strokeLinecap="round" /></svg>
@@ -319,23 +305,25 @@ function CapaVisual() {
   );
 }
 
-function ProvaVisual() {
+function ConferenciaVisual() {
   return (
     <div className="h-full p-4 flex flex-col">
-      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-3">Prova visual do livro</div>
+      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-3">Conferência final</div>
       <div className="flex-1 flex items-center justify-center gap-3">
-        <div className="w-24 h-32 rounded-md bg-gradient-to-br from-brand-gold via-amber-500 to-amber-700 shadow-lg flex items-end justify-center pb-2">
-          <div className="w-1 h-16 bg-black/20 rounded-full" />
+        <div className="relative w-20 shrink-0 rounded-md overflow-hidden shadow-lg">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/capas-home/capa-negocios-frente.webp" alt="" width={667} height={1000} className="w-full h-auto block" />
+          <div className="absolute inset-y-0 left-0 w-1 bg-black/25" />
         </div>
         <div className="flex-1 space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] text-brand-primary/70">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Miolo aprovado
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Publicação digital — pronta
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-brand-primary/70">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Capa aprovada
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Publicação impressa — pronta
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-brand-primary/70">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-gold" /> 1 exemplar em produção
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-gold" /> Lombada calibrada pelas páginas
           </div>
           <div className="text-[9px] text-brand-primary/40 mt-2">Impressão a partir de 1 exemplar</div>
         </div>
