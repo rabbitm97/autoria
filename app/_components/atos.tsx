@@ -274,39 +274,41 @@ function RevisaoVisual() {
 function CapaVisual() {
   return (
     <div className="h-full p-4 flex flex-col">
-      <div className="flex items-center justify-center gap-1.5 mb-3">
-        {["Aquarela", "Acolhedora", "Terracota"].map((chip) => (
-          <span key={chip} className="text-[8px] text-brand-primary/60 bg-brand-surface border border-brand-primary/10 rounded-full px-2 py-0.5">
-            {chip}
-          </span>
-        ))}
+      <div className="flex items-center justify-center gap-1.5 mb-2.5">
+        <span className="text-[8px] text-brand-primary/70 bg-brand-surface border border-brand-gold/40 rounded-full px-2 py-0.5">Misteriosa</span>
+        <span className="text-[8px] text-brand-primary/70 bg-brand-surface border border-brand-gold/40 rounded-full px-2 py-0.5">Acolhedora</span>
+        <span className="text-[8px] text-brand-primary/70 bg-brand-surface border border-brand-primary/10 rounded-full px-2 py-0.5 flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#1a3a5c]" /> Azul-escuro
+        </span>
+        <span className="text-[8px] text-brand-primary/70 bg-brand-surface border border-brand-primary/10 rounded-full px-2 py-0.5">Título no topo</span>
       </div>
-      <div className="text-[10px] text-brand-primary/50 font-semibold text-center mb-2">
-        3 opções geradas pro seu briefing
-      </div>
-      <div className="flex-1 grid grid-cols-3 gap-2">
-        {[
-          { bg: "bg-gradient-to-br from-rose-200 via-orange-200 to-amber-100", active: false },
-          { bg: "bg-gradient-to-br from-orange-300 via-rose-300 to-amber-200", active: true },
-          { bg: "bg-gradient-to-br from-amber-200 via-orange-100 to-rose-200", active: false },
-        ].map((c, i) => (
-          <div key={i} className={`rounded-lg ${c.bg} flex flex-col items-center justify-end p-2 relative ${c.active ? "ring-2 ring-brand-gold" : ""}`}>
-            <div className="w-8 h-2 bg-white/70 rounded-sm mb-1" />
-            <div className="w-6 h-1.5 bg-white/50 rounded-sm" />
-            {c.active && (
-              <div className="absolute top-1 right-1 w-3 h-3 bg-brand-gold rounded-full flex items-center justify-center">
-                <svg width="6" height="5" viewBox="0 0 6 5" fill="none"><path d="M1 2.5l1.5 1.5L5 1" stroke="#1a1a2e" strokeWidth="1.2" strokeLinecap="round" /></svg>
-              </div>
-            )}
+      <div className="flex-1 flex gap-3 min-h-0">
+        <div className="flex-1 flex flex-col">
+          <div className="text-[9px] text-brand-primary/40 font-semibold mb-1">Descreva sua capa</div>
+          <div className="flex-1 bg-brand-surface border border-brand-primary/10 rounded-lg p-2 space-y-1.5">
+            <div className="h-1.5 bg-brand-primary/15 rounded w-full" />
+            <div className="h-1.5 bg-brand-primary/15 rounded w-5/6" />
+            <div className="h-1.5 bg-brand-primary/15 rounded w-4/6" />
           </div>
-        ))}
+          <div className="mt-2 bg-brand-primary text-white text-[9px] font-bold text-center py-1.5 rounded">
+            Gerar capa
+          </div>
+        </div>
+        <div className="w-24 flex flex-col items-center">
+          <div className="text-[8px] text-brand-primary/40 font-semibold mb-1">Sua última geração</div>
+          <div className="flex-1 w-full rounded-md bg-gradient-to-b from-[#16324f] via-[#3d5a80] to-[#98c1d9] shadow-md relative overflow-hidden">
+            <div className="absolute left-2 right-2 top-2 h-1.5 bg-white/80 rounded-sm" />
+            <div className="absolute left-3 right-4 top-4.5 h-1 bg-white/50 rounded-sm" style={{ top: "1.15rem" }} />
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-white/20" />
+          </div>
+        </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="bg-brand-surface border border-brand-primary/10 rounded text-[9px] text-brand-primary/70 px-2 py-1.5 text-center">
-          Ajustar no editor
+          Gerar outra opção
         </div>
         <div className="bg-brand-gold text-brand-primary text-[9px] font-bold text-center py-1.5 rounded">
-          Usar esta capa →
+          É essa que quero →
         </div>
       </div>
     </div>
