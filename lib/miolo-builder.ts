@@ -1,4 +1,5 @@
 import { type FormatoLivro, type FormatoSpecs, cppEfetivo, getFormatoDef } from "./formatos";
+import { segmentByCapitulosAprovados } from "./segmentar-capitulos";
 import {
   EB_GARAMOND_400, EB_GARAMOND_400_ITALIC, EB_GARAMOND_600,
   SPECTRAL_400, SPECTRAL_400_ITALIC, SPECTRAL_500, SPECTRAL_600,
@@ -1263,28 +1264,11 @@ export function buildBookHtml(params: {
   console.log("[buildBookHtml] template:", config.template, "formato:", config.formato);
   console.log("[buildBookHtml] capítulos detectados:", capitulos.length);
 
-  // Normalizar texto e recalcular posições dos capítulos contra texto normalizado
-  const textoNormalizado = texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const capitulosNorm = capitulos.map(c => {
-    const novaPos = textoNormalizado.indexOf(c.titulo);
-    return { ...c, pos: novaPos >= 0 ? novaPos : c.pos };
-  });
-
-  // Dividir manuscrito em segmentos por capítulo
-  const segments: { titulo: string; texto: string }[] = [];
-  if (capitulosNorm.length === 0) {
-    segments.push({ titulo: titulo || "Capítulo 1", texto: textoNormalizado });
-  } else {
-    for (let i = 0; i < capitulosNorm.length; i++) {
-      const start = capitulosNorm[i].pos;
-      const end = i < capitulosNorm.length - 1 ? capitulosNorm[i + 1].pos : textoNormalizado.length;
-      let segTexto = textoNormalizado.slice(start, end).trim();
-      // Remove a primeira linha (que contém o título do capítulo)
-      const markerEnd = segTexto.indexOf("\n");
-      segTexto = markerEnd > -1 ? segTexto.slice(markerEnd).trim() : segTexto;
-      segments.push({ titulo: capitulosNorm[i].titulo, texto: segTexto });
-    }
-  }
+  // Segmentação por capítulo: núcleo único em lib/segmentar-capitulos.ts (V47).
+  // `pos` aprovado é a verdade — nunca reprocurar título no texto.
+  const segments: { titulo: string; texto: string }[] =
+    segmentByCapitulosAprovados(texto, capitulos, titulo || "Capítulo 1")
+      .map(c => ({ titulo: c.title, texto: c.text }));
 
   const capitulosInfo: CapituloInfo[] = segments.map((seg, i) => ({
     id: `cap-${i}`,

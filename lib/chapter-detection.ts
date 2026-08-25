@@ -256,6 +256,35 @@ export function proporCapitulos(texto: string): CandidatoCapitulo[] {
     if (c.palavras_no_segmento < 50) {
       c.sugerido = false;
       c.score = round3(c.score * 0.5);
+      if (!c.motivo_descartado) {
+        c.motivo_descartado =
+          `trecho curto (${c.palavras_no_segmento} palavras) — provavelmente sumário ou cabeçalho de página`;
+      }
+    }
+  }
+
+  // 4. Repeated title: the same heading appearing more than once in the text
+  //    (table of contents at the start, running heads from PDF/DOCX
+  //    extraction, title quoted in a preface). Only the short copies
+  //    (<50 words, already demoted by rule 3) are affected: they get an
+  //    explicit reason and a floor score so the author sees WHY there are
+  //    two cards with the same name. Copies with real body text (>=50
+  //    words) are left untouched — a book can legitimately have several
+  //    chapters titled "Interlúdio".
+  const porTitulo = new Map<string, CandidatoCapitulo[]>();
+  for (const c of deduped) {
+    const chave = c.titulo.trim().toLowerCase().replace(/\s+/g, " ");
+    const lista = porTitulo.get(chave);
+    if (lista) lista.push(c); else porTitulo.set(chave, [c]);
+  }
+  for (const grupo of porTitulo.values()) {
+    if (grupo.length < 2) continue;
+    for (const c of grupo) {
+      if (c.palavras_no_segmento < 50) {
+        c.sugerido = false;
+        c.score = Math.min(c.score, 0.10);
+        c.motivo_descartado = "título repetido no texto — provavelmente sumário ou cabeçalho de página";
+      }
     }
   }
 

@@ -168,7 +168,7 @@ export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading 
                       {ORIGEM_LABEL[c.origem]}
                     </span>
                     <span className="whitespace-nowrap text-[10px] text-zinc-400">
-                      score {c.score.toFixed(2)}
+                      score {c.score.toFixed(2)} · ~{c.palavras_no_segmento.toLocaleString("pt-BR")} palavras
                     </span>
                   </div>
                   <div className="mt-2 grid gap-1 text-[11px] text-zinc-500 sm:grid-cols-2">
