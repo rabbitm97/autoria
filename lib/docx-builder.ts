@@ -17,6 +17,7 @@ import {
   deveExibirSumario, fixTypography, getDefaultCorpoPt, clampCorpoPt,
 } from "./miolo-builder";
 import { buildCustomXmlAnchors } from "./docx-anchors";
+import { segmentByCapitulosAprovados } from "./segmentar-capitulos";
 
 export type { MioloConfig, TemplateId, FormatoLivro };
 
@@ -377,27 +378,10 @@ export async function buildBookDocx(params: {
   const corpo_pt = clampCorpoPt(config.corpo_pt) ?? getDefaultCorpoPt(config.template);
   const size_hp = hp(corpo_pt);
 
-  // ── Segment text into chapters ────────────────────────────────────────────
-
-  const textoNorm = texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const capitulosNorm = capitulos.map(c => {
-    const novaPos = textoNorm.indexOf(c.titulo);
-    return { ...c, pos: novaPos >= 0 ? novaPos : c.pos };
-  });
-
-  const segments: { titulo: string; texto: string }[] = [];
-  if (capitulosNorm.length === 0) {
-    segments.push({ titulo: titulo || "Capítulo 1", texto: textoNorm });
-  } else {
-    for (let i = 0; i < capitulosNorm.length; i++) {
-      const start = capitulosNorm[i].pos;
-      const end = i < capitulosNorm.length - 1 ? capitulosNorm[i + 1].pos : textoNorm.length;
-      let segTexto = textoNorm.slice(start, end).trim();
-      const markerEnd = segTexto.indexOf("\n");
-      segTexto = markerEnd > -1 ? segTexto.slice(markerEnd).trim() : segTexto;
-      segments.push({ titulo: capitulosNorm[i].titulo, texto: segTexto });
-    }
-  }
+  // ── Segment text into chapters — núcleo único lib/segmentar-capitulos (V47)
+  const segments: { titulo: string; texto: string }[] =
+    segmentByCapitulosAprovados(texto, capitulos, titulo || "Capítulo 1")
+      .map(c => ({ titulo: c.title, texto: c.text }));
 
   // ── Page layout ───────────────────────────────────────────────────────────
 
