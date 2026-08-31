@@ -18,7 +18,6 @@ import {
   fragmentarParaDiagnostico,
   type FragmentoDiagnostico,
 } from "@/lib/parse-chapters";
-import { FRAGMENTOS_EXPRESSO } from "@/lib/diagnostico-avulso";
 import type {
   FormatoSugerido,
   CanaisRecomendados,
@@ -417,15 +416,14 @@ export async function POST(request: NextRequest) {
     return res as Response;
   }
 
-  let body: { texto?: string; project_id: string; job_id?: string; modo?: "expresso" | "completo" };
+  let body: { texto?: string; project_id: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
 
-  const { texto, project_id, job_id, modo } = body;
-  const eJobFerramenta = typeof job_id === "string" && job_id.length > 0;
+  const { texto, project_id } = body;
 
   if (!project_id || typeof project_id !== "string") {
     return NextResponse.json({ error: "Campo 'project_id' obrigatório." }, { status: 400 });
@@ -450,9 +448,9 @@ export async function POST(request: NextRequest) {
   // ── INÍCIO: texto novo veio no body, resetar estado ─────────────────────
   if (texto && texto.trim().length >= 50) {
     // Rate limit para plano freemium (PRE-POST-1 M1). Isento pra quem já tem
-    // essencial/pro no projeto — nada muda pra quem paga. Jobs de ferramenta
-    // avulsa (job_id presente) são isentos porque já debitaram créditos.
-    if (!eJobFerramenta && !isDev() && !planoAtende((project as { plano?: unknown }).plano, "essencial")) {
+    // essencial/pro no projeto — nada muda pra quem paga. Fail-open em erro
+    // de count (não trava o autor por telemetria).
+    if (!isDev() && !planoAtende((project as { plano?: unknown }).plano, "essencial")) {
       const admin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -504,13 +502,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const todosFragmentos = fragmentarParaDiagnostico(textoCompleto, titulo);
-
-    // Modo Expresso: analisa apenas os primeiros FRAGMENTOS_EXPRESSO fragmentos.
-    const eExpresso = eJobFerramenta && modo === "expresso";
-    const fragmentos = eExpresso
-      ? todosFragmentos.slice(0, FRAGMENTOS_EXPRESSO)
-      : todosFragmentos;
+    const fragmentos = fragmentarParaDiagnostico(textoCompleto, titulo);
 
     estado = {
       status: "processando_capitulos",
@@ -518,11 +510,6 @@ export async function POST(request: NextRequest) {
       iniciado_em: new Date().toISOString(),
       fragmentos_cache: [],
       _fragmentos_pendentes: fragmentos,
-      ...(eExpresso ? {
-        amostra: true,
-        amostra_fragmentos: fragmentos.length,
-        total_fragmentos: todosFragmentos.length,
-      } : {}),
     };
 
     validarProjectData("diagnostico", estado, { modo: "observador", contexto: "diagnostico" });
@@ -535,9 +522,7 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    if (!eJobFerramenta) {
-      await avancarEtapa(supabase, project_id, user.id, "diagnostico", "diagnostico");
-    }
+    await avancarEtapa(supabase, project_id, user.id, "diagnostico", "diagnostico");
   }
 
   if (!estado) {

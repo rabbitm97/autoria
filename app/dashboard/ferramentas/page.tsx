@@ -4,7 +4,6 @@ import {
   CATEGORIAS_ORDEM,
   type FerramentaCard,
 } from "@/components/ferramentas/registry";
-import type { Route } from "next";
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -133,22 +132,13 @@ function FerramentaCardView({
             </>
           )}
         </div>
-        {tool.href ? (
-          <Link
-            href={tool.href as Route}
-            className="w-full mt-1 rounded-xl bg-brand-primary text-white text-xs font-semibold py-2 text-center block hover:bg-brand-primary/90 transition-colors"
-          >
-            Usar ferramenta →
-          </Link>
-        ) : (
-          <button
-            type="button"
-            disabled
-            className="w-full mt-1 rounded-xl bg-zinc-100 text-zinc-400 text-xs font-semibold py-2 cursor-not-allowed"
-          >
-            Disponível em breve
-          </button>
-        )}
+        <button
+          type="button"
+          disabled
+          className="w-full mt-1 rounded-xl bg-zinc-100 text-zinc-400 text-xs font-semibold py-2 cursor-not-allowed"
+        >
+          Disponível em breve
+        </button>
       </div>
     );
   }

@@ -531,10 +531,6 @@ export interface DiagnosticoState {
   resultado?: DiagnosticoResult;
   // Efêmero: existe apenas durante o processamento, removido na consolidação
   _fragmentos_pendentes?: FragmentoDiagnostico[];
-  // Modo Expresso: amostra analisa só os primeiros FRAGMENTOS_EXPRESSO fragmentos
-  amostra?: boolean;
-  amostra_fragmentos?: number;
-  total_fragmentos?: number;
 }
 
 // ── elementos-editoriais ─────────────────────────────────────────────────────
