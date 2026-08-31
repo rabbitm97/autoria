@@ -17,7 +17,7 @@ export interface FerramentaCard {
   desc: string;
   categoria: CategoriaFerramenta;
   estado: EstadoFerramenta;
-  /** Só quando estado === "gratis" */
+  /** Rota logada. Grátis: sempre. Pago: quando a ferramenta existe (senão "Disponível em breve"). */
   href?: string;
   /** Rota pública da ferramenta (sem login). Ausente = ainda não publicada. */
   href_publico?: string;
@@ -66,6 +66,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Análise e texto",
     estado: "pago",
     preco_creditos: CUSTOS_CREDITOS.diagnostico_expresso,
+    href: "/dashboard/ferramentas/diagnostico-expresso",
     icon: ScanIcon,
   },
   {
@@ -75,6 +76,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Análise e texto",
     estado: "pago",
     preco_creditos: CUSTOS_CREDITOS.diagnostico_completo,
+    href: "/dashboard/ferramentas/diagnostico-completo",
     icon: ScanIcon,
   },
   {

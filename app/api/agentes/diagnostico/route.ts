@@ -6,6 +6,10 @@ import { anthropic, parseLLMJson, extractText, traceClaudeCall, isDev } from "@/
 import { requireAuth } from "@/lib/supabase-server";
 import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { planoAtende } from "@/lib/planos";
+import { autorizarAcao } from "@/lib/creditos";
+import { registrarDebitoJob } from "@/lib/ferramenta-jobs";
+import { ACAO_POR_MODO, AMOSTRA_EXPRESSO_FRAGMENTOS, isModoDiagnostico, type ModoDiagnostico } from "@/lib/diagnostico-avulso";
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { validarProjectData } from "@/lib/project-data";
 import {
@@ -416,7 +420,7 @@ export async function POST(request: NextRequest) {
     return res as Response;
   }
 
-  let body: { texto?: string; project_id: string };
+  let body: { texto?: string; project_id: string; modo?: string; job_id?: string };
   try {
     body = await request.json();
   } catch {
@@ -424,6 +428,8 @@ export async function POST(request: NextRequest) {
   }
 
   const { texto, project_id } = body;
+  const modo: ModoDiagnostico = isModoDiagnostico(body.modo) ? body.modo : "completo";
+  const jobId = typeof body.job_id === "string" ? body.job_id : null;
 
   if (!project_id || typeof project_id !== "string") {
     return NextResponse.json({ error: "Campo 'project_id' obrigatório." }, { status: 400 });
@@ -431,7 +437,7 @@ export async function POST(request: NextRequest) {
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, diagnostico, plano, manuscripts(titulo, texto, nome)")
+    .select("id, manuscript_id, diagnostico, plano, origem, manuscripts(titulo, texto, nome)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -447,10 +453,42 @@ export async function POST(request: NextRequest) {
 
   // ── INÍCIO: texto novo veio no body, resetar estado ─────────────────────
   if (texto && texto.trim().length >= 50) {
-    // Rate limit para plano freemium (PRE-POST-1 M1). Isento pra quem já tem
-    // essencial/pro no projeto — nada muda pra quem paga. Fail-open em erro
-    // de count (não trava o autor por telemetria).
-    if (!isDev() && !planoAtende((project as { plano?: unknown }).plano, "essencial")) {
+    const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+
+    if (ehSombra) {
+      if (!jobId) {
+        return NextResponse.json({ error: "job_id obrigatório para projeto de ferramenta." }, { status: 400 });
+      }
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const { data: job } = await admin
+        .from("ferramenta_jobs")
+        .select("id, user_id, projeto_sombra_id, debitado_em")
+        .eq("id", jobId)
+        .maybeSingle();
+      const j = job as { id: string; user_id: string; projeto_sombra_id: string | null; debitado_em: string | null } | null;
+      if (!j || j.user_id !== user.id || j.projeto_sombra_id !== project_id) {
+        return NextResponse.json({ error: "Job não encontrado para este projeto." }, { status: 404 });
+      }
+      if (!j.debitado_em) {
+        const acao = ACAO_POR_MODO[modo];
+        const aut = await autorizarAcao(
+          admin,
+          { id: project_id, plano: (project as { plano?: unknown }).plano, origem: "ferramenta" },
+          user.id,
+          { minimoPlano: "essencial", acao },
+        );
+        if (!aut.liberado) return aut.resposta!;
+        if (aut.pagoComCreditos) {
+          await registrarDebitoJob(admin, j.id, CUSTOS_CREDITOS[acao]);
+        }
+      }
+    } else if (!isDev() && !planoAtende((project as { plano?: unknown }).plano, "essencial")) {
+      // Rate limit para plano freemium (PRE-POST-1 M1). Isento pra quem já tem
+      // essencial/pro no projeto — nada muda pra quem paga. Fail-open em erro
+      // de count (não trava o autor por telemetria).
       const admin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -502,7 +540,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const fragmentos = fragmentarParaDiagnostico(textoCompleto, titulo);
+    const fragmentosTodos = fragmentarParaDiagnostico(textoCompleto, titulo);
+    const amostra = modo === "expresso";
+    const fragmentos = amostra
+      ? fragmentosTodos.slice(0, Math.max(1, AMOSTRA_EXPRESSO_FRAGMENTOS))
+      : fragmentosTodos;
 
     estado = {
       status: "processando_capitulos",
@@ -510,6 +552,9 @@ export async function POST(request: NextRequest) {
       iniciado_em: new Date().toISOString(),
       fragmentos_cache: [],
       _fragmentos_pendentes: fragmentos,
+      ...(amostra
+        ? { amostra: true, amostra_fragmentos: fragmentos.length, total_fragmentos: fragmentosTodos.length }
+        : {}),
     };
 
     validarProjectData("diagnostico", estado, { modo: "observador", contexto: "diagnostico" });

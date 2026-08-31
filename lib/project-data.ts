@@ -531,6 +531,10 @@ export interface DiagnosticoState {
   resultado?: DiagnosticoResult;
   // Efêmero: existe apenas durante o processamento, removido na consolidação
   _fragmentos_pendentes?: FragmentoDiagnostico[];
+  /** FERR-3.1: diagnóstico Expresso sobre amostra do manuscrito. */
+  amostra?: boolean;
+  amostra_fragmentos?: number;
+  total_fragmentos?: number;
 }
 
 // ── elementos-editoriais ─────────────────────────────────────────────────────
