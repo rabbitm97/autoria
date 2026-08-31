@@ -1,3 +1,8 @@
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getSaldoCreditos, CUSTOS_CREDITOS } from "@/lib/creditos";
+import { formatarPrecoPlano, isPlano, PLANO_RANK, type Plano } from "@/lib/planos";
+import { ComprarComCreditos } from "./comprar-button";
+
 // ─── Plans data ───────────────────────────────────────────────────────────────
 
 const PLANS = [
@@ -22,7 +27,7 @@ const PLANS = [
   {
     id: "essencial",
     nome: "Essencial",
-    preco: "R$ 197",
+    preco: formatarPrecoPlano("essencial"),
     periodo: "por obra",
     descricao: "Do manuscrito ao livro digital pronto para publicar.",
     features: [
@@ -40,7 +45,7 @@ const PLANS = [
   {
     id: "pro",
     nome: "Pro",
-    preco: "R$ 397",
+    preco: formatarPrecoPlano("pro"),
     periodo: "por obra",
     descricao: "Livro completo: digital, papel e áudio.",
     features: [
@@ -53,11 +58,41 @@ const PLANS = [
     cta: "Quero o livro completo",
     destaque: false,
   },
-] as const;
+];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function PlanosPage() {
+export default async function PlanosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string }>;
+}) {
+  const { project: projectParam } = await searchParams;
+
+  // Contexto de compra: só quando a URL aponta um projeto DO usuário.
+  let compra: { projectId: string; planoAtual: Plano; saldo: number } | null = null;
+  if (projectParam) {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("id, user_id, plano")
+        .eq("id", projectParam)
+        .maybeSingle();
+      if (proj && (proj as { user_id: string }).user_id === user.id) {
+        const saldo = await getSaldoCreditos(supabase, user.id);
+        compra = {
+          projectId: projectParam,
+          planoAtual: isPlano((proj as { plano?: unknown }).plano)
+            ? ((proj as { plano: Plano }).plano)
+            : "freemium",
+          saldo: saldo ?? 0,
+        };
+      }
+    }
+  }
+
   return (
     <div>
 
@@ -125,7 +160,38 @@ export default function PlanosPage() {
                 ))}
               </ul>
 
-              <CheckoutButton planId={plan.id} cta={plan.cta} destaque={plan.destaque} />
+              {!compra || plan.id === "freemium" ? (
+                plan.id === "freemium" && compra ? null : (
+                  <CheckoutButton planId={plan.id} cta={plan.cta} destaque={plan.destaque} />
+                )
+              ) : plan.id === compra.planoAtual ? (
+                <div className={`w-full py-3.5 rounded-xl text-sm text-center font-semibold border ${
+                  plan.destaque ? "border-brand-gold/40 text-brand-gold" : "border-zinc-200 text-zinc-400"
+                }`}>
+                  Plano atual deste projeto
+                </div>
+              ) : PLANO_RANK[plan.id as Plano] < PLANO_RANK[compra.planoAtual] ? (
+                <div className={`w-full py-3.5 rounded-xl text-sm text-center ${
+                  plan.destaque ? "text-white/50" : "text-zinc-400"
+                }`}>
+                  Incluído no seu plano
+                </div>
+              ) : (
+                <ComprarComCreditos
+                  projectId={compra.projectId}
+                  plano={plan.id as "essencial" | "pro"}
+                  custo={
+                    compra.planoAtual === "essencial" && plan.id === "pro"
+                      ? CUSTOS_CREDITOS.upgrade_pro
+                      : plan.id === "pro"
+                        ? CUSTOS_CREDITOS.plano_pro
+                        : CUSTOS_CREDITOS.plano_essencial
+                  }
+                  upgrade={compra.planoAtual === "essencial" && plan.id === "pro"}
+                  saldo={compra.saldo}
+                  destaque={plan.destaque}
+                />
+              )}
             </div>
           ))}
         </div>

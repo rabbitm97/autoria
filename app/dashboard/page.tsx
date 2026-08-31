@@ -314,7 +314,7 @@ export default async function DashboardPage({
                       Revisão com IA, capa com IA, EPUB e PDF de impressão.
                     </p>
                     <Link
-                      href="/dashboard/planos"
+                      href={`/dashboard/planos?project=${projetoAtivo.id}`}
                       className="block text-center text-xs font-bold text-brand-primary bg-brand-gold px-3 py-2 rounded-lg hover:bg-brand-gold-light transition-colors"
                     >
                       Ver planos
@@ -324,7 +324,7 @@ export default async function DashboardPage({
 
                 {/* Other projects */}
                 {outrosProjetos.length > 0 && (
-                  <div>
+                  <div className="px-4">
                     <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">Outros projetos</p>
                     <div className="space-y-1.5">
                       {outrosProjetos.slice(0, 3).map((p) => (
@@ -349,7 +349,7 @@ export default async function DashboardPage({
                 {/* Support link */}
                 <Link
                   href="/dashboard/suporte"
-                  className="mt-auto flex items-center gap-2 text-xs text-zinc-400 hover:text-brand-primary transition-colors"
+                  className="mt-auto px-4 flex items-center gap-2 text-xs text-zinc-400 hover:text-brand-primary transition-colors"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>

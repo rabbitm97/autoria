@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { PLANO_PRECO_CENTAVOS } from "./planos";
 
 // ─── Fonte única de custos ────────────────────────────────────────────────────
 // Nada de valor literal em rota (mesma filosofia de lib/planos.ts).
@@ -7,6 +8,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const CUSTOS_CREDITOS = {
   imagem_capa_extra: 10,
   pacote_imagens_capa: 30,
+  // Planos: paridade 1 crédito = R$ 1, derivada da fonte única de preço.
+  plano_essencial: PLANO_PRECO_CENTAVOS.essencial / 100, // 197
+  plano_pro: PLANO_PRECO_CENTAVOS.pro / 100,             // 397
+  upgrade_pro:
+    (PLANO_PRECO_CENTAVOS.pro - PLANO_PRECO_CENTAVOS.essencial) / 100, // 200
 } as const;
 
 export type AcaoCredito = keyof typeof CUSTOS_CREDITOS;
