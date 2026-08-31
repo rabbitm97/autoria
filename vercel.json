@@ -7,14 +7,14 @@
     "app/api/agentes/miolo/route.ts": { "maxDuration": 60 },
     "app/api/agentes/creditos/route.ts": { "maxDuration": 60 },
     "app/api/agentes/prova-revisao/route.ts": { "maxDuration": 60 },
-    "app/api/agentes/qa/route.ts": { "maxDuration": 60 },
     "app/api/agentes/qa-publicacao/route.ts": { "maxDuration": 60 },
     "app/api/agentes/upload-capa/route.ts": { "maxDuration": 60 },
     "app/api/agentes/upload-capa/presign/route.ts": { "maxDuration": 30 },
     "app/api/agentes/gerar-audio/route.ts": { "maxDuration": 60 },
-    "app/api/ferramentas/revisor/route.ts": { "maxDuration": 60 },
-    "app/api/ferramentas/diagnostico/route.ts": { "maxDuration": 60 },
-    "app/api/ferramentas/elementos/route.ts": { "maxDuration": 60 },
-    "app/api/ferramentas/creditos/route.ts": { "maxDuration": 60 }
-  }
+    "app/api/ferramentas/creditos/route.ts": { "maxDuration": 60 },
+    "app/api/cron/ferramentas/route.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/cron/ferramentas", "schedule": "0 9 * * *" }
+  ]
 }

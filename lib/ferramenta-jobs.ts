@@ -11,6 +11,8 @@ import { apagarProjetoComoAdmin } from "./apagar-projeto";
 import { estornarCreditos, type AcaoCredito } from "./creditos";
 
 export const RETENCAO_DIAS = 90;
+export const RASCUNHO_DIAS = 14; // job sem débito: limpo em silêncio (martelada 6.4)
+export const AVISO_DIAS = 7;     // e-mail antes de expirar (decisão 6.5)
 export const BUCKET_FERRAMENTAS = "ferramentas";
 
 export type EstadoJob =
@@ -39,6 +41,7 @@ export interface FerramentaJob {
   atualizado_em: string;
   concluido_em: string | null;
   expira_em: string | null;
+  aviso_expiracao_em: string | null;
 }
 
 function agora(): string {
@@ -70,7 +73,8 @@ export async function atualizarJob(
   patch: Partial<
     Pick<FerramentaJob,
       "estado" | "projeto_sombra_id" | "entrada" | "custo_creditos" |
-      "debitado_em" | "estornado_em" | "entregaveis" | "concluido_em" | "expira_em">
+      "debitado_em" | "estornado_em" | "entregaveis" | "concluido_em" | "expira_em" |
+      "aviso_expiracao_em">
   >,
 ): Promise<boolean> {
   const { error } = await admin
@@ -133,6 +137,37 @@ export async function falharJob(
   } else {
     await atualizarJob(admin, job.id, { estado: "falhou" });
   }
+  if (job.projeto_sombra_id) {
+    await apagarProjetoComoAdmin(admin, job.user_id, job.projeto_sombra_id);
+  }
+}
+
+/** Expira um job pago: remove os arquivos do cofre e zera entregáveis.
+ *  Sem estorno (relógio único de 90 dias — martelada 31/ago; o aviso de
+ *  7 dias é a proteção). Apaga o sombra se ainda existir (job pago que
+ *  nunca concluiu). */
+export async function expirarJob(
+  admin: SupabaseClient,
+  job: Pick<FerramentaJob, "id" | "user_id" | "projeto_sombra_id" | "entregaveis">,
+): Promise<void> {
+  const paths = (job.entregaveis ?? []).map((e) => e.storage_path).filter(Boolean);
+  if (paths.length > 0) {
+    const { error } = await admin.storage.from(BUCKET_FERRAMENTAS).remove(paths);
+    if (error) console.warn("[ferramenta-jobs] expirar: remove falhou:", error.message);
+  }
+  await atualizarJob(admin, job.id, { estado: "expirado", entregaveis: [] });
+  if (job.projeto_sombra_id) {
+    await apagarProjetoComoAdmin(admin, job.user_id, job.projeto_sombra_id);
+  }
+}
+
+/** Cancela rascunho (sem débito) parado há RASCUNHO_DIAS: apaga o sombra
+ *  e marca cancelado. Silencioso — nada foi pago, nada é comunicado. */
+export async function cancelarRascunho(
+  admin: SupabaseClient,
+  job: Pick<FerramentaJob, "id" | "user_id" | "projeto_sombra_id">,
+): Promise<void> {
+  await atualizarJob(admin, job.id, { estado: "cancelado" });
   if (job.projeto_sombra_id) {
     await apagarProjetoComoAdmin(admin, job.user_id, job.projeto_sombra_id);
   }

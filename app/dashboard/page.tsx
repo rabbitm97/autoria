@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { ArquivosFerramentas } from "@/components/ferramentas/arquivos-ferramentas";
 import { isDev } from "@/lib/anthropic";
 import Link from "next/link";
 import { ProjectsThumbnails } from "./ProjectsThumbnails";
@@ -423,6 +424,9 @@ export default async function DashboardPage({
             ))}
           </div>
         </div>
+
+        {/* ── Arquivos das ferramentas ───────────────────────────────────────── */}
+        <ArquivosFerramentas />
 
       </div>
     </div>

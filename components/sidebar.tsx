@@ -267,6 +267,9 @@ export function Sidebar({
         ))}
       </nav>
 
+      {/* SALDO-SIDEBAR */}
+      <SaldoCreditos />
+
       {/* Bottom: Perfil + Sair */}
       <div className="px-3 pb-4 space-y-0.5 border-t border-white/8 pt-3">
         <Link
@@ -298,6 +301,34 @@ export function Sidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+// ─── SALDO-SIDEBAR: chip de créditos (decisão 6.7) ───────────────────────────
+
+function SaldoCreditos() {
+  const pathname = usePathname();
+  const [saldo, setSaldo] = useState<number | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("users").select("creditos").eq("id", user.id).single();
+      if (vivo && data) setSaldo((data as { creditos: number }).creditos);
+    })();
+    return () => { vivo = false; };
+  }, [pathname]);
+  if (saldo === null) return null;
+  return (
+    <Link
+      href="/dashboard/ferramentas"
+      className="mx-4 mb-2 flex items-center justify-between rounded-lg border border-brand-gold/20 bg-brand-gold/5 px-3 py-2 text-xs text-brand-gold hover:bg-brand-gold/10 transition-colors"
+    >
+      <span>Créditos</span>
+      <span className="font-semibold">{saldo}</span>
+    </Link>
   );
 }
 
