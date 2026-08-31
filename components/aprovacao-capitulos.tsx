@@ -57,6 +57,13 @@ export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading 
 
   const totalMarcados = marcados.size;
   const sorted = useMemo(() => [...candidatos].sort((a, b) => a.pos - b.pos), [candidatos]);
+  const sugeridos = useMemo(() => sorted.filter(c => c.sugerido), [sorted]);
+  const descartados = useMemo(() => sorted.filter(c => !c.sugerido), [sorted]);
+  const marcadosDescartados = useMemo(
+    () => descartados.filter(c => marcados.has(c.id)).length,
+    [descartados, marcados],
+  );
+  const [mostrarDescartados, setMostrarDescartados] = useState(false);
 
   function toggle(id: string) {
     setMarcados(prev => {
@@ -77,6 +84,61 @@ export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading 
 
   function limparTodos() {
     setMarcados(new Set());
+  }
+
+  function renderCard(c: CandidatoCapitulo) {
+    const isMarked = marcados.has(c.id);
+    return (
+      <div
+        key={c.id}
+        className={`border-b border-zinc-100 px-4 py-3 transition ${
+          isMarked ? "bg-amber-50/40" : "bg-white"
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={isMarked}
+            onChange={() => toggle(c.id)}
+            className="mt-1.5 h-4 w-4 rounded border-zinc-300"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={titulos[c.id] ?? c.titulo}
+                onChange={e => setTitulos(prev => ({ ...prev, [c.id]: e.target.value }))}
+                disabled={!isMarked}
+                className={`min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm ${
+                  isMarked ? "bg-white" : "bg-zinc-50 text-zinc-500"
+                }`}
+              />
+              <span
+                className={`whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium ${ORIGEM_COR[c.origem]}`}
+              >
+                {ORIGEM_LABEL[c.origem]}
+              </span>
+              <span className="whitespace-nowrap text-[10px] text-zinc-400">
+                score {c.score.toFixed(2)} · ~{c.palavras_no_segmento.toLocaleString("pt-BR")} palavras
+              </span>
+            </div>
+            <div className="mt-2 grid gap-1 text-[11px] text-zinc-500 sm:grid-cols-2">
+              <div>
+                <span className="font-mono text-zinc-400">…antes:</span> {c.preview_antes}
+              </div>
+              <div>
+                <span className="font-mono text-zinc-400">depois:</span> {c.preview_depois}
+              </div>
+            </div>
+            {c.motivo_descartado && (
+              <div className="mt-1 text-[11px] italic text-zinc-400">
+                {c.motivo_descartado}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   function handleConfirmar() {
@@ -129,67 +191,47 @@ export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading 
         </div>
       </div>
 
+      {/* Grupo 1: sugeridos */}
       <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-zinc-200">
         {sorted.length === 0 && (
           <div className="p-6 text-center text-sm text-zinc-500">
             Nenhum candidato a capítulo detectado neste manuscrito.
           </div>
         )}
-        {sorted.map(c => {
-          const isMarked = marcados.has(c.id);
-          return (
-            <div
-              key={c.id}
-              className={`border-b border-zinc-100 px-4 py-3 transition ${
-                isMarked ? "bg-amber-50/40" : "bg-white"
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={isMarked}
-                  onChange={() => toggle(c.id)}
-                  className="mt-1.5 h-4 w-4 rounded border-zinc-300"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={titulos[c.id] ?? c.titulo}
-                      onChange={e => setTitulos(prev => ({ ...prev, [c.id]: e.target.value }))}
-                      disabled={!isMarked}
-                      className={`min-w-0 flex-1 rounded border border-zinc-200 px-2 py-1 text-sm ${
-                        isMarked ? "bg-white" : "bg-zinc-50 text-zinc-500"
-                      }`}
-                    />
-                    <span
-                      className={`whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium ${ORIGEM_COR[c.origem]}`}
-                    >
-                      {ORIGEM_LABEL[c.origem]}
-                    </span>
-                    <span className="whitespace-nowrap text-[10px] text-zinc-400">
-                      score {c.score.toFixed(2)} · ~{c.palavras_no_segmento.toLocaleString("pt-BR")} palavras
-                    </span>
-                  </div>
-                  <div className="mt-2 grid gap-1 text-[11px] text-zinc-500 sm:grid-cols-2">
-                    <div>
-                      <span className="font-mono text-zinc-400">…antes:</span> {c.preview_antes}
-                    </div>
-                    <div>
-                      <span className="font-mono text-zinc-400">depois:</span> {c.preview_depois}
-                    </div>
-                  </div>
-                  {c.motivo_descartado && (
-                    <div className="mt-1 text-[11px] italic text-zinc-400">
-                      {c.motivo_descartado}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {sorted.length > 0 && sugeridos.length === 0 && (
+          <div className="p-6 text-center text-sm text-zinc-500">
+            Nenhum capítulo sugerido pela análise — confira os descartados abaixo.
+          </div>
+        )}
+        {sugeridos.map(renderCard)}
       </div>
+
+      {/* Grupo 2: descartados (recolhido) */}
+      {descartados.length > 0 && (
+        <div className="rounded-lg border border-zinc-200">
+          <button
+            type="button"
+            onClick={() => setMostrarDescartados(v => !v)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-sm font-medium text-zinc-600">
+              Descartados pela análise ({descartados.length}
+              {marcadosDescartados > 0 ? ` · ${marcadosDescartados} selecionados` : ""})
+            </span>
+            <span className="text-zinc-400">{mostrarDescartados ? "▴" : "▾"}</span>
+          </button>
+          {!mostrarDescartados && (
+            <p className="px-4 pb-3 text-[11px] text-zinc-400">
+              Provavelmente sumário, cabeçalhos de página ou trechos curtos — abra para conferir e marcar se algum for capítulo de verdade.
+            </p>
+          )}
+          {mostrarDescartados && (
+            <div className="max-h-[40vh] overflow-y-auto border-t border-zinc-100">
+              {descartados.map(renderCard)}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between border-t border-zinc-200 pt-4">
         <button
