@@ -93,6 +93,7 @@ export default async function DashboardPage({
       const { data } = await supabase
         .from("projects")
         .select("id, etapa_atual, plano, qa_aprovado_em, dados_miolo, dados_pdf, criado_em, manuscript:manuscript_id(nome, titulo)")
+        .eq("origem", "esteira")
         .order("criado_em", { ascending: false });
 
       projetos = (data ?? []) as unknown as Projeto[];

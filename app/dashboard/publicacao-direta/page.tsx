@@ -16,6 +16,7 @@ export default async function PublicacaoDiretaIndex() {
     .from("projects")
     .select("id, etapa_atual, manuscript:manuscript_id(titulo, nome)")
     .eq("user_id", user.id)
+    .eq("origem", "esteira")
     .order("criado_em", { ascending: false });
 
   const lista = (projetos ?? []) as { id: string; etapa_atual: string; manuscript: { titulo?: string; nome?: string } | null }[];

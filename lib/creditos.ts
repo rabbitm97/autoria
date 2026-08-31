@@ -1,26 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PLANO_PRECO_CENTAVOS } from "./planos";
+import { NextResponse } from "next/server";
+import { planoAtende, type Plano } from "./planos";
 
-// ─── Fonte única de custos ────────────────────────────────────────────────────
-// Nada de valor literal em rota (mesma filosofia de lib/planos.ts).
-// Novas ações consumidoras de crédito entram AQUI.
-
-export const CUSTOS_CREDITOS = {
-  imagem_capa_extra: 10,
-  pacote_imagens_capa: 30,
-  // Planos: paridade 1 crédito = R$ 1, derivada da fonte única de preço.
-  plano_essencial: PLANO_PRECO_CENTAVOS.essencial / 100, // 197
-  plano_pro: PLANO_PRECO_CENTAVOS.pro / 100,             // 397
-  upgrade_pro:
-    (PLANO_PRECO_CENTAVOS.pro - PLANO_PRECO_CENTAVOS.essencial) / 100, // 200
-} as const;
-
-export type AcaoCredito = keyof typeof CUSTOS_CREDITOS;
+export { CUSTOS_CREDITOS, type AcaoCredito } from "./creditos-custos";
+import { CUSTOS_CREDITOS, type AcaoCredito } from "./creditos-custos";
 
 /** Saldo inicial por usuário. Documentacional — o valor operante é o
- *  DEFAULT da coluna users.creditos (migration 20260723000000). Saldo
- *  diferenciado por plano é escopo do D.4. */
-export const SALDO_INICIAL_USUARIO = 100;
+ *  DEFAULT 0 da coluna users.creditos (migration 20260810000000).
+ *  Bônus de boas-vindas futuro entra via ledger (FASE 5.B). */
+export const SALDO_INICIAL_USUARIO = 0;
 
 // ─── Leitura de saldo ─────────────────────────────────────────────────────────
 // Client do USUÁRIO (RLS: SELECT own via "users: leitura própria").
@@ -158,4 +146,58 @@ export async function estornarCreditos(
     saldo_resultante: r.saldo,
   });
   return r;
+}
+
+// ─── Gate único de acesso (FERR-3.0a) ────────────────────────────────────────
+// Plano atende → liberado sem débito. Projeto de ferramenta (sombra) →
+// paga por ação com crédito (decisão 6.1: crédito NÃO destrava ação em
+// projeto de esteira — lá o caminho é comprar o plano). Débito no
+// "Rodar", estorno em falha total é responsabilidade da rota (padrão
+// estornarCreditos). Limite diário por usage_logs deve ser PULADO pela
+// rota quando a ação foi paga (mesmo espírito de plano/cortesia da
+// PRE-POST-1).
+
+export interface AutorizacaoAcao {
+  liberado: boolean;
+  pagoComCreditos: boolean;
+  resposta: NextResponse | null; // 402 pronto quando !liberado
+}
+
+export async function autorizarAcao(
+  admin: SupabaseClient,
+  project: { id: string; plano?: unknown; origem?: unknown },
+  userId: string,
+  opts: { minimoPlano: Plano; acao: AcaoCredito },
+): Promise<AutorizacaoAcao> {
+  if (planoAtende(project.plano, opts.minimoPlano)) {
+    return { liberado: true, pagoComCreditos: false, resposta: null };
+  }
+  if (project.origem === "ferramenta") {
+    const debito = await debitarCreditos(admin, userId, opts.acao, project.id);
+    if (debito.ok) {
+      return { liberado: true, pagoComCreditos: true, resposta: null };
+    }
+    const custo = CUSTOS_CREDITOS[opts.acao];
+    return {
+      liberado: false,
+      pagoComCreditos: false,
+      resposta: NextResponse.json(
+        debito.erro === "saldo_insuficiente"
+          ? {
+              error: `Créditos insuficientes. Esta ação custa ${custo} créditos.`,
+              creditos_saldo: debito.saldo,
+            }
+          : { error: "Falha ao debitar créditos. Tente novamente." },
+        { status: debito.erro === "saldo_insuficiente" ? 402 : 500 },
+      ),
+    };
+  }
+  return {
+    liberado: false,
+    pagoComCreditos: false,
+    resposta: NextResponse.json(
+      { error: "Recurso disponível a partir de outro plano.", plano_necessario: opts.minimoPlano },
+      { status: 402 },
+    ),
+  };
 }

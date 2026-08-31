@@ -1,3 +1,5 @@
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export type EstadoFerramenta = "gratis" | "pago" | "breve";
@@ -63,7 +65,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Análise editorial rápida de uma amostra do seu manuscrito.",
     categoria: "Análise e texto",
     estado: "pago",
-    preco_creditos: 10,
+    preco_creditos: CUSTOS_CREDITOS.diagnostico_expresso,
     icon: ScanIcon,
   },
   {
@@ -72,16 +74,16 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Diagnóstico editorial completo do livro inteiro, capítulo a capítulo.",
     categoria: "Análise e texto",
     estado: "pago",
-    preco_creditos: 40,
+    preco_creditos: CUSTOS_CREDITOS.diagnostico_completo,
     icon: ScanIcon,
   },
   {
     id: "revisao",
     label: "Revisão completa",
-    desc: "Manuscrito revisado por IA, entregue em DOCX com as alterações.",
+    desc: "Manuscrito revisado por IA, entregue em DOCX + relatório de alterações.",
     categoria: "Análise e texto",
     estado: "pago",
-    preco_creditos: 150,
+    preco_creditos: CUSTOS_CREDITOS.revisao_completa,
     icon: CheckIcon,
   },
   {
@@ -89,8 +91,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     label: "Tradução",
     desc: "Seu livro traduzido para outro idioma, em DOCX ou EPUB.",
     categoria: "Análise e texto",
-    estado: "pago",
-    preco_creditos: 200,
+    estado: "breve",
     icon: GlobeIcon,
   },
 
@@ -140,7 +141,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Converta seu arquivo em um EPUB pronto para as lojas digitais.",
     categoria: "Arquivos e formatos",
     estado: "pago",
-    preco_creditos: 50,
+    preco_creditos: CUSTOS_CREDITOS.epub_avulso,
     icon: EpubIcon,
   },
   {
@@ -149,16 +150,16 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Miolo diagramado profissionalmente em PDF para plataformas digitais.",
     categoria: "Arquivos e formatos",
     estado: "pago",
-    preco_creditos: 100,
+    preco_creditos: CUSTOS_CREDITOS.diagramacao_digital,
     icon: PdfIcon,
   },
   {
     id: "diagramacao-completa",
     label: "Diagramação completa",
-    desc: "PDF digital + PDF gráfico em CMYK, pronto para a gráfica.",
+    desc: "PDF digital + PDF de impressão com sangria e marcas de corte, pronto para a gráfica.",
     categoria: "Arquivos e formatos",
     estado: "pago",
-    preco_creditos: 150,
+    preco_creditos: CUSTOS_CREDITOS.diagramacao_completa,
     icon: PdfIcon,
   },
 
@@ -202,10 +203,10 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Capa e imagem",
     estado: "pago",
     preco_copy: {
-      principal: "R$ 20",
+      principal: `R$ ${CUSTOS_CREDITOS.capa_avulsa_imagem}`,
       sufixo: "por imagem",
-      secundario: "4 por R$ 60",
-      creditos: "ou 20 créditos por imagem · 4 por 60",
+      secundario: `4 por R$ ${CUSTOS_CREDITOS.capa_avulsa_pacote}`,
+      creditos: `ou ${CUSTOS_CREDITOS.capa_avulsa_imagem} créditos por imagem · 4 por ${CUSTOS_CREDITOS.capa_avulsa_pacote}`,
     },
     icon: SparkleIcon,
   },

@@ -1,0 +1,30 @@
+// lib/creditos-custos.ts
+//
+// FONTE ÚNICA de custos em créditos (1 crédito = R$ 1). Módulo PURO —
+// zero imports de server — porque o registry (client) exibe preços daqui.
+// Mesma lição de lib/segmentar-capitulos.ts: núcleo puro apartado.
+// Novas ações consumidoras de crédito entram AQUI.
+
+import { PLANO_PRECO_CENTAVOS } from "./planos";
+
+export const CUSTOS_CREDITOS = {
+  // Pool de imagens DENTRO de projeto com plano (B2-05b, intacto)
+  imagem_capa_extra: 10,
+  pacote_imagens_capa: 30,
+  // Planos por projeto (PLANO-CREDITOS): paridade com a fonte de preço
+  plano_essencial: PLANO_PRECO_CENTAVOS.essencial / 100, // 197
+  plano_pro: PLANO_PRECO_CENTAVOS.pro / 100,             // 397
+  upgrade_pro:
+    (PLANO_PRECO_CENTAVOS.pro - PLANO_PRECO_CENTAVOS.essencial) / 100, // 200
+  // Ferramentas avulsas (FASE 3; martelada 31/ago: avulso ≠ pool)
+  diagnostico_expresso: 10,
+  diagnostico_completo: 40,
+  revisao_completa: 150,
+  epub_avulso: 50,
+  diagramacao_digital: 100,
+  diagramacao_completa: 150,
+  capa_avulsa_imagem: 20,
+  capa_avulsa_pacote: 60,
+} as const;
+
+export type AcaoCredito = keyof typeof CUSTOS_CREDITOS;

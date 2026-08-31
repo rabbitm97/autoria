@@ -66,57 +66,15 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  // Cleanup de Storage usando service role
-  // Por que service role: usa um único client com permissão ampla para limpar
-  // os buckets onde os arquivos do projeto residem, listando por prefixo do
-  // path (userId/projectId/) e removendo em batch. Erros aqui são logados mas
-  // não falham a operação — o registro principal (DB) já foi apagado.
+  // Cleanup de Storage: núcleo único lib/apagar-projeto.ts (FERR-3.0a).
   try {
     const { createClient } = await import("@supabase/supabase-js");
     const storageAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
-
-    const projectPrefix = `${user.id}/${id}`;
-
-    // Buckets que armazenam arquivos por (userId/projectId/...)
-    const buckets = ["capas", "livros", "audiolivros", "editor-assets"];
-
-    await Promise.all(
-      buckets.map(async (bucket) => {
-        const { data: files, error: listErr } = await storageAdmin.storage
-          .from(bucket)
-          .list(projectPrefix, { limit: 1000 });
-
-        if (listErr) {
-          console.warn(`[projects DELETE] list ${bucket} falhou:`, listErr.message);
-          return;
-        }
-        if (!files || files.length === 0) return;
-
-        const paths = files.map((f) => `${projectPrefix}/${f.name}`);
-        const { error: removeErr } = await storageAdmin.storage
-          .from(bucket)
-          .remove(paths);
-
-        if (removeErr) {
-          console.warn(`[projects DELETE] remove ${bucket} falhou:`, removeErr.message);
-        } else {
-          console.log(`[projects DELETE] removidos ${paths.length} de ${bucket}`);
-        }
-      }),
-    );
-
-    // Manuscrito é arquivo único no bucket manuscripts — apaga via storage_path
-    if (manuscriptStoragePath) {
-      const { error: msRemoveErr } = await storageAdmin.storage
-        .from("manuscripts")
-        .remove([manuscriptStoragePath]);
-      if (msRemoveErr) {
-        console.warn(`[projects DELETE] remove manuscripts falhou:`, msRemoveErr.message);
-      }
-    }
+    const { limparStorageProjeto } = await import("@/lib/apagar-projeto");
+    await limparStorageProjeto(storageAdmin, user.id, id, manuscriptStoragePath);
   } catch (cleanupErr) {
     console.warn("[projects DELETE] cleanup de Storage falhou (não-fatal):", cleanupErr);
   }
