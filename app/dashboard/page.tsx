@@ -11,6 +11,7 @@ import { CapaFrenteThumb } from "@/components/capa-frente-thumb";
 interface Projeto {
   id: string;
   etapa_atual: string;
+  plano: string;
   qa_aprovado_em: string | null;
   dados_miolo: { paginas_reais?: number } | null;
   dados_pdf: { origem?: string } | null;
@@ -19,9 +20,9 @@ interface Projeto {
 }
 
 const MOCK_PROJETOS: Projeto[] = [
-  { id: "mock-1", etapa_atual: "revisao",   qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
-  { id: "mock-2", etapa_atual: "capa",      qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
-  { id: "mock-3", etapa_atual: "elementos", qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
+  { id: "mock-1", etapa_atual: "revisao",   plano: "essencial", qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "O Último Manuscrito", titulo: "O Último Manuscrito" } },
+  { id: "mock-2", etapa_atual: "capa",      plano: "freemium",  qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "Cartas ao Vento", titulo: "Cartas ao Vento" } },
+  { id: "mock-3", etapa_atual: "elementos", plano: "freemium",  qa_aprovado_em: null, dados_miolo: null, dados_pdf: null, criado_em: new Date().toISOString(), manuscript: { nome: "Além do Horizonte", titulo: "Além do Horizonte" } },
 ];
 
 function formatDate(iso: string) {
@@ -67,13 +68,11 @@ export default async function DashboardPage({
   const { projeto: projetoSelecionado } = await searchParams;
   let projetos: Projeto[] = [];
   let userName = "Autor";
-  let userPlano = "freemium";
   let userCreditos = 0;
 
   if (isDev()) {
     projetos = MOCK_PROJETOS;
     userName = "Mateus";
-    userPlano = "pro";
     userCreditos = 150;
   } else {
     const supabase = await createSupabaseServerClient();
@@ -82,19 +81,18 @@ export default async function DashboardPage({
     if (user) {
       const { data: profile, error: profileErr } = await supabase
         .from("users")
-        .select("nome, plano, creditos")
+        .select("nome, creditos")
         .eq("id", user.id)
         .maybeSingle();
       if (profileErr) {
         console.warn("[dashboard] falha ao carregar perfil:", profileErr.message);
       }
       userName = profile?.nome ?? user.email?.split("@")[0] ?? "Autor";
-      userPlano = profile?.plano ?? "freemium";
       userCreditos = profile?.creditos ?? 0;
 
       const { data } = await supabase
         .from("projects")
-        .select("id, etapa_atual, qa_aprovado_em, dados_miolo, dados_pdf, criado_em, manuscript:manuscript_id(nome, titulo)")
+        .select("id, etapa_atual, plano, qa_aprovado_em, dados_miolo, dados_pdf, criado_em, manuscript:manuscript_id(nome, titulo)")
         .order("criado_em", { ascending: false });
 
       projetos = (data ?? []) as unknown as Projeto[];
@@ -309,7 +307,7 @@ export default async function DashboardPage({
               <div className="w-full lg:w-52 shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-100 p-5 flex flex-col gap-4">
 
                 {/* Upgrade banner */}
-                {userPlano !== "pro" && !isExpressAtivo && (
+                {projetoAtivo && projetoAtivo.plano !== "pro" && !isExpressAtivo && (
                   <div className="rounded-xl bg-gradient-to-br from-brand-gold/10 to-brand-gold/5 border border-brand-gold/20 p-4">
                     <p className="text-xs font-semibold text-brand-primary mb-1">Desbloqueie tudo</p>
                     <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">
