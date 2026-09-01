@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   // Load project data including credits for injection
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, manuscript_id, formato, dados_creditos, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+    .select("id, manuscript_id, formato, dados_creditos, dados_miolo, manuscripts(titulo, subtitulo, texto, texto_revisado, autor_primeiro_nome, autor_sobrenome, genero_principal, capitulos_aprovados, capitulos_aprovados_texto_hash)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -284,13 +284,20 @@ export async function POST(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-  const storagePath = `${user.id}/miolo_${project_id}.html`;
+  // FERR-3.3f: path versionado por geração — evita leitura stale via CDN
+  // (o Storage do Supabase serve stale-while-revalidate mesmo com upsert).
+  // Subpasta por projeto permite limpar por prefixo no apagar-projeto.
+  const storagePath = `${user.id}/${project_id}/miolo_${Date.now()}.html`;
+  const htmlAnterior =
+    ((project as { dados_miolo?: { html_storage_path?: string | null } | null }).dados_miolo
+      ?.html_storage_path) ?? null;
 
   const htmlBuffer = Buffer.from(html, "utf-8");
   const { error: uploadErr } = await storageClient.storage
     .from("manuscripts")
     .upload(storagePath, htmlBuffer, {
       contentType: "text/html",
+      cacheControl: "0",
       upsert: true,
     });
 
@@ -387,6 +394,12 @@ export async function POST(request: NextRequest) {
   );
   if (!saveOk) {
     return NextResponse.json({ error: "Miolo gerado, mas falha ao salvar no banco." }, { status: 500 });
+  }
+
+  // FERR-3.3f: remove o HTML da geração anterior (best-effort, sem bloquear).
+  if (htmlAnterior && htmlAnterior !== storagePath) {
+    storageClient.storage.from("manuscripts").remove([htmlAnterior])
+      .then(({ error }) => { if (error) console.warn("[miolo] remove html anterior falhou:", error.message); });
   }
 
   // Return signed URL for preview (1 hour)

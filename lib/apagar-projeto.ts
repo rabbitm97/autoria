@@ -7,7 +7,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const BUCKETS_PROJETO = ["capas", "livros", "audiolivros", "editor-assets"] as const;
+// FERR-3.3f: "manuscripts" entra no loop pra limpar HTMLs versionados do
+// miolo em manuscripts/{userId}/{projectId}/. O arquivo do manuscrito
+// original vive em manuscripts/{userId}/{filename} — fora do prefixo do
+// projeto — e continua sendo removido pelo path explícito abaixo.
+export const BUCKETS_PROJETO = ["capas", "livros", "audiolivros", "editor-assets", "manuscripts"] as const;
 
 /** Remove todos os arquivos do projeto nos buckets por-prefixo
  *  (userId/projectId/) + o arquivo do manuscrito. Best-effort: loga e

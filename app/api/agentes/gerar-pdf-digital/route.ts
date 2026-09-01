@@ -349,8 +349,9 @@ export async function POST(req: NextRequest) {
   const numPaginas = parsedPdf.getPageCount();
 
   // ── Prévia (FERR-3.3d) ────────────────────────────────────────────────────
-  // Corta em PREVIA_PAGINAS, sobe em livros/{u}/{p}/livro-previa.pdf e
-  // devolve URL assinada. Não persiste dados_pdf_digital nem usage_logs.
+  // Corta em PREVIA_PAGINAS, sobe em livros/{u}/{p}/previa_<ts>.pdf (path
+  // versionado por geração — FERR-3.3f) e devolve URL assinada. Não
+  // persiste dados_pdf_digital nem usage_logs.
   if (ehPrevia) {
     const totalPaginas = numPaginas;
     if (totalPaginas > PREVIA_PAGINAS) {
@@ -361,10 +362,13 @@ export async function POST(req: NextRequest) {
       pages.forEach((p) => dst.addPage(p));
       pdfBuffer = Buffer.from(await dst.save());
     }
-    const previaPath = `${userId}/${project_id}/livro-previa.pdf`;
+    // FERR-3.3f: path versionado por geração — evita leitura stale via CDN
+    // do Storage. Prévias antigas somem com o sombra (livros/ é limpo por
+    // prefixo em apagar-projeto).
+    const previaPath = `${userId}/${project_id}/previa_${Date.now()}.pdf`;
     const { error: upErr } = await storageClient.storage
       .from("livros")
-      .upload(previaPath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+      .upload(previaPath, pdfBuffer, { contentType: "application/pdf", cacheControl: "0", upsert: true });
     if (upErr) return NextResponse.json({ error: `Erro no upload da prévia: ${upErr.message}` }, { status: 500 });
     const { data: signed, error: signErr } = await storageClient.storage
       .from("livros")
