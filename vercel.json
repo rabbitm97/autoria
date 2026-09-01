@@ -14,7 +14,8 @@
     "app/api/ferramentas/creditos/route.ts": { "maxDuration": 60 },
     "app/api/cron/ferramentas/route.ts": { "maxDuration": 60 },
     "app/api/ferramentas/diagnostico-avulso/concluir/route.ts": { "maxDuration": 60 },
-    "app/api/ferramentas/epub-avulso/concluir/route.ts": { "maxDuration": 30 }
+    "app/api/ferramentas/epub-avulso/concluir/route.ts": { "maxDuration": 30 },
+    "app/api/ferramentas/diagramacao-avulsa/concluir/route.ts": { "maxDuration": 30 }
   },
   "crons": [
     { "path": "/api/cron/ferramentas", "schedule": "0 9 * * *" }

@@ -144,6 +144,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Arquivos e formatos",
     estado: "pago",
     preco_creditos: CUSTOS_CREDITOS.diagramacao_digital,
+    href: "/dashboard/ferramentas/diagramacao?modo=digital",
     icon: PdfIcon,
   },
   {
@@ -153,6 +154,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Arquivos e formatos",
     estado: "pago",
     preco_creditos: CUSTOS_CREDITOS.diagramacao_completa,
+    href: "/dashboard/ferramentas/diagramacao?modo=completa",
     icon: PdfIcon,
   },
 
