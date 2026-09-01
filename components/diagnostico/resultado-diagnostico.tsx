@@ -201,7 +201,7 @@ export function ResultadoDiagnostico({
                     c.formato === fs.formato ? "border-brand-gold bg-brand-gold/5" : "border-zinc-100"
                   }`}
                 >
-                  <p className="font-medium text-brand-primary">{getFormatoDef(c.formato).label}</p>
+                  <p className="font-medium text-brand-primary">{getFormatoDef(c.formato).label} · {getFormatoDef(c.formato).descricao_curta}</p>
                   <p className="text-xs text-zinc-500">≈ {fmt(c.paginas)} págs · {c.lombada_mm.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mm</p>
                 </div>
               ))}
