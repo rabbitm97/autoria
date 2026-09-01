@@ -11,6 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { updateProject, negarPorPlano } from "@/lib/supabase-helpers";
 import { planoAtende } from "@/lib/planos";
+import { modoDiagramacao } from "@/lib/ferramenta-jobs";
 import { isDev } from "@/lib/anthropic";
 import { NextRequest, NextResponse } from "next/server";
 import type { MioloResult } from "@/app/api/agentes/miolo/route";
@@ -73,12 +74,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { project_id: string; formato?: string };
+  let body: { project_id: string; formato?: string; job_id?: string };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const { project_id } = body;
+  const { project_id, job_id: jobId } = body;
   if (!project_id) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
   }
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
   // ou seja, agora).
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("plano, dados_miolo, dados_capa")
+    .select("plano, dados_miolo, dados_capa, origem")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -118,9 +119,31 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-pdf");
-  if (gate) return gate;
-  const ehPro = planoAtende((project as { plano?: unknown }).plano, "pro");
+  const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+  let ehPro: boolean;
+  if (ehSombra) {
+    // Avulso: só a diagramação COMPLETA gera gráfico, e só com o job já
+    // debitado pelo gerar-pdf-digital (uma cobrança por job — nunca duas).
+    if (!jobId) return NextResponse.json({ error: "job_id obrigatório para projeto de ferramenta." }, { status: 400 });
+    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const { data: job } = await admin.from("ferramenta_jobs")
+      .select("id, user_id, ferramenta_id, projeto_sombra_id, debitado_em").eq("id", jobId).maybeSingle();
+    const j = job as { id: string; user_id: string; ferramenta_id: string; projeto_sombra_id: string | null; debitado_em: string | null } | null;
+    if (!j || j.user_id !== userId || j.projeto_sombra_id !== project_id) {
+      return NextResponse.json({ error: "Job não encontrado para este projeto." }, { status: 404 });
+    }
+    if (modoDiagramacao(j.ferramenta_id) !== "completa") {
+      return NextResponse.json({ error: "O PDF de impressão faz parte da Diagramação completa." }, { status: 402 });
+    }
+    if (!j.debitado_em) {
+      return NextResponse.json({ error: "Gere primeiro o PDF digital desta diagramação." }, { status: 409 });
+    }
+    ehPro = true; // pago-por-ação = sem limite diário
+  } else {
+    const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-pdf");
+    if (gate) return gate;
+    ehPro = planoAtende((project as { plano?: unknown }).plano, "pro");
+  }
 
   const miolo = project?.dados_miolo as MioloResult | null;
 

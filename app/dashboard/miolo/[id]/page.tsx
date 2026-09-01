@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
 import type { MioloConfig, MioloResult, TemplateId, FormatoLivro } from "@/app/api/agentes/miolo/route";
@@ -90,6 +90,8 @@ export default function MioloPage() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const newFileRef = useRef<HTMLInputElement>(null);
+  const avulsoJob = useSearchParams().get("avulso");
+  const retornoAvulso = avulsoJob ? `/dashboard/ferramentas/diagramacao?job=${avulsoJob}` : null;
 
   // ── Data state ──────────────────────────────────────────────────────────────
   const [genero, setGenero] = useState<string | null>(null);
@@ -351,7 +353,7 @@ export default function MioloPage() {
       }
       setCurrentCapIdx(0);
       setTimeout(() => setStep("preview"), 400);
-      void syncPdfMiolo();
+      if (!retornoAvulso) void syncPdfMiolo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro desconhecido.");
       setStep("config");
@@ -670,7 +672,7 @@ export default function MioloPage() {
 
   return (
     <div>
-      <EtapasProgress currentStep={5} projectId={projectId} />
+      {!retornoAvulso && <EtapasProgress currentStep={5} projectId={projectId} />}
 
       {loading ? (
         <div className="flex justify-center items-center py-32">
@@ -1068,6 +1070,33 @@ export default function MioloPage() {
             </div>
 
             {/* Right "page" — download card (substitui iframe preview) */}
+            {retornoAvulso ? (
+              <div
+                className="bg-white shadow-xl flex-1 flex flex-col items-center justify-center p-8 sm:p-12"
+                style={{ margin: "24px 24px 24px 0", borderRadius: "0 4px 4px 0" }}
+              >
+                <div className="max-w-md w-full text-center">
+                  <h2 className="font-heading text-2xl sm:text-3xl text-brand-primary mb-2">Miolo diagramado</h2>
+                  <p className="text-sm text-zinc-500 mb-6">
+                    Confira a pré-visualização. Se quiser ajustar fonte, corpo ou sumário, volte às configurações — a diagramação é refeita sem custo. O PDF é gerado na ferramenta.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <a href={`/preview/${projectId}`} target="_blank" rel="noreferrer"
+                       className="rounded-xl bg-brand-primary text-brand-surface px-6 py-3 text-sm font-semibold">
+                      Pré-visualizar
+                    </a>
+                    <button type="button" onClick={() => setStep("config")}
+                            className="rounded-xl border border-zinc-200 px-6 py-3 text-sm text-zinc-600">
+                      Ajustar configurações
+                    </button>
+                    <button type="button" onClick={() => router.push(retornoAvulso)}
+                            className="rounded-xl bg-brand-gold text-brand-primary px-6 py-3 text-sm font-semibold">
+                      Voltar para a ferramenta e gerar o PDF →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div
               className="bg-white shadow-xl flex-1 flex flex-col items-center justify-center overflow-hidden p-8 sm:p-12"
               style={{ margin: "24px 24px 24px 0", borderRadius: "0 4px 4px 0" }}
@@ -1194,6 +1223,7 @@ export default function MioloPage() {
                 )}
               </div>
             </div>
+            )}
           </div>
 
           {/* Lombada divergence — upload cover: must re-upload */}
@@ -1226,6 +1256,7 @@ export default function MioloPage() {
           )}
 
           {/* Bottom CTA bar — apenas avançar para próxima etapa */}
+          {!retornoAvulso && (
           <div className="bg-white border-t border-zinc-100 px-6 py-4 flex items-center justify-end gap-4 flex-wrap">
             {syncingPdf ? (
               <p className="text-zinc-400 text-xs hidden sm:flex items-center gap-2">
@@ -1255,6 +1286,7 @@ export default function MioloPage() {
               Continuar para Conferência final →
             </button>
           </div>
+          )}
         </main>
       )}
 

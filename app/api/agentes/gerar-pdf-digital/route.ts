@@ -18,6 +18,9 @@ import { validarProjectData, type PdfResult } from "@/lib/project-data";
 import { applyDigitalCss } from "@/lib/miolo-builder-digital";
 import type { FormatoLivro } from "@/lib/miolo-builder-digital";
 import { planoAtende } from "@/lib/planos";
+import { autorizarAcao } from "@/lib/creditos";
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
+import { modoDiagramacao, registrarDebitoJob } from "@/lib/ferramenta-jobs";
 
 const LIMITE_PDF_FREEMIUM_DIA = 2;
 
@@ -72,12 +75,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { project_id: string; formato?: FormatoLivro };
+  let body: { project_id: string; formato?: FormatoLivro; job_id?: string };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
-  const { project_id } = body;
+  const { project_id, job_id: jobId } = body;
   if (!project_id) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
   }
@@ -98,7 +101,7 @@ export async function POST(req: NextRequest) {
   // ── Load dados_miolo ──────────────────────────────────────────────────────
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("plano, dados_miolo")
+    .select("plano, dados_miolo, origem")
     .eq("id", project_id)
     .eq("user_id", userId)
     .single();
@@ -127,8 +130,31 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // ── Gate por origem (FERR-3.3a) ───────────────────────────────────────────
+  // Projeto sombra de ferramenta paga por ação; contorna limite/marca.
+  const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+  let pagoPorAcao = false;
+  if (ehSombra) {
+    if (!jobId) return NextResponse.json({ error: "job_id obrigatório para projeto de ferramenta." }, { status: 400 });
+    const { data: job } = await storageClient.from("ferramenta_jobs")
+      .select("id, user_id, ferramenta_id, projeto_sombra_id, debitado_em").eq("id", jobId).maybeSingle();
+    const j = job as { id: string; user_id: string; ferramenta_id: string; projeto_sombra_id: string | null; debitado_em: string | null } | null;
+    if (!j || j.user_id !== userId || j.projeto_sombra_id !== project_id) {
+      return NextResponse.json({ error: "Job não encontrado para este projeto." }, { status: 404 });
+    }
+    const modo = modoDiagramacao(j.ferramenta_id);
+    if (!modo) return NextResponse.json({ error: "Job não é de diagramação." }, { status: 400 });
+    if (!j.debitado_em) {
+      const acao = modo === "completa" ? "diagramacao_completa" : "diagramacao_digital";
+      const aut = await autorizarAcao(storageClient, { id: project_id, origem: "ferramenta" }, userId, { minimoPlano: "essencial", acao });
+      if (!aut.liberado) return aut.resposta!;
+      if (aut.pagoComCreditos) await registrarDebitoJob(storageClient, j.id, CUSTOS_CREDITOS[acao]);
+    }
+    pagoPorAcao = true;
+  }
+
   // ── Limite diário do freemium (Bloco D2-03) ───────────────────────────────
-  const ehFreemium = !planoAtende((project as { plano?: unknown }).plano, "essencial");
+  const ehFreemium = !pagoPorAcao && !planoAtende((project as { plano?: unknown }).plano, "essencial");
   if (ehFreemium) {
     const inicioDoDia = new Date();
     inicioDoDia.setUTCHours(0, 0, 0, 0);

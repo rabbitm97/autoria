@@ -17,7 +17,7 @@ export const BUCKET_FERRAMENTAS = "ferramentas";
 
 /** Ferramentas que têm wizard e podem criar jobs por POST /ferramentas/jobs.
  *  Barra ids fantasmas/legados (residual de auditoria FERR-3.1). */
-export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub"] as const;
+export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub", "diagramacao-digital", "diagramacao-completa"] as const;
 
 export type EstadoJob =
   | "iniciado" | "aguardando_autor" | "processando"
@@ -175,4 +175,11 @@ export async function cancelarRascunho(
   if (job.projeto_sombra_id) {
     await apagarProjetoComoAdmin(admin, job.user_id, job.projeto_sombra_id);
   }
+}
+
+/** Modo da diagramação a partir do id da ferramenta (fonte única). */
+export function modoDiagramacao(ferramentaId: string): "digital" | "completa" | null {
+  if (ferramentaId === "diagramacao-digital") return "digital";
+  if (ferramentaId === "diagramacao-completa") return "completa";
+  return null;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Smartphone, Library } from "lucide-react";
 import { EtapasProgress } from "@/components/etapas-progress";
@@ -212,6 +212,8 @@ export default function CreditosPage() {
   useExpressGuard(projectId);
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const avulsoJob = useSearchParams().get("avulso");
+  const retornoAvulso = avulsoJob ? `/dashboard/ferramentas/diagramacao?job=${avulsoJob}` : null;
 
   // ── Data state ──────────────────────────────────────────────────────────────
   const [manuscritoNome, setManuscritoNome] = useState("Manuscrito");
@@ -532,6 +534,7 @@ export default function CreditosPage() {
       // Sem créditos: nada foi gerado — vai direto para diagramação.
       if (!geraCreditos) {
         setTimeout(async () => {
+          if (retornoAvulso) { router.push(retornoAvulso); return; }
           await avancarEtapa(supabase, projectId, null, "diagramacao", "dashboard-creditos");
           router.push(`/dashboard/miolo/${projectId}`);
         }, 400);
@@ -611,7 +614,7 @@ export default function CreditosPage() {
 
   return (
     <div>
-      <EtapasProgress currentStep={4} projectId={projectId} />
+      {!retornoAvulso && <EtapasProgress currentStep={4} projectId={projectId} />}
 
       {loading ? (
         <div className="flex justify-center items-center py-32">
@@ -1236,15 +1239,18 @@ export default function CreditosPage() {
             </button>
 
             <div className="ml-auto flex items-center gap-3">
-              <p className="text-zinc-400 text-xs hidden sm:block">Próxima etapa: diagramação do miolo.</p>
+              <p className="text-zinc-400 text-xs hidden sm:block">
+                {retornoAvulso ? "Ao concluir, você volta para a ferramenta." : "Próxima etapa: diagramação do miolo."}
+              </p>
               <button
                 onClick={async () => {
+                  if (retornoAvulso) { router.push(retornoAvulso); return; }
                   await avancarEtapa(supabase, projectId, null, "diagramacao", "dashboard-creditos");
                   router.push(`/dashboard/miolo/${projectId}`);
                 }}
                 className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
               >
-                Aceitar e continuar para Diagramação →
+                {retornoAvulso ? "Aceitar e voltar para a ferramenta →" : "Aceitar e continuar para Diagramação →"}
               </button>
             </div>
           </div>
