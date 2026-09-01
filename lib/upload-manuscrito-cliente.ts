@@ -2,6 +2,8 @@
 // wizards de ferramenta.
 
 export const ACCEPTED_EXTS = [".docx", ".pdf", ".txt"];
+export const DICA_FORMATO_MANUSCRITO =
+  "Prefira .txt ou .docx. PDFs já diagramados costumam confundir a detecção de capítulos.";
 export const ACCEPTED_MIME = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/pdf",

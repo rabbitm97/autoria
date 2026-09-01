@@ -1078,7 +1078,7 @@ export default function MioloPage() {
                 <div className="max-w-md w-full text-center">
                   <h2 className="font-heading text-2xl sm:text-3xl text-brand-primary mb-2">Miolo diagramado</h2>
                   <p className="text-sm text-zinc-500 mb-6">
-                    Confira a pré-visualização. Se quiser ajustar fonte, corpo ou sumário, volte às configurações — a diagramação é refeita sem custo. O PDF é gerado na ferramenta.
+                    Confira a pré-visualização. Para ajustar fonte, corpo ou sumário, volte às configurações — refazer é gratuito. O PDF é gerado no próximo passo.
                   </p>
                   <div className="flex flex-col gap-2">
                     <a href={`/preview/${projectId}`} target="_blank" rel="noreferrer"
@@ -1091,7 +1091,7 @@ export default function MioloPage() {
                     </button>
                     <button type="button" onClick={() => router.push(retornoAvulso)}
                             className="rounded-xl bg-brand-gold text-brand-primary px-6 py-3 text-sm font-semibold">
-                      Voltar para a ferramenta e gerar o PDF →
+                      Avançar →
                     </button>
                   </div>
                 </div>

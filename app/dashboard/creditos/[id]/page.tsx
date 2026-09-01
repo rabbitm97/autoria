@@ -1250,7 +1250,7 @@ export default function CreditosPage() {
                 }}
                 className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-3 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap"
               >
-                {retornoAvulso ? "Aceitar e voltar para a ferramenta →" : "Aceitar e continuar para Diagramação →"}
+                {retornoAvulso ? "Aceitar e avançar →" : "Aceitar e continuar para Diagramação →"}
               </button>
             </div>
           </div>

@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { AUTHOR_TITLES, GENRES } from "@/lib/generos";
 import { DeclaracaoTitularidade } from "@/components/declaracao-titularidade";
-import { formatBytes, validateFile, uploadWithProgress } from "@/lib/upload-manuscrito-cliente";
+import {
+  DICA_FORMATO_MANUSCRITO,
+  formatBytes,
+  uploadWithProgress,
+  validateFile,
+} from "@/lib/upload-manuscrito-cliente";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -552,6 +557,7 @@ export default function NovoProjetoPage() {
                         {isDragging ? "Solte aqui" : "Arraste ou clique para enviar"}
                       </p>
                       <p className="text-zinc-400 text-xs mt-1">.docx · .pdf · .txt · máx. 50 MB</p>
+                      <p className="text-[11px] text-amber-700 mt-2">{DICA_FORMATO_MANUSCRITO}</p>
                     </div>
                   </div>
                 </div>

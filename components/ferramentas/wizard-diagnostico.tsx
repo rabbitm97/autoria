@@ -7,25 +7,30 @@ import { criarSombraEJob } from "@/lib/sombra-cliente";
 import type { DiagnosticoResult } from "@/lib/project-data";
 import { ResultadoDiagnostico } from "@/components/diagnostico/resultado-diagnostico";
 import {
-  TelaInicio,
-  TelaManuscrito,
-  TelaRodando,
+  ConteudoInicio,
+  ConteudoManuscrito,
+  ConteudoRodando,
+  CtaInicio,
+  CtaPrimario,
   TelaPronto,
+  WizardLayout,
+  manuscritoPronto,
   useSaldo,
   type DadosManuscrito,
+  type EntregavelPronto,
 } from "./wizard-shell";
 
-// ─── Wizard ───────────────────────────────────────────────────────────────────
+const FERRAMENTA_LABEL = "Diagnóstico editorial";
+const PASSOS = ["Início", "Manuscrito", "Análise", "Pronto"];
 
 type Passo = 0 | 1 | 2 | 3;
 
 interface ResultadoPronto {
   jobId: string;
   expiraEm: string | null;
+  entregaveis: EntregavelPronto[];
   resultado: DiagnosticoResult | null;
 }
-
-const HEADING = "Diagnóstico editorial";
 
 export function WizardDiagnostico() {
   const custo = CUSTOS_CREDITOS[ACAO_DIAGNOSTICO];
@@ -110,24 +115,30 @@ export function WizardDiagnostico() {
       resultado?: DiagnosticoResult | null;
     };
 
+    const jobRes = await fetch(`/api/ferramentas/jobs/${jobIdAtual}`);
+    const jobData = (await jobRes.json()) as {
+      job: { entregaveis?: EntregavelPronto[] };
+    };
+
     setProgresso(100);
     setResultado({
       jobId: jobIdAtual,
       expiraEm: concluirData.expira_em ?? null,
+      entregaveis: jobData.job.entregaveis ?? [],
       resultado: concluirData.resultado ?? null,
     });
     setPasso(3);
   }
 
   async function rodar() {
-    if (!dados.file || !dados.titulo.trim() || !dados.declaracaoAceita) return;
+    if (!manuscritoPronto(dados)) return;
     setPasso(2);
     setErro(null);
     setProgresso(0);
 
     try {
       const sombra = await criarSombraEJob({
-        file: dados.file,
+        file: dados.file!,
         titulo: dados.titulo,
         autor: dados.autor,
         ferramentaId,
@@ -140,7 +151,6 @@ export function WizardDiagnostico() {
       setProjectIdAtivo(sombra.projectId);
       setJobIdAtivo(sombra.jobId);
 
-      // Iniciar diagnóstico (DEBIT no gate ehSombra do diagnostico route)
       setStatusTexto("Analisando manuscrito…");
       setProgresso(40);
       const diagRes = await fetch("/api/agentes/diagnostico", {
@@ -163,59 +173,80 @@ export function WizardDiagnostico() {
 
   if (passo === 0) {
     return (
-      <TelaInicio
-        titulo={HEADING}
-        custo={custo}
-        saldo={saldo}
-        onIniciar={() => setPasso(1)}
-      />
+      <WizardLayout
+        ferramenta={FERRAMENTA_LABEL}
+        passos={PASSOS}
+        passoAtual={0}
+        titulo="Como funciona"
+        descricao="Analisamos o manuscrito capítulo a capítulo e devolvemos um relatório em PDF."
+        rodape={{ primario: <CtaInicio custo={custo} saldo={saldo} onIniciar={() => setPasso(1)} /> }}
+      >
+        <ConteudoInicio custo={custo} saldo={saldo} />
+      </WizardLayout>
     );
   }
 
   if (passo === 1) {
+    const pronto = manuscritoPronto(dados);
     return (
-      <TelaManuscrito
-        tituloHeading={HEADING}
-        ctaLabel={`Rodar diagnóstico — ${custo} créditos`}
-        dados={dados}
-        onDados={(patch) => setDados((d) => ({ ...d, ...patch }))}
-        onSubmit={rodar}
-      />
+      <WizardLayout
+        ferramenta={FERRAMENTA_LABEL}
+        passos={PASSOS}
+        passoAtual={1}
+        titulo="Seu manuscrito"
+        rodape={{
+          primario: (
+            <CtaPrimario disabled={!pronto} onClick={rodar}>
+              Rodar diagnóstico — {custo} créditos
+            </CtaPrimario>
+          ),
+        }}
+      >
+        <ConteudoManuscrito dados={dados} onDados={(patch) => setDados((d) => ({ ...d, ...patch }))} />
+      </WizardLayout>
     );
   }
 
   if (passo === 2) {
+    const podeRetry = !!(projectIdAtivo && jobIdAtivo && erro);
     return (
-      <TelaRodando
-        tituloHeading={HEADING}
-        statusTexto={statusTexto}
-        progresso={progresso}
-        erro={erro}
-        onRetry={
-          projectIdAtivo && jobIdAtivo
-            ? () => {
+      <WizardLayout
+        ferramenta={FERRAMENTA_LABEL}
+        passos={PASSOS}
+        passoAtual={2}
+        titulo={erro ? "Análise interrompida" : "Analisando…"}
+        rodape={{
+          primario: podeRetry ? (
+            <CtaPrimario
+              onClick={() => {
                 setErro(null);
-                pollarEConcluir(projectIdAtivo, jobIdAtivo).catch((e) =>
+                pollarEConcluir(projectIdAtivo!, jobIdAtivo!).catch((e) =>
                   setErro(e instanceof Error ? e.message : "Erro inesperado."),
                 );
-              }
-            : undefined
-        }
-        onVoltar={projectIdAtivo && jobIdAtivo ? undefined : () => setPasso(1)}
-      />
+              }}
+            >
+              Tentar novamente
+            </CtaPrimario>
+          ) : undefined,
+        }}
+      >
+        <ConteudoRodando statusTexto={statusTexto} progresso={progresso} erro={erro} />
+      </WizardLayout>
     );
   }
 
-  const r = resultado?.resultado ?? null;
-
+  const r = resultado!;
   return (
     <TelaPronto
-      tituloEntregavel="Seu diagnóstico está pronto"
-      jobId={resultado!.jobId}
-      ctaDownload="Baixar PDF"
-      expiraEm={resultado?.expiraEm ?? null}
+      ferramenta={FERRAMENTA_LABEL}
+      passos={PASSOS}
+      entregaveis={r.entregaveis}
+      jobId={r.jobId}
+      expiraEm={r.expiraEm}
     >
-      {r && <ResultadoDiagnostico manuscritoNome={dados.titulo || "Manuscrito"} diagnostico={r} />}
+      {r.resultado && (
+        <ResultadoDiagnostico manuscritoNome={dados.titulo || "Manuscrito"} diagnostico={r.resultado} />
+      )}
     </TelaPronto>
   );
 }
