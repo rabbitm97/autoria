@@ -47,13 +47,12 @@ export async function POST(request: NextRequest) {
 
   const { data: rawSombra } = await admin
     .from("projects")
-    .select("dados_pdf, dados_capa, manuscripts(titulo, nome)")
+    .select("dados_pdf, manuscripts(titulo, nome)")
     .eq("id", job.projeto_sombra_id)
     .maybeSingle();
 
   const sombra = rawSombra as {
     dados_pdf: Record<string, unknown> | null;
-    dados_capa: Record<string, unknown> | null;
     manuscripts: { titulo?: string | null; nome?: string | null } | null;
   } | null;
 
@@ -93,34 +92,6 @@ export async function POST(request: NextRequest) {
     bytes: copiaEpub.bytes,
     nome_exibicao: `${titulo}.epub`,
   });
-
-  // Capa standalone (jpg/png) — best-effort: se falhar, EPUB principal continua.
-  const capaExp = (sombra.dados_capa as {
-    exports?: { jpeg_ebook?: { storage_path?: string; ext?: "jpg" | "png" } };
-  } | null)?.exports?.jpeg_ebook;
-
-  if (capaExp?.storage_path && capaExp?.ext) {
-    const ext = capaExp.ext;
-    const contentType = ext === "png" ? "image/png" : "image/jpeg";
-    const copiaCapa = await copiarParaCofre(admin, {
-      userId: user.id,
-      jobId: job.id,
-      srcBucket: "editor-assets",
-      srcPath: capaExp.storage_path,
-      destFilename: `capa-ebook.${ext}`,
-      contentType,
-    });
-    if ("error" in copiaCapa) {
-      console.warn("[epub-avulso/concluir] cópia da capa falhou (não fatal):", copiaCapa.error);
-    } else {
-      entregaveis.push({
-        tipo: "jpg_ebook",
-        storage_path: copiaCapa.storage_path,
-        bytes: copiaCapa.bytes,
-        nome_exibicao: `${titulo} — capa.${ext}`,
-      });
-    }
-  }
 
   const ok = await concluirJob(admin, job, entregaveis);
   if (!ok) {

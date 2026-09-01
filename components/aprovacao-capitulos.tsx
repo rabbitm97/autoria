@@ -26,6 +26,7 @@ interface Props {
   onConfirmar: (capitulos: { titulo: string; pos: number }[]) => void;
   onVoltar: () => void;
   loading?: boolean;
+  acaoLabel?: string;
 }
 
 const ORIGEM_LABEL: Record<CandidatoCapitulo["origem"], string> = {
@@ -46,7 +47,7 @@ const ORIGEM_COR: Record<CandidatoCapitulo["origem"], string> = {
   numero_isolado: "bg-zinc-100 text-zinc-800 border-zinc-300",
 };
 
-export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading }: Props) {
+export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading, acaoLabel = "gerar miolo" }: Props) {
   const [marcados, setMarcados] = useState<Set<string>>(
     () => new Set(candidatos.filter(c => c.sugerido).map(c => c.id))
   );
@@ -160,7 +161,7 @@ export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading 
           Detectamos {candidatos.length} candidatos a capítulo no manuscrito.{" "}
           {candidatos.filter(c => c.sugerido).length} foram pré-marcados com base na nossa análise.
           Confirme, ajuste títulos se quiser, e clique em{" "}
-          <strong>Confirmar e gerar miolo</strong>.
+          <strong>Confirmar e {acaoLabel}</strong>.
         </p>
       </div>
 
@@ -250,7 +251,7 @@ export function AprovacaoCapitulos({ candidatos, onConfirmar, onVoltar, loading 
         >
           {loading
             ? "Gerando miolo..."
-            : `Confirmar ${totalMarcados} capítulos e gerar miolo →`}
+            : `Confirmar ${totalMarcados} capítulos e ${acaoLabel} →`}
         </button>
       </div>
     </div>

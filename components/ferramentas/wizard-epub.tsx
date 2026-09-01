@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { criarSombraEJob } from "@/lib/sombra-cliente";
 import type { CandidatoCapitulo } from "@/lib/chapter-detection";
+import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
 import {
   TelaInicio,
   TelaManuscrito,
@@ -53,11 +54,10 @@ export function WizardEpub() {
   // Contexto criado no passo 1 → reusado nos demais
   const [projectId, setProjectId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [texto, setTexto] = useState<string>("");
 
   // Capítulos (passo 2)
   const [candidatos, setCandidatos] = useState<CandidatoCapitulo[]>([]);
-  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [aprovando, setAprovando] = useState(false);
 
   // Capa opcional (passo 3)
   const [capaFile, setCapaFile] = useState<File | null>(null);
@@ -91,7 +91,6 @@ export function WizardEpub() {
 
       setProjectId(sombra.projectId);
       setJobId(sombra.jobId);
-      setTexto(sombra.texto);
 
       // Detectar candidatos
       setStatusTexto("Detectando capítulos…");
@@ -108,8 +107,6 @@ export function WizardEpub() {
       const data = (await res.json()) as { candidatos?: CandidatoCapitulo[] };
       const lista = data.candidatos ?? [];
       setCandidatos(lista);
-      // Pré-seleciona os "sugeridos"
-      setSelecionados(new Set(lista.filter((c) => c.sugerido).map((c) => c.id)));
 
       setPasso(2);
       setStatusTexto("");
@@ -121,18 +118,15 @@ export function WizardEpub() {
   }
 
   // ── Passo 2 → 3: aprovar capítulos ──────────────────────────────────────────
-  async function aprovarCapitulosEIr() {
+  async function aprovarCapitulosEIr(capitulos: { titulo: string; pos: number }[]) {
     if (!projectId) return;
-    const aprovados = candidatos
-      .filter((c) => selecionados.has(c.id))
-      .map((c) => ({ titulo: c.titulo, pos: c.pos }));
-
     setErro(null);
+    setAprovando(true);
     try {
       const res = await fetch("/api/agentes/miolo/aprovar-capitulos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: aprovados }),
+        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: capitulos }),
       });
       if (!res.ok) {
         const d = (await res.json()) as { error?: string };
@@ -141,6 +135,8 @@ export function WizardEpub() {
       setPasso(3);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro inesperado.");
+    } finally {
+      setAprovando(false);
     }
   }
 
@@ -280,21 +276,16 @@ export function WizardEpub() {
 
   if (passo === 2) {
     return (
-      <TelaCapitulos
-        candidatos={candidatos}
-        selecionados={selecionados}
-        onToggle={(id) => {
-          setSelecionados((s) => {
-            const next = new Set(s);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-          });
-        }}
-        onAvancar={aprovarCapitulosEIr}
-        erro={erro}
-        totalCaracteres={texto.length}
-      />
+      <div className="space-y-4">
+        <AprovacaoCapitulos
+          candidatos={candidatos}
+          onConfirmar={aprovarCapitulosEIr}
+          onVoltar={() => setPasso(1)}
+          loading={aprovando}
+          acaoLabel="continuar"
+        />
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+      </div>
     );
   }
 
@@ -341,94 +332,6 @@ export function WizardEpub() {
       ctaDownload="Baixar EPUB"
       expiraEm={resultado?.expiraEm ?? null}
     />
-  );
-}
-
-// ─── TelaCapitulos ────────────────────────────────────────────────────────────
-
-function TelaCapitulos({
-  candidatos,
-  selecionados,
-  onToggle,
-  onAvancar,
-  erro,
-  totalCaracteres,
-}: {
-  candidatos: CandidatoCapitulo[];
-  selecionados: Set<string>;
-  onToggle: (id: string) => void;
-  onAvancar: () => void;
-  erro: string | null;
-  totalCaracteres: number;
-}) {
-  const totalSelecionados = selecionados.size;
-
-  return (
-    <div className="max-w-2xl mx-auto px-4 py-10">
-      <h1 className="font-heading text-3xl text-brand-primary mb-2">Capítulos</h1>
-      <p className="text-sm text-zinc-500 mb-6">
-        Detectamos {candidatos.length} possíveis quebras de capítulo. Confirme quais fazem sentido
-        antes de gerar o EPUB — o índice do e-book vai usar exatamente essa lista.
-      </p>
-
-      {candidatos.length === 0 ? (
-        <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-5 mb-6">
-          <p className="text-sm text-zinc-700">
-            Não conseguimos identificar capítulos no seu manuscrito. O EPUB será gerado como um
-            capítulo único — dá para ler normalmente, mas sem sumário navegável.
-          </p>
-          <p className="text-xs text-zinc-500 mt-2">Texto com {totalCaracteres.toLocaleString("pt-BR")} caracteres.</p>
-        </div>
-      ) : (
-        <ul className="space-y-2 mb-6 max-h-[420px] overflow-y-auto pr-1">
-          {candidatos.map((c) => {
-            const marcado = selecionados.has(c.id);
-            return (
-              <li
-                key={c.id}
-                className={`rounded-lg border p-3 cursor-pointer transition-colors ${
-                  marcado ? "border-brand-gold bg-brand-gold/5" : "border-zinc-200 bg-white"
-                }`}
-                onClick={() => onToggle(c.id)}
-              >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={marcado}
-                    onChange={() => onToggle(c.id)}
-                    className="mt-1 accent-brand-primary"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-brand-primary truncate">{c.titulo}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      pos {c.pos.toLocaleString("pt-BR")} · {c.palavras_no_segmento} palavras no bloco
-                    </p>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {erro && (
-        <p className="text-sm text-red-600 mb-4">{erro}</p>
-      )}
-
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-zinc-500">
-          {totalSelecionados} capítulo{totalSelecionados === 1 ? "" : "s"} selecionado
-          {totalSelecionados === 1 ? "" : "s"}
-        </p>
-        <button
-          type="button"
-          onClick={onAvancar}
-          className="rounded-xl bg-brand-primary text-brand-gold font-semibold px-6 py-2.5 hover:bg-brand-primary/90 transition-colors"
-        >
-          Continuar
-        </button>
-      </div>
-    </div>
   );
 }
 
