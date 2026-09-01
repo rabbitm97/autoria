@@ -11,7 +11,7 @@ export default function PerfilPage() {
   const router = useRouter();
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
-  const [plano, setPlano] = useState("freemium");
+  const [creditos, setCreditos] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -21,7 +21,7 @@ export default function PerfilPage() {
     if (process.env.NODE_ENV === "development") {
       setNome("Dev Author");
       setEmail("dev@autoria.com");
-      setPlano("pro");
+      setCreditos(150);
       setLoading(false);
       return;
     }
@@ -31,12 +31,12 @@ export default function PerfilPage() {
       setEmail(user.email ?? "");
       supabase
         .from("users")
-        .select("nome, plano")
+        .select("nome, creditos")
         .eq("id", user.id)
         .single()
         .then(({ data }) => {
           setNome(data?.nome ?? "");
-          setPlano(data?.plano ?? "freemium");
+          setCreditos((data as { creditos?: number } | null)?.creditos ?? 0);
           setLoading(false);
         });
     });
@@ -73,13 +73,6 @@ export default function PerfilPage() {
     router.push("/");
   }
 
-  const PLANO_LABEL: Record<string, { label: string; color: string }> = {
-    freemium:  { label: "Freemium",  color: "text-zinc-500" },
-    essencial: { label: "Essencial", color: "text-blue-600" },
-    pro:       { label: "Pro",       color: "text-brand-gold" },
-  };
-  const planoInfo = PLANO_LABEL[plano] ?? PLANO_LABEL["freemium"];
-
   return (
     <div>
 
@@ -87,7 +80,7 @@ export default function PerfilPage() {
 
         <div className="mb-8">
           <h1 className="font-heading text-3xl text-brand-primary">Meu perfil</h1>
-          <p className="text-zinc-500 text-sm mt-1">Gerencie suas informações e plano.</p>
+          <p className="text-zinc-500 text-sm mt-1">Gerencie suas informações e créditos.</p>
         </div>
 
         {loading ? (
@@ -97,18 +90,21 @@ export default function PerfilPage() {
         ) : (
           <div className="space-y-6">
 
-            {/* Plano atual */}
+            {/* Créditos */}
             <div className="bg-white rounded-2xl border border-zinc-100 p-6">
-              <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">Plano atual</p>
+              <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">Créditos</p>
               <div className="flex items-center justify-between">
-                <p className={`font-heading text-2xl ${planoInfo.color}`}>{planoInfo.label}</p>
+                <p className="font-heading text-3xl text-brand-primary">{creditos}</p>
                 <Link
-                  href="/dashboard/planos"
+                  href="/dashboard/ferramentas"
                   className="text-xs text-brand-gold hover:underline underline-offset-4"
                 >
-                  Fazer upgrade →
+                  Ver ferramentas →
                 </Link>
               </div>
+              <p className="text-xs text-zinc-500 mt-3 leading-relaxed">
+                Use nas ferramentas avulsas ou para ativar o plano de um projeto.
+              </p>
             </div>
 
             {/* Dados pessoais */}

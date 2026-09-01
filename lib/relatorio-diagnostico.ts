@@ -97,18 +97,22 @@ export function renderRelatorioDiagnosticoHtml(input: RelatorioDiagnosticoInput)
 <head>
 <meta charset="UTF-8">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Inter:wght@400;600&family=DM+Mono&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 @page { size: A4; margin: 18mm 16mm; }
 
 body {
-  font-family: 'Fraunces', serif;
+  font-family: 'Inter', system-ui, sans-serif;
   background: #FAF6EF;
   color: #1a1a2e;
   font-size: 11pt;
   line-height: 1.65;
+}
+
+h1, .cover-titulo, .section h2 {
+  font-family: 'Fraunces', serif;
 }
 
 .cover {
@@ -246,7 +250,6 @@ body {
 
 ${listaSecao("Pontos fortes", resultado.pontos_fortes)}
 ${listaSecao("Pontos a melhorar", resultado.pontos_melhorar)}
-${secao("Mercado", resultado.mercado_alvo)}
 ${canaisHtml}
 ${precoHtml}
 ${comparaveisHtml}
