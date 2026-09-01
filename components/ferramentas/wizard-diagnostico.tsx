@@ -50,6 +50,8 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoPronto | null>(null);
+  const [projectIdAtivo, setProjectIdAtivo] = useState<string | null>(null);
+  const [jobIdAtivo, setJobIdAtivo] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -79,6 +81,74 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
     if (f) onFileChange(f);
+  }
+
+  async function pollarEConcluir(projectIdAtual: string, jobIdAtual: string) {
+    // 8. Poll até concluído
+    setStatusTexto("Processando capítulos…");
+    let concluido = false;
+    let tentativas = 0;
+    let errosSeguidos = 0;
+
+    while (!concluido && tentativas < 200) {
+      await new Promise((r) => setTimeout(r, 3000));
+      tentativas++;
+
+      const pollRes = await fetch("/api/agentes/diagnostico", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectIdAtual }),
+      });
+
+      if (!pollRes.ok) continue;
+      const pollData = (await pollRes.json()) as {
+        status?: string;
+        progresso?: { atual: number; total: number };
+        erro?: string;
+      };
+
+      if (pollData.progresso) {
+        const { atual, total } = pollData.progresso;
+        if (total > 0) setProgresso(40 + Math.round((atual / total) * 45));
+      }
+
+      if (pollData.status === "concluido") {
+        concluido = true;
+      } else if (pollData.status === "erro") {
+        errosSeguidos++;
+        if (errosSeguidos >= 3) throw new Error(pollData.erro ?? "Erro no diagnóstico.");
+        setStatusTexto("Retomando análise…");
+      } else {
+        errosSeguidos = 0;
+        setStatusTexto(
+          pollData.status === "consolidando" ? "Consolidando análise…" : "Processando capítulos…"
+        );
+      }
+    }
+
+    if (!concluido) {
+      throw new Error(
+        "A análise está demorando mais que o normal. Clique em Tentar novamente para continuar de onde parou."
+      );
+    }
+
+    // 9. Concluir (gerar PDF)
+    setStatusTexto("Gerando relatório PDF…");
+    setProgresso(90);
+    const concluirRes = await fetch("/api/ferramentas/diagnostico-avulso/concluir", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job_id: jobIdAtual }),
+    });
+    if (!concluirRes.ok) {
+      const d = (await concluirRes.json()) as { error?: string };
+      throw new Error(d.error ?? "Falha ao gerar o relatório.");
+    }
+    const concluirData = (await concluirRes.json()) as { expira_em?: string | null };
+
+    setProgresso(100);
+    setResultado({ jobId: jobIdAtual, expiraEm: concluirData.expira_em ?? null });
+    setPasso(3);
   }
 
   async function rodar() {
@@ -136,6 +206,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
       if (projErr || !proj) throw new Error("Falha ao criar projeto.");
 
       const projectId = (proj as { id: string }).id;
+      setProjectIdAtivo(projectId);
 
       // 4. Aceite legal (best-effort)
       fetch("/api/legal/aceite", {
@@ -163,6 +234,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
       if (!jobRes.ok) throw new Error("Falha ao criar job.");
       const jobData = (await jobRes.json()) as { job_id: string };
       const jobId = jobData.job_id;
+      setJobIdAtivo(jobId);
 
       // 6. Parse do manuscrito
       setStatusTexto("Extraindo texto…");
@@ -190,63 +262,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
       }
       if (!diagRes.ok) throw new Error("Falha ao iniciar diagnóstico.");
 
-      // 8. Poll até concluído
-      setStatusTexto("Processando capítulos…");
-      let concluido = false;
-      let tentativas = 0;
-
-      while (!concluido && tentativas < 120) {
-        await new Promise((r) => setTimeout(r, 3000));
-        tentativas++;
-
-        const pollRes = await fetch("/api/agentes/diagnostico", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project_id: projectId }),
-        });
-
-        if (!pollRes.ok) continue;
-        const pollData = (await pollRes.json()) as {
-          status?: string;
-          progresso?: { atual: number; total: number };
-          erro?: string;
-        };
-
-        if (pollData.progresso) {
-          const { atual, total } = pollData.progresso;
-          if (total > 0) setProgresso(40 + Math.round((atual / total) * 45));
-        }
-
-        if (pollData.status === "concluido") {
-          concluido = true;
-        } else if (pollData.status === "erro") {
-          throw new Error(pollData.erro ?? "Erro no diagnóstico.");
-        } else {
-          setStatusTexto(
-            pollData.status === "consolidando" ? "Consolidando análise…" : "Processando capítulos…"
-          );
-        }
-      }
-
-      if (!concluido) throw new Error("Diagnóstico demorou demais. Tente novamente.");
-
-      // 9. Concluir (gerar PDF)
-      setStatusTexto("Gerando relatório PDF…");
-      setProgresso(90);
-      const concluirRes = await fetch("/api/ferramentas/diagnostico-avulso/concluir", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ job_id: jobId }),
-      });
-      if (!concluirRes.ok) {
-        const d = (await concluirRes.json()) as { error?: string };
-        throw new Error(d.error ?? "Falha ao gerar o relatório.");
-      }
-      const concluirData = (await concluirRes.json()) as { expira_em?: string | null };
-
-      setProgresso(100);
-      setResultado({ jobId, expiraEm: concluirData.expira_em ?? null });
-      setPasso(3);
+      await pollarEConcluir(projectId, jobId);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro inesperado.");
       setStatusTexto("");
@@ -412,13 +428,32 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
         {erro ? (
           <div className="rounded-xl border border-red-100 bg-red-50 p-5 space-y-3">
             <p className="text-sm text-red-700">{erro}</p>
-            <button
-              type="button"
-              onClick={() => setPasso(1)}
-              className="text-sm text-brand-primary underline"
-            >
-              Voltar e tentar novamente
-            </button>
+            {projectIdAtivo && jobIdAtivo ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErro(null);
+                    setPasso(2);
+                    pollarEConcluir(projectIdAtivo, jobIdAtivo).catch((e) =>
+                      setErro(e instanceof Error ? e.message : "Erro inesperado.")
+                    );
+                  }}
+                  className="mt-3 rounded-xl bg-brand-primary px-5 py-2 text-sm font-semibold text-brand-gold"
+                >
+                  Tentar novamente
+                </button>
+                <p className="mt-1 text-[11px] text-zinc-400">Continua de onde parou — sem nova cobrança.</p>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPasso(1)}
+                className="text-sm text-brand-primary underline"
+              >
+                Voltar e tentar novamente
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
