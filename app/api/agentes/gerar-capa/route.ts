@@ -18,6 +18,7 @@ import {
   type ArteUnicaAspectRatio,
 } from "@/lib/formatos";
 import { signedUrlCapas, storagePathDaUrl } from "@/lib/capa-signed-url";
+import { jobDoSombra } from "@/lib/ferramenta-jobs";
 import { validarProjectData } from "@/lib/project-data";
 import type {
   EstiloCapa,
@@ -155,7 +156,7 @@ export async function POST(req: NextRequest) {
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select(
-      "id, user_id, plano, formato, dados_elementos, dados_miolo, dados_capa, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal, texto, texto_revisado)",
+      "id, user_id, plano, origem, formato, dados_elementos, dados_miolo, dados_capa, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal, texto, texto_revisado)",
     )
     .eq("id", project_id)
     .single();
@@ -167,8 +168,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso a este projeto." }, { status: 403 });
   }
 
-  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-capa");
-  if (gate) return gate;
+  // FERR-3.4a: sombra da capa avulsa dispensa gate por plano — pool cobra
+  // por imagem em /capa/comprar-imagens; nenhum débito ocorre aqui.
+  const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+  let jobAvulso: Awaited<ReturnType<typeof jobDoSombra>> = null;
+  if (ehSombra) {
+    jobAvulso = await jobDoSombra(supabase, project_id, userId);
+    if (!jobAvulso || jobAvulso.ferramenta_id !== "capa-ia") {
+      return NextResponse.json(
+        { error: "Projeto de ferramenta sem job de capa ativo." },
+        { status: 404 },
+      );
+    }
+  } else {
+    const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-capa");
+    if (gate) return gate;
+  }
 
   const ms = (project as Record<string, unknown>).manuscripts as {
     titulo?: string;
@@ -207,7 +222,16 @@ export async function POST(req: NextRequest) {
     ? textoRevisadoTrim
     : (ms?.texto?.trim() ?? "");
   let paginas: number;
-  if (typeof dadosMiolo?.paginas_reais === "number") {
+  // FERR-3.4a: no sombra, páginas vêm do job (autor digita no wizard). Elas
+  // definem a lombada — cascata de miolo/texto não faz sentido aqui (sem
+  // miolo, sem manuscrito). Se o job não tiver páginas por algum motivo,
+  // cai na cascata normal como último recurso.
+  const paginasJob = Number(
+    (jobAvulso?.entrada as { paginas?: unknown } | undefined)?.paginas,
+  );
+  if (ehSombra && Number.isInteger(paginasJob) && paginasJob > 0) {
+    paginas = paginasJob;
+  } else if (typeof dadosMiolo?.paginas_reais === "number") {
     paginas = dadosMiolo.paginas_reais;
   } else if (typeof dadosMiolo?.paginas_estimadas === "number") {
     paginas = dadosMiolo.paginas_estimadas;

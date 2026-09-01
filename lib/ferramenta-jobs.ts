@@ -18,7 +18,7 @@ export const PREVIA_PAGINAS = 20; // prévia gratuita da diagramação avulsa (d
 
 /** Ferramentas que têm wizard e podem criar jobs por POST /ferramentas/jobs.
  *  Barra ids fantasmas/legados (residual de auditoria FERR-3.1). */
-export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub", "diagramacao-digital", "diagramacao-completa"] as const;
+export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub", "diagramacao-digital", "diagramacao-completa", "capa-ia"] as const;
 
 export type EstadoJob =
   | "iniciado" | "aguardando_autor" | "processando"
@@ -183,4 +183,25 @@ export function modoDiagramacao(ferramentaId: string): "digital" | "completa" | 
   if (ferramentaId === "diagramacao-digital") return "digital";
   if (ferramentaId === "diagramacao-completa") return "completa";
   return null;
+}
+
+/** Job ATIVO vinculado a um sombra (rotas do motor que só recebem project_id). */
+export async function jobDoSombra(
+  admin: SupabaseClient,
+  projectId: string,
+  userId: string,
+): Promise<Pick<FerramentaJob, "id" | "user_id" | "ferramenta_id" | "estado" | "entrada" | "debitado_em" | "custo_creditos"> | null> {
+  const { data } = await admin
+    .from("ferramenta_jobs")
+    .select("id, user_id, ferramenta_id, estado, entrada, debitado_em, custo_creditos")
+    .eq("projeto_sombra_id", projectId)
+    .eq("user_id", userId)
+    .not("estado", "in", '("cancelado","expirado","falhou")')
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (
+    (data as Pick<FerramentaJob, "id" | "user_id" | "ferramenta_id" | "estado" | "entrada" | "debitado_em" | "custo_creditos"> | null) ??
+    null
+  );
 }

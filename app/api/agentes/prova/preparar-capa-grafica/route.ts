@@ -14,6 +14,7 @@ import {
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { AnaliseTecnica } from "@/lib/capa-analyzer";
 import { LIMITE_DIVERGENCIA_LOMBADA_MM, lombadaPorPapelPedido } from "@/lib/formatos";
+import { jobDoSombra } from "@/lib/ferramenta-jobs";
 
 /**
  * Extrai o storage path de uma URL signed do Supabase.
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
   // Carrega o projeto
   const { data: project, error: projectErr } = await supabase
     .from("projects")
-    .select("id, user_id, formato, dados_capa, dados_miolo, papel_miolo_pedido")
+    .select("id, user_id, formato, origem, dados_capa, dados_miolo, papel_miolo_pedido")
     .eq("id", projectId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -70,7 +71,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const paginasReais = miolo?.paginas_reais;
+  // FERR-3.4a: no sombra da capa avulsa não existe miolo — as páginas
+  // vêm do job (autor digitou no wizard). Fallback só aqui para não
+  // regredir a esteira normal, que continua exigindo miolo.
+  let paginasReais = miolo?.paginas_reais;
+  if (!paginasReais && (project as { origem?: unknown }).origem === "ferramenta") {
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const job = await jobDoSombra(admin, project.id, userId);
+    const p = Number((job?.entrada as { paginas?: unknown } | undefined)?.paginas);
+    if (Number.isInteger(p) && p > 0) paginasReais = p;
+  }
   if (!paginasReais) {
     return NextResponse.json(
       { error: "Miolo ainda não foi gerado. Conclua a etapa de Diagramação antes de preparar o PDF para gráfica." },

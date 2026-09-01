@@ -5,8 +5,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireAuth } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
-import { debitarCreditos, getSaldoCreditos, CUSTOS_CREDITOS } from "@/lib/creditos";
+import { debitarCreditos, getSaldoCreditos, CUSTOS_CREDITOS, type AcaoCredito } from "@/lib/creditos";
 import { saldoImagensCapa } from "@/lib/capa-briefing";
+import { atualizarJob, jobDoSombra, registrarDebitoJob } from "@/lib/ferramenta-jobs";
 
 // ─── POST /api/projects/[id]/capa/comprar-imagens ────────────────────────────
 // Compra pool de imagens de capa IA (B2-05b). Débito de créditos → pool
@@ -61,7 +62,7 @@ export async function POST(
   // Ownership + plano para incluso.
   const { data: project, error: projErr } = await admin
     .from("projects")
-    .select("id, user_id, plano")
+    .select("id, user_id, plano, origem")
     .eq("id", projectId)
     .single();
   if (projErr || !project) {
@@ -71,7 +72,12 @@ export async function POST(
     return NextResponse.json({ error: "Sem acesso a este projeto." }, { status: 403 });
   }
 
-  const acao = pacote === "unitario" ? "imagem_capa_extra" : "pacote_imagens_capa";
+  // FERR-3.4a: no sombra da capa avulsa o preço vem do avulso
+  // (capa_avulsa_imagem / capa_avulsa_pacote), não do pool interno.
+  const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+  const acao: AcaoCredito = pacote === "quadruplo"
+    ? (ehSombra ? "capa_avulsa_pacote" : "pacote_imagens_capa")
+    : (ehSombra ? "capa_avulsa_imagem" : "imagem_capa_extra");
   const imagens = pacote === "unitario" ? 1 : 4;
   const custo = CUSTOS_CREDITOS[acao];
 
@@ -92,6 +98,22 @@ export async function POST(
         { error: "Falha ao debitar créditos. Tente novamente." },
         { status: 500 },
       );
+    }
+  }
+
+  // FERR-3.4a: no sombra, ligar/somar no relógio do job. Primeira compra
+  // (job sem débito) liga o relógio de 90 dias via registrarDebitoJob;
+  // compras seguintes só acumulam em custo_creditos.
+  if (!dev && ehSombra) {
+    const job = await jobDoSombra(admin, projectId, userId);
+    if (job) {
+      if (job.debitado_em) {
+        await atualizarJob(admin, job.id, {
+          custo_creditos: (job.custo_creditos ?? 0) + custo,
+        });
+      } else {
+        await registrarDebitoJob(admin, job.id, custo);
+      }
     }
   }
 

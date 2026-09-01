@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { EtapasProgress } from "@/components/etapas-progress";
@@ -449,6 +449,7 @@ function ModoUpload({
   onAnalisar,
   onVoltar,
   isExpress,
+  isAvulso,
 }: {
   projectId: string;
   formatoInicial: FormatoLivro;
@@ -464,6 +465,7 @@ function ModoUpload({
   onAnalisar: () => void;
   onVoltar: () => void;
   isExpress: boolean;
+  isAvulso: boolean;
 }) {
   const formato = formatoInicial;
 
@@ -1040,7 +1042,11 @@ function ModoUpload({
                     : undefined
           }
         >
-          {isExpress ? "Continuar para a Conferência final →" : "Continuar para Créditos →"}
+          {isAvulso
+            ? "Avançar →"
+            : isExpress
+              ? "Continuar para a Conferência final →"
+              : "Continuar para Créditos →"}
         </button>
       )}
     </div>
@@ -3071,6 +3077,7 @@ function CapaExistenteCard({
   proposito,
   formato,
   isExpress,
+  isAvulso,
   onContinuarEditor,
   onAvancarCreditos,
   onVerOutrasGeracoes,
@@ -3083,6 +3090,7 @@ function CapaExistenteCard({
   proposito: PropositoPublicacao | null;
   formato: FormatoLivro;
   isExpress: boolean;
+  isAvulso: boolean;
   onContinuarEditor: () => void;
   onAvancarCreditos: () => void;
   onVerOutrasGeracoes: () => void;
@@ -3249,7 +3257,11 @@ function CapaExistenteCard({
                   <button onClick={onAvancarCreditos}
                     className="px-5 py-2.5 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm
                       hover:bg-brand-primary/90 transition-colors">
-                    {isExpress ? "Avançar para a Conferência final →" : "Avançar para Créditos →"}
+                    {isAvulso
+                      ? "Avançar →"
+                      : isExpress
+                        ? "Avançar para a Conferência final →"
+                        : "Avançar para Créditos →"}
                   </button>
                   <button onClick={handleAbrirEditor}
                     className="px-5 py-2.5 rounded-xl border border-zinc-200 text-brand-primary font-medium text-sm
@@ -3328,6 +3340,12 @@ function AnaliseBadge({
 export default function CapaPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  // FERR-3.4a: modo avulso — a tela é reusada pela ferramenta "capa-ia".
+  // Quando `?avulso=<job>` está presente, escondemos a barra de etapas e
+  // desviamos os CTAs para o wizard da ferramenta em vez de /creditos.
+  const searchParams = useSearchParams();
+  const avulsoJob = searchParams.get("avulso");
+  const retornoAvulso = avulsoJob ? `/dashboard/ferramentas/capa?job=${avulsoJob}` : null;
 
   const [modo, setModo] = useState<Modo>("escolha");
   const [loading, setLoading] = useState(true);
@@ -3640,6 +3658,13 @@ export default function CapaPage() {
       }
     }
 
+    // FERR-3.4a: no avulso, o próximo passo é o wizard da ferramenta —
+    // sem avancarEtapa (sombra não trafega na esteira).
+    if (retornoAvulso) {
+      router.push(retornoAvulso);
+      return;
+    }
+
     // Express: Créditos/Diagramação não fazem parte do fluxo — pula direto
     // para a Prova. `avancarEtapa` é forward-only, então tudo bem "saltar"
     // capa → qa sem passar pelos intermediários.
@@ -3668,6 +3693,10 @@ export default function CapaPage() {
       .eq("id", id);
     if (skipErr) {
       alert("Não foi possível pular a capa. Tente novamente.");
+      return;
+    }
+    if (retornoAvulso) {
+      router.push(retornoAvulso);
       return;
     }
     if (isExpress) {
@@ -3806,7 +3835,7 @@ export default function CapaPage() {
 
   return (
     <div>
-      {isExpress ? (
+      {retornoAvulso ? null : isExpress ? (
         <ExpressProgress currentStep={1} projectId={id} />
       ) : (
         <EtapasProgress currentStep={3} projectId={id} />
@@ -3890,6 +3919,7 @@ export default function CapaPage() {
               proposito={proposito}
               formato={formatoGlobal}
               isExpress={isExpress}
+              isAvulso={!!retornoAvulso}
               onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
               onAvancarCreditos={handleContinuar}
               onVerOutrasGeracoes={() => setGaleriaModalOpen(true)}
@@ -4148,6 +4178,7 @@ export default function CapaPage() {
             analiseStatus={analiseStatus}
             analiseErro={analiseErro}
             isExpress={isExpress}
+            isAvulso={!!retornoAvulso}
             onSalvo={handleSalvoUpload}
             onContinuar={handleContinuar}
             onRefazer={async () => {
