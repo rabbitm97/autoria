@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { criarSombraEJob } from "@/lib/sombra-cliente";
 import { estimarLombadaCapaMm, type FormatoLivro } from "@/lib/formatos";
+import { GENRES } from "@/lib/generos";
 import { EscolhaFormato } from "@/components/escolha-formato";
 import {
   ConteudoInicio,
@@ -42,7 +43,9 @@ const FERRAMENTA_ID = "capa-ia";
 const PASSOS = ["Início", "Dados do livro", "Formato", "Capa", "Gerar", "Pronto"];
 
 const PRECO_COPY =
-  `R$ ${CUSTOS_CREDITOS.capa_avulsa_imagem} por imagem gerada · pacote com 4 por R$ ${CUSTOS_CREDITOS.capa_avulsa_pacote} (em créditos). Debitados ao comprar as imagens.`;
+  `${CUSTOS_CREDITOS.capa_avulsa} créditos, debitados na primeira geração. Inclui 4 gerações da arte da frente; extras: ${CUSTOS_CREDITOS.capa_avulsa_imagem} créditos cada · 4 por ${CUSTOS_CREDITOS.capa_avulsa_pacote}.`;
+
+const GENEROS_TOPO = Object.keys(GENRES);
 
 // 0..5 correspondem aos passos do stepper. 6 é "rodando" (overlay do 4).
 type Passo = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -71,7 +74,10 @@ export function WizardCapa({ jobIdInicial }: Props) {
   const router = useRouter();
   const saldo = useSaldo();
 
-  const [passo, setPasso] = useState<Passo>(jobIdInicial ? 6 : 0);
+  // Passo inicial sempre 0. A tela de retomada é um overlay separado — evita
+  // o flicker antigo (montar passo 6 → router.replace → remontar).
+  const [passo, setPasso] = useState<Passo>(0);
+  const [retomando, setRetomando] = useState<boolean>(!!jobIdInicial);
   const [dados, setDados] = useState<DadosLivro>({
     titulo: "",
     subtitulo: "",
@@ -87,7 +93,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
   const [formatoSalvo, setFormatoSalvo] = useState<FormatoLivro | null>(null);
   const [temCapaConfirmada, setTemCapaConfirmada] = useState(false);
 
-  const [statusTexto, setStatusTexto] = useState(jobIdInicial ? "Retomando…" : "");
+  const [statusTexto, setStatusTexto] = useState("");
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoPronto | null>(null);
@@ -161,6 +167,8 @@ export function WizardCapa({ jobIdInicial }: Props) {
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao retomar.");
       setPasso(1);
+    } finally {
+      setRetomando(false);
     }
   }
 
@@ -211,7 +219,9 @@ export function WizardCapa({ jobIdInicial }: Props) {
         throw new Error(d.error ?? "Falha ao salvar os dados do livro.");
       }
 
-      router.replace(`/dashboard/ferramentas/capa?job=${sombra.jobId}`);
+      // history.replaceState em vez de router.replace: atualiza a URL sem
+      // remontar o wizard (evita flicker).
+      window.history.replaceState(null, "", `/dashboard/ferramentas/capa?job=${sombra.jobId}`);
       setPasso(2);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao iniciar.");
@@ -297,6 +307,29 @@ export function WizardCapa({ jobIdInicial }: Props) {
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
+
+  if (retomando) {
+    // Overlay de retomada — stepper visível mas sem nenhum passo destacado
+    // (passoAtual=-1 zera done/active). Substitui o antigo passo=6 inicial
+    // que remontava o wizard após a reidratação.
+    return (
+      <WizardLayout
+        ferramenta={FERRAMENTA_LABEL}
+        passos={PASSOS}
+        passoAtual={-1}
+        titulo="Retomando seu trabalho…"
+        descricao="Estamos abrindo o job onde você parou."
+      >
+        <div className="flex items-center gap-3 text-sm text-zinc-500">
+          <span
+            aria-hidden
+            className="h-4 w-4 rounded-full border-2 border-zinc-200 border-t-brand-gold animate-spin"
+          />
+          Carregando…
+        </div>
+      </WizardLayout>
+    );
+  }
 
   if (passo === 0) {
     return (
@@ -570,13 +603,18 @@ function FormDadosLivro({
 
       <div>
         <label className={labelClass}>Gênero *</label>
-        <input
+        <select
           className={fieldClass}
-          placeholder="Ex.: Ficção, Romance, Autoajuda…"
           value={dados.genero}
           onChange={(e) => onDados({ genero: e.target.value })}
-          maxLength={60}
-        />
+        >
+          <option value="">Selecione o gênero</option>
+          {GENEROS_TOPO.map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>

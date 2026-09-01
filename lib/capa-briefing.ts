@@ -657,9 +657,12 @@ export async function saldoImagensCapa(
   admin: SupabaseClient<any>,
   projectId: string,
   plano: unknown,
+  // Override do incluso — usado pela capa avulsa (FERR-3.4c): o produto
+  // `capa_avulsa` embute 4 gerações da frente. Verso segue via pool (extras).
+  inclusoOverride?: { frente: number; verso: number },
 ): Promise<SaldoImagensCapa> {
   const planoNorm: Plano = isPlano(plano) ? plano : "freemium";
-  const incluso = SALDO_IMAGENS_CAPA[planoNorm];
+  const incluso = inclusoOverride ?? SALDO_IMAGENS_CAPA[planoNorm];
 
   // Consumo INCLUSO por partição (regra canônica 05k): frente/verso incluso
   // debitam a própria partição; unica incluso debita 1 de CADA. Rodadas com

@@ -22,6 +22,7 @@ export const CUSTOS_CREDITOS = {
   epub_avulso: 50,
   diagramacao_digital: 100,
   diagramacao_completa: 150,
+  capa_avulsa: 50, // capa com IA avulsa — produto único, inclui 4 gerações da frente (martelada 02/set)
   capa_avulsa_imagem: 20,
   capa_avulsa_pacote: 60,
 } as const;

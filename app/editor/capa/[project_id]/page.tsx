@@ -12,10 +12,14 @@ export const metadata = {
 
 export default async function EditorCapaPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ project_id: string }>;
+  searchParams: Promise<{ avulso?: string }>;
 }) {
   const { project_id } = await params;
+  const { avulso } = await searchParams;
+  const avulsoJob = typeof avulso === "string" && avulso.length > 0 ? avulso : null;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -185,6 +189,7 @@ export default async function EditorCapaPage({
     confirmedImageUrl,
     backgroundUrl,
     capaIaHandoff,
+    avulsoJob,
   };
 
   return <EditorClient projectData={projectData} />;

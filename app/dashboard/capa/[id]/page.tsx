@@ -3739,7 +3739,7 @@ export default function CapaPage() {
       setModo("escolha");
       return;
     }
-    router.push(`/editor/capa/${id}`);
+    router.push(`/editor/capa/${id}${avulsoJob ? `?avulso=${avulsoJob}` : ""}`);
   }
 
   function handleSalvoUpload(result: CapaUploadResult) {
@@ -3920,7 +3920,7 @@ export default function CapaPage() {
               formato={formatoGlobal}
               isExpress={isExpress}
               isAvulso={!!retornoAvulso}
-              onContinuarEditor={() => router.push(`/editor/capa/${id}`)}
+              onContinuarEditor={() => router.push(`/editor/capa/${id}${avulsoJob ? `?avulso=${avulsoJob}` : ""}`)}
               onAvancarCreditos={handleContinuar}
               onVerOutrasGeracoes={() => setGaleriaModalOpen(true)}
               onGerarNovasOpcoes={() => {
@@ -4093,7 +4093,9 @@ export default function CapaPage() {
                 dados?.modo === "ia";
               // Gate do IA — freemium vê o paywall antes do briefing (D2-05).
               // Upload e Editor não são gated: continuam livres.
-              const iaGated = !planoAtende(plano, "essencial");
+              // FERR-3.4c: no avulso (sombra), o acesso é pago por produto
+              // (capa_avulsa=50 na 1ª geração); gate de plano não se aplica.
+              const iaGated = !avulsoJob && !planoAtende(plano, "essencial");
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <ModoCard
@@ -4132,7 +4134,7 @@ export default function CapaPage() {
                   <button
                     onClick={async () => {
                       await resetIfDifferentMode("editor");
-                      router.push(`/editor/capa/${id}`);
+                      router.push(`/editor/capa/${id}${avulsoJob ? `?avulso=${avulsoJob}` : ""}`);
                     }}
                     className="flex flex-col items-start gap-3 p-6 bg-white rounded-2xl border border-zinc-200
                       hover:border-brand-gold/60 hover:shadow-sm transition-all text-left group"

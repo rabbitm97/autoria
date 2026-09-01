@@ -59,7 +59,11 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
       >
         {/* Back button */}
         <button
-          onClick={() => router.push(`/dashboard/capa/${projectData.projectId}`)}
+          onClick={() =>
+            router.push(
+              `/dashboard/capa/${projectData.projectId}${projectData.avulsoJob ? `?avulso=${projectData.avulsoJob}` : ""}`,
+            )
+          }
           className="flex items-center gap-1.5 text-sm text-[#1a1a2e] transition-colors hover:text-zinc-400"
         >
           <svg

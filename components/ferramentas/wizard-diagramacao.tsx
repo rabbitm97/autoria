@@ -210,7 +210,13 @@ export function WizardDiagramacao({ modoInicial, jobIdInicial }: Props) {
       });
       setProjectId(sombra.projectId);
       setJobId(sombra.jobId);
-      router.replace(`/dashboard/ferramentas/diagramacao?modo=${modo}&job=${sombra.jobId}`);
+      // history.replaceState em vez de router.replace: atualiza a URL sem
+      // remontar o wizard (FERR-3.4c).
+      window.history.replaceState(
+        null,
+        "",
+        `/dashboard/ferramentas/diagramacao?modo=${modo}&job=${sombra.jobId}`,
+      );
       setRodandoTipo(null);
       setPasso(3);
     } catch (err) {

@@ -67,4 +67,11 @@ export interface ProjectData {
    * quando o editor abre limpo (sem `editor_data.elements`).
    */
   capaIaHandoff: CapaIaHandoff | null;
+  /**
+   * FERR-3.4c: quando o editor foi aberto a partir do wizard da capa avulsa
+   * (`?avulso=<job_id>`), a volta ao painel `/dashboard/capa/${id}` precisa
+   * preservar esse query param — senão o painel de retorno cai em modo esteira.
+   * `null` no fluxo normal.
+   */
+  avulsoJob: string | null;
 }

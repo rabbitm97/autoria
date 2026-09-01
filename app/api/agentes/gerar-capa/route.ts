@@ -18,7 +18,9 @@ import {
   type ArteUnicaAspectRatio,
 } from "@/lib/formatos";
 import { signedUrlCapas, storagePathDaUrl } from "@/lib/capa-signed-url";
-import { jobDoSombra } from "@/lib/ferramenta-jobs";
+import { jobDoSombra, registrarDebitoJob } from "@/lib/ferramenta-jobs";
+import { autorizarAcao } from "@/lib/creditos";
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { validarProjectData } from "@/lib/project-data";
 import type {
   EstiloCapa,
@@ -168,8 +170,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso a este projeto." }, { status: 403 });
   }
 
-  // FERR-3.4a: sombra da capa avulsa dispensa gate por plano — pool cobra
-  // por imagem em /capa/comprar-imagens; nenhum débito ocorre aqui.
+  // FERR-3.4c: sombra da capa avulsa cobra pelo PRODUTO na primeira geração
+  // (capa_avulsa = 50 créditos, inclui 4 gerações da frente). Gerações 2-4
+  // não debitam. Verso e extras seguem via pool em /capa/comprar-imagens
+  // (mecânica do 3.4a intacta).
+  // storageClient adiantado (era criado ~L260) para servir `autorizarAcao`/
+  // `registrarDebitoJob` sem criar um segundo admin local.
+  const storageClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+
   const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
   let jobAvulso: Awaited<ReturnType<typeof jobDoSombra>> = null;
   if (ehSombra) {
@@ -179,6 +190,18 @@ export async function POST(req: NextRequest) {
         { error: "Projeto de ferramenta sem job de capa ativo." },
         { status: 404 },
       );
+    }
+    if (!jobAvulso.debitado_em) {
+      const aut = await autorizarAcao(
+        storageClient,
+        { id: project_id, origem: "ferramenta" },
+        userId,
+        { minimoPlano: "essencial", acao: "capa_avulsa" },
+      );
+      if (!aut.liberado) return aut.resposta!;
+      if (aut.pagoComCreditos) {
+        await registrarDebitoJob(storageClient, jobAvulso.id, CUSTOS_CREDITOS.capa_avulsa);
+      }
     }
   } else {
     const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-capa");
@@ -255,11 +278,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const storageClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
   const alvo: AlvoCapa = body.alvo;
 
   // Modo "cor" no verso não passa por esta rota — o editor pinta a região
@@ -283,12 +301,17 @@ export async function POST(req: NextRequest) {
     storageClient,
     project_id,
     (project as { plano?: unknown }).plano,
+    // FERR-3.4c: capa avulsa embute 4 gerações da frente; verso é extra
+    // via pool (mecânica do 3.4a).
+    ehSombra ? { frente: 4, verso: 0 } : undefined,
   );
   const origemConsumo = saldoAntes.origemProximoConsumo(alvo);
   if (origemConsumo === "nenhum") {
     return NextResponse.json(
       {
-        error: "Saldo de imagens de capa esgotado. Compre imagens extras para continuar.",
+        error: ehSombra
+          ? `Você usou as 4 gerações incluídas. Imagens extras: ${CUSTOS_CREDITOS.capa_avulsa_imagem} créditos cada · 4 por ${CUSTOS_CREDITOS.capa_avulsa_pacote}.`
+          : "Saldo de imagens de capa esgotado. Compre imagens extras para continuar.",
         saldo: {
           incluso: saldoAntes.incluso,
           restante_frente: saldoAntes.restanteFrente,
@@ -738,6 +761,7 @@ export async function POST(req: NextRequest) {
     storageClient,
     project_id,
     (project as { plano?: unknown }).plano,
+    ehSombra ? { frente: 4, verso: 0 } : undefined,
   );
   const saldoUsuario = dev ? null : await getSaldoCreditos(supabase, userId);
   const respostaFinal = {
