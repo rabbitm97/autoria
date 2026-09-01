@@ -10,7 +10,7 @@
 // miolo do card — o wizard chamador monta o WizardLayout. TelaPronto é
 // auto-contida (já usa WizardLayout internamente).
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { DeclaracaoTitularidade } from "@/components/declaracao-titularidade";
@@ -98,40 +98,42 @@ export function WizardLayout({
       </p>
       <h1 className="font-heading text-3xl text-brand-primary mt-1">{ferramenta}</h1>
 
-      <ol className="mt-6 flex items-center gap-2 flex-wrap">
+      <ol className="mt-6 flex flex-nowrap items-center gap-1 sm:gap-2 overflow-hidden">
         {passos.map((p, i) => {
           const done = i < passoAtual;
           const active = i === passoAtual;
           return (
-            <li key={p} className="flex items-center gap-2 shrink-0">
-              <span
-                className={[
-                  "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold",
-                  done
-                    ? "bg-brand-primary text-white"
-                    : active
-                      ? "bg-brand-gold text-brand-primary"
-                      : "border border-zinc-200 bg-white text-zinc-400",
-                ].join(" ")}
-              >
-                {done ? "✓" : i + 1}
-              </span>
-              <span
-                className={[
-                  "text-xs hidden md:inline",
-                  done
-                    ? "text-zinc-500"
-                    : active
+            <Fragment key={p}>
+              <li className="shrink-0 flex items-center gap-1.5">
+                <span
+                  className={[
+                    "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold",
+                    done
+                      ? "bg-brand-primary text-white"
+                      : active
+                        ? "bg-brand-gold text-brand-primary"
+                        : "border border-zinc-200 bg-white text-zinc-400",
+                  ].join(" ")}
+                >
+                  {done ? "✓" : i + 1}
+                </span>
+                <span
+                  className={[
+                    "text-xs whitespace-nowrap",
+                    active
                       ? "text-brand-primary font-semibold"
-                      : "text-zinc-400",
-                ].join(" ")}
-              >
-                {p}
-              </span>
+                      : done
+                        ? "text-zinc-500 hidden lg:inline"
+                        : "text-zinc-400 hidden lg:inline",
+                  ].join(" ")}
+                >
+                  {p}
+                </span>
+              </li>
               {i < passos.length - 1 && (
-                <span className="hidden md:inline-block h-px w-6 bg-zinc-200" />
+                <span aria-hidden className="flex-1 h-px bg-zinc-200 min-w-[6px]" />
               )}
-            </li>
+            </Fragment>
           );
         })}
       </ol>
@@ -166,8 +168,7 @@ export function ConteudoInicio({ custo, saldo }: { custo: number; saldo: number 
   return (
     <div className="space-y-3">
       <p className="text-sm text-zinc-700">
-        Cobramos <span className="font-semibold text-brand-primary">{custo} créditos</span> ao
-        iniciar. Se a ferramenta não entregar, devolvemos automaticamente.
+        <span className="font-semibold text-brand-primary">{custo} créditos</span> · debitados ao gerar.
       </p>
       {saldo !== null && (
         <p className="text-xs text-zinc-400">

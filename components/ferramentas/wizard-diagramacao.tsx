@@ -298,8 +298,8 @@ export function WizardDiagramacao({ modoInicial, jobIdInicial }: Props) {
         titulo="Como funciona"
         descricao={
           modo === "completa"
-            ? "Diagramamos o miolo do seu livro e devolvemos o PDF digital e o PDF de impressão prontos para venda."
-            : "Diagramamos o miolo do seu livro e devolvemos o PDF digital pronto para leitura."
+            ? "Envie seu manuscrito, escolha o formato e receba o miolo diagramado em PDF digital e em PDF de impressão, com sangria e marcas de corte."
+            : "Envie seu manuscrito, escolha o formato e receba o miolo do seu livro diagramado em PDF."
         }
         rodape={{ primario: <CtaInicio custo={custo} saldo={saldo} onIniciar={() => setPasso(1)} /> }}
       >

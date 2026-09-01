@@ -178,7 +178,7 @@ export function WizardDiagnostico() {
         passos={PASSOS}
         passoAtual={0}
         titulo="Como funciona"
-        descricao="Analisamos o manuscrito capítulo a capítulo e devolvemos um relatório em PDF."
+        descricao="Envie seu manuscrito e receba um diagnóstico editorial em PDF: gênero, pontos fortes, o que melhorar, mercado e formato sugerido."
         rodape={{ primario: <CtaInicio custo={custo} saldo={saldo} onIniciar={() => setPasso(1)} /> }}
       >
         <ConteudoInicio custo={custo} saldo={saldo} />

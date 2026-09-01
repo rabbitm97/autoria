@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { WizardDiagramacao } from "@/components/ferramentas/wizard-diagramacao";
 
 // /dashboard/ferramentas/diagramacao?modo=digital|completa[&job=<id>]
@@ -13,17 +12,5 @@ export default async function DiagramacaoPage({
   const modoInicial = params.modo === "completa" ? "completa" : "digital";
   const jobIdInicial = params.job ?? null;
 
-  return (
-    <div>
-      <WizardDiagramacao modoInicial={modoInicial} jobIdInicial={jobIdInicial} />
-      <div className="mt-6 mb-10 text-center">
-        <Link
-          href="/dashboard/ferramentas"
-          className="text-sm text-zinc-400 hover:text-zinc-600 transition-colors underline underline-offset-4"
-        >
-          ← Voltar às ferramentas
-        </Link>
-      </div>
-    </div>
-  );
+  return <WizardDiagramacao modoInicial={modoInicial} jobIdInicial={jobIdInicial} />;
 }

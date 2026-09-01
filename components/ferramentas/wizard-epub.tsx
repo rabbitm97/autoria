@@ -255,7 +255,7 @@ export function WizardEpub() {
         passos={PASSOS}
         passoAtual={0}
         titulo="Como funciona"
-        descricao="Convertemos seu manuscrito em EPUB pronto para as lojas digitais."
+        descricao="Envie seu manuscrito, aprove os capítulos e receba o EPUB do seu livro, com capa opcional."
         rodape={{ primario: <CtaInicio custo={custo} saldo={saldo} onIniciar={() => setPasso(1)} /> }}
       >
         <ConteudoInicio custo={custo} saldo={saldo} />
