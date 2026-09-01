@@ -134,6 +134,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Arquivos e formatos",
     estado: "pago",
     preco_creditos: CUSTOS_CREDITOS.epub_avulso,
+    href: "/dashboard/ferramentas/epub",
     icon: EpubIcon,
   },
   {

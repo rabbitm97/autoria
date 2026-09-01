@@ -17,7 +17,7 @@ export const BUCKET_FERRAMENTAS = "ferramentas";
 
 /** Ferramentas que têm wizard e podem criar jobs por POST /ferramentas/jobs.
  *  Barra ids fantasmas/legados (residual de auditoria FERR-3.1). */
-export const FERRAMENTAS_COM_WIZARD = ["diagnostico"] as const;
+export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub"] as const;
 
 export type EstadoJob =
   | "iniciado" | "aguardando_autor" | "processando"

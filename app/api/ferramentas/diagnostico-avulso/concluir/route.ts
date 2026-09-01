@@ -9,7 +9,7 @@ import { requireAuth } from "@/lib/supabase-server";
 import { normalizarPdfMiolo } from "@/lib/pdf-normalizar";
 import { getFormatoDef } from "@/lib/formatos";
 import { BUCKET_FERRAMENTAS, concluirJob, falharJob } from "@/lib/ferramenta-jobs";
-import type { FerramentaJob } from "@/lib/ferramenta-jobs";
+import { carregarJobDoUsuario, lerExpiraEm } from "@/lib/ferramenta-concluir";
 import { ACAO_DIAGNOSTICO } from "@/lib/diagnostico-avulso";
 import { renderRelatorioDiagnosticoHtml } from "@/lib/relatorio-diagnostico";
 import type { DiagnosticoState } from "@/lib/project-data";
@@ -41,17 +41,9 @@ export async function POST(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  const { data: rawJob } = await admin
-    .from("ferramenta_jobs")
-    .select("id, user_id, ferramenta_id, estado, projeto_sombra_id, debitado_em, entregaveis")
-    .eq("id", job_id)
-    .maybeSingle();
-
-  const job = rawJob as Pick<FerramentaJob, "id" | "user_id" | "ferramenta_id" | "estado" | "projeto_sombra_id" | "debitado_em" | "entregaveis" | "expira_em"> | null;
-
-  if (!job || job.user_id !== user.id) {
-    return NextResponse.json({ error: "Job não encontrado." }, { status: 404 });
-  }
+  const jobRes = await carregarJobDoUsuario(admin, user.id, job_id);
+  if (!jobRes.ok) return jobRes.response;
+  const { job } = jobRes;
 
   if (job.estado === "concluido") {
     return NextResponse.json({ ok: true, job_id, entregavel_index: 0, entregaveis: job.entregaveis });
@@ -189,14 +181,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Falha ao registrar conclusão do job." }, { status: 500 });
   }
 
-  // Buscar expira_em atualizado
-  const { data: jobAtualizado } = await admin
-    .from("ferramenta_jobs")
-    .select("expira_em")
-    .eq("id", job_id)
-    .maybeSingle();
-
-  const expiraEm = (jobAtualizado as { expira_em?: string | null } | null)?.expira_em ?? null;
+  const expiraEm = await lerExpiraEm(admin, job_id);
 
   return NextResponse.json({
     ok: true,

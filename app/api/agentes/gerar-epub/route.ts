@@ -11,6 +11,9 @@ import { resolveCapaCompleta } from "@/lib/capa-resolver";
 import { extractFrontCover, type FormatoCapa } from "@/lib/capa-frente-extractor";
 import { segmentByCapitulosAprovados, type CapituloAprovado } from "@/lib/parse-chapters";
 import { validarProjectData, type EpubResult } from "@/lib/project-data";
+import { autorizarAcao } from "@/lib/creditos";
+import { registrarDebitoJob } from "@/lib/ferramenta-jobs";
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -181,11 +184,11 @@ export async function POST(req: NextRequest) {
     userId = user.id;
   }
 
-  let body: { project_id: string };
+  let body: { project_id: string; job_id?: string };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
-  const { project_id } = body;
+  const { project_id, job_id } = body;
   if (!project_id) return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
 
   // ── Load data ─────────────────────────────────────────────────────────────
@@ -214,15 +217,52 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: project, error: projErr } = await supabase
       .from("projects")
-      .select("plano, dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash)")
+      .select("plano, origem, dados_elementos, dados_capa, dados_miolo, formato, manuscripts(titulo, subtitulo, texto, texto_revisado, nome, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash)")
       .eq("id", project_id)
       .eq("user_id", userId)
       .single();
 
     if (projErr || !project) return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
 
-    const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-epub");
-    if (gate) return gate;
+    // Gate por origem: sombra (ferramenta avulsa) → job_id obrigatório + débito
+    // pontual via autorizarAcao/registrarDebitoJob. Esteira (projeto real) →
+    // negarPorPlano como sempre. NÃO pular negarPorPlano na esteira, senão
+    // vira EPUB de graça (repete bug já consertado no diagnóstico).
+    const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+    if (ehSombra) {
+      if (!job_id) {
+        return NextResponse.json({ error: "job_id obrigatório para projeto de ferramenta." }, { status: 400 });
+      }
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const { data: job } = await admin
+        .from("ferramenta_jobs")
+        .select("id, user_id, projeto_sombra_id, debitado_em")
+        .eq("id", job_id)
+        .maybeSingle();
+      const j = job as { id: string; user_id: string; projeto_sombra_id: string | null; debitado_em: string | null } | null;
+      if (!j || j.user_id !== userId || j.projeto_sombra_id !== project_id) {
+        return NextResponse.json({ error: "Job não encontrado para este projeto." }, { status: 404 });
+      }
+      if (!j.debitado_em) {
+        const acao = "epub_avulso" as const;
+        const aut = await autorizarAcao(
+          admin,
+          { id: project_id, plano: (project as { plano?: unknown }).plano, origem: "ferramenta" },
+          userId,
+          { minimoPlano: "essencial", acao },
+        );
+        if (!aut.liberado) return aut.resposta!;
+        if (aut.pagoComCreditos) {
+          await registrarDebitoJob(admin, j.id, CUSTOS_CREDITOS[acao]);
+        }
+      }
+    } else {
+      const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "gerar-epub");
+      if (gate) return gate;
+    }
 
     const el = project.dados_elementos as Record<string, unknown> | null;
     const ms = project.manuscripts as {
