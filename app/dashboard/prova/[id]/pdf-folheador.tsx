@@ -10,7 +10,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 // sincronizado com a versão instalada de pdfjs-dist.
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-export default function PdfFolheador({ projectId }: { projectId: string }) {
+export default function PdfFolheador({ projectId, pdfUrl: pdfUrlProp }: { projectId: string; pdfUrl?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState<number>(1);
@@ -27,7 +27,7 @@ export default function PdfFolheador({ projectId }: { projectId: string }) {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  const pdfUrl = `/api/agentes/prova/preview-pdf?project_id=${projectId}`;
+  const pdfUrl = pdfUrlProp ?? `/api/agentes/prova/preview-pdf?project_id=${projectId}`;
 
   useEffect(() => {
     const el = containerRef.current;

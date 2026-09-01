@@ -1081,10 +1081,11 @@ export default function MioloPage() {
                     Confira a pré-visualização. Para ajustar fonte, corpo ou sumário, volte às configurações — refazer é gratuito. O PDF é gerado no próximo passo.
                   </p>
                   <div className="flex flex-col gap-2">
-                    <a href={`/preview/${projectId}`} target="_blank" rel="noreferrer"
-                       className="rounded-xl bg-brand-primary text-brand-surface px-6 py-3 text-sm font-semibold">
+                    <button type="button"
+                            onClick={() => router.push(`/dashboard/ferramentas/previa/${projectId}?job=${avulsoJob}`)}
+                            className="rounded-xl bg-brand-primary text-brand-surface px-6 py-3 text-sm font-semibold">
                       Pré-visualizar
-                    </a>
+                    </button>
                     <button type="button" onClick={() => setStep("config")}
                             className="rounded-xl border border-zinc-200 px-6 py-3 text-sm text-zinc-600">
                       Ajustar configurações

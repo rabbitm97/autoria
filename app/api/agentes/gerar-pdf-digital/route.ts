@@ -20,7 +20,7 @@ import type { FormatoLivro } from "@/lib/miolo-builder-digital";
 import { planoAtende } from "@/lib/planos";
 import { autorizarAcao } from "@/lib/creditos";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
-import { modoDiagramacao, registrarDebitoJob } from "@/lib/ferramenta-jobs";
+import { modoDiagramacao, PREVIA_PAGINAS, registrarDebitoJob } from "@/lib/ferramenta-jobs";
 
 const LIMITE_PDF_FREEMIUM_DIA = 2;
 
@@ -75,12 +75,13 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { project_id: string; formato?: FormatoLivro; job_id?: string };
+  let body: { project_id: string; formato?: FormatoLivro; job_id?: string; previa?: boolean };
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
   const { project_id, job_id: jobId } = body;
+  const ehPrevia = body.previa === true;
   if (!project_id) {
     return NextResponse.json({ error: "project_id obrigatório" }, { status: 400 });
   }
@@ -132,7 +133,12 @@ export async function POST(req: NextRequest) {
 
   // ── Gate por origem (FERR-3.3a) ───────────────────────────────────────────
   // Projeto sombra de ferramenta paga por ação; contorna limite/marca.
+  // ehPrevia (FERR-3.3d): reusa o pipeline sem débito, sem persistir e sem
+  // contar limite — só disponível dentro do sombra.
   const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+  if (ehPrevia && !ehSombra) {
+    return NextResponse.json({ error: "Prévia disponível só em ferramenta avulsa." }, { status: 400 });
+  }
   let pagoPorAcao = false;
   if (ehSombra) {
     if (!jobId) return NextResponse.json({ error: "job_id obrigatório para projeto de ferramenta." }, { status: 400 });
@@ -144,7 +150,7 @@ export async function POST(req: NextRequest) {
     }
     const modo = modoDiagramacao(j.ferramenta_id);
     if (!modo) return NextResponse.json({ error: "Job não é de diagramação." }, { status: 400 });
-    if (!j.debitado_em) {
+    if (!ehPrevia && !j.debitado_em) {
       const acao = modo === "completa" ? "diagramacao_completa" : "diagramacao_digital";
       const aut = await autorizarAcao(storageClient, { id: project_id, origem: "ferramenta" }, userId, { minimoPlano: "essencial", acao });
       if (!aut.liberado) return aut.resposta!;
@@ -327,7 +333,7 @@ export async function POST(req: NextRequest) {
   // Aplicada sobre o buffer FINAL do Puppeteer (depois do [toc-medido]),
   // antes do upload. Nunca entre os dois page.pdf() — a reimpressão do
   // sumário descartaria a marca. Corpo extraído pra lib/pdf-marca.ts (D2-07).
-  if (ehFreemium) {
+  if (ehFreemium || ehPrevia) {
     pdfBuffer = await aplicarMarcaPrevia(pdfBuffer);
   }
 
@@ -341,6 +347,36 @@ export async function POST(req: NextRequest) {
   // pdf-lib não depende de DOMMatrix; funciona em runtime Node serverless do Vercel.
   const parsedPdf = await PDFDocument.load(pdfBuffer);
   const numPaginas = parsedPdf.getPageCount();
+
+  // ── Prévia (FERR-3.3d) ────────────────────────────────────────────────────
+  // Corta em PREVIA_PAGINAS, sobe em livros/{u}/{p}/livro-previa.pdf e
+  // devolve URL assinada. Não persiste dados_pdf_digital nem usage_logs.
+  if (ehPrevia) {
+    const totalPaginas = numPaginas;
+    if (totalPaginas > PREVIA_PAGINAS) {
+      const src = await PDFDocument.load(pdfBuffer);
+      const dst = await PDFDocument.create();
+      const idx = Array.from({ length: PREVIA_PAGINAS }, (_, i) => i);
+      const pages = await dst.copyPages(src, idx);
+      pages.forEach((p) => dst.addPage(p));
+      pdfBuffer = Buffer.from(await dst.save());
+    }
+    const previaPath = `${userId}/${project_id}/livro-previa.pdf`;
+    const { error: upErr } = await storageClient.storage
+      .from("livros")
+      .upload(previaPath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+    if (upErr) return NextResponse.json({ error: `Erro no upload da prévia: ${upErr.message}` }, { status: 500 });
+    const { data: signed, error: signErr } = await storageClient.storage
+      .from("livros")
+      .createSignedUrl(previaPath, 600);
+    if (signErr || !signed?.signedUrl) return NextResponse.json({ error: "Falha ao assinar a prévia." }, { status: 500 });
+    return NextResponse.json({
+      previa: true,
+      url: signed.signedUrl,
+      paginas_total: totalPaginas,
+      paginas_previa: Math.min(PREVIA_PAGINAS, totalPaginas),
+    });
+  }
 
   // ── Upload PDF to Storage ─────────────────────────────────────────────────
   const storagePath = `${userId}/${project_id}/livro-digital.pdf`;

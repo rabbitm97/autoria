@@ -14,6 +14,7 @@ export const RETENCAO_DIAS = 90;
 export const RASCUNHO_DIAS = 14; // job sem débito: limpo em silêncio (martelada 6.4)
 export const AVISO_DIAS = 7;     // e-mail antes de expirar (decisão 6.5)
 export const BUCKET_FERRAMENTAS = "ferramentas";
+export const PREVIA_PAGINAS = 20; // prévia gratuita da diagramação avulsa (decisão 01/set)
 
 /** Ferramentas que têm wizard e podem criar jobs por POST /ferramentas/jobs.
  *  Barra ids fantasmas/legados (residual de auditoria FERR-3.1). */
