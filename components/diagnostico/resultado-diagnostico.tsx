@@ -3,6 +3,7 @@
 // server: renderiza em server component (esteira) e em client (wizard
 // avulso). Recebe só dados.
 import type { DiagnosticoResult } from "@/app/api/agentes/diagnostico/route";
+import { getFormatoDef } from "@/lib/formatos";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,7 @@ export function ResultadoDiagnostico({
   const complexidade = COMPLEXIDADE_MAP[diagnostico.complexidade] ?? COMPLEXIDADE_MAP["médio"];
   const potencial = POTENCIAL_MAP[diagnostico.potencial_comercial] ?? POTENCIAL_MAP["médio"];
   const mercado = MERCADO_MAP[diagnostico.tamanho_mercado] ?? MERCADO_MAP["adequado"];
+  const fs = diagnostico.formato_sugerido?.formato ? diagnostico.formato_sugerido : null;
 
   return (
     <>
@@ -173,6 +175,43 @@ export function ResultadoDiagnostico({
           </div>
         </div>
       </div>
+
+      {/* Formato sugerido */}
+      {fs && (
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-xl bg-brand-gold/10 flex items-center justify-center"><PagesIcon /></span>
+              <div>
+                <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide">Formato sugerido</p>
+                <p className="font-heading text-xl text-brand-primary leading-tight">{fs.label}</p>
+              </div>
+            </div>
+            <p className="text-sm text-zinc-500">
+              ≈ {fmt(fs.paginas_estimadas)} páginas · lombada ≈ {fs.lombada_mm.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mm
+            </p>
+          </div>
+          {fs.motivo && <p className="text-sm text-zinc-600 leading-relaxed mb-4">{fs.motivo}</p>}
+          {fs.cascata?.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {fs.cascata.map((c) => (
+                <div
+                  key={c.formato}
+                  className={`rounded-xl border px-4 py-3 text-sm ${
+                    c.formato === fs.formato ? "border-brand-gold bg-brand-gold/5" : "border-zinc-100"
+                  }`}
+                >
+                  <p className="font-medium text-brand-primary">{getFormatoDef(c.formato).label}</p>
+                  <p className="text-xs text-zinc-500">≈ {fmt(c.paginas)} págs · {c.lombada_mm.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mm</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mt-3 text-[11px] text-zinc-400">
+            Estimativa a partir do texto; o formato é escolhido na etapa Elementos e as páginas finais vêm da diagramação.
+          </p>
+        </div>
+      )}
 
       {/* Pontos fortes / melhorar */}
       <div className="grid md:grid-cols-2 gap-4 mb-6">

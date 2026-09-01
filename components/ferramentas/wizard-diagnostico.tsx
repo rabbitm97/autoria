@@ -502,7 +502,7 @@ export function WizardDiagnostico() {
           )}
           <div className="text-center">
             <Link
-              href="/dashboard/ferramentas"
+              href="/dashboard"
               className="text-sm text-zinc-500 underline underline-offset-4 hover:text-zinc-700 transition-colors"
             >
               Ver no painel
