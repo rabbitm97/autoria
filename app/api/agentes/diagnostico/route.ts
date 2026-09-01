@@ -8,7 +8,7 @@ import { updateProject, avancarEtapa } from "@/lib/supabase-helpers";
 import { planoAtende } from "@/lib/planos";
 import { autorizarAcao } from "@/lib/creditos";
 import { registrarDebitoJob } from "@/lib/ferramenta-jobs";
-import { ACAO_POR_MODO, AMOSTRA_EXPRESSO_FRAGMENTOS, isModoDiagnostico, type ModoDiagnostico } from "@/lib/diagnostico-avulso";
+import { ACAO_DIAGNOSTICO, AMOSTRA_EXPRESSO_FRAGMENTOS, isModoDiagnostico, type ModoDiagnostico } from "@/lib/diagnostico-avulso";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { validarProjectData } from "@/lib/project-data";
@@ -473,7 +473,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Job não encontrado para este projeto." }, { status: 404 });
       }
       if (!j.debitado_em) {
-        const acao = ACAO_POR_MODO[modo];
+        const acao = ACAO_DIAGNOSTICO;
         const aut = await autorizarAcao(
           admin,
           { id: project_id, plano: (project as { plano?: unknown }).plano, origem: "ferramenta" },

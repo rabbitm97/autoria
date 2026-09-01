@@ -15,6 +15,10 @@ export const RASCUNHO_DIAS = 14; // job sem débito: limpo em silêncio (martela
 export const AVISO_DIAS = 7;     // e-mail antes de expirar (decisão 6.5)
 export const BUCKET_FERRAMENTAS = "ferramentas";
 
+/** Ferramentas que têm wizard e podem criar jobs por POST /ferramentas/jobs.
+ *  Barra ids fantasmas/legados (residual de auditoria FERR-3.1). */
+export const FERRAMENTAS_COM_WIZARD = ["diagnostico"] as const;
+
 export type EstadoJob =
   | "iniciado" | "aguardando_autor" | "processando"
   | "concluido" | "falhou" | "expirado" | "cancelado";

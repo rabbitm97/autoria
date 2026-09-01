@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/supabase-server";
-import { criarJob, atualizarJob } from "@/lib/ferramenta-jobs";
+import { criarJob, atualizarJob, FERRAMENTAS_COM_WIZARD } from "@/lib/ferramenta-jobs";
 
 const bodySchema = z.object({
   ferramenta_id: z.string().min(1),
@@ -33,6 +33,10 @@ export async function POST(request: NextRequest) {
   }
 
   const { ferramenta_id, projeto_sombra_id, entrada } = parsed.data;
+
+  if (!(FERRAMENTAS_COM_WIZARD as readonly string[]).includes(ferramenta_id)) {
+    return NextResponse.json({ error: "Ferramenta indisponível." }, { status: 400 });
+  }
 
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

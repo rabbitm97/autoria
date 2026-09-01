@@ -15,7 +15,7 @@ interface JobRow {
 
 const MOCK_DEV: JobRow[] = [
   {
-    id: "mock-job-1", ferramenta_id: "diagnostico-completo", estado: "concluido",
+    id: "mock-job-1", ferramenta_id: "diagnostico", estado: "concluido",
     entregaveis: [{ tipo: "relatorio_pdf", storage_path: "x", bytes: 120_000, nome_exibicao: "Diagnóstico — O Empreendedor Aumentado.pdf" }],
     estornado_em: null,
     expira_em: new Date(Date.now() + 5 * 86_400_000).toISOString(),
@@ -28,7 +28,11 @@ const MOCK_DEV: JobRow[] = [
 ];
 
 function labelFerramenta(id: string): string {
-  return TOOLS.find((t) => t.id === id)?.label ?? id;
+  const hit = TOOLS.find((t) => t.id === id);
+  if (hit) return hit.label;
+  // Jobs históricos (diagnostico-completo / diagnostico-expresso) foram unificados em "diagnostico".
+  if (id.startsWith("diagnostico")) return "Diagnóstico editorial";
+  return id;
 }
 
 const ESTADO_BADGE: Partial<Record<EstadoJob, { texto: string; cls: string }>> = {

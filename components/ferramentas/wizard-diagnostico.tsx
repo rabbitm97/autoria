@@ -10,13 +10,10 @@ import {
   validateFile,
   uploadWithProgress,
 } from "@/lib/upload-manuscrito-cliente";
-import { FERRAMENTA_ID_POR_MODO, type ModoDiagnostico } from "@/lib/diagnostico-avulso";
+import { ACAO_DIAGNOSTICO, FERRAMENTA_ID_DIAGNOSTICO } from "@/lib/diagnostico-avulso";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
-
-const CUSTO_POR_MODO: Record<ModoDiagnostico, number> = {
-  completo: CUSTOS_CREDITOS.diagnostico_completo,
-  expresso: CUSTOS_CREDITOS.diagnostico_expresso,
-};
+import { getFormatoDef, isFormatoValido } from "@/lib/formatos";
+import type { DiagnosticoResult } from "@/lib/project-data";
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
@@ -32,11 +29,12 @@ type Passo = 0 | 1 | 2 | 3;
 interface ResultadoPronto {
   jobId: string;
   expiraEm: string | null;
+  resultado: DiagnosticoResult | null;
 }
 
-export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
-  const custo = CUSTO_POR_MODO[modo];
-  const ferramentaId = FERRAMENTA_ID_POR_MODO[modo];
+export function WizardDiagnostico() {
+  const custo = CUSTOS_CREDITOS[ACAO_DIAGNOSTICO];
+  const ferramentaId = FERRAMENTA_ID_DIAGNOSTICO;
 
   const [passo, setPasso] = useState<Passo>(0);
   const [saldo, setSaldo] = useState<number | null>(null);
@@ -144,10 +142,17 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
       const d = (await concluirRes.json()) as { error?: string };
       throw new Error(d.error ?? "Falha ao gerar o relatório.");
     }
-    const concluirData = (await concluirRes.json()) as { expira_em?: string | null };
+    const concluirData = (await concluirRes.json()) as {
+      expira_em?: string | null;
+      resultado?: DiagnosticoResult | null;
+    };
 
     setProgresso(100);
-    setResultado({ jobId: jobIdAtual, expiraEm: concluirData.expira_em ?? null });
+    setResultado({
+      jobId: jobIdAtual,
+      expiraEm: concluirData.expira_em ?? null,
+      resultado: concluirData.resultado ?? null,
+    });
     setPasso(3);
   }
 
@@ -228,7 +233,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
         body: JSON.stringify({
           ferramenta_id: ferramentaId,
           projeto_sombra_id: projectId,
-          entrada: { arquivo: file.name, titulo: titulo.trim(), autor: autor.trim(), modo },
+          entrada: { arquivo: file.name, titulo: titulo.trim(), autor: autor.trim() },
         }),
       });
       if (!jobRes.ok) throw new Error("Falha ao criar job.");
@@ -254,7 +259,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
       const diagRes = await fetch("/api/agentes/diagnostico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texto, project_id: projectId, modo, job_id: jobId }),
+        body: JSON.stringify({ texto, project_id: projectId, job_id: jobId }),
       });
       if (diagRes.status === 402) {
         const d = (await diagRes.json()) as { error?: string };
@@ -274,14 +279,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
     const saldoInsuficiente = saldo !== null && saldo < custo;
     return (
       <div className="max-w-xl mx-auto px-4 py-10">
-        <h1 className="font-heading text-3xl text-brand-primary mb-2">
-          {modo === "expresso" ? "Diagnóstico Expresso" : "Diagnóstico completo"}
-        </h1>
-        {modo === "expresso" && (
-          <p className="text-sm text-zinc-500 mb-4">
-            Analisa os primeiros trechos do manuscrito.
-          </p>
-        )}
+        <h1 className="font-heading text-3xl text-brand-primary mb-2">Diagnóstico editorial</h1>
         <div className="rounded-2xl border border-zinc-100 bg-white p-6 mb-6">
           <p className="text-sm text-zinc-700 mb-4">
             Cobramos <span className="font-semibold text-brand-primary">{custo} créditos</span> ao
@@ -327,9 +325,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
     const pronto = titulo.trim() && file && declaracaoAceita;
     return (
       <div className="max-w-xl mx-auto px-4 py-10">
-        <h1 className="font-heading text-3xl text-brand-primary mb-6">
-          {modo === "expresso" ? "Diagnóstico Expresso" : "Diagnóstico completo"}
-        </h1>
+        <h1 className="font-heading text-3xl text-brand-primary mb-6">Diagnóstico editorial</h1>
 
         <div className="space-y-5">
           <div>
@@ -421,9 +417,7 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
   if (passo === 2) {
     return (
       <div className="max-w-xl mx-auto px-4 py-10">
-        <h1 className="font-heading text-3xl text-brand-primary mb-6">
-          {modo === "expresso" ? "Diagnóstico Expresso" : "Diagnóstico completo"}
-        </h1>
+        <h1 className="font-heading text-3xl text-brand-primary mb-6">Diagnóstico editorial</h1>
 
         {erro ? (
           <div className="rounded-xl border border-red-100 bg-red-50 p-5 space-y-3">
@@ -479,11 +473,96 @@ export function WizardDiagnostico({ modo }: { modo: ModoDiagnostico }) {
   }
 
   // ── Passo 3: Pronto ──────────────────────────────────────────────────────────
+  const r = resultado?.resultado ?? null;
+  const formatoSugeridoTela = (() => {
+    const fs = r?.formato_sugerido;
+    if (!fs?.formato || !isFormatoValido(fs.formato)) return null;
+    const def = getFormatoDef(fs.formato);
+    return { label: `${def.label} · ${def.descricao_curta}`, motivo: fs.motivo ?? "" };
+  })();
+
   return (
     <div className="max-w-xl mx-auto px-4 py-10">
-      <h1 className="font-heading text-3xl text-brand-primary mb-2">
+      <h1 className="font-heading text-3xl text-brand-primary mb-6">
         Seu diagnóstico está pronto.
       </h1>
+
+      {r && (
+        <div className="rounded-2xl border border-zinc-100 bg-white p-6 mb-4 space-y-5">
+          <section>
+            <h2 className="text-sm font-semibold text-brand-primary mb-3">Visão geral</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              {r.genero_provavel && (
+                <div>
+                  <div className={labelClass}>Gênero provável</div>
+                  <div className="text-zinc-800">{r.genero_provavel}</div>
+                </div>
+              )}
+              {r.tom_narrativo && (
+                <div>
+                  <div className={labelClass}>Tom</div>
+                  <div className="text-zinc-800">{r.tom_narrativo}</div>
+                </div>
+              )}
+              {r.complexidade && (
+                <div>
+                  <div className={labelClass}>Complexidade</div>
+                  <div className="text-zinc-800">{r.complexidade}</div>
+                </div>
+              )}
+              {r.potencial_comercial && (
+                <div>
+                  <div className={labelClass}>Potencial comercial</div>
+                  <div className="text-zinc-800">{r.potencial_comercial}</div>
+                </div>
+              )}
+              {formatoSugeridoTela && (
+                <div className="sm:col-span-2">
+                  <div className={labelClass}>Formato sugerido</div>
+                  <div className="text-zinc-800">{formatoSugeridoTela.label}</div>
+                </div>
+              )}
+            </div>
+            {formatoSugeridoTela?.motivo && (
+              <p className="mt-3 text-xs text-zinc-500 leading-relaxed">{formatoSugeridoTela.motivo}</p>
+            )}
+          </section>
+
+          {r.pontos_fortes?.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold text-brand-primary mb-2">Pontos fortes</h2>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-700">
+                {r.pontos_fortes.map((p, i) => (
+                  <li key={i}>{p}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {r.pontos_melhorar?.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold text-brand-primary mb-2">Pontos a melhorar</h2>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-700">
+                {r.pontos_melhorar.map((p, i) => (
+                  <li key={i}>{p}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {r.proximos_passos?.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold text-brand-primary mb-2">Próximos passos</h2>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-zinc-700">
+                {r.proximos_passos.map((p, i) => (
+                  <li key={i}>{p}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+
       {resultado && (
         <div className="rounded-2xl border border-zinc-100 bg-white p-6 space-y-4">
           <a

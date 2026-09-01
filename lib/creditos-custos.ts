@@ -17,8 +17,7 @@ export const CUSTOS_CREDITOS = {
   upgrade_pro:
     (PLANO_PRECO_CENTAVOS.pro - PLANO_PRECO_CENTAVOS.essencial) / 100, // 200
   // Ferramentas avulsas (FASE 3; martelada 31/ago: avulso ≠ pool)
-  diagnostico_expresso: 10,
-  diagnostico_completo: 40,
+  diagnostico: 30, // Diagnóstico editorial avulso (unificado 01/set)
   revisao_completa: 150,
   epub_avulso: 50,
   diagramacao_digital: 100,

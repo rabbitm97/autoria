@@ -149,9 +149,12 @@ export async function estornarCreditos(
 }
 
 // ─── Gate único de acesso (FERR-3.0a) ────────────────────────────────────────
-// Plano atende → liberado sem débito. Projeto de ferramenta (sombra) →
-// paga por ação com crédito (decisão 6.1: crédito NÃO destrava ação em
-// projeto de esteira — lá o caminho é comprar o plano). Débito no
+// Origem decide PRIMEIRO. Projeto de ferramenta (sombra) paga por ação
+// SEMPRE (decisão 6.1) — plano é irrelevante aqui. Motivo: o trigger
+// enforce_projects_plano promove dono admin a Pro no INSERT, e no
+// FERR-3.1 isso liberava o sombra sem débito (validado 01/set). Só
+// depois o plano da esteira é consultado: crédito NÃO destrava ação
+// em projeto de esteira — lá o caminho é comprar o plano. Débito no
 // "Rodar", estorno em falha total é responsabilidade da rota (padrão
 // estornarCreditos). Limite diário por usage_logs deve ser PULADO pela
 // rota quando a ação foi paga (mesmo espírito de plano/cortesia da
@@ -169,9 +172,9 @@ export async function autorizarAcao(
   userId: string,
   opts: { minimoPlano: Plano; acao: AcaoCredito },
 ): Promise<AutorizacaoAcao> {
-  if (planoAtende(project.plano, opts.minimoPlano)) {
-    return { liberado: true, pagoComCreditos: false, resposta: null };
-  }
+  // Projeto de ferramenta paga por ação SEMPRE (decisão 6.1). Plano é
+  // irrelevante aqui — o trigger enforce_projects_plano promove dono
+  // admin a Pro no INSERT e isso liberava o sombra sem débito (01/set).
   if (project.origem === "ferramenta") {
     const debito = await debitarCreditos(admin, userId, opts.acao, project.id);
     if (debito.ok) {
@@ -191,6 +194,9 @@ export async function autorizarAcao(
         { status: debito.erro === "saldo_insuficiente" ? 402 : 500 },
       ),
     };
+  }
+  if (planoAtende(project.plano, opts.minimoPlano)) {
+    return { liberado: true, pagoComCreditos: false, resposta: null };
   }
   return {
     liberado: false,

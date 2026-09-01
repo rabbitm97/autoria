@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { WizardDiagnostico } from "@/components/ferramentas/wizard-diagnostico";
 
-export default function DiagnosticoExpressoPage() {
+export default function DiagnosticoPage() {
   return (
     <div>
-      <WizardDiagnostico modo="expresso" />
+      <WizardDiagnostico />
       <div className="mt-6 mb-10 text-center">
         <Link
           href="/dashboard/ferramentas"

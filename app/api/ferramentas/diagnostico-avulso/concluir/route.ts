@@ -10,7 +10,7 @@ import { normalizarPdfMiolo } from "@/lib/pdf-normalizar";
 import { getFormatoDef } from "@/lib/formatos";
 import { BUCKET_FERRAMENTAS, concluirJob, falharJob } from "@/lib/ferramenta-jobs";
 import type { FerramentaJob } from "@/lib/ferramenta-jobs";
-import { ACAO_POR_MODO, isModoDiagnostico } from "@/lib/diagnostico-avulso";
+import { ACAO_DIAGNOSTICO } from "@/lib/diagnostico-avulso";
 import { renderRelatorioDiagnosticoHtml } from "@/lib/relatorio-diagnostico";
 import type { DiagnosticoState } from "@/lib/project-data";
 
@@ -61,13 +61,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Job sem projeto sombra." }, { status: 400 });
   }
 
-  const modo = isModoDiagnostico(
-    (job.ferramenta_id ?? "").replace("diagnostico-", "")
-  )
-    ? ((job.ferramenta_id ?? "").replace("diagnostico-", "") as "completo" | "expresso")
-    : "completo";
-
-  const acao = ACAO_POR_MODO[modo];
+  const acao = ACAO_DIAGNOSTICO;
 
   // Carregar o sombra com diagnóstico e dados do manuscrito
   const { data: rawSombra } = await admin
@@ -204,5 +198,12 @@ export async function POST(request: NextRequest) {
 
   const expiraEm = (jobAtualizado as { expira_em?: string | null } | null)?.expira_em ?? null;
 
-  return NextResponse.json({ ok: true, job_id, entregavel_index: 0, expira_em: expiraEm });
+  return NextResponse.json({
+    ok: true,
+    job_id,
+    entregavel_index: 0,
+    expira_em: expiraEm,
+    resultado: estado.resultado,
+    amostra,
+  });
 }

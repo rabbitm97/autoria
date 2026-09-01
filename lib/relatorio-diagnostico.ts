@@ -2,6 +2,7 @@
 // Usado pelo concluir/route.ts via Puppeteer → PDF.
 
 import type { DiagnosticoResult } from "./project-data";
+import { getFormatoDef, isFormatoValido } from "./formatos";
 
 function esc(s: string | null | undefined): string {
   if (!s) return "";
@@ -83,6 +84,13 @@ export function renderRelatorioDiagnosticoHtml(input: RelatorioDiagnosticoInput)
   const comparaveisHtml = listaSecao("Comparáveis", resultado.comparaveis_mercado);
 
   const proximosPassosHtml = listaSecao("Próximos passos", resultado.proximos_passos);
+
+  const formatoSugerido = (() => {
+    const fs = resultado.formato_sugerido;
+    if (!fs?.formato || !isFormatoValido(fs.formato)) return null;
+    const def = getFormatoDef(fs.formato);
+    return { label: `${def.label} · ${def.descricao_curta}`, motivo: fs.motivo ?? "" };
+  })();
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -231,7 +239,9 @@ body {
     ${resultado.potencial_comercial ? `<div class="visao-item"><label>Potencial comercial</label><span>${esc(resultado.potencial_comercial)}</span></div>` : ""}
     ${resultado.complexidade ? `<div class="visao-item"><label>Complexidade</label><span>${esc(resultado.complexidade)}</span></div>` : ""}
     ${resultado.faixa_preco_sugerida ? `<div class="visao-item"><label>Faixa de preço</label><span>${esc(resultado.faixa_preco_sugerida)}</span></div>` : ""}
+    ${formatoSugerido ? `<div class="visao-item"><label>Formato sugerido</label><span>${esc(formatoSugerido.label)}</span></div>` : ""}
   </div>
+  ${formatoSugerido?.motivo ? `<p style="margin-top:3mm;font-size:9.5pt;color:#44445a;">${esc(formatoSugerido.motivo)}</p>` : ""}
 </section>
 
 ${listaSecao("Pontos fortes", resultado.pontos_fortes)}
