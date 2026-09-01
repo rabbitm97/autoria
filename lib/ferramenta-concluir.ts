@@ -11,17 +11,26 @@ import { BUCKET_FERRAMENTAS, type FerramentaJob } from "./ferramenta-jobs";
 export type JobCarregado = Pick<
   FerramentaJob,
   "id" | "user_id" | "ferramenta_id" | "estado" | "projeto_sombra_id" | "debitado_em" | "entregaveis" | "expira_em"
->;
+> & {
+  /** Marcador populado por `carregarJobDoUsuario` quando `opts.permitirReconcluir`
+   *  é true E o sombra ainda existe. Callers usam para pular o early-return
+   *  idempotente e reconcluir de fato (FERR-3.4b: capa avulsa reabre editor). */
+  podeReconcluir?: boolean;
+};
 
 export type CarregarJobResult =
   | { ok: true; job: JobCarregado }
   | { ok: false; response: NextResponse };
 
-/** Carrega o job pelo id, valida que pertence ao usuário. 404 se não. */
+/** Carrega o job pelo id, valida que pertence ao usuário. 404 se não.
+ *  `opts.permitirReconcluir`: quando true e o job ainda tem sombra, a rota
+ *  pode reprocessar mesmo com estado="concluido" (o helper marca
+ *  `job.podeReconcluir=true`; o early-return idempotente segue no caller). */
 export async function carregarJobDoUsuario(
   admin: SupabaseClient,
   userId: string,
   jobId: string,
+  opts?: { permitirReconcluir?: boolean },
 ): Promise<CarregarJobResult> {
   const { data } = await admin
     .from("ferramenta_jobs")
@@ -35,7 +44,8 @@ export async function carregarJobDoUsuario(
       response: NextResponse.json({ error: "Job não encontrado." }, { status: 404 }),
     };
   }
-  return { ok: true, job };
+  const podeReconcluir = !!opts?.permitirReconcluir && !!job.projeto_sombra_id;
+  return { ok: true, job: { ...job, podeReconcluir } };
 }
 
 /** Copia um arquivo de um bucket qualquer para o cofre de ferramentas.

@@ -109,19 +109,24 @@ export async function registrarDebitoJob(
   });
 }
 
-/** Conclui: entregáveis já copiados pro cofre pela rota. Apaga o sombra. */
+/** Conclui: entregáveis já copiados pro cofre pela rota. Apaga o sombra
+ *  por default. Passe `apagarSombra: false` quando o vínculo com o sombra
+ *  precisa sobreviver para edição posterior (FERR-3.4b: capa avulsa
+ *  reabre no editor até expirar); a expiração normal apaga o sombra. */
 export async function concluirJob(
   admin: SupabaseClient,
   job: Pick<FerramentaJob, "id" | "user_id" | "projeto_sombra_id">,
   entregaveis: EntregavelJob[],
+  opts?: { apagarSombra?: boolean },
 ): Promise<boolean> {
+  const apagarSombra = opts?.apagarSombra ?? true;
   const ok = await atualizarJob(admin, job.id, {
     estado: "concluido",
     entregaveis,
     concluido_em: agora(),
-    projeto_sombra_id: null,
+    ...(apagarSombra ? { projeto_sombra_id: null } : {}),
   });
-  if (ok && job.projeto_sombra_id) {
+  if (ok && apagarSombra && job.projeto_sombra_id) {
     await apagarProjetoComoAdmin(admin, job.user_id, job.projeto_sombra_id);
   }
   return ok;

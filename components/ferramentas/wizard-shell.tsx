@@ -163,13 +163,27 @@ export function WizardLayout({
 
 // ─── ConteudoInicio ──────────────────────────────────────────────────────────
 
-export function ConteudoInicio({ custo, saldo }: { custo: number; saldo: number | null }) {
+export function ConteudoInicio({
+  custo,
+  saldo,
+  precoCopy,
+}: {
+  custo: number;
+  saldo: number | null;
+  /** Substitui a linha "{custo} créditos · debitados ao gerar." — usado
+   *  quando o preço não é único (capa avulsa: por imagem ou pacote). */
+  precoCopy?: string;
+}) {
   const saldoInsuficiente = saldo !== null && saldo < custo;
   return (
     <div className="space-y-3">
-      <p className="text-sm text-zinc-700">
-        <span className="font-semibold text-brand-primary">{custo} créditos</span> · debitados ao gerar.
-      </p>
+      {precoCopy ? (
+        <p className="text-sm text-zinc-700">{precoCopy}</p>
+      ) : (
+        <p className="text-sm text-zinc-700">
+          <span className="font-semibold text-brand-primary">{custo} créditos</span> · debitados ao gerar.
+        </p>
+      )}
       {saldo !== null && (
         <p className="text-xs text-zinc-400">
           Seu saldo atual: <span className="font-semibold">{saldo} créditos</span>

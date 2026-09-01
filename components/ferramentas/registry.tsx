@@ -197,6 +197,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     desc: "Capas em 4K geradas por IA a partir do seu briefing.",
     categoria: "Capa e imagem",
     estado: "pago",
+    href: "/dashboard/ferramentas/capa",
     preco_copy: {
       principal: `R$ ${CUSTOS_CREDITOS.capa_avulsa_imagem}`,
       sufixo: "por imagem",

@@ -11,6 +11,7 @@ interface JobRow {
   entregaveis: EntregavelJob[];
   estornado_em: string | null;
   expira_em: string | null;
+  projeto_sombra_id: string | null;
 }
 
 const MOCK_DEV: JobRow[] = [
@@ -19,11 +20,13 @@ const MOCK_DEV: JobRow[] = [
     entregaveis: [{ tipo: "relatorio_pdf", storage_path: "x", bytes: 120_000, nome_exibicao: "Diagnóstico — O Empreendedor Aumentado.pdf" }],
     estornado_em: null,
     expira_em: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+    projeto_sombra_id: null,
   },
   {
     id: "mock-job-2", ferramenta_id: "epub", estado: "processando",
     entregaveis: [], estornado_em: null,
     expira_em: new Date(Date.now() + 89 * 86_400_000).toISOString(),
+    projeto_sombra_id: null,
   },
 ];
 
@@ -51,7 +54,7 @@ export async function ArquivosFerramentas() {
     if (!user) return null;
     const { data } = await supabase
       .from("ferramenta_jobs")
-      .select("id, ferramenta_id, estado, entregaveis, estornado_em, expira_em")
+      .select("id, ferramenta_id, estado, entregaveis, estornado_em, expira_em, projeto_sombra_id")
       .in("estado", ["concluido", "processando", "aguardando_autor", "falhou"])
       .order("criado_em", { ascending: false })
       .limit(12);
@@ -99,9 +102,19 @@ export async function ArquivosFerramentas() {
                 </div>
               )}
               {job.estado === "concluido" && expira && (
-                <p className={`text-[11px] ${urgente ? "text-amber-600 font-medium" : "text-zinc-400"}`}>
-                  Disponível até {expira.toLocaleDateString("pt-BR")}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className={`text-[11px] ${urgente ? "text-amber-600 font-medium" : "text-zinc-400"}`}>
+                    Disponível até {expira.toLocaleDateString("pt-BR")}
+                  </p>
+                  {job.ferramenta_id === "capa-ia" && job.projeto_sombra_id && (
+                    <Link
+                      href={`/dashboard/ferramentas/capa?job=${job.id}`}
+                      className="text-[11px] text-brand-gold hover:underline whitespace-nowrap"
+                    >
+                      Editar capa
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
           );

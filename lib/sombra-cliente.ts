@@ -15,7 +15,9 @@ import { supabase } from "./supabase";
 import { uploadWithProgress } from "./upload-manuscrito-cliente";
 
 export interface CriarSombraOpts {
-  file: File;
+  /** Quando null, pula upload + parse — sombra nasce sem manuscrito (fluxo
+   *  da capa avulsa, FERR-3.4b: autor pode gerar capa sem enviar o livro). */
+  file: File | null;
   titulo: string;
   autor: string;
   ferramentaId: string;
@@ -27,7 +29,9 @@ export interface SombraCriada {
   projectId: string;
   manuscriptId: string;
   jobId: string;
-  storagePath: string;
+  /** null quando `file` era null (sem upload). */
+  storagePath: string | null;
+  /** "" quando `file` era null (sem parse). */
   texto: string;
 }
 
@@ -41,20 +45,29 @@ export async function criarSombraEJob(opts: CriarSombraOpts): Promise<SombraCria
   const userId = session?.user?.id;
   if (!token || !userId) throw new Error("Sessão expirada. Faça login novamente.");
 
-  // 1. Upload
-  onStatus?.("Enviando manuscrito…", 0);
-  const storagePath = `${userId}/${crypto.randomUUID()}/${file.name}`;
-  await uploadWithProgress(storagePath, file, token, (pct) =>
-    onStatus?.("Enviando manuscrito…", Math.round(pct * 0.25)),
-  );
+  // 1. Upload (opcional)
+  let storagePath: string | null = null;
+  if (file) {
+    onStatus?.("Enviando manuscrito…", 0);
+    storagePath = `${userId}/${crypto.randomUUID()}/${file.name}`;
+    await uploadWithProgress(storagePath, file, token, (pct) =>
+      onStatus?.("Enviando manuscrito…", Math.round(pct * 0.25)),
+    );
+  }
 
-  // 2. Insert manuscripts
+  // 2. Insert manuscripts — `nome` é NOT NULL: usa filename (com upload) ou
+  //    titulo (sem upload, ex.: capa avulsa). `storage_path` fica NULL quando
+  //    sem arquivo — nulável no schema; o parse-manuscript é o único que
+  //    depende dele, e ele nem roda no fluxo sem arquivo.
   onStatus?.("Registrando manuscrito…", 25);
+  const nomeManuscrito = file
+    ? file.name.replace(/\.[^/.]+$/, "")
+    : titulo.trim();
   const { data: ms, error: msErr } = await supabase
     .from("manuscripts")
     .insert({
       user_id: userId,
-      nome: file.name.replace(/\.[^/.]+$/, ""),
+      nome: nomeManuscrito,
       titulo: titulo.trim(),
       autor_primeiro_nome: autor.trim() || null,
       status: "em_diagnostico",
@@ -81,7 +94,8 @@ export async function criarSombraEJob(opts: CriarSombraOpts): Promise<SombraCria
   if (projErr || !proj) throw new Error("Falha ao criar projeto.");
   const projectId = (proj as { id: string }).id;
 
-  // 4. Aceite legal (best-effort)
+  // 4. Aceite legal (best-effort) — sem arquivo, o `artefatoRef` é
+  //    "formulario" (a sinopse é obra do autor; o aceite continua válido).
   fetch("/api/legal/aceite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -89,7 +103,7 @@ export async function criarSombraEJob(opts: CriarSombraOpts): Promise<SombraCria
       slug: "declaracao-titularidade",
       contexto: "upload",
       projectId,
-      artefatoRef: storagePath,
+      artefatoRef: storagePath ?? "formulario",
     }),
   }).catch(() => {});
 
@@ -102,7 +116,7 @@ export async function criarSombraEJob(opts: CriarSombraOpts): Promise<SombraCria
       ferramenta_id: ferramentaId,
       projeto_sombra_id: projectId,
       entrada: {
-        arquivo: file.name,
+        arquivo: file?.name ?? null,
         titulo: titulo.trim(),
         autor: autor.trim(),
         ...(entradaExtra ?? {}),
@@ -112,15 +126,19 @@ export async function criarSombraEJob(opts: CriarSombraOpts): Promise<SombraCria
   if (!jobRes.ok) throw new Error("Falha ao criar job.");
   const { job_id: jobId } = (await jobRes.json()) as { job_id: string };
 
-  // 6. Parse do texto
-  onStatus?.("Extraindo texto…", 30);
-  const parseRes = await fetch("/api/parse-manuscript", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ project_id: projectId, manuscript_id: manuscriptId, storage_path: storagePath }),
-  });
-  if (!parseRes.ok) throw new Error("Falha ao processar o arquivo.");
-  const { texto = "" } = (await parseRes.json()) as { texto?: string };
+  // 6. Parse do texto — só quando há arquivo.
+  let texto = "";
+  if (file && storagePath) {
+    onStatus?.("Extraindo texto…", 30);
+    const parseRes = await fetch("/api/parse-manuscript", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: projectId, manuscript_id: manuscriptId, storage_path: storagePath }),
+    });
+    if (!parseRes.ok) throw new Error("Falha ao processar o arquivo.");
+    const parsed = (await parseRes.json()) as { texto?: string };
+    texto = parsed.texto ?? "";
+  }
 
   return { projectId, manuscriptId, jobId, storagePath, texto };
 }
