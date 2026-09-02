@@ -271,6 +271,28 @@ export function estimarLombadaCapaMm(
   return Math.max(LOMBADA_MIN_CAPA_MM, estimarLombadaMm(paginas, gramaturaGsm));
 }
 
+/**
+ * Inversa de `estimarLombadaMm` (75 g padrão): dado uma lombada em mm,
+ * retorna a contagem de páginas inteira mais próxima que produz essa
+ * lombada. Clampada em [24, 1200] (limites do editor de capa avulsa).
+ *
+ * Espelha exatamente a fórmula direta: `lombada_mm = paginas × gsm / 1440`
+ * ⇒ `paginas = lombada_mm × 1440 / gsm` (round para inteiro).
+ *
+ * Usada no editor visual (FERR-3.4h — input bidirecional). O autor pode
+ * digitar páginas OU lombada; convertemos de volta para páginas (única
+ * fonte da verdade no store) via essa função. Retorno mínimo 24 mesmo
+ * para lombadaMm <= 0 (o input do editor já clampa antes de chamar).
+ */
+export function paginasPorLombadaMm(
+  lombadaMm: number,
+  gramaturaGsm: number = PAPEL_GRAMATURA_PADRAO_GSM
+): number {
+  if (!Number.isFinite(lombadaMm) || lombadaMm <= 0) return 24;
+  const paginas = Math.round((lombadaMm * 1440) / gramaturaGsm);
+  return Math.min(1200, Math.max(24, paginas));
+}
+
 // ─── Arte única (panorâmica sem lombada visual dividindo) ────────────────────
 //
 // A arte única é UMA imagem landscape que cobre verso + lombada + frente do

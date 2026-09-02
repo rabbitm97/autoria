@@ -20,7 +20,7 @@ import { ColorPickerPopover } from "@/components/color-picker-popover";
 import { SmartFieldModal } from "./smart-field-modal";
 import { nanoid } from "nanoid";
 import type { ProjectData } from "../types";
-import { getFormatoDef } from "@/lib/formatos";
+import { getFormatoDef, estimarLombadaCapaMm, paginasPorLombadaMm } from "@/lib/formatos";
 import type { Region, SmartField } from "../lib/elements";
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
@@ -80,8 +80,23 @@ function SectionFormato({ projectData }: { projectData: ProjectData }) {
   // aqui; o valor entra em `ferramenta_jobs.entrada.paginas` via PATCH e
   // volta na retomada, refluindo lombada/dobras.
   const isAvulso = !!projectData.avulsoJob;
+  // FERR-3.4h: inputs bidirecionais — pages é a fonte da verdade no store,
+  // mas o autor pode digitar em qualquer um dos dois campos (a inversa
+  // paginasPorLombadaMm reconstrói o inteiro que produz aquela lombada).
+  const lombadaMinMm = estimarLombadaCapaMm(24);
+  const lombadaMaxMm = estimarLombadaCapaMm(1200);
   const [paginasInput, setPaginasInput] = useState<string>(String(pages));
+  const [lombadaInput, setLombadaInput] = useState<string>(lombadaMm.toFixed(1));
   useEffect(() => { setPaginasInput(String(pages)); }, [pages]);
+  useEffect(() => {
+    // Só sincroniza se a mudança em `pages` NÃO veio da própria digitação
+    // do lombadaInput (evita "10.35" digitado virar "10.4" no meio da
+    // edição). Se o valor no input já mapeia para `pages`, deixa quieto.
+    const n = Number(lombadaInput);
+    if (Number.isFinite(n) && paginasPorLombadaMm(n) === pages) return;
+    setLombadaInput(lombadaMm.toFixed(1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, lombadaMm]);
   const timerRef = useRef<number | null>(null);
   function commitPaginas(next: number) {
     useEditorStore.setState({ pages: next });
@@ -117,35 +132,57 @@ function SectionFormato({ projectData }: { projectData: ProjectData }) {
         </div>
         {!isFrente && (
           <div>
-            <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>
             {isAvulso ? (
               <>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={24}
-                    max={1200}
-                    step={1}
-                    value={paginasInput}
-                    onChange={(e) => {
-                      setPaginasInput(e.target.value);
-                      const n = Number(e.target.value);
-                      if (Number.isInteger(n) && n >= 24 && n <= 1200) commitPaginas(n);
-                    }}
-                    className="w-20 rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
-                  />
-                  <span className="text-[10px] text-zinc-400">
-                    págs · lombada {lombadaMm.toFixed(1)}mm
-                  </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>
+                    <input
+                      type="number"
+                      min={24}
+                      max={1200}
+                      step={1}
+                      value={paginasInput}
+                      onChange={(e) => {
+                        setPaginasInput(e.target.value);
+                        const n = Number(e.target.value);
+                        if (Number.isInteger(n) && n >= 24 && n <= 1200) commitPaginas(n);
+                      }}
+                      className="w-full rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] text-zinc-400">Lombada (mm)</p>
+                    <input
+                      type="number"
+                      min={lombadaMinMm}
+                      max={lombadaMaxMm}
+                      step={0.1}
+                      value={lombadaInput}
+                      onChange={(e) => {
+                        setLombadaInput(e.target.value);
+                        const mm = Number(e.target.value);
+                        if (Number.isFinite(mm) && mm >= lombadaMinMm && mm <= lombadaMaxMm) {
+                          commitPaginas(paginasPorLombadaMm(mm));
+                        }
+                      }}
+                      className="w-full rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
+                    />
+                  </div>
                 </div>
-                <p className="mt-1 text-[10px] text-zinc-300">Entre 24 e 1200 (informado por você)</p>
+                <p className="mt-1 text-[10px] text-zinc-300">
+                  Informe as páginas OU a lombada em mm (a outra é calculada). Confirme com sua gráfica.
+                </p>
               </>
             ) : (
-              <div className="rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2">
-                <span className="text-xs text-zinc-500">
-                  {pages} págs · lombada {lombadaMm.toFixed(1)}mm
-                </span>
-              </div>
+              <>
+                <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>
+                <div className="rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2">
+                  <span className="text-xs text-zinc-500">
+                    {pages} págs · lombada {lombadaMm.toFixed(1)}mm
+                  </span>
+                </div>
+              </>
             )}
           </div>
         )}
