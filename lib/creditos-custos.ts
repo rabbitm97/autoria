@@ -29,7 +29,7 @@ export const CUSTOS_CREDITOS = {
 
 export type AcaoCredito = keyof typeof CUSTOS_CREDITOS;
 
-/** Gerações INCLUÍDAS no produto capa avulsa (martelada 02/set):
- *  4 de frente; verso é extra via pool avulso. Fonte única — lida pelo
- *  gerar-capa, pelo GET /capa/saldo e pelo client da tela de capa. */
-export const INCLUSO_CAPA_AVULSA = { frente: 4, verso: 0 } as const;
+/** Gerações INCLUÍDAS no produto capa avulsa (martelada revisada 02/set:
+ *  experiência completa — frente, verso e capa única). Única debita 1 de
+ *  cada partição (regra 05k) → até 4 únicas. Extras via pool avulso. */
+export const INCLUSO_CAPA_AVULSA = { frente: 4, verso: 4 } as const;

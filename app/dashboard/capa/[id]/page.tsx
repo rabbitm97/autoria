@@ -1811,7 +1811,9 @@ function ModoIA({
     coberturaSalva ??
     "frente_verso";
   const [cobertura, setCobertura] = useState<"frente_verso" | "unica">(coberturaInicial);
-  const podeUnica = plano === "pro" && proposito === "completa";
+  // FERR-3.4e: no avulso, quem pagou o produto leva a experiência completa
+  // — libera cobertura "unica" independente do plano do dono do sombra.
+  const podeUnica = (plano === "pro" || avulso) && proposito === "completa";
   const alvoEfetivo: "frente" | "unica" =
     podeUnica && cobertura === "unica" ? "unica" : "frente";
 
@@ -2887,6 +2889,7 @@ function GaleriaCapaModal({
   dadosAtuais,
   plano,
   proposito,
+  avulso,
   onDadosNovos,
 }: {
   open: boolean;
@@ -2896,6 +2899,8 @@ function GaleriaCapaModal({
   dadosAtuais: Record<string, unknown> | null;
   plano: Plano;
   proposito: PropositoPublicacao | null;
+  /** FERR-3.4e: capa avulsa libera "Usar como verso" independente do plano. */
+  avulso: boolean;
   onDadosNovos: (dados: Record<string, unknown>, alvo: "frente" | "verso" | "unica") => void;
 }) {
   const [itens, setItens] = useState<GaleriaCapaItem[] | null>(null);
@@ -2965,7 +2970,7 @@ function GaleriaCapaModal({
     coberturaAtual === "frente_verso" &&
     typeof dadosAtuais?.url_escolhida === "string" &&
     (dadosAtuais.url_escolhida as string).length > 0 &&
-    plano === "pro" &&
+    (plano === "pro" || avulso) &&
     proposito === "completa";
 
   const slug = slugTitulo(tituloLivro);
@@ -3419,6 +3424,12 @@ export default function CapaPage() {
   // "pessoal"/"livrarias" são normalizados na leitura; qualquer valor ≠
   // "digital"/"completa" é tratado como indefinido.
   const [proposito, setProposito] = useState<PropositoPublicacao | null>(null);
+  // FERR-3.4e: capa avulsa é, por definição do produto, capa COMPLETA
+  // (frente + lombada + verso no PDF gráfico) — o sombra não tem
+  // `dados_creditos`, então o `proposito` do banco vem null. Downstream
+  // (gates de única/verso, cópia da trilha) usa `propositoEfetivo`.
+  const propositoEfetivo: PropositoPublicacao | null =
+    avulso ? "completa" : proposito;
   // UI-only: true enquanto o autor está no fluxo de troca de trilha (sem anular
   // o proposito local, que reflete o banco). Reseta quando confirma ou cancela.
   const [trocandoTrilha, setTrocandoTrilha] = useState(false);
@@ -3761,7 +3772,7 @@ export default function CapaPage() {
         (typeof versoAtual.url_escolhida === "string" &&
           versoAtual.url_escolhida.length > 0));
     const precisaPainelVerso =
-      plano === "pro" &&
+      (plano === "pro" || avulso) &&
       proposito === "completa" &&
       cobertura === "frente_verso" &&
       !versoDecidido;
@@ -3950,7 +3961,7 @@ export default function CapaPage() {
             <CapaExistenteCard
               dados={dados}
               editorConfirmed={isEditorCapa(dados)}
-              proposito={proposito}
+              proposito={propositoEfetivo}
               formato={formatoGlobal}
               isExpress={isExpress}
               isAvulso={!!retornoAvulso}
@@ -3979,7 +3990,7 @@ export default function CapaPage() {
               const mostrarPainelVerso =
                 dados.modo === "ia" &&
                 cobertura === "frente_verso" &&
-                plano === "pro" &&
+                (plano === "pro" || avulso) &&
                 proposito === "completa" &&
                 !versoDecidido;
               if (!mostrarPainelVerso) return null;
@@ -4241,7 +4252,7 @@ export default function CapaPage() {
             estimativaPaginas={estimativaPaginas}
             regerarDe={modoIaRegerarDe ?? undefined}
             plano={plano}
-            proposito={proposito}
+            proposito={propositoEfetivo}
             coberturaSalva={
               (dados?.cobertura === "unica" || dados?.cobertura === "frente_verso")
                 ? (dados.cobertura as "unica" | "frente_verso")
@@ -4271,7 +4282,8 @@ export default function CapaPage() {
         tituloLivro={titulo}
         dadosAtuais={dados}
         plano={plano}
-        proposito={proposito}
+        proposito={propositoEfetivo}
+        avulso={avulso}
         onDadosNovos={(dadosNovos, alvo) => {
           if (alvo === "verso") {
             // Verso escolhido pela galeria: card unificado permanece

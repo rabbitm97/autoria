@@ -45,7 +45,7 @@ const FERRAMENTA_ID = "capa-ia";
 const PASSOS = ["Início", "Dados do livro", "Formato", "Capa", "Gerar", "Pronto"];
 
 const PRECO_COPY =
-  `${CUSTOS_CREDITOS.capa_avulsa} créditos, debitados na primeira geração. Inclui 4 gerações da arte da frente; extras: ${CUSTOS_CREDITOS.capa_avulsa_imagem} créditos cada · 4 por ${CUSTOS_CREDITOS.capa_avulsa_pacote}.`;
+  `${CUSTOS_CREDITOS.capa_avulsa} créditos, debitados na primeira geração. Inclui 4 gerações por parte da capa — frente, verso ou capa única. Extras: ${CUSTOS_CREDITOS.capa_avulsa_imagem} créditos cada · 4 por ${CUSTOS_CREDITOS.capa_avulsa_pacote}.`;
 
 const GENEROS_TOPO = Object.keys(GENRES);
 
