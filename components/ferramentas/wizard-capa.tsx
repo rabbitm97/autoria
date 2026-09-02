@@ -103,6 +103,10 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // FERR-3.4d: overlay de "processando" que sobrepõe o passo atual sem
   // avançar o stepper. `null` = não processando. `string` = texto exibido.
   const [processando, setProcessando] = useState<string | null>(null);
+  // Retry do overlay reexecuta a operação que falhou (não hardcodar
+  // gerarArquivos). `null` = sem retry seguro (ex.: falha antes de existir
+  // job no `iniciarSombraEPreparar` cai no formulário do passo 1).
+  const retryRef = useRef<null | (() => Promise<void>)>(null);
 
   const retomouRef = useRef(false);
   useEffect(() => {
@@ -181,6 +185,9 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // ── passo 1 → sombra + preparar → 2 ──────────────────────────────────────
   async function iniciarSombraEPreparar() {
     if (!dadosProntos(dados)) return;
+    // Sem job ainda: retry não é seguro (criaria um segundo sombra) — no
+    // erro, caímos de volta ao formulário do passo 1 com o erro inline.
+    retryRef.current = null;
     setErro(null);
     setProcessando("Preparando…");
     setStatusTexto("Preparando…");
@@ -234,8 +241,10 @@ export function WizardCapa({ jobIdInicial }: Props) {
       setPasso(2);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao iniciar.");
-      // NÃO limpar `processando` — mantém overlay visível com o erro
-      // e botão "Tentar novamente" (mesmo padrão do antigo passo=6).
+      // Sem retry seguro: volta ao formulário do passo 1 — o erro fica
+      // no state e o autor edita/reenvia via botão Continuar.
+      setProcessando(null);
+      setPasso(1);
     }
   }
 
@@ -243,6 +252,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // e o manuscript/sinopse do sombra sem criar um novo job.
   async function reenviarDadosPreparar() {
     if (!jobId || !dadosProntos(dados)) return;
+    retryRef.current = reenviarDadosPreparar;
     setErro(null);
     setProcessando("Atualizando dados do livro…");
     setStatusTexto("Atualizando dados do livro…");
@@ -275,6 +285,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // ── passo 4 → gerar arquivos ────────────────────────────────────────────
   async function gerarArquivos() {
     if (!projectId || !jobId) return;
+    retryRef.current = gerarArquivos;
     setErro(null);
     setProcessando("Preparando PDF gráfico…");
     setStatusTexto("Preparando PDF gráfico…");
@@ -328,7 +339,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // `processando` só é limpo no sucesso; no erro o overlay permanece
   // com o botão "Tentar novamente" (mesmo padrão do antigo passo=6).
   if (processando !== null) {
-    const podeRetry = !!(projectId && jobId && erro);
+    const podeRetry = !!(erro && retryRef.current);
     return (
       <WizardLayout
         ferramenta={FERRAMENTA_LABEL}
@@ -340,7 +351,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
             <CtaPrimario
               onClick={() => {
                 setErro(null);
-                void gerarArquivos();
+                void retryRef.current!();
               }}
             >
               Tentar novamente
