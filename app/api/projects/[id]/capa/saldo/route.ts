@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { saldoImagensCapa, getSaldoCreditos } from "@/lib/capa-briefing";
+import { INCLUSO_CAPA_AVULSA } from "@/lib/creditos-custos";
 
 // GET /api/projects/[id]/capa/saldo (B2-05i M5a) — resumo leve do saldo de
 // imagens de capa IA + créditos do usuário, para o cliente montar rótulos
@@ -42,7 +43,7 @@ export async function GET(
 
   const { data: project, error: projErr } = await admin
     .from("projects")
-    .select("id, user_id, plano")
+    .select("id, user_id, plano, origem")
     .eq("id", projectId)
     .single();
   if (projErr || !project) {
@@ -52,10 +53,15 @@ export async function GET(
     return NextResponse.json({ error: "Sem acesso a este projeto." }, { status: 403 });
   }
 
+  // FERR-3.4d: sombra da capa avulsa tem incluso próprio (4 gerações da
+  // frente pelo produto), independente do plano do dono. Sem override, o
+  // client leria 0 (freemium) e travaria o botão de gerar.
+  const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
   const saldoImagens = await saldoImagensCapa(
     admin,
     projectId,
     (project as { plano?: unknown }).plano,
+    ehSombra ? INCLUSO_CAPA_AVULSA : undefined,
   );
   const creditosSaldo = dev ? null : await getSaldoCreditos(supabase, userId);
 
@@ -77,5 +83,6 @@ export async function GET(
       unica: saldoImagens.origemProximoConsumo("unica"),
     },
     creditos_saldo: creditosSaldo,
+    origem_projeto: ehSombra ? "ferramenta" : "esteira",
   });
 }

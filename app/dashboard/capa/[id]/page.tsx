@@ -17,6 +17,7 @@ import { FORMATOS_LIVRO, type FormatoLivro, getFormatoDef, estimarLombadaCapaMm 
 import { ORELHA_MIN_MM, getOrelhaDefault, getOrelhaMax, clampOrelhaMm, type FormatKey } from "@/app/editor/capa/[project_id]/lib/dimensions";
 import type { PropositoPublicacao, OpcaoCapa, GaleriaCapaItem, DadosVersoIa } from "@/lib/project-data";
 import { PLANO_LABEL, planoAtende, type Plano } from "@/lib/planos";
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { generoParaFamilia } from "@/lib/templates";
 import { TelaConversaoPlano } from "@/components/plano-conversao";
 
@@ -175,18 +176,24 @@ const TIPO_LABEL: Record<"frente" | "verso" | "unica", string> = {
 
 /**
  * Bloco de compra de pacote de imagens extras (B2-05b). Aparece dentro do
- * fluxo quando o saldo do alvo esgota. Duas opções fixas:
- *  - 1 imagem por 10 créditos
- *  - 4 imagens por 30 créditos
- * Sucesso atualiza o saldo via callback do pai (que refetch dados do projeto).
+ * fluxo quando o saldo do alvo esgota. Preços variam pela ORIGEM do projeto
+ * (FERR-3.4d):
+ *  - Esteira: imagem_capa_extra / pacote_imagens_capa (pool do plano)
+ *  - Avulso:  capa_avulsa_imagem / capa_avulsa_pacote
+ * O caller passa `precos` + `avulso` já resolvidos — este componente só
+ * renderiza. Sucesso atualiza o saldo via callback do pai.
  */
 function ComprarImagensBloco({
   projectId,
   saldoCreditos,
+  precos,
+  avulso,
   onComprado,
 }: {
   projectId: string;
   saldoCreditos: number | null;
+  precos: { imagem: number; pacote: number };
+  avulso: boolean;
   onComprado: (novoSaldo: SaldoImagensCliente, novosCreditos: number | null) => void;
 }) {
   const [comprando, setComprando] = useState<"unitario" | "quadruplo" | null>(null);
@@ -219,26 +226,27 @@ function ComprarImagensBloco({
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
       <p className="text-sm text-amber-900 leading-relaxed">
-        Você usou todas as gerações inclusas do seu plano para esta capa. Use uma
-        das imagens já geradas ou gere novas com créditos:
+        {avulso
+          ? `Você usou as 4 gerações incluídas na ferramenta. Imagens extras: ${precos.imagem} créditos · 4 por ${precos.pacote}.`
+          : "Você usou todas as gerações inclusas do seu plano para esta capa. Use uma das imagens já geradas ou gere novas com créditos:"}
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => void comprar("unitario")}
-          disabled={comprando !== null || semCreditosPara(10)}
+          disabled={comprando !== null || semCreditosPara(precos.imagem)}
           className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-center text-sm font-semibold text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          +1 por 10
+          +1 por {precos.imagem}
           {comprando === "unitario" && <span className="ml-2 text-amber-500">…</span>}
         </button>
         <button
           type="button"
           onClick={() => void comprar("quadruplo")}
-          disabled={comprando !== null || semCreditosPara(30)}
+          disabled={comprando !== null || semCreditosPara(precos.pacote)}
           className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-center text-sm font-semibold text-amber-900 hover:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          +4 por 30
+          +4 por {precos.pacote}
           {comprando === "quadruplo" && <span className="ml-2 text-amber-500">…</span>}
         </button>
       </div>
@@ -248,7 +256,7 @@ function ComprarImagensBloco({
         </p>
       )}
       {erro && <p className="text-xs text-red-600">{erro}</p>}
-      {saldoCreditos !== null && saldoCreditos < 10 && (
+      {saldoCreditos !== null && saldoCreditos < precos.imagem && (
         <p className="text-xs text-amber-800/80">
           Créditos insuficientes.{" "}
           <Link href="/dashboard/creditos" className="underline font-medium">
@@ -1237,10 +1245,14 @@ function loadDraft(projectId: string): BriefingDraft {
 function PainelVersoIa({
   projectId,
   dadosFrente,
+  precosImagens,
+  avulso,
   onSalvo,
 }: {
   projectId: string;
   dadosFrente: Record<string, unknown>;
+  precosImagens: { imagem: number; pacote: number };
+  avulso: boolean;
   onSalvo: (dadosServidor: Record<string, unknown>) => void;
 }) {
   // B2-05i M5c: fase "confirmando" removida — os botões de continuacao/
@@ -1588,6 +1600,8 @@ function PainelVersoIa({
             <ComprarImagensBloco
               projectId={projectId}
               saldoCreditos={creditosSaldo}
+              precos={precosImagens}
+              avulso={avulso}
               onComprado={(novoSaldo, novosCred) => {
                 setSaldo(novoSaldo);
                 setCreditosSaldo(novosCred);
@@ -1662,6 +1676,8 @@ function PainelVersoIa({
               <ComprarImagensBloco
                 projectId={projectId}
                 saldoCreditos={creditosSaldo}
+                precos={precosImagens}
+                avulso={avulso}
                 onComprado={(novoSaldo, novosCred) => {
                   setSaldo(novoSaldo);
                   setCreditosSaldo(novosCred);
@@ -1723,6 +1739,8 @@ function ModoIA({
   proposito,
   coberturaSalva,
   galeriaCount,
+  precosImagens,
+  avulso,
   onAbrirGaleria,
   onSalvo,
   onVoltar,
@@ -1754,6 +1772,12 @@ function ModoIA({
    * alimenta o card contextual pré-briefing que abre o modal universal.
    */
   galeriaCount: number;
+  /**
+   * FERR-3.4d: preços de imagens extras já resolvidos pela origem do
+   * projeto (esteira: pool do plano; avulso: capa_avulsa_*).
+   */
+  precosImagens: { imagem: number; pacote: number };
+  avulso: boolean;
   onAbrirGaleria: () => void;
   onSalvo: (dadosServidor: CapaGeradaResult) => void;
   onVoltar: () => void;
@@ -2482,6 +2506,8 @@ function ModoIA({
             <ComprarImagensBloco
               projectId={projectId}
               saldoCreditos={saldo}
+              precos={precosImagens}
+              avulso={avulso}
               onComprado={(novoSaldo, novosCred) => {
                 setSaldoImagens(novoSaldo);
                 if (novosCred !== null) setSaldo(novosCred);
@@ -2579,6 +2605,8 @@ function ModoIA({
               <ComprarImagensBloco
                 projectId={projectId}
                 saldoCreditos={saldo}
+                precos={precosImagens}
+                avulso={avulso}
                 onComprado={(novoSaldo, novosCred) => {
                   setSaldoImagens(novoSaldo);
                   if (novosCred !== null) setSaldo(novosCred);
@@ -3346,6 +3374,12 @@ export default function CapaPage() {
   const searchParams = useSearchParams();
   const avulsoJob = searchParams.get("avulso");
   const retornoAvulso = avulsoJob ? `/dashboard/ferramentas/capa?job=${avulsoJob}` : null;
+  // FERR-3.4d: preços de imagens extras por origem do projeto. Sombra da
+  // capa avulsa cobra por `capa_avulsa_*`; esteira usa o pool do plano.
+  const avulso = !!avulsoJob;
+  const precosImagens = avulso
+    ? { imagem: CUSTOS_CREDITOS.capa_avulsa_imagem, pacote: CUSTOS_CREDITOS.capa_avulsa_pacote }
+    : { imagem: CUSTOS_CREDITOS.imagem_capa_extra, pacote: CUSTOS_CREDITOS.pacote_imagens_capa };
 
   const [modo, setModo] = useState<Modo>("escolha");
   const [loading, setLoading] = useState(true);
@@ -3953,6 +3987,8 @@ export default function CapaPage() {
                 <PainelVersoIa
                   projectId={id}
                   dadosFrente={dados}
+                  precosImagens={precosImagens}
+                  avulso={avulso}
                   onSalvo={(novo) => setDados(novo)}
                 />
               );
@@ -4212,6 +4248,8 @@ export default function CapaPage() {
                 : undefined
             }
             galeriaCount={galeriaCount}
+            precosImagens={precosImagens}
+            avulso={avulso}
             onAbrirGaleria={() => setGaleriaModalOpen(true)}
             onSalvo={(dadosServidor) => rotearPosEscolha(dadosServidor)}
             onVoltar={() => {

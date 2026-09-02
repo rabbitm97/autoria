@@ -38,8 +38,10 @@ import {
 
 const FERRAMENTA_LABEL = "Capa com IA";
 const FERRAMENTA_ID = "capa-ia";
-// Stepper: 6 etapas visíveis. O estado interno inclui um "rodando" (6) que
-// reaproveita o card do 4 durante a geração final.
+// Stepper: 6 etapas visíveis (0..5). A geração/preparação intermediária
+// vira um overlay sobre o passo atual (state `processando`), sem mudar
+// o stepper — evita o flicker antigo em que o stepper acendia o passo
+// 5 e voltava.
 const PASSOS = ["Início", "Dados do livro", "Formato", "Capa", "Gerar", "Pronto"];
 
 const PRECO_COPY =
@@ -47,8 +49,9 @@ const PRECO_COPY =
 
 const GENEROS_TOPO = Object.keys(GENRES);
 
-// 0..5 correspondem aos passos do stepper. 6 é "rodando" (overlay do 4).
-type Passo = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+// 0..5 correspondem aos passos do stepper. Geração intermediária vive
+// no state `processando` (overlay), sem alterar o `passo`.
+type Passo = 0 | 1 | 2 | 3 | 4 | 5;
 
 interface DadosLivro {
   titulo: string;
@@ -97,6 +100,9 @@ export function WizardCapa({ jobIdInicial }: Props) {
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoPronto | null>(null);
+  // FERR-3.4d: overlay de "processando" que sobrepõe o passo atual sem
+  // avançar o stepper. `null` = não processando. `string` = texto exibido.
+  const [processando, setProcessando] = useState<string | null>(null);
 
   const retomouRef = useRef(false);
   useEffect(() => {
@@ -175,8 +181,8 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // ── passo 1 → sombra + preparar → 2 ──────────────────────────────────────
   async function iniciarSombraEPreparar() {
     if (!dadosProntos(dados)) return;
-    setPasso(6);
     setErro(null);
+    setProcessando("Preparando…");
     setStatusTexto("Preparando…");
     setProgresso(10);
     try {
@@ -193,6 +199,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
         },
         onStatus: (t, p) => {
           setStatusTexto(t);
+          setProcessando(t);
           setProgresso(p);
         },
       });
@@ -200,6 +207,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
       setJobId(sombra.jobId);
 
       setStatusTexto("Salvando dados do livro…");
+      setProcessando("Salvando dados do livro…");
       setProgresso(60);
       const prepRes = await fetch("/api/ferramentas/capa-avulsa/preparar", {
         method: "POST",
@@ -222,9 +230,12 @@ export function WizardCapa({ jobIdInicial }: Props) {
       // history.replaceState em vez de router.replace: atualiza a URL sem
       // remontar o wizard (evita flicker).
       window.history.replaceState(null, "", `/dashboard/ferramentas/capa?job=${sombra.jobId}`);
+      setProcessando(null);
       setPasso(2);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao iniciar.");
+      // NÃO limpar `processando` — mantém overlay visível com o erro
+      // e botão "Tentar novamente" (mesmo padrão do antigo passo=6).
     }
   }
 
@@ -232,8 +243,8 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // e o manuscript/sinopse do sombra sem criar um novo job.
   async function reenviarDadosPreparar() {
     if (!jobId || !dadosProntos(dados)) return;
-    setPasso(6);
     setErro(null);
+    setProcessando("Atualizando dados do livro…");
     setStatusTexto("Atualizando dados do livro…");
     setProgresso(50);
     try {
@@ -254,6 +265,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
         const d = (await prepRes.json()) as { error?: string };
         throw new Error(d.error ?? "Falha ao atualizar dados.");
       }
+      setProcessando(null);
       setPasso(4);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao atualizar.");
@@ -263,8 +275,8 @@ export function WizardCapa({ jobIdInicial }: Props) {
   // ── passo 4 → gerar arquivos ────────────────────────────────────────────
   async function gerarArquivos() {
     if (!projectId || !jobId) return;
-    setPasso(6);
     setErro(null);
+    setProcessando("Preparando PDF gráfico…");
     setStatusTexto("Preparando PDF gráfico…");
     setProgresso(20);
     try {
@@ -279,6 +291,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
       }
 
       setStatusTexto("Salvando e liberando downloads…");
+      setProcessando("Salvando e liberando downloads…");
       setProgresso(70);
       const conclRes = await fetch("/api/ferramentas/capa-avulsa/concluir", {
         method: "POST",
@@ -300,6 +313,7 @@ export function WizardCapa({ jobIdInicial }: Props) {
         expiraEm: conclData.expira_em ?? null,
         entregaveis: Array.isArray(conclData.entregaveis) ? conclData.entregaveis : [],
       });
+      setProcessando(null);
       setPasso(5);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro inesperado.");
@@ -307,6 +321,37 @@ export function WizardCapa({ jobIdInicial }: Props) {
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
+
+  // FERR-3.4d: overlay unificado de processamento. Renderiza no MESMO
+  // passo atual (não avança nem retrocede o stepper) — evita flicker
+  // do antigo estado transitório `passo=6` que remontava a árvore.
+  // `processando` só é limpo no sucesso; no erro o overlay permanece
+  // com o botão "Tentar novamente" (mesmo padrão do antigo passo=6).
+  if (processando !== null) {
+    const podeRetry = !!(projectId && jobId && erro);
+    return (
+      <WizardLayout
+        ferramenta={FERRAMENTA_LABEL}
+        passos={PASSOS}
+        passoAtual={passo}
+        titulo={erro ? "Não conseguimos concluir" : processando}
+        rodape={{
+          primario: podeRetry ? (
+            <CtaPrimario
+              onClick={() => {
+                setErro(null);
+                void gerarArquivos();
+              }}
+            >
+              Tentar novamente
+            </CtaPrimario>
+          ) : undefined,
+        }}
+      >
+        <ConteudoRodando statusTexto={statusTexto} progresso={progresso} erro={erro} />
+      </WizardLayout>
+    );
+  }
 
   if (retomando) {
     // Overlay de retomada — stepper visível mas sem nenhum passo destacado
@@ -490,32 +535,6 @@ export function WizardCapa({ jobIdInicial }: Props) {
             Alterar dados
           </button>
         </div>
-      </WizardLayout>
-    );
-  }
-
-  if (passo === 6) {
-    const podeRetry = !!(projectId && jobId && erro);
-    return (
-      <WizardLayout
-        ferramenta={FERRAMENTA_LABEL}
-        passos={PASSOS}
-        passoAtual={4}
-        titulo={erro ? "Geração interrompida" : "Gerando arquivos…"}
-        rodape={{
-          primario: podeRetry ? (
-            <CtaPrimario
-              onClick={() => {
-                setErro(null);
-                void gerarArquivos();
-              }}
-            >
-              Tentar novamente
-            </CtaPrimario>
-          ) : undefined,
-        }}
-      >
-        <ConteudoRodando statusTexto={statusTexto} progresso={progresso} erro={erro} />
       </WizardLayout>
     );
   }

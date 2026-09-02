@@ -350,7 +350,7 @@ export async function carregarContexto(
   const { data: project, error } = await supabase
     .from("projects")
     .select(
-      "id, user_id, plano, dados_elementos, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)",
+      "id, user_id, plano, origem, dados_elementos, manuscripts(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, genero_principal)",
     )
     .eq("id", projectId)
     .single();
@@ -362,8 +362,13 @@ export async function carregarContexto(
     return { erro: NextResponse.json({ error: "Sem acesso a este projeto." }, { status: 403 }) };
   }
 
-  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", AGENT_NAME);
-  if (gate) return { erro: gate };
+  // FERR-3.4d: no sombra da capa avulsa o briefing faz parte do produto
+  // (débito acontece na 1ª geração em gerar-capa). Só a esteira exige
+  // plano — freemium sombra chegava aqui e morria em 402.
+  if ((project as { origem?: unknown }).origem !== "ferramenta") {
+    const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", AGENT_NAME);
+    if (gate) return { erro: gate };
+  }
 
   const ms = (project as Record<string, unknown>).manuscripts as {
     titulo?: string;

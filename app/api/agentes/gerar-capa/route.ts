@@ -20,7 +20,7 @@ import {
 import { signedUrlCapas, storagePathDaUrl } from "@/lib/capa-signed-url";
 import { jobDoSombra, registrarDebitoJob } from "@/lib/ferramenta-jobs";
 import { autorizarAcao } from "@/lib/creditos";
-import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
+import { CUSTOS_CREDITOS, INCLUSO_CAPA_AVULSA } from "@/lib/creditos-custos";
 import { validarProjectData } from "@/lib/project-data";
 import type {
   EstiloCapa,
@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
     (project as { plano?: unknown }).plano,
     // FERR-3.4c: capa avulsa embute 4 gerações da frente; verso é extra
     // via pool (mecânica do 3.4a).
-    ehSombra ? { frente: 4, verso: 0 } : undefined,
+    ehSombra ? INCLUSO_CAPA_AVULSA : undefined,
   );
   const origemConsumo = saldoAntes.origemProximoConsumo(alvo);
   if (origemConsumo === "nenhum") {
@@ -761,7 +761,7 @@ export async function POST(req: NextRequest) {
     storageClient,
     project_id,
     (project as { plano?: unknown }).plano,
-    ehSombra ? { frente: 4, verso: 0 } : undefined,
+    ehSombra ? INCLUSO_CAPA_AVULSA : undefined,
   );
   const saldoUsuario = dev ? null : await getSaldoCreditos(supabase, userId);
   const respostaFinal = {
