@@ -3,7 +3,7 @@ export const maxDuration = 10;
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/supabase-server";
-import type { FerramentaJob } from "@/lib/ferramenta-jobs";
+import { atualizarJob, type EstadoJob, type FerramentaJob } from "@/lib/ferramenta-jobs";
 import { isEditorCapa } from "@/lib/capa-resolver";
 
 // ─── GET /api/ferramentas/jobs/[id] ──────────────────────────────────────────
@@ -55,4 +55,91 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
   const { user_id: _omit, ...publico } = job;
   return NextResponse.json({ job: publico, sombra });
+}
+
+// ─── PATCH /api/ferramentas/jobs/[id] ────────────────────────────────────────
+// FERR-3.4g: única superfície client → escrita canônica em ferramenta_jobs
+// (verdade #20). Aceita apenas campos autorais de capa avulsa: `paginas`
+// (editável no editor, refluí lombada/dobras) e `exports_jpeg` (paths das
+// capturas de confirmação que viram entregáveis). Merge no `entrada`; jamais
+// mexe em estado, débito ou entregáveis.
+const ESTADOS_TERMINAIS: EstadoJob[] = ["concluido", "falhou", "expirado", "cancelado"];
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  let userId: string;
+  try {
+    userId = (await requireAuth()).user.id;
+  } catch (e) {
+    return e as Response;
+  }
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
+  }
+  const patch = body as { paginas?: unknown; exports_jpeg?: unknown };
+
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const { data } = await admin
+    .from("ferramenta_jobs")
+    .select("id, user_id, ferramenta_id, estado, projeto_sombra_id, entrada")
+    .eq("id", id)
+    .maybeSingle();
+  const job = data as Pick<FerramentaJob, "id" | "user_id" | "ferramenta_id" | "estado" | "projeto_sombra_id" | "entrada"> | null;
+  if (!job || job.user_id !== userId) {
+    return NextResponse.json({ error: "Job não encontrado." }, { status: 404 });
+  }
+  if (job.ferramenta_id !== "capa-ia") {
+    return NextResponse.json({ error: "PATCH só aceito para capa avulsa." }, { status: 403 });
+  }
+  if (ESTADOS_TERMINAIS.includes(job.estado)) {
+    return NextResponse.json({ error: "Job já finalizado." }, { status: 403 });
+  }
+
+  const entrada: Record<string, unknown> = { ...(job.entrada ?? {}) };
+  let mudou = false;
+
+  if (patch.paginas !== undefined) {
+    const n = Number(patch.paginas);
+    if (!Number.isInteger(n) || n < 24 || n > 1200) {
+      return NextResponse.json({ error: "paginas deve ser inteiro entre 24 e 1200." }, { status: 400 });
+    }
+    entrada.paginas = n;
+    mudou = true;
+  }
+
+  if (patch.exports_jpeg !== undefined) {
+    const ej = patch.exports_jpeg as { frente?: unknown; completa?: unknown } | null;
+    if (!ej || typeof ej !== "object") {
+      return NextResponse.json({ error: "exports_jpeg inválido." }, { status: 400 });
+    }
+    const prefixo = job.projeto_sombra_id ? `${userId}/${job.projeto_sombra_id}/exports/` : null;
+    if (!prefixo) {
+      return NextResponse.json({ error: "Job sem sombra — exports_jpeg não aplicável." }, { status: 400 });
+    }
+    const atuais = (entrada.exports_jpeg as { frente?: string; completa?: string } | undefined) ?? {};
+    const merge: { frente?: string; completa?: string } = { ...atuais };
+    for (const chave of ["frente", "completa"] as const) {
+      const v = ej[chave];
+      if (v === undefined) continue;
+      if (typeof v !== "string" || !v.startsWith(prefixo)) {
+        return NextResponse.json({ error: `exports_jpeg.${chave} fora do prefixo do sombra.` }, { status: 400 });
+      }
+      merge[chave] = v;
+    }
+    entrada.exports_jpeg = merge;
+    mudou = true;
+  }
+
+  if (!mudou) {
+    return NextResponse.json({ error: "Nada a atualizar." }, { status: 400 });
+  }
+
+  const ok = await atualizarJob(admin, id, { entrada });
+  if (!ok) {
+    return NextResponse.json({ error: "Falha ao atualizar." }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, entrada });
 }

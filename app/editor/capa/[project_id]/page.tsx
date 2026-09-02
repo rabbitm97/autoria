@@ -74,12 +74,32 @@ export default async function EditorCapaPage({
 
   // Páginas: reais se diagramado; senão a MESMA estimativa da rota
   // estimativa-paginas (métrica cpp do 14.F, texto_revisado ?? texto).
+  // FERR-3.4g: capa avulsa não tem miolo — autor informa páginas no editor
+  // via input na sidebar; o número entra em job.entrada.paginas via PATCH,
+  // e aqui vira `pages` (com pagesSource="informado") para reidratar o
+  // canvas com a lombada correta.
   const textoRevisadoTrim = manuscript?.texto_revisado?.trim() ?? "";
   const textoBase = textoRevisadoTrim.length >= 50
     ? textoRevisadoTrim
     : (manuscript?.texto?.trim() ?? "");
-  const pages = miolo?.paginas_reais
+  let paginasInformadas: number | null = null;
+  if (avulsoJob) {
+    const { data: avulsoRow } = await supabase
+      .from("ferramenta_jobs")
+      .select("entrada")
+      .eq("id", avulsoJob)
+      .maybeSingle();
+    const n = Number((avulsoRow?.entrada as { paginas?: unknown } | null)?.paginas);
+    if (Number.isInteger(n) && n >= 24 && n <= 1200) paginasInformadas = n;
+  }
+  const pages = paginasInformadas
+    ?? miolo?.paginas_reais
     ?? estimarPaginas(getFormatoDef(format).specs, undefined, textoBase.length);
+  const pagesSource: ProjectData["pagesSource"] = paginasInformadas
+    ? "informado"
+    : miolo?.paginas_reais
+      ? "real"
+      : "estimativa";
   // Título/subtítulo: manuscripts é a fonte imutável (decisão de produto —
   // sem opções de título; a voz do autor é preservada).
   const title = manuscript?.titulo ?? "";

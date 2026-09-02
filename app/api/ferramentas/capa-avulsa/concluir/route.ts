@@ -1,18 +1,21 @@
 export const maxDuration = 60;
 
-// FERR-3.4b: concluir a capa avulsa. Diferente de EPUB/diagramação, aqui:
+// FERR-3.4b/g: concluir a capa avulsa. Diferente de EPUB/diagramação, aqui:
 //   1) o sombra NÃO é apagado (`apagarSombra: false`) — o autor continua
 //      com direito de reabrir o editor até o job expirar;
 //   2) o job aceita reconclusão (`permitirReconcluir`): quando o autor
 //      volta ao editor, muda algo e refaz "Gerar arquivos", a rota
 //      substitui os entregáveis do cofre sem cobrar de novo.
 //
-// Entregáveis:
-//   [0] pdf_capa   — PDF gráfico (frente + lombada + verso) já produzido
-//                    por preparar-capa-grafica em editor-assets.
-//   [1] jpg_ebook  — Frente em alta res. Usa o mesmo extractFrontCover do
-//                    gerar-epub; fallback baixa a url panorâmica se o crop
-//                    falhar (mesmo behavior do EPUB).
+// Entregáveis (FERR-3.4g — martelada 02/set: 4 arquivos):
+//   [0] pdf_capa      — CMYK gráfica (`dados_capa.pdf_grafica.storage_path`)
+//   [1] pdf_digital   — RGB para POD  (`dados_capa.exports.pdf_rgb.storage_path`)
+//   [2] jpg_ebook     — Frente 300 DPI (preferência: capturas do editor em
+//                       `job.entrada.exports_jpeg.frente`; fallback:
+//                       extractFrontCover sobre a arte da capa)
+//   [3] jpg_ebook     — Completa panorâmica 300 DPI (preferência: capturas em
+//                       `entrada.exports_jpeg.completa`; fallback: download
+//                       direto da url_principal)
 //
 // Não estorna imagens em falha. Créditos das imagens compradas já viraram
 // arte na galeria — não somem por causa de um erro aqui.
@@ -99,6 +102,8 @@ export async function POST(request: NextRequest) {
   if (!pdfGrafica?.storage_path) {
     return NextResponse.json({ error: "Gere o PDF de capa primeiro." }, { status: 409 });
   }
+  const exportsCapa = (capa as { exports?: { pdf_rgb?: { storage_path?: string } } }).exports ?? {};
+  const pdfRgbPath = exportsCapa.pdf_rgb?.storage_path ?? null;
 
   // Páginas vivem em ferramenta_jobs.entrada (o helper não seleciona esse
   // campo). extractFrontCover só usa como fallback; o valor real é
@@ -108,50 +113,81 @@ export async function POST(request: NextRequest) {
     .select("entrada")
     .eq("id", job.id)
     .maybeSingle();
-  const entradaPag = (rawJobEntrada as { entrada?: { paginas?: unknown } } | null)
-    ?.entrada?.paginas;
+  const entradaObj = (rawJobEntrada as { entrada?: Record<string, unknown> } | null)?.entrada ?? {};
+  const entradaPag = (entradaObj as { paginas?: unknown }).paginas;
   const paginasEntrada = Number(entradaPag);
   const paginas = Number.isInteger(paginasEntrada) && paginasEntrada > 0 ? paginasEntrada : 0;
+  const exportsJpeg = (entradaObj as { exports_jpeg?: { frente?: unknown; completa?: unknown } }).exports_jpeg ?? {};
+  const jpegFrentePath = typeof exportsJpeg.frente === "string" ? exportsJpeg.frente : null;
+  const jpegCompletaPath = typeof exportsJpeg.completa === "string" ? exportsJpeg.completa : null;
 
   const ms = sombra.manuscripts;
   const titulo = ms?.titulo?.trim() || ms?.nome || "Capa";
 
-  // Nome de arquivo consistente entre reconclusões — upsert:true no cofre
-  // substitui a versão anterior sem deixar lixo.
-  const pdfDest = "capa-grafica.pdf";
-  const copiaPdf = await copiarParaCofre(admin, {
+  // [0] CMYK gráfica — nome fixo no cofre, upsert:true substitui versão anterior.
+  const copiaCmyk = await copiarParaCofre(admin, {
     userId: user.id,
     jobId: job.id,
     srcBucket: "editor-assets",
     srcPath: pdfGrafica.storage_path,
-    destFilename: pdfDest,
+    destFilename: "capa-grafica-CMYK.pdf",
     contentType: "application/pdf",
   });
-  if ("error" in copiaPdf) {
-    console.error("[capa-avulsa/concluir] cópia do PDF gráfico falhou:", copiaPdf.error);
+  if ("error" in copiaCmyk) {
+    console.error("[capa-avulsa/concluir] cópia CMYK falhou:", copiaCmyk.error);
     return NextResponse.json({ error: "Falha ao copiar o PDF de capa. Tente novamente." }, { status: 500 });
   }
 
   const entregaveis: EntregavelJob[] = [
     {
       tipo: "pdf_capa",
-      storage_path: copiaPdf.storage_path,
-      bytes: copiaPdf.bytes,
-      nome_exibicao: `${titulo} — capa para gráfica.pdf`,
+      storage_path: copiaCmyk.storage_path,
+      bytes: copiaCmyk.bytes,
+      nome_exibicao: `${titulo} — capa para gráfica (CMYK).pdf`,
     },
   ];
 
-  // Frente em alta — extractFrontCover recorta a frente da panorâmica.
-  // O mesmo fluxo do gerar-epub: se o extractor falhar (imagem exótica,
-  // metadata quebrada), faz fallback baixando a própria url_principal.
+  // [1] RGB digital — mesmo esquema. Só entra se preparar-capa-grafica
+  // conseguiu gerar (é não-fatal lá). Sem RGB, o entregável some.
+  if (pdfRgbPath) {
+    const copiaRgb = await copiarParaCofre(admin, {
+      userId: user.id,
+      jobId: job.id,
+      srcBucket: "editor-assets",
+      srcPath: pdfRgbPath,
+      destFilename: "capa-digital-RGB.pdf",
+      contentType: "application/pdf",
+    });
+    if ("error" in copiaRgb) {
+      console.warn("[capa-avulsa/concluir] cópia RGB falhou (não-fatal):", copiaRgb.error);
+    } else {
+      entregaveis.push({
+        tipo: "pdf_digital",
+        storage_path: copiaRgb.storage_path,
+        bytes: copiaRgb.bytes,
+        nome_exibicao: `${titulo} — capa digital (RGB).pdf`,
+      });
+    }
+  }
+
+  // [2] Frente JPG — preferência: captura do editor (entrada.exports_jpeg.frente).
+  //     Fallback: extractFrontCover recorta a panorâmica original.
+  //     Fallback do fallback: baixa a própria url_principal (igual ao gerar-epub).
   const capaResolvida = resolveCapaCompleta(capa, sombra.formato);
   const capaUrl = capaResolvida.url_area_util ?? capaResolvida.url_principal;
+  let frenteBuffer: Buffer | null = null;
+  let frenteExt: "jpg" | "png" = "jpg";
+  let frenteContentType = "image/jpeg";
 
-  if (capaUrl) {
-    let frenteBuffer: Buffer | null = null;
-    let frenteExt: string = "jpg";
-    let frenteContentType = "image/jpeg";
-
+  if (jpegFrentePath) {
+    const { data: blob } = await admin.storage.from("editor-assets").download(jpegFrentePath);
+    if (blob) {
+      frenteBuffer = Buffer.from(await blob.arrayBuffer());
+    } else {
+      console.warn("[capa-avulsa/concluir] download da captura da frente falhou; usa fallback.");
+    }
+  }
+  if (!frenteBuffer && capaUrl) {
     const front = await extractFrontCover({
       url: capaUrl,
       formato: sombra.formato,
@@ -160,10 +196,9 @@ export async function POST(request: NextRequest) {
     });
     if (front) {
       frenteBuffer = front.buffer;
-      frenteExt = front.ext;
+      frenteExt = "jpg";
       frenteContentType = "image/jpeg";
     } else {
-      // Fallback: baixa a própria url (igual ao gerar-epub).
       try {
         const res = await fetch(capaUrl);
         if (res.ok) {
@@ -172,45 +207,81 @@ export async function POST(request: NextRequest) {
           if (ct.includes("png")) {
             frenteExt = "png";
             frenteContentType = "image/png";
-          } else {
-            frenteExt = "jpg";
-            frenteContentType = "image/jpeg";
           }
         }
       } catch (err) {
-        console.warn("[capa-avulsa/concluir] fallback download falhou:", err);
+        console.warn("[capa-avulsa/concluir] fallback download da frente falhou:", err);
       }
     }
-
-    if (frenteBuffer) {
-      const frentePath = `${user.id}/${job.id}/capa-frente.${frenteExt}`;
-      const { error: upErr } = await admin.storage
-        .from(BUCKET_FERRAMENTAS)
-        .upload(frentePath, frenteBuffer, {
-          contentType: frenteContentType,
-          upsert: true,
-        });
-      if (upErr) {
-        console.error("[capa-avulsa/concluir] upload da frente falhou:", upErr.message);
-        return NextResponse.json(
-          { error: "Falha ao salvar a frente em alta resolução. Tente novamente." },
-          { status: 500 },
-        );
-      }
-      entregaveis.push({
-        tipo: "jpg_ebook",
-        storage_path: frentePath,
-        bytes: frenteBuffer.byteLength,
-        nome_exibicao: `${titulo} — capa frente.${frenteExt}`,
-      });
-    } else {
+  }
+  if (frenteBuffer) {
+    const frentePath = `${user.id}/${job.id}/capa-frente.${frenteExt}`;
+    const { error: upErr } = await admin.storage
+      .from(BUCKET_FERRAMENTAS)
+      .upload(frentePath, frenteBuffer, { contentType: frenteContentType, upsert: true });
+    if (upErr) {
+      console.error("[capa-avulsa/concluir] upload da frente falhou:", upErr.message);
       return NextResponse.json(
-        { error: "Não conseguimos baixar a arte da capa. Tente novamente." },
+        { error: "Falha ao salvar a frente em alta resolução. Tente novamente." },
         { status: 500 },
       );
     }
+    entregaveis.push({
+      tipo: "jpg_ebook",
+      storage_path: frentePath,
+      bytes: frenteBuffer.byteLength,
+      nome_exibicao: `${titulo} — capa frente.${frenteExt}`,
+    });
   } else {
-    return NextResponse.json({ error: "Capa sem arte confirmada." }, { status: 409 });
+    return NextResponse.json(
+      { error: "Não conseguimos preparar a frente da capa. Tente novamente." },
+      { status: 500 },
+    );
+  }
+
+  // [3] Completa panorâmica — preferência: captura do editor
+  //     (entrada.exports_jpeg.completa). Fallback: baixa a própria url_principal.
+  let completaBuffer: Buffer | null = null;
+  let completaExt: "jpg" | "png" = "jpg";
+  let completaContentType = "image/jpeg";
+  if (jpegCompletaPath) {
+    const { data: blob } = await admin.storage.from("editor-assets").download(jpegCompletaPath);
+    if (blob) {
+      completaBuffer = Buffer.from(await blob.arrayBuffer());
+    } else {
+      console.warn("[capa-avulsa/concluir] download da captura completa falhou; usa fallback.");
+    }
+  }
+  if (!completaBuffer && capaUrl) {
+    try {
+      const res = await fetch(capaUrl);
+      if (res.ok) {
+        completaBuffer = Buffer.from(await res.arrayBuffer());
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct.includes("png")) {
+          completaExt = "png";
+          completaContentType = "image/png";
+        }
+      }
+    } catch (err) {
+      console.warn("[capa-avulsa/concluir] fallback download da completa falhou:", err);
+    }
+  }
+  if (completaBuffer) {
+    const completaPath = `${user.id}/${job.id}/capa-completa.${completaExt}`;
+    const { error: upErr } = await admin.storage
+      .from(BUCKET_FERRAMENTAS)
+      .upload(completaPath, completaBuffer, { contentType: completaContentType, upsert: true });
+    if (upErr) {
+      console.warn("[capa-avulsa/concluir] upload da completa falhou (não-fatal):", upErr.message);
+    } else {
+      entregaveis.push({
+        tipo: "jpg_ebook",
+        storage_path: completaPath,
+        bytes: completaBuffer.byteLength,
+        nome_exibicao: `${titulo} — capa completa.${completaExt}`,
+      });
+    }
   }
 
   const ok = await concluirJob(admin, job, entregaveis, { apagarSombra: false });

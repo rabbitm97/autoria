@@ -141,6 +141,7 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
 
         <EditorConfirmButton
           projectId={projectData.projectId}
+          avulsoJob={projectData.avulsoJob}
           onConfirmed={(confirmedAt) => setSuccessModal({ open: true, confirmedAt })}
         />
 

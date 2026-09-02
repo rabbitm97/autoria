@@ -3,19 +3,82 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useEditorStore } from "../lib/editor-store";
-import { captureStageAsBlob } from "../lib/png-export";
+import {
+  captureStageAsBlob,
+  captureFrontAsJpegDataUrl,
+  captureStageAsJpegDataUrl,
+  dataUrlToBlob,
+} from "../lib/png-export";
 import { serializeEditorState } from "../lib/editor-serializer";
 import { hashElements, hashFills } from "../lib/state-hash";
 import { calcularLombada } from "../lib/dimensions";
 
 interface EditorConfirmButtonProps {
   projectId: string;
+  avulsoJob: string | null;
   onConfirmed?: (confirmedAt: string) => void;
+}
+
+// FERR-3.4g: no fluxo avulso, capturamos JPGs 300 DPI (frente + completa)
+// depois do confirm bem-sucedido, subimos por signed URL e registramos os
+// paths em ferramenta_jobs.entrada.exports_jpeg via PATCH. A rota de
+// "capa-avulsa/concluir" usa esses paths para montar 2 dos 4 entregáveis.
+// Falha aqui é não-bloqueante — o autor pode reconfirmar depois; se nunca
+// vier, a concluir cai no fallback (extractFrontCover / download da url).
+async function subirExportsAvulso(params: {
+  projectId: string;
+  avulsoJob: string;
+}): Promise<void> {
+  const { projectId, avulsoJob } = params;
+  const { stageInstance, format, pages, orelhaMm, layout } = useEditorStore.getState();
+  if (!stageInstance) return;
+
+  const frenteUrl = await captureFrontAsJpegDataUrl(stageInstance, format, pages, orelhaMm, 0.92, layout);
+  const completaUrl = await captureStageAsJpegDataUrl(stageInstance, format, pages, orelhaMm, 0.92, layout);
+  const frenteBlob = dataUrlToBlob(frenteUrl);
+  const completaBlob = dataUrlToBlob(completaUrl);
+
+  async function upload(target: "export-frente-avulso" | "export-completa-avulso", blob: Blob): Promise<string | null> {
+    const res = await fetch(`/api/projects/${projectId}/cover-editor/upload-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+    if (!res.ok) return null;
+    const { path, signed_url, token } = (await res.json()) as {
+      path: string;
+      signed_url: string | null;
+      token: string | null;
+    };
+    if (signed_url && token) {
+      const { error } = await supabase.storage
+        .from("editor-assets")
+        .uploadToSignedUrl(path, token, blob, { contentType: "image/jpeg" });
+      if (error) return null;
+    }
+    return path;
+  }
+
+  const [frentePath, completaPath] = await Promise.all([
+    upload("export-frente-avulso", frenteBlob),
+    upload("export-completa-avulso", completaBlob),
+  ]);
+
+  const exportsJpeg: { frente?: string; completa?: string } = {};
+  if (frentePath) exportsJpeg.frente = frentePath;
+  if (completaPath) exportsJpeg.completa = completaPath;
+  if (Object.keys(exportsJpeg).length === 0) return;
+
+  await fetch(`/api/ferramentas/jobs/${avulsoJob}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exports_jpeg: exportsJpeg }),
+  }).catch(() => {});
 }
 
 type ConfirmState = "idle" | "confirming" | "error";
 
-export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmButtonProps) {
+export function EditorConfirmButton({ projectId, avulsoJob, onConfirmed }: EditorConfirmButtonProps) {
   const [state, setState] = useState<ConfirmState>("idle");
 
   async function handleConfirm() {
@@ -94,6 +157,16 @@ export function EditorConfirmButton({ projectId, onConfirmed }: EditorConfirmBut
         fillsHash: hashFills(fills),
         confirmedAt: data.confirmed_at,
       });
+
+      // FERR-3.4g: no fluxo avulso, exporta JPGs 300 DPI para virarem
+      // entregáveis. Falha aqui é silenciosa — reconfirmar recompleta.
+      if (avulsoJob) {
+        try {
+          await subirExportsAvulso({ projectId, avulsoJob });
+        } catch (err) {
+          console.warn("[capa-avulsa] exports_jpeg falhou:", err);
+        }
+      }
 
       setState("idle");
       onConfirmed?.(data.confirmed_at);

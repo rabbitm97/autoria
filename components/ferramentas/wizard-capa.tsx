@@ -18,6 +18,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { criarSombraEJob } from "@/lib/sombra-cliente";
 import { estimarLombadaCapaMm, type FormatoLivro } from "@/lib/formatos";
@@ -69,6 +70,17 @@ interface ResultadoPronto {
   entregaveis: EntregavelPronto[];
 }
 
+// FERR-3.4g: quando o autor abre /dashboard/ferramentas/capa sem ?job=,
+// mostramos um banner sobre o passo 0 oferecendo retomada do último job
+// não-terminal (a trilha do usuário pode ter 3 débitos de 50 pendurados;
+// o painel de arquivos mostra "Continuar", mas o wizard também precisa
+// abrir a porta). SELECT via RLS ("ferramenta_jobs: leitura própria").
+interface JobEmAndamento {
+  id: string;
+  titulo: string;
+  criadoEm: string;
+}
+
 interface Props {
   jobIdInicial: string | null;
 }
@@ -115,6 +127,41 @@ export function WizardCapa({ jobIdInicial }: Props) {
     void reidratar(jobIdInicial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // FERR-3.4g: retomada automática ao entrar sem ?job=. Descarta se o
+  // autor apertar "Começar outra" — a preferência dele vale só nesta
+  // sessão do wizard (novo mount volta a oferecer). Fluxo cortesia:
+  // fecha o banner assim que ele começar a preencher (setPasso(1)) ou
+  // criar outro sombra.
+  const [ofertaRetomada, setOfertaRetomada] = useState<JobEmAndamento | null>(null);
+  const [ofertaDescartada, setOfertaDescartada] = useState(false);
+  useEffect(() => {
+    if (jobIdInicial || ofertaDescartada) return;
+    let cancelado = false;
+    (async () => {
+      const { data: sessao } = await supabase.auth.getSession();
+      const uid = sessao?.session?.user?.id;
+      if (!uid) return;
+      const { data } = await supabase
+        .from("ferramenta_jobs")
+        .select("id, entrada, criado_em, estado")
+        .eq("user_id", uid)
+        .eq("ferramenta_id", FERRAMENTA_ID)
+        .not("estado", "in", '("cancelado","expirado","falhou")')
+        .order("criado_em", { ascending: false })
+        .limit(1);
+      if (cancelado || !data || data.length === 0) return;
+      const row = data[0] as { id: string; entrada: { titulo?: string } | null; criado_em: string };
+      setOfertaRetomada({
+        id: row.id,
+        titulo: row.entrada?.titulo?.trim() || "Sem título",
+        criadoEm: row.criado_em,
+      });
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [jobIdInicial, ofertaDescartada]);
 
   async function reidratar(id: string) {
     setErro(null);
@@ -399,6 +446,41 @@ export function WizardCapa({ jobIdInicial }: Props) {
           primario: <CtaInicio custo={0} saldo={saldo} onIniciar={() => setPasso(1)} />,
         }}
       >
+        {ofertaRetomada && (
+          <div className="mb-4 rounded-xl border border-brand-gold/40 bg-brand-gold/5 p-4">
+            <p className="text-sm text-brand-primary">
+              Você tem uma capa em andamento:{" "}
+              <span className="font-semibold">{ofertaRetomada.titulo}</span>, iniciada em{" "}
+              {new Date(ofertaRetomada.criadoEm).toLocaleDateString("pt-BR")}.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const id = ofertaRetomada.id;
+                  setOfertaRetomada(null);
+                  setRetomando(true);
+                  retomouRef.current = true;
+                  window.history.replaceState(null, "", `/dashboard/ferramentas/capa?job=${id}`);
+                  void reidratar(id);
+                }}
+                className="rounded-lg bg-brand-primary px-4 py-2 text-xs font-semibold text-brand-gold hover:bg-brand-primary/90"
+              >
+                Continuar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOfertaDescartada(true);
+                  setOfertaRetomada(null);
+                }}
+                className="rounded-lg border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-500 hover:border-zinc-300"
+              >
+                Começar outra
+              </button>
+            </div>
+          </div>
+        )}
         <ConteudoInicio custo={0} saldo={saldo} precoCopy={PRECO_COPY} />
       </WizardLayout>
     );

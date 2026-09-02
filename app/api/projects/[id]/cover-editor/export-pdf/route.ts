@@ -17,10 +17,12 @@ import {
 } from "@/app/editor/capa/[project_id]/lib/dimensions";
 
 /**
- * Nome-base dos arquivos exportados por versão. Usado tanto no filename
- * do download quanto no storage path. Padrão fixo (sem timestamp):
- *   - "capa-CMYK-grafica.pdf"   — versão CMYK para gráfica offset
- *   - "capa-RGB-grafica.pdf"    — versão RGB para gráfica digital
+ * Nome-base dos arquivos exportados por versão. Usado no filename do
+ * download; o storage path é o mesmo base com sufixo `_${Date.now()}.pdf`
+ * (versionado — FERR-3.4g) para evitar cache stale de edge/CDN quando o
+ * autor refaz a capa avulsa no editor.
+ *   - "capa-CMYK-grafica"   — versão CMYK para gráfica offset
+ *   - "capa-RGB-grafica"    — versão RGB para gráfica digital
  *
  * A versão eBook (antigo "digital") foi descontinuada no 14.M.5 — o
  * download agora sai como JPEG só-frente extraído client-side pelo Konva
@@ -182,17 +184,34 @@ export async function POST(
     pdfBuffer = Buffer.from(pdfBytes);
   }
 
-  // BLOCO-02-B-housekeeping: path fixo, upsert sobrescreve versão anterior.
-  // Não precisa mais dos helpers deleteOldPdfs/deleteOldRgbPdfs — o upsert
-  // já garante 1 arquivo único por projeto+versão.
+  // FERR-3.4g: path versionado por timestamp — CDN/browser não segura mais
+  // versão antiga cacheada, e a capa avulsa consegue oferecer o PDF fresco
+  // no painel a cada reconfirmação. Remoção best-effort dos anteriores
+  // (mesmo prefixo por versão) para evitar acúmulo. cacheControl "0" na
+  // subida garante que quem baixar pelo signed URL nunca sirva bytes
+  // obsoletos vindos de um edge cache anterior.
   const filenameBase = getFilenameBase(versao);
-  const storagePath = `${userId}/${id}/exports/${filenameBase}.pdf`;
+  const exportsDir = `${userId}/${id}/exports`;
+  const storagePath = `${exportsDir}/${filenameBase}_${Date.now()}.pdf`;
+
+  const { data: existentes } = await storageClient.storage
+    .from("editor-assets")
+    .list(exportsDir);
+  if (existentes && existentes.length > 0) {
+    const antigos = existentes
+      .filter((f) => f.name.startsWith(`${filenameBase}`) && f.name.endsWith(".pdf"))
+      .map((f) => `${exportsDir}/${f.name}`);
+    if (antigos.length > 0) {
+      await storageClient.storage.from("editor-assets").remove(antigos).catch(() => {});
+    }
+  }
 
   const { error: uploadErr } = await storageClient.storage
     .from("editor-assets")
     .upload(storagePath, pdfBuffer, {
       contentType: "application/pdf",
-      upsert: true,
+      upsert: false,
+      cacheControl: "0",
     });
 
   if (uploadErr) {

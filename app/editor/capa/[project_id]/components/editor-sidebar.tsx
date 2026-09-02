@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type JSX } from "react";
+import { useState, useRef, useEffect, type JSX } from "react";
 import { useEditorStore } from "../lib/editor-store";
 import {
   FORMATS,
@@ -68,7 +68,7 @@ function Section({
 }
 
 // ── Seção 1: Formato e estrutura ──────────────────────────────────────────────
-function SectionFormato() {
+function SectionFormato({ projectData }: { projectData: ProjectData }) {
   const { format, pages, orelhaMm, setOrelhaMm, layout } = useEditorStore();
   const lombadaMm = calcularLombada(pages);
   const temOrelhas = orelhaMm > 0;
@@ -76,6 +76,25 @@ function SectionFormato() {
   const orelhaMaxCm = getOrelhaMax(format) / 10;
   const orelhaCm = temOrelhas ? Math.round(orelhaMm / 10) : 0;
   const isFrente = layout === "frente";
+  // FERR-3.4g: no fluxo de capa avulsa não há miolo — autor informa páginas
+  // aqui; o valor entra em `ferramenta_jobs.entrada.paginas` via PATCH e
+  // volta na retomada, refluindo lombada/dobras.
+  const isAvulso = !!projectData.avulsoJob;
+  const [paginasInput, setPaginasInput] = useState<string>(String(pages));
+  useEffect(() => { setPaginasInput(String(pages)); }, [pages]);
+  const timerRef = useRef<number | null>(null);
+  function commitPaginas(next: number) {
+    useEditorStore.setState({ pages: next });
+    if (!isAvulso) return;
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      fetch(`/api/ferramentas/jobs/${projectData.avulsoJob}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paginas: next }),
+      }).catch(() => {});
+    }, 500);
+  }
 
   return (
     <Section title="Formato e estrutura">
@@ -99,11 +118,35 @@ function SectionFormato() {
         {!isFrente && (
           <div>
             <p className="mb-1 text-[10px] text-zinc-400">Páginas</p>
-            <div className="rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2">
-              <span className="text-xs text-zinc-500">
-                {pages} págs · lombada {lombadaMm.toFixed(1)}mm
-              </span>
-            </div>
+            {isAvulso ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={24}
+                    max={1200}
+                    step={1}
+                    value={paginasInput}
+                    onChange={(e) => {
+                      setPaginasInput(e.target.value);
+                      const n = Number(e.target.value);
+                      if (Number.isInteger(n) && n >= 24 && n <= 1200) commitPaginas(n);
+                    }}
+                    className="w-20 rounded-lg border border-[#e0ddd2] px-2 py-1 text-xs outline-none focus:border-[#c9a84c]"
+                  />
+                  <span className="text-[10px] text-zinc-400">
+                    págs · lombada {lombadaMm.toFixed(1)}mm
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] text-zinc-300">Entre 24 e 1200 (informado por você)</p>
+              </>
+            ) : (
+              <div className="rounded-lg border border-[#e0ddd2] bg-zinc-50 px-2.5 py-2">
+                <span className="text-xs text-zinc-500">
+                  {pages} págs · lombada {lombadaMm.toFixed(1)}mm
+                </span>
+              </div>
+            )}
           </div>
         )}
         {!isFrente && (
@@ -718,7 +761,7 @@ export function EditorSidebar({ projectData }: { projectData: ProjectData }) {
       className="flex flex-col overflow-y-auto border-r border-[#e0ddd2] bg-[#fdfcf9]"
       style={{ width: 240, flexShrink: 0 }}
     >
-      <SectionFormato />
+      <SectionFormato projectData={projectData} />
       <SectionCores temOrelhas={!isFrente && orelhaMm > 0} isFrente={isFrente} />
       <SectionTexto projectData={projectData} />
       <SectionImagens projectId={projectData.projectId} />
