@@ -153,6 +153,7 @@ export function EditorTopbar({ projectData, onSaveRetry }: EditorTopbarProps) {
           projectId={projectData.projectId}
           confirmedAt={successModal.confirmedAt}
           isExpress={projectData.isExpress}
+          avulsoJob={projectData.avulsoJob}
         />
       )}
 

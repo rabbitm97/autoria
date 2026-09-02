@@ -651,7 +651,7 @@ function FormDadosLivro({
         <label className={labelClass}>Sinopse *</label>
         <textarea
           className={fieldClass}
-          placeholder="Do que trata seu livro? Mínimo de 20 caracteres, máximo 1200."
+          placeholder="Do que trata seu livro? Isso orienta a criação da capa. De 20 a 1200 caracteres."
           value={dados.sinopse}
           onChange={(e) => onDados({ sinopse: e.target.value })}
           rows={5}

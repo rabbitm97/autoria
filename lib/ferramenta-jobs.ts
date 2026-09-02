@@ -93,11 +93,15 @@ export async function atualizarJob(
   return true;
 }
 
-/** Registra o débito no job: liga o relógio único de 90 dias. */
+/** Registra o débito no job: liga o relógio único de 90 dias. `estado`
+ *  default é `processando` (débito dispara motor). Ferramentas em que o
+ *  débito NÃO dispara trabalho autônomo (capa avulsa: autor pilota gerações
+ *  e o editor) passam `aguardando_autor` — FERR-3.4f. */
 export async function registrarDebitoJob(
   admin: SupabaseClient,
   jobId: string,
   custo: number,
+  estado: EstadoJob = "processando",
 ): Promise<boolean> {
   const debitadoEm = new Date();
   const expiraEm = new Date(debitadoEm.getTime() + RETENCAO_DIAS * 86_400_000);
@@ -105,7 +109,7 @@ export async function registrarDebitoJob(
     custo_creditos: custo,
     debitado_em: debitadoEm.toISOString(),
     expira_em: expiraEm.toISOString(),
-    estado: "processando",
+    estado,
   });
 }
 

@@ -101,6 +101,20 @@ export async function ArquivosFerramentas() {
                   ))}
                 </div>
               )}
+              {/* FERR-3.4f: capa em andamento (débito feito, autor ainda no
+                  wizard/editor) ganha "Continuar →" pro wizard reidratar. */}
+              {job.ferramenta_id === "capa-ia" &&
+                job.projeto_sombra_id &&
+                (job.estado === "aguardando_autor" || job.estado === "processando") && (
+                  <p className="text-right">
+                    <Link
+                      href={`/dashboard/ferramentas/capa?job=${job.id}`}
+                      className="text-[11px] text-brand-gold hover:underline whitespace-nowrap"
+                    >
+                      Continuar →
+                    </Link>
+                  </p>
+                )}
               {job.estado === "concluido" && expira && (
                 <div className="flex items-center justify-between gap-2">
                   <p className={`text-[11px] ${urgente ? "text-amber-600 font-medium" : "text-zinc-400"}`}>

@@ -200,7 +200,10 @@ export async function POST(req: NextRequest) {
       );
       if (!aut.liberado) return aut.resposta!;
       if (aut.pagoComCreditos) {
-        await registrarDebitoJob(storageClient, jobAvulso.id, CUSTOS_CREDITOS.capa_avulsa);
+        // FERR-3.4f: capa é interativa — o autor gera mais, escolhe e edita
+        // depois do débito. "processando" ficaria travado no painel; o certo
+        // é "aguardando_autor" (concluirJob levará a "concluido").
+        await registrarDebitoJob(storageClient, jobAvulso.id, CUSTOS_CREDITOS.capa_avulsa, "aguardando_autor");
       }
     }
   } else {

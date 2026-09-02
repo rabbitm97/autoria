@@ -9,6 +9,9 @@ interface EditorConfirmSuccessModalProps {
   projectId: string;
   confirmedAt: string;
   isExpress: boolean;
+  // FERR-3.4f: no avulso o "próximo passo" da esteira (Créditos/Prova)
+  // não existe — o autor volta pra ferramenta.
+  avulsoJob: string | null;
 }
 
 export function EditorConfirmSuccessModal({
@@ -16,6 +19,7 @@ export function EditorConfirmSuccessModal({
   projectId,
   confirmedAt,
   isExpress,
+  avulsoJob,
 }: EditorConfirmSuccessModalProps) {
   const router = useRouter();
   const { states, exportJpegCompleta, exportJpegEbook, exportPdf, clearErrors, cmykDisclaimer, confirmDisclaimer, cancelDisclaimer } = useCoverExport(projectId);
@@ -162,14 +166,20 @@ export function EditorConfirmSuccessModal({
               onClick={() => {
                 onClose();
                 router.push(
-                  isExpress
-                    ? `/dashboard/prova/${projectId}`
-                    : `/dashboard/creditos/${projectId}`,
+                  avulsoJob
+                    ? `/dashboard/ferramentas/capa?job=${avulsoJob}`
+                    : isExpress
+                      ? `/dashboard/prova/${projectId}`
+                      : `/dashboard/creditos/${projectId}`,
                 );
               }}
               className="w-full rounded-xl bg-[#1a1a2e] px-5 py-3 text-sm font-medium text-[#c9a84c] transition-opacity hover:opacity-90"
             >
-              {isExpress ? "Próximo passo: Conferência final →" : "Próximo passo: Créditos →"}
+              {avulsoJob
+                ? "Voltar para a ferramenta →"
+                : isExpress
+                  ? "Próximo passo: Conferência final →"
+                  : "Próximo passo: Créditos →"}
             </button>
             <button
               onClick={onClose}
