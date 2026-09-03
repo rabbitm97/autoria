@@ -2,14 +2,18 @@
 
 // components/ferramentas/wizard-revisao.tsx
 //
-// Wizard da REVISÃO COMPLETA — avulsa (FERR-3.5c). Fluxo sem intermediárias:
-//   0 Início → 1 Manuscrito → 2 Capítulos (AprovacaoCapitulos + linha do
-//   débito) → 3 Revisão (débito 150 + polling do batch) → navega DIRETO
-//   pra /dashboard/revisao/[sombra]?avulso=[job] quando o batch encerra.
+// Wizard da REVISÃO COMPLETA — avulsa (FERR-3.5d). Sem tela própria de
+// carregamento: assim que o motor aceita o batch (POST 2xx), o wizard
+// empurra o autor pra /dashboard/revisao/[sombra]?avulso=[job], que é
+// quem renderiza o progresso e depois a lista de sugestões.
 //
-// Passo 4 (Sugestões) e 5 (Pronto) existem só como destino de reidratação
-// via ?job= ou pelo painel — sem auto-push aqui, já que "voltar depois"
-// deve entregar o autor num card estável, não empurrá-lo pra outra tela.
+// Fluxo: 0 Início → 1 Manuscrito → 2 Capítulos (débito 150 + POST motor)
+// → router.push pra tela do fluxo. Reidratação com revisao_estado
+// "processing" cai lá também. Passo 4 (Sugestões) e 5 (Pronto) só como
+// destino de reidratação por ?job=/painel quando o batch já encerrou.
+//
+// O rótulo "Revisão" segue no stepper (posição 3), mas sem tela dedicada
+// aqui — a tela do fluxo faz o passo inteiro.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -82,8 +86,6 @@ export function WizardRevisao({ jobIdInicial }: Props) {
   const [resultado, setResultado] = useState<ResultadoPronto | null>(null);
   const [processando, setProcessando] = useState<string | null>(null);
   const retryRef = useRef<null | (() => Promise<void>)>(null);
-
-  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Retomada por ?job= ──────────────────────────────────────────────────
   const retomouRef = useRef(false);
@@ -169,23 +171,26 @@ export function WizardRevisao({ jobIdInicial }: Props) {
 
       const r = data.sombra?.revisao_estado ?? null;
       setRevisaoEstado(r);
+      if (r === "processing") {
+        // Batch rodando — a tela do fluxo é quem mostra o progresso ao
+        // vivo. Não desliga retomando: a navegação vai unmountar o wizard.
+        router.push(`/dashboard/revisao/${data.job.projeto_sombra_id}?avulso=${data.job.id}`);
+        return;
+      }
       if (r === "finalizada" || r === "concluida") {
         // Card de "voltar depois" — sem auto-push. O autor entrou pelo
         // painel/URL e espera um destino estável, não outra navegação.
         setPasso(4);
-      } else if (r === "processing") {
-        setPasso(3);
-        void iniciarPolling();
       } else {
         // Sem revisão ainda — volta para o passo de capítulos. Se já havia
         // capítulos aprovados, o autor só reconfirma (o aprovar-capitulos
         // aceita reaprovação idempotente).
         setPasso(2);
       }
+      setRetomando(false);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao retomar.");
       setPasso(1);
-    } finally {
       setRetomando(false);
     }
   }
@@ -254,12 +259,14 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passo, projectId]);
 
-  // ── Passo 2 → 3: aprovar + disparar batch (débito acontece no motor) ────
+  // ── Passo 2 → tela do fluxo: aprovar + disparar batch (débito no motor) ─
+  // A partir do 2xx do motor, o batch está em curso; navegamos pra tela
+  // do fluxo, que renderiza o progresso e depois a lista de sugestões.
   async function aprovarCapitulosEIr(capitulosAprovados: { titulo: string; pos: number }[]) {
     if (!projectId || !jobId) return;
     retryRef.current = () => aprovarCapitulosEIr(capitulosAprovados);
     setErro(null);
-    setPasso(3);
+    setProcessando("Salvando capítulos…");
     setStatusTexto("Salvando capítulos…");
     setProgresso(15);
     try {
@@ -273,6 +280,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         throw new Error(d.error ?? "Falha ao aprovar capítulos.");
       }
 
+      setProcessando("Enviando para análise…");
       setStatusTexto("Enviando para análise…");
       setProgresso(30);
       const resR = await fetch("/api/agentes/revisao", {
@@ -283,6 +291,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
 
       if (resR.status === 402) {
         const d = (await resR.json().catch(() => ({}))) as { error?: string };
+        setProcessando(null);
         setPasso(2);
         setErro(
           d.error ??
@@ -295,68 +304,12 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         throw new Error(d.error ?? "Falha ao iniciar revisão.");
       }
 
-      const dataR = (await resR.json()) as { status: string };
-      if (dataR.status === "done" || dataR.status === "skipped") {
-        // Batch já pronto (cache) — navega direto pra tela de aceite.
-        router.push(`/dashboard/revisao/${projectId}?avulso=${jobId}`);
-      } else {
-        void iniciarPolling();
-      }
+      // 2xx do motor: batch aceito. A tela do fluxo cuida do resto.
+      router.push(`/dashboard/revisao/${projectId}?avulso=${jobId}`);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro inesperado.");
     }
   }
-
-  // ── Passo 3 → polling; done navega DIRETO (sem card) ────────────────────
-  async function iniciarPolling() {
-    if (!projectId || !jobId) return;
-    stopPolling();
-
-    async function poll() {
-      try {
-        const res = await fetch(`/api/agentes/revisao?project_id=${projectId}`);
-        if (!res.ok) {
-          pollingRef.current = setTimeout(poll, 10_000);
-          return;
-        }
-        const data = (await res.json()) as {
-          status: string;
-          done?: number;
-          total?: number;
-          iniciado_em?: string;
-        };
-        if (data.status === "done") {
-          router.push(`/dashboard/revisao/${projectId}?avulso=${jobId}`);
-          return;
-        }
-        if (data.status === "processing") {
-          const total = Math.max(1, data.total ?? 1);
-          const done = data.done ?? 0;
-          setProgresso(Math.round((done / total) * 100));
-          setStatusTexto(`Analisando… ${done}/${total} trechos`);
-          const elapsed = data.iniciado_em
-            ? (Date.now() - new Date(data.iniciado_em).getTime()) / 1000
-            : 0;
-          const interval = elapsed < 30 ? 3_000 : elapsed < 120 ? 6_000 : 10_000;
-          pollingRef.current = setTimeout(poll, interval);
-        } else {
-          setErro("Estado inesperado da revisão. Tente novamente.");
-        }
-      } catch {
-        pollingRef.current = setTimeout(poll, 10_000);
-      }
-    }
-    void poll();
-  }
-
-  function stopPolling() {
-    if (pollingRef.current) {
-      clearTimeout(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }
-
-  useEffect(() => () => stopPolling(), []);
 
   // ── Passo 4 (reidratação) → gerar arquivos ──────────────────────────────
   async function gerarArquivos() {
@@ -569,41 +522,9 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     );
   }
 
-  if (passo === 3) {
-    const podeRetry = !!(erro && retryRef.current);
-    return (
-      <WizardLayout
-        ferramenta={FERRAMENTA_LABEL}
-        passos={PASSOS}
-        passoAtual={3}
-        titulo={erro ? "Revisão interrompida" : statusTexto || "Analisando seu livro…"}
-        descricao="Isso costuma levar alguns minutos. Você pode fechar esta aba — o trabalho continua no servidor."
-        rodape={{
-          primario: podeRetry ? (
-            <CtaPrimario
-              onClick={() => {
-                setErro(null);
-                void retryRef.current!();
-              }}
-            >
-              Tentar novamente
-            </CtaPrimario>
-          ) : undefined,
-        }}
-      >
-        <div className="space-y-4">
-          <ConteudoRodando statusTexto={statusTexto} progresso={progresso} erro={erro} />
-          <p className="text-xs text-zinc-500">
-            Fechou sem querer? Volte por{" "}
-            <Link href="/dashboard/ferramentas" className="underline">
-              Ferramentas → Continuar
-            </Link>
-            .
-          </p>
-        </div>
-      </WizardLayout>
-    );
-  }
+  // passo === 3 (rótulo "Revisão") não tem tela própria — o carregamento
+  // mora em /dashboard/revisao. Fluxo normal navega pra lá antes de cair
+  // aqui; caso caia, o passo 4 assume via fallback abaixo.
 
   if (passo === 4) {
     if (!projectId || !jobId) return null;
@@ -650,14 +571,14 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     );
   }
 
-  const r = resultado!;
+  if (!resultado) return null;
   return (
     <TelaPronto
       ferramenta={FERRAMENTA_LABEL}
       passos={PASSOS}
-      entregaveis={r.entregaveis}
-      jobId={r.jobId}
-      expiraEm={r.expiraEm}
+      entregaveis={resultado.entregaveis}
+      jobId={resultado.jobId}
+      expiraEm={resultado.expiraEm}
     />
   );
 }
