@@ -10,7 +10,7 @@ import { serializeEditorState } from "./lib/editor-serializer";
 import { isEditableTarget } from "./lib/keyboard-utils";
 import { hashElements, hashFills } from "./lib/state-hash";
 import { createSmartFieldElement, type SmartFieldContentMap } from "./lib/smart-field-layout";
-import { createImageElement, type AnyElement, type Region } from "./lib/elements";
+import { createImageElement, type AnyElement, type Region, type TextElement } from "./lib/elements";
 import {
   getCapaIaAnchoredRect,
   getCapaIaVersoAnchoredRect,
@@ -25,6 +25,46 @@ import { reanchorFrenteElements } from "./lib/reanchor";
 import type { CapaIaHandoff, EditorLayout, FormatKey, ProjectData } from "./types";
 
 const CAPA_IA_IDS = [CAPA_IA_FRENTE_ID, CAPA_IA_VERSO_ID, CAPA_IA_UNICA_ID] as const;
+
+// FERR-3.4j: instrumentação dev de mount do editor de capa. Gated por ?debug
+// na URL — sem debug, cada chamada retorna cedo e o console fica limpo. Alvo:
+// investigar por que "Edições não publicadas" acende ao reabrir com páginas
+// iguais e o comportamento do smart field `sinopse_curta` na hidratação.
+function isCapaMountDebug(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search).has("debug");
+  } catch {
+    return false;
+  }
+}
+
+function logSinopse(etapa: string, extra?: Record<string, unknown>): void {
+  if (!isCapaMountDebug()) return;
+  const s = useEditorStore.getState();
+  const sinopse = s.elements.find(
+    (e): e is TextElement =>
+      e.type === "text" && (e as TextElement).smartField === "sinopse_curta",
+  );
+  const payload = {
+    etapa,
+    pages: s.pages,
+    orelhaMm: s.orelhaMm,
+    el: sinopse
+      ? {
+          x_mm: sinopse.x_mm,
+          width_mm: sinopse.width_mm,
+          fontSize_pt: sinopse.fontSize_pt,
+          posicaoManual: sinopse.posicaoManual ?? false,
+        }
+      : null,
+    hash: hashElements(s.elements),
+    snapHash: s.confirmedSnapshot?.elementsHash ?? null,
+    ...(extra ?? {}),
+  };
+  // eslint-disable-next-line no-console
+  console.log("[capa-mount]", JSON.stringify(payload));
+}
 
 /**
  * Injeta as artes da IA como ImageElements travados por id determinístico.
@@ -317,6 +357,18 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         backgroundUrl: projectData.initialEditorData.backgroundUrl,
         capaIaRemovida: projectData.initialEditorData.capaIaRemovida,
       });
+      logSinopse("1-post-hydrate", {
+        initialEditorDataPagesRaw: projectData.initialEditorData.pages,
+        projectDataPages: projectData.pages,
+        confirmedAtFromDb: projectData.confirmedAt,
+        // Dúvida (b) do Q3: `confirmedAt` vem da coluna capa.confirmed_at
+        // (page.tsx:117). Os hashes de confirmedSnapshot são COMPUTADOS
+        // LOCALMENTE em setConfirmedSnapshot (:446) via hashElements/hashFills
+        // sobre o state imediatamente após hydrate+reanchor+reconcile — nunca
+        // vêm do banco. Logado aqui para bater com a doc.
+        snapshotHashOrigem:
+          "hashElements/hashFills locais em setConfirmedSnapshot pós-mount",
+      });
 
       // Divergência de lombada entre sessões: se `pages` no editor_data salvo
       // difere do `projectData.pages` atual (estimativa → paginas_reais pós-
@@ -344,6 +396,13 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         // e o próximo autosave persiste a nova referência de `pages`.
         useEditorStore.setState({ pages: projectData.pages });
       }
+      logSinopse("2-post-reanchor-block", {
+        savedPages: projectData.initialEditorData.pages,
+        projectDataPages: projectData.pages,
+        reanchorRan:
+          typeof projectData.initialEditorData.pages === "number" &&
+          projectData.initialEditorData.pages !== projectData.pages,
+      });
 
       // Aplica fills default da IA sobre qualquer região sem cor definida.
       // Preserva escolhas do autor (fill já não-vazio). Escolher nova frente
@@ -363,6 +422,9 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
           s.capaIaRemovida,
         );
       }
+      logSinopse("3-post-reconcile", {
+        capaIaHandoff: projectData.capaIaHandoff ? "presente" : "ausente",
+      });
     } else {
       // Primeira vez abrindo o editor para este projeto (sem editor_data
       // prévio no banco). Popular background (upload), injetar a arte da
@@ -445,6 +507,9 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         confirmedAt: projectData.confirmedAt,
       });
     }
+    logSinopse("4-post-setConfirmedSnapshot", {
+      confirmedAtPresente: Boolean(projectData.confirmedAt),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectData.projectId]);
 
@@ -513,6 +578,14 @@ export function EditorClient({ projectData }: { projectData: ProjectData }) {
         state.updateElement,
         state.elements,
       );
+      logSinopse("5-subscribe#2-fired", {
+        prevPages: prev.pages,
+        prevOrelhaMm: prev.orelhaMm,
+        prevLayout: prev.layout,
+        currPages: state.pages,
+        currOrelhaMm: state.orelhaMm,
+        currLayout: state.layout,
+      });
     });
     return unsub;
   }, [projectData.title, projectData.subtitle, projectData.capaIaHandoff]);
