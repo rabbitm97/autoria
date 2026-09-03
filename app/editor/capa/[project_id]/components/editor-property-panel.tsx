@@ -6,8 +6,6 @@ import { gerarBarcodePngDataUrl } from "@/lib/barcode-isbn-cliente";
 import type { TextElement, ImageElement, LogoElement, BarcodeElement, ShapeElement, AnyElement } from "../lib/elements";
 import { MM_TO_PX } from "../lib/dimensions";
 
-const PT_OPTIONS = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 60, 72, 96];
-
 function PanelRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2">
@@ -19,7 +17,18 @@ function PanelRow({ label, children }: { label: string; children: React.ReactNod
 
 function TextPanel({ el }: { el: TextElement }) {
   const { updateElement } = useEditorStore();
-  const up = (patch: Partial<TextElement>) => updateElement(el.id, patch as any);
+  // FERR-3.4i: editar um smart field pelo painel é toque do autor. A partir
+  // daqui o reanchor só translada (nunca reseta o box) — mesma semântica
+  // do drag/transform. Sem isso, mudar cor/fonte/tamanho pelo painel não
+  // "marcava" o elemento como do autor, e uma divergência posterior de
+  // pages (ex.: 100→230) apagava a formatação junto com o reset do box.
+  const up = (patch: Partial<TextElement>) =>
+    updateElement(
+      el.id,
+      (el.smartField && !el.posicaoManual
+        ? { ...patch, posicaoManual: true }
+        : patch) as any,
+    );
 
   return (
     <div className="space-y-2.5">
@@ -46,15 +55,21 @@ function TextPanel({ el }: { el: TextElement }) {
       </PanelRow>
 
       <PanelRow label="Tamanho">
-        <select
-          value={el.fontSize_pt}
-          onChange={(e) => up({ fontSize_pt: Number(e.target.value) })}
-          className="w-full rounded-lg border border-[#e0ddd2] px-2 py-1.5 text-xs outline-none focus:border-[#c9a84c]"
-        >
-          {PT_OPTIONS.map((pt) => (
-            <option key={pt} value={pt}>{pt}pt</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min={6}
+            max={96}
+            step={0.5}
+            value={Math.round(el.fontSize_pt * 10) / 10}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) up({ fontSize_pt: Math.min(96, Math.max(6, v)) });
+            }}
+            className="min-w-0 flex-1 rounded-lg border border-[#e0ddd2] px-2 py-1.5 text-xs outline-none focus:border-[#c9a84c]"
+          />
+          <span className="text-[10px] text-zinc-400">pt</span>
+        </div>
       </PanelRow>
 
       <PanelRow label="Estilo">

@@ -520,7 +520,7 @@ export function EditorCanvas({ format: _format, pages: _pages }: EditorCanvasPro
       const newW = Math.max(20, node.width() * scaleX) / MM_TO_PX;
       const marcaManual = isReanchorTarget(el);
       if (el.type === "text") {
-        const newFontSizePt = Math.max(6, (el as TextElement).fontSize_pt * scaleY);
+        const newFontSizePt = Math.round(Math.max(6, (el as TextElement).fontSize_pt * scaleY) * 10) / 10;
         updateElement(elId, {
           x_mm: node.x() / MM_TO_PX,
           y_mm: node.y() / MM_TO_PX,
