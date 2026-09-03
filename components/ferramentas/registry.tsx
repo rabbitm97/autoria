@@ -76,6 +76,7 @@ export const TOOLS: readonly FerramentaCard[] = [
     categoria: "Análise e texto",
     estado: "pago",
     preco_creditos: CUSTOS_CREDITOS.revisao_completa,
+    href: "/dashboard/ferramentas/revisao",
     icon: CheckIcon,
   },
   {

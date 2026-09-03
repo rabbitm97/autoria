@@ -35,10 +35,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Load project data ─────────────────────────────────────────────────────
+  // FERR-3.5b: `origem` habilita config padrão no sombra da revisão avulsa
+  // (não passa pelo /dashboard/miolo, então não há config no JSONB).
   const { data: project, error: projErr } = await supabase
     .from("projects")
     .select(
-      "dados_miolo, dados_capa, dados_creditos, dados_elementos, manuscript:manuscript_id(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash, texto_revisado, texto)"
+      "origem, dados_miolo, dados_capa, dados_creditos, dados_elementos, manuscript:manuscript_id(titulo, subtitulo, autor_primeiro_nome, autor_sobrenome, capitulos_aprovados, capitulos_aprovados_texto_hash, texto_revisado, texto)"
     )
     .eq("id", project_id)
     .eq("user_id", userId)
@@ -74,7 +76,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Manuscrito sem texto. Execute o parse primeiro." }, { status: 422 });
   }
 
-  const config = mioloData?.config;
+  // FERR-3.5b: sombra da revisão avulsa (origem="ferramenta") não passa pelo
+  // /dashboard/miolo; injeta config padrão editorial. Esteira e outras
+  // ferramentas continuam exigindo a config salva.
+  let config = mioloData?.config;
+  const origem = (project as { origem?: string | null }).origem ?? null;
+  if (!config?.template && origem === "ferramenta") {
+    config = {
+      template: "literario",
+      formato: "padrao_br",
+      corpo_pt: 11,
+      tem_capitulos: true,
+      sumario: false,
+      dedicatoria: "",
+      epigrafe_texto: "",
+      epigrafe_autor: "",
+      bio_autor: "",
+    };
+  }
   if (!config?.template) {
     return NextResponse.json({ error: "Configuração de miolo não encontrada. Gere o miolo primeiro." }, { status: 422 });
   }

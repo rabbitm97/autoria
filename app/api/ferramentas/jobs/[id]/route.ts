@@ -43,13 +43,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         tem_creditos: boolean;
         tem_miolo: boolean;
         tem_capa_confirmada: boolean;
+        tem_capitulos: boolean;
         revisao_estado: null | "processing" | "concluida" | "finalizada";
       }
     | null = null;
   if (job.projeto_sombra_id) {
     const { data: p } = await admin
       .from("projects")
-      .select("formato, dados_creditos, dados_miolo, dados_capa, dados_revisao")
+      .select("formato, dados_creditos, dados_miolo, dados_capa, dados_revisao, manuscripts:manuscript_id(capitulos_aprovados)")
       .eq("id", job.projeto_sombra_id)
       .maybeSingle();
     const row = p as {
@@ -58,6 +59,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       dados_miolo?: { html_storage_path?: string } | null;
       dados_capa?: Record<string, unknown> | null;
       dados_revisao?: Record<string, unknown> | null;
+      manuscripts?: { capitulos_aprovados?: unknown[] | null } | null;
     } | null;
     const dr = row?.dados_revisao as
       | { status?: string; finalizado_em?: string; revisado_em?: string }
@@ -74,6 +76,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       tem_creditos: !!row?.dados_creditos?.input_hash,
       tem_miolo: !!row?.dados_miolo?.html_storage_path,
       tem_capa_confirmada: isEditorCapa(row?.dados_capa ?? null),
+      tem_capitulos: Array.isArray(row?.manuscripts?.capitulos_aprovados)
+        && (row!.manuscripts!.capitulos_aprovados!.length > 0),
       revisao_estado: revisaoEstado,
     };
   }

@@ -202,7 +202,13 @@ export default function RevisaoPage() {
   // (não existe etapa seguinte), e o job_id vai no body do motor pra
   // habilitar débito por sombra em vez de negarPorPlano.
   const avulsoJob = searchParams.get("avulso");
-  const retornoAvulso = avulsoJob ? "/dashboard/ferramentas" : null;
+  // FERR-3.5b: em modo avulso, o retorno depois do fluxo (finalizar,
+  // pular via toggle, trocar arquivo) volta pro wizard da revisão com
+  // o mesmo job — reidrata em Arquivos (revisao_estado="finalizada") e
+  // dispara a geração de DOCX + relatório sem passar pela esteira.
+  const retornoAvulso = avulsoJob
+    ? `/dashboard/ferramentas/revisao?job=${avulsoJob}`
+    : null;
 
   const [usarRevisao, setUsarRevisao] = useState<boolean | null>(null);
   const [manuscritoNome, setManuscritoNome] = useState<string>("");
