@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { EtapasProgress } from "@/components/etapas-progress";
 import { RevisaoLoading } from "@/components/revisao/RevisaoLoading";
 import type { SugestaoRevisao, RevisaoResult, RevisaoProcessingState } from "@/app/api/agentes/revisao/route";
@@ -193,7 +193,16 @@ export default function RevisaoPage() {
   const { id: projectId } = useParams<{ id: string }>();
   useExpressGuard(projectId);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const newFileRef = useRef<HTMLInputElement>(null);
+
+  // FERR-3.5a: modo avulso. Quando o autor volta pela retomada do painel
+  // (`?avulso=<jobId>`), a tela vira uma ferramenta stand-alone: sem
+  // EtapasProgress (não faz parte da esteira), sem push pra /elementos
+  // (não existe etapa seguinte), e o job_id vai no body do motor pra
+  // habilitar débito por sombra em vez de negarPorPlano.
+  const avulsoJob = searchParams.get("avulso");
+  const retornoAvulso = avulsoJob ? "/dashboard/ferramentas" : null;
 
   const [usarRevisao, setUsarRevisao] = useState<boolean | null>(null);
   const [manuscritoNome, setManuscritoNome] = useState<string>("");
@@ -338,7 +347,11 @@ export default function RevisaoPage() {
       const res = await fetch("/api/agentes/revisao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
+        body: JSON.stringify(
+          avulsoJob
+            ? { project_id: projectId, job_id: avulsoJob }
+            : { project_id: projectId },
+        ),
       });
 
       if (!res.ok) {
@@ -443,7 +456,7 @@ export default function RevisaoPage() {
         body: JSON.stringify({ project_id: projectId }),
       });
 
-      router.push(`/dashboard/elementos/${projectId}`);
+      router.push(retornoAvulso ?? `/dashboard/elementos/${projectId}`);
     } catch {
       setError("Falha ao salvar revisão. Tente novamente.");
     } finally {
@@ -527,8 +540,9 @@ export default function RevisaoPage() {
         throw new Error(d.error ?? "Erro ao salvar arquivo final.");
       }
 
-      // Passo 3: redireciona para próxima etapa
-      router.push(`/dashboard/elementos/${projectId}`);
+      // Passo 3: redireciona para próxima etapa (esteira) ou volta ao painel
+      // de ferramentas (avulso — não há próxima etapa fora da esteira).
+      router.push(retornoAvulso ?? `/dashboard/elementos/${projectId}`);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Erro desconhecido.");
       setUploadStatus("idle");
@@ -571,7 +585,7 @@ export default function RevisaoPage() {
 
   return (
     <div>
-      <EtapasProgress currentStep={1} projectId={projectId} />
+      {!avulsoJob && <EtapasProgress currentStep={1} projectId={projectId} />}
 
       <main className="max-w-4xl mx-auto px-4 py-10">
         {loading ? (
@@ -592,10 +606,12 @@ export default function RevisaoPage() {
               Você optou por pular a revisão textual ao criar o projeto. Quando quiser, pode avançar diretamente para os elementos editoriais.
             </p>
             <button
-              onClick={() => router.push(`/dashboard/elementos/${projectId}`)}
+              onClick={() =>
+                router.push(retornoAvulso ?? `/dashboard/elementos/${projectId}`)
+              }
               className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all"
             >
-              Continuar para Elementos Editoriais →
+              {avulsoJob ? "Voltar ao painel de ferramentas →" : "Continuar para Elementos Editoriais →"}
             </button>
           </div>
 
@@ -699,10 +715,10 @@ export default function RevisaoPage() {
                 <button
                   onClick={finalizarRevisao}
                   disabled={saving || !canFinish}
-                  title={!canFinish ? `Avalie todas as ${pendentes} sugestões pendentes para continuar` : "Finalizar revisão e avançar"}
+                  title={!canFinish ? `Avalie todas as ${pendentes} sugestões pendentes para continuar` : avulsoJob ? "Concluir revisão e voltar ao painel" : "Finalizar revisão e avançar"}
                   className="px-3 py-2 text-xs bg-brand-primary text-brand-surface rounded-xl hover:bg-[#2a2a4e] transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-semibold"
                 >
-                  {saving ? "Salvando…" : "Finalizar →"}
+                  {saving ? "Salvando…" : avulsoJob ? "Concluir →" : "Finalizar →"}
                 </button>
               </div>
             </div>
@@ -816,7 +832,7 @@ export default function RevisaoPage() {
                     title={!canFinish ? `Avalie todas as ${pendentes} sugestões pendentes para continuar` : ""}
                     className="inline-flex items-center gap-2 bg-brand-primary text-brand-surface px-8 py-4 rounded-xl font-semibold text-sm hover:bg-[#2a2a4e] transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {saving ? "Salvando…" : "Finalizar revisão →"}
+                    {saving ? "Salvando…" : avulsoJob ? "Concluir revisão →" : "Finalizar revisão →"}
                   </button>
                 </div>
               </div>
@@ -831,7 +847,8 @@ export default function RevisaoPage() {
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
             <h3 className="font-heading text-xl text-brand-primary mb-3">Enviar arquivo final?</h3>
             <p className="text-zinc-600 text-sm leading-relaxed mb-2">
-              Ao enviar um novo arquivo, ele será considerado o <strong>texto final</strong> da sua obra. A revisão atual será descartada e você avançará para a próxima etapa.
+              Ao enviar um novo arquivo, ele será considerado o <strong>texto final</strong> da sua obra. A revisão atual será descartada
+              {avulsoJob ? " e a revisão fica salva no painel de ferramentas." : " e você avançará para a próxima etapa."}
             </p>
             <p className="text-zinc-500 text-xs mb-6">
               Esta ação não dispara reprocessamento da IA e não consome créditos.

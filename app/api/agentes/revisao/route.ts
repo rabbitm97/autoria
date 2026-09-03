@@ -1,11 +1,15 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { anthropic, parseLLMJson, langfuse } from "@/lib/anthropic";
 import { requireAuth } from "@/lib/supabase-server";
 import { updateProject, avancarEtapa, negarPorPlano } from "@/lib/supabase-helpers";
 import { getAgentPrompt } from "@/lib/agent-prompts";
 import { validarProjectData } from "@/lib/project-data";
+import { autorizarAcao } from "@/lib/creditos";
+import { registrarDebitoJob } from "@/lib/ferramenta-jobs";
+import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import type {
   SugestaoRevisao,
   RevisaoResult,
@@ -231,21 +235,21 @@ export async function POST(request: NextRequest) {
     return res as Response;
   }
 
-  let body: { project_id: string };
+  let body: { project_id: string; job_id?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Body JSON inválido." }, { status: 400 });
   }
 
-  const { project_id } = body;
+  const { project_id, job_id } = body;
   if (!project_id) {
     return NextResponse.json({ error: "Campo 'project_id' obrigatório." }, { status: 400 });
   }
 
   const { data: project, error: projErr } = await supabase
     .from("projects")
-    .select("id, plano, usar_revisao, manuscript_id, manuscripts(texto)")
+    .select("id, plano, origem, usar_revisao, manuscript_id, manuscripts(texto)")
     .eq("id", project_id)
     .eq("user_id", user.id)
     .single();
@@ -261,8 +265,45 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "revisao");
-  if (gate) return gate;
+  // Gate por origem: sombra (ferramenta avulsa) → job_id obrigatório + débito
+  // pontual via autorizarAcao/registrarDebitoJob. Esteira (projeto real) →
+  // negarPorPlano como sempre. NÃO pular negarPorPlano na esteira, senão
+  // vira revisão de graça (mesmo bug já consertado no diagnóstico/EPUB).
+  const ehSombra = (project as { origem?: unknown }).origem === "ferramenta";
+  if (ehSombra) {
+    if (!job_id) {
+      return NextResponse.json({ error: "job_id obrigatório para projeto de ferramenta." }, { status: 400 });
+    }
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data: job } = await admin
+      .from("ferramenta_jobs")
+      .select("id, user_id, projeto_sombra_id, debitado_em")
+      .eq("id", job_id)
+      .maybeSingle();
+    const j = job as { id: string; user_id: string; projeto_sombra_id: string | null; debitado_em: string | null } | null;
+    if (!j || j.user_id !== user.id || j.projeto_sombra_id !== project_id) {
+      return NextResponse.json({ error: "Job não encontrado para este projeto." }, { status: 404 });
+    }
+    if (!j.debitado_em) {
+      const acao = "revisao_completa" as const;
+      const aut = await autorizarAcao(
+        admin,
+        { id: project_id, plano: (project as { plano?: unknown }).plano, origem: "ferramenta" },
+        user.id,
+        { minimoPlano: "essencial", acao },
+      );
+      if (!aut.liberado) return aut.resposta!;
+      if (aut.pagoComCreditos) {
+        await registrarDebitoJob(admin, j.id, CUSTOS_CREDITOS[acao]);
+      }
+    }
+  } else {
+    const gate = negarPorPlano((project as { plano?: unknown }).plano, "essencial", "revisao");
+    if (gate) return gate;
+  }
 
   const texto = (project.manuscripts as unknown as { texto: string | null } | null)?.texto ?? "";
   if (!texto || texto.trim().length < 100) {

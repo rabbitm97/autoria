@@ -18,7 +18,36 @@ export const PREVIA_PAGINAS = 20; // prévia gratuita da diagramação avulsa (d
 
 /** Ferramentas que têm wizard e podem criar jobs por POST /ferramentas/jobs.
  *  Barra ids fantasmas/legados (residual de auditoria FERR-3.1). */
-export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub", "diagramacao-digital", "diagramacao-completa", "capa-ia"] as const;
+export const FERRAMENTAS_COM_WIZARD = ["diagnostico", "epub", "diagramacao-digital", "diagramacao-completa", "capa-ia", "revisao"] as const;
+
+/** Retomada da experiência quando o autor volta ao painel enquanto o job
+ *  ainda não concluiu (aguardando_autor / processando). Cada ferramenta
+ *  aponta pro seu ponto de reidratação — genérico o suficiente pra tolerar
+ *  wizard próprio (capa-ia → /dashboard/ferramentas/capa?job=) ou tela do
+ *  fluxo real reaproveitada em modo avulso (revisao → /dashboard/revisao/
+ *  <sombra>?avulso=). Retorna null se faltar peça obrigatória (ex.:
+ *  ferramenta que só reidrata com sombra e o job não tem). */
+export const FERRAMENTAS_RETOMAVEIS: Record<
+  string,
+  {
+    buildUrl: (job: { id: string; projeto_sombra_id: string | null }) => string | null;
+    /** Label do badge quando a ferramenta está em `processando`. Default
+     *  (vindo do painel) é "Em processamento" — override quando cabe uma
+     *  palavra mais fiel ao trabalho ("Em revisão" p/ revisao). */
+    badgeProcessando?: string;
+  }
+> = {
+  "capa-ia": {
+    buildUrl: (job) => `/dashboard/ferramentas/capa?job=${job.id}`,
+  },
+  "revisao": {
+    buildUrl: (job) =>
+      job.projeto_sombra_id
+        ? `/dashboard/revisao/${job.projeto_sombra_id}?avulso=${job.id}`
+        : null,
+    badgeProcessando: "Em revisão",
+  },
+};
 
 export type EstadoJob =
   | "iniciado" | "aguardando_autor" | "processando"

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isDev } from "@/lib/anthropic";
 import { TOOLS } from "@/components/ferramentas/registry";
-import type { EntregavelJob, EstadoJob } from "@/lib/ferramenta-jobs";
+import { FERRAMENTAS_RETOMAVEIS, type EntregavelJob, type EstadoJob } from "@/lib/ferramenta-jobs";
 
 interface JobRow {
   id: string;
@@ -72,9 +72,22 @@ export async function ArquivosFerramentas() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {jobs.map((job) => {
-          const badge = ESTADO_BADGE[job.estado];
+          const retomavel = FERRAMENTAS_RETOMAVEIS[job.ferramenta_id];
+          const badgeBase = ESTADO_BADGE[job.estado];
+          // FERR-3.5a: badge de "processando" ganha copy específica quando a
+          // ferramenta declara badgeProcessando (ex.: "Em revisão" > "Em
+          // processamento" — mais fiel ao trabalho, mesmo estilo visual).
+          const badge =
+            job.estado === "processando" && retomavel?.badgeProcessando && badgeBase
+              ? { ...badgeBase, texto: retomavel.badgeProcessando }
+              : badgeBase;
           const expira = job.expira_em ? new Date(job.expira_em) : null;
           const urgente = expira ? expira.getTime() - Date.now() <= seteDias : false;
+          const retomarUrl =
+            retomavel &&
+            (job.estado === "aguardando_autor" || job.estado === "processando")
+              ? retomavel.buildUrl(job)
+              : null;
           return (
             <div key={job.id} className="rounded-xl border border-zinc-100 bg-white p-4">
               <div className="flex items-center justify-between gap-2 mb-2">
@@ -101,20 +114,21 @@ export async function ArquivosFerramentas() {
                   ))}
                 </div>
               )}
-              {/* FERR-3.4f: capa em andamento (débito feito, autor ainda no
-                  wizard/editor) ganha "Continuar →" pro wizard reidratar. */}
-              {job.ferramenta_id === "capa-ia" &&
-                job.projeto_sombra_id &&
-                (job.estado === "aguardando_autor" || job.estado === "processando") && (
-                  <p className="text-right">
-                    <Link
-                      href={`/dashboard/ferramentas/capa?job=${job.id}`}
-                      className="text-[11px] text-brand-gold hover:underline whitespace-nowrap"
-                    >
-                      Continuar →
-                    </Link>
-                  </p>
-                )}
+              {/* Retomada genérica (FERR-3.5a): cada ferramenta declara em
+                  FERRAMENTAS_RETOMAVEIS onde reidratar quando o job ainda
+                  não concluiu (aguardando_autor / processando). Capa avulsa
+                  volta pro wizard; revisão avulsa volta pra tela
+                  /dashboard/revisao/<sombra>?avulso=<job>. */}
+              {retomarUrl && (
+                <p className="text-right">
+                  <Link
+                    href={retomarUrl}
+                    className="text-[11px] text-brand-gold hover:underline whitespace-nowrap"
+                  >
+                    Continuar →
+                  </Link>
+                </p>
+              )}
               {job.estado === "concluido" && expira && (
                 <div className="flex items-center justify-between gap-2">
                   <p className={`text-[11px] ${urgente ? "text-amber-600 font-medium" : "text-zinc-400"}`}>

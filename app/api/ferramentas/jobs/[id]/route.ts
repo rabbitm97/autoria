@@ -28,16 +28,28 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!job || job.user_id !== userId) {
     return NextResponse.json({ error: "Job não encontrado." }, { status: 404 });
   }
-  // Estado do sombra útil pra reidratar: formato, créditos, miolo e capa
+  // Estado do sombra útil pra reidratar: formato, créditos, miolo, capa
   // confirmada (FERR-3.4b — wizard de capa avulsa pula pra passo "Gerar
-  // arquivos" quando o autor já confirmou no editor).
+  // arquivos" quando o autor já confirmou no editor) e revisão (FERR-3.5a
+  // — tela de revisão avulsa decide onde parar quando o autor volta).
+  //   revisao_estado:
+  //     null        → nunca começou (job ainda em rascunho)
+  //     "processing"→ batch da Anthropic em andamento (polling na tela)
+  //     "concluida" → sugestões geradas, autor ainda pode aceitar/rejeitar
+  //     "finalizada"→ autor selou (finalizado_em) — parte 2 vira entregável
   let sombra:
-    | { formato: string | null; tem_creditos: boolean; tem_miolo: boolean; tem_capa_confirmada: boolean }
+    | {
+        formato: string | null;
+        tem_creditos: boolean;
+        tem_miolo: boolean;
+        tem_capa_confirmada: boolean;
+        revisao_estado: null | "processing" | "concluida" | "finalizada";
+      }
     | null = null;
   if (job.projeto_sombra_id) {
     const { data: p } = await admin
       .from("projects")
-      .select("formato, dados_creditos, dados_miolo, dados_capa")
+      .select("formato, dados_creditos, dados_miolo, dados_capa, dados_revisao")
       .eq("id", job.projeto_sombra_id)
       .maybeSingle();
     const row = p as {
@@ -45,12 +57,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       dados_creditos?: { input_hash?: string } | null;
       dados_miolo?: { html_storage_path?: string } | null;
       dados_capa?: Record<string, unknown> | null;
+      dados_revisao?: Record<string, unknown> | null;
     } | null;
+    const dr = row?.dados_revisao as
+      | { status?: string; finalizado_em?: string; revisado_em?: string }
+      | null
+      | undefined;
+    let revisaoEstado: null | "processing" | "concluida" | "finalizada" = null;
+    if (dr) {
+      if (dr.status === "processing") revisaoEstado = "processing";
+      else if (dr.finalizado_em) revisaoEstado = "finalizada";
+      else if (dr.revisado_em) revisaoEstado = "concluida";
+    }
     sombra = {
       formato: row?.formato ?? null,
       tem_creditos: !!row?.dados_creditos?.input_hash,
       tem_miolo: !!row?.dados_miolo?.html_storage_path,
       tem_capa_confirmada: isEditorCapa(row?.dados_capa ?? null),
+      revisao_estado: revisaoEstado,
     };
   }
   const { user_id: _omit, ...publico } = job;
