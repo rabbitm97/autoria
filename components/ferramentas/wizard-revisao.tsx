@@ -2,15 +2,14 @@
 
 // components/ferramentas/wizard-revisao.tsx
 //
-// Wizard da REVISÃO COMPLETA — avulsa (FERR-3.5b). Fluxo:
-//   0 Início → 1 Manuscrito → 2 Capítulos → 3 Revisar (débito 150 + batch)
-//   → 4 Sugestões (handoff pra /dashboard/revisao/[sombra]?avulso=[job])
-//   → 5 Arquivos (gera DOCX + relatório de alterações) → 6 Pronto.
+// Wizard da REVISÃO COMPLETA — avulsa (FERR-3.5c). Fluxo sem intermediárias:
+//   0 Início → 1 Manuscrito → 2 Capítulos (AprovacaoCapitulos + linha do
+//   débito) → 3 Revisão (débito 150 + polling do batch) → navega DIRETO
+//   pra /dashboard/revisao/[sombra]?avulso=[job] quando o batch encerra.
 //
-// Retomada por ?job=: consulta GET /api/ferramentas/jobs/[id] e reidrata
-// pelo `sombra.revisao_estado` (`null` → tem_capitulos ? 3 : 2 ·
-// `processing` → 4 · `concluida` → 5 · `finalizada` → 6 quando ainda não
-// concluído, `concluido` job → 6 direto).
+// Passo 4 (Sugestões) e 5 (Pronto) existem só como destino de reidratação
+// via ?job= ou pelo painel — sem auto-push aqui, já que "voltar depois"
+// deve entregar o autor num card estável, não empurrá-lo pra outra tela.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,6 +18,7 @@ import { supabase } from "@/lib/supabase";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { criarSombraEJob } from "@/lib/sombra-cliente";
 import type { CandidatoCapitulo } from "@/lib/chapter-detection";
+import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
 import {
   ConteudoInicio,
   ConteudoManuscrito,
@@ -29,8 +29,6 @@ import {
   WizardLayout,
   manuscritoPronto,
   useSaldo,
-  fieldClass,
-  labelClass,
   type DadosManuscrito,
   type EntregavelPronto,
 } from "./wizard-shell";
@@ -38,14 +36,10 @@ import {
 const FERRAMENTA_LABEL = "Revisão completa";
 const FERRAMENTA_ID = "revisao";
 const CUSTO = CUSTOS_CREDITOS.revisao_completa;
-const PASSOS = ["Início", "Manuscrito", "Capítulos", "Revisar", "Sugestões", "Arquivos", "Pronto"];
+const PASSOS = ["Início", "Manuscrito", "Capítulos", "Revisão", "Sugestões", "Pronto"];
 
-type Passo = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-interface CapAprovado {
-  titulo: string;
-  pos: number;
-}
+type Passo = 0 | 1 | 2 | 3 | 4 | 5;
+type RevisaoEstado = null | "processing" | "concluida" | "finalizada";
 
 interface ResultadoPronto {
   jobId: string;
@@ -78,8 +72,9 @@ export function WizardRevisao({ jobIdInicial }: Props) {
 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(jobIdInicial);
-  const [capitulos, setCapitulos] = useState<CapAprovado[]>([]);
+  const [candidatos, setCandidatos] = useState<CandidatoCapitulo[]>([]);
   const [carregandoCapitulos, setCarregandoCapitulos] = useState(false);
+  const [revisaoEstado, setRevisaoEstado] = useState<RevisaoEstado>(null);
 
   const [statusTexto, setStatusTexto] = useState("");
   const [progresso, setProgresso] = useState(0);
@@ -147,7 +142,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         sombra:
           | {
               tem_capitulos: boolean;
-              revisao_estado: null | "processing" | "concluida" | "finalizada";
+              revisao_estado: RevisaoEstado;
             }
           | null;
       };
@@ -168,20 +163,25 @@ export function WizardRevisao({ jobIdInicial }: Props) {
           expiraEm: data.job.expira_em,
           entregaveis: Array.isArray(data.job.entregaveis) ? data.job.entregaveis : [],
         });
-        setPasso(6);
+        setPasso(5);
         return;
       }
 
-      const s = data.sombra;
-      const r = s?.revisao_estado ?? null;
-      if (r === "finalizada") setPasso(5);
-      else if (r === "concluida") setPasso(5);
-      else if (r === "processing") {
+      const r = data.sombra?.revisao_estado ?? null;
+      setRevisaoEstado(r);
+      if (r === "finalizada" || r === "concluida") {
+        // Card de "voltar depois" — sem auto-push. O autor entrou pelo
+        // painel/URL e espera um destino estável, não outra navegação.
         setPasso(4);
-        // Retoma polling do batch em segundo plano
+      } else if (r === "processing") {
+        setPasso(3);
         void iniciarPolling();
-      } else if (s?.tem_capitulos) setPasso(3);
-      else setPasso(2);
+      } else {
+        // Sem revisão ainda — volta para o passo de capítulos. Se já havia
+        // capítulos aprovados, o autor só reconfirma (o aprovar-capitulos
+        // aceita reaprovação idempotente).
+        setPasso(2);
+      }
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao retomar.");
       setPasso(1);
@@ -223,7 +223,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     }
   }
 
-  // ── Passo 2: propor + aprovar capítulos ─────────────────────────────────
+  // ── Passo 2: propor capítulos (auto-load) ───────────────────────────────
   async function proporCapitulosDoSombra() {
     if (!projectId) return;
     setCarregandoCapitulos(true);
@@ -239,13 +239,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         setErro(data.error ?? "Erro ao detectar capítulos.");
         return;
       }
-      const sugeridos = (data.candidatos ?? []).filter((c) => c.sugerido);
-      if (sugeridos.length === 0) {
-        // Sem candidatos: aprovar 1 "livro inteiro" para permitir o fluxo
-        setCapitulos([{ titulo: dados.titulo || "Livro", pos: 0 }]);
-      } else {
-        setCapitulos(sugeridos.map((c) => ({ titulo: c.titulo, pos: c.pos })));
-      }
+      setCandidatos(data.candidatos ?? []);
     } catch {
       setErro("Erro de rede ao detectar capítulos.");
     } finally {
@@ -254,39 +248,68 @@ export function WizardRevisao({ jobIdInicial }: Props) {
   }
 
   useEffect(() => {
-    if (passo === 2 && projectId && capitulos.length === 0 && !carregandoCapitulos && !erro) {
+    if (passo === 2 && projectId && candidatos.length === 0 && !carregandoCapitulos && !erro) {
       void proporCapitulosDoSombra();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passo, projectId]);
 
-  async function aprovarCapitulos() {
-    if (!projectId || capitulos.length === 0) return;
-    retryRef.current = aprovarCapitulos;
+  // ── Passo 2 → 3: aprovar + disparar batch (débito acontece no motor) ────
+  async function aprovarCapitulosEIr(capitulosAprovados: { titulo: string; pos: number }[]) {
+    if (!projectId || !jobId) return;
+    retryRef.current = () => aprovarCapitulosEIr(capitulosAprovados);
     setErro(null);
-    setProcessando("Salvando capítulos…");
+    setPasso(3);
     setStatusTexto("Salvando capítulos…");
-    setProgresso(50);
+    setProgresso(15);
     try {
-      const res = await fetch("/api/agentes/miolo/aprovar-capitulos", {
+      const resA = await fetch("/api/agentes/miolo/aprovar-capitulos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: capitulos }),
+        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: capitulosAprovados }),
       });
-      if (!res.ok) {
-        const d = (await res.json()) as { error?: string };
+      if (!resA.ok) {
+        const d = (await resA.json().catch(() => ({}))) as { error?: string };
         throw new Error(d.error ?? "Falha ao aprovar capítulos.");
       }
-      setProcessando(null);
-      setPasso(3);
+
+      setStatusTexto("Enviando para análise…");
+      setProgresso(30);
+      const resR = await fetch("/api/agentes/revisao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId, job_id: jobId }),
+      });
+
+      if (resR.status === 402) {
+        const d = (await resR.json().catch(() => ({}))) as { error?: string };
+        setPasso(2);
+        setErro(
+          d.error ??
+            `Créditos insuficientes${saldo !== null ? ` (você tem ${saldo}, precisa de ${CUSTO})` : ""}.`,
+        );
+        return;
+      }
+      if (!resR.ok) {
+        const d = (await resR.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error ?? "Falha ao iniciar revisão.");
+      }
+
+      const dataR = (await resR.json()) as { status: string };
+      if (dataR.status === "done" || dataR.status === "skipped") {
+        // Batch já pronto (cache) — navega direto pra tela de aceite.
+        router.push(`/dashboard/revisao/${projectId}?avulso=${jobId}`);
+      } else {
+        void iniciarPolling();
+      }
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao aprovar.");
+      setErro(err instanceof Error ? err.message : "Erro inesperado.");
     }
   }
 
-  // ── Passo 3 → dispara batch e polling ───────────────────────────────────
+  // ── Passo 3 → polling; done navega DIRETO (sem card) ────────────────────
   async function iniciarPolling() {
-    if (!projectId) return;
+    if (!projectId || !jobId) return;
     stopPolling();
 
     async function poll() {
@@ -303,7 +326,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
           iniciado_em?: string;
         };
         if (data.status === "done") {
-          setPasso(4);
+          router.push(`/dashboard/revisao/${projectId}?avulso=${jobId}`);
           return;
         }
         if (data.status === "processing") {
@@ -335,37 +358,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
 
   useEffect(() => () => stopPolling(), []);
 
-  async function dispararRevisao() {
-    if (!projectId || !jobId) return;
-    retryRef.current = dispararRevisao;
-    setErro(null);
-    setProcessando("Enviando para análise…");
-    setStatusTexto("Enviando para análise…");
-    setProgresso(5);
-    try {
-      const res = await fetch("/api/agentes/revisao", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, job_id: jobId }),
-      });
-      if (!res.ok) {
-        const d = (await res.json()) as { error?: string };
-        throw new Error(d.error ?? "Falha ao iniciar revisão.");
-      }
-      const data = (await res.json()) as { status: string; total_chunks?: number };
-      setProcessando(null);
-      if (data.status === "done" || data.status === "skipped") {
-        setPasso(4);
-      } else {
-        setPasso(4);
-        void iniciarPolling();
-      }
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao iniciar.");
-    }
-  }
-
-  // ── Passo 5 → gerar arquivos ────────────────────────────────────────────
+  // ── Passo 4 (reidratação) → gerar arquivos ──────────────────────────────
   async function gerarArquivos() {
     if (!jobId) return;
     retryRef.current = gerarArquivos;
@@ -394,7 +387,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         entregaveis: Array.isArray(data.entregaveis) ? data.entregaveis : [],
       });
       setProcessando(null);
-      setPasso(6);
+      setPasso(5);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao gerar arquivos.");
     }
@@ -520,20 +513,16 @@ export function WizardRevisao({ jobIdInicial }: Props) {
   }
 
   if (passo === 2) {
+    // AprovacaoCapitulos traz seus próprios botões (Voltar / Confirmar);
+    // por isso o rodapé do layout fica sem CTA primário — o CTA vive dentro
+    // do próprio componente. Padrão herdado do wizard-epub.
     return (
       <WizardLayout
         ferramenta={FERRAMENTA_LABEL}
         passos={PASSOS}
         passoAtual={2}
-        titulo="Capítulos do livro"
-        descricao="Detectamos os capítulos automaticamente. Ajuste os títulos se quiser antes de continuar."
-        rodape={{
-          primario: (
-            <CtaPrimario disabled={capitulos.length === 0} onClick={aprovarCapitulos}>
-              Aprovar capítulos →
-            </CtaPrimario>
-          ),
-        }}
+        titulo="Capítulos detectados"
+        descricao="Marque quais viram capítulos na revisão. Ajuste os títulos se quiser."
       >
         {carregandoCapitulos ? (
           <div className="flex items-center gap-3 text-sm text-zinc-500">
@@ -550,7 +539,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
               type="button"
               onClick={() => {
                 setErro(null);
-                void proporCapitulosDoSombra();
+                if (candidatos.length === 0) void proporCapitulosDoSombra();
               }}
               className="mt-2 block text-xs underline"
             >
@@ -558,66 +547,59 @@ export function WizardRevisao({ jobIdInicial }: Props) {
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-zinc-500">
-              {capitulos.length} capítulo{capitulos.length === 1 ? "" : "s"} detectado
-              {capitulos.length === 1 ? "" : "s"}.
-            </p>
-            <ol className="space-y-2">
-              {capitulos.map((c, i) => (
-                <li key={i} className="flex items-center gap-3">
-                  <span className="text-xs text-zinc-400 w-6 text-right">{i + 1}.</span>
-                  <input
-                    className={fieldClass}
-                    value={c.titulo}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCapitulos((cs) => cs.map((x, j) => (j === i ? { ...x, titulo: v } : x)));
-                    }}
-                  />
-                </li>
-              ))}
-            </ol>
-          </div>
+          <>
+            <div className="mb-4 rounded-xl border border-brand-gold/30 bg-brand-gold/5 p-3">
+              <p className="text-sm text-brand-primary">
+                Ao confirmar, a revisão começa — 150 créditos.
+                {saldo !== null && (
+                  <span className="text-brand-primary/70"> Seu saldo: {saldo}.</span>
+                )}
+              </p>
+            </div>
+            <AprovacaoCapitulos
+              candidatos={candidatos}
+              onConfirmar={aprovarCapitulosEIr}
+              onVoltar={() => setPasso(1)}
+              loading={false}
+              acaoLabel="continuar"
+            />
+          </>
         )}
       </WizardLayout>
     );
   }
 
   if (passo === 3) {
-    const saldoInsuf = saldo !== null && saldo < CUSTO;
+    const podeRetry = !!(erro && retryRef.current);
     return (
       <WizardLayout
         ferramenta={FERRAMENTA_LABEL}
         passos={PASSOS}
         passoAtual={3}
-        titulo="Revisar o livro"
-        descricao="A IA vai analisar capítulo por capítulo: ortografia, gramática, coesão, consistência e ritmo. Você decide o que aceitar."
+        titulo={erro ? "Revisão interrompida" : statusTexto || "Analisando seu livro…"}
+        descricao="Isso costuma levar alguns minutos. Você pode fechar esta aba — o trabalho continua no servidor."
         rodape={{
-          primario: (
-            <CtaPrimario disabled={saldoInsuf} onClick={dispararRevisao}>
-              {saldoInsuf ? "Créditos insuficientes" : `Revisar por ${CUSTO} créditos`}
+          primario: podeRetry ? (
+            <CtaPrimario
+              onClick={() => {
+                setErro(null);
+                void retryRef.current!();
+              }}
+            >
+              Tentar novamente
             </CtaPrimario>
-          ),
+          ) : undefined,
         }}
       >
-        <div className="space-y-3">
-          <ul className="text-sm text-zinc-700 space-y-1">
-            <li>
-              <span className="text-zinc-400">Título:</span> {dados.titulo || "—"}
-            </li>
-            <li>
-              <span className="text-zinc-400">Capítulos:</span> {capitulos.length || "—"}
-            </li>
-            <li>
-              <span className="text-zinc-400">Custo:</span> {CUSTO} créditos, debitados agora
-            </li>
-          </ul>
-          {saldo !== null && (
-            <p className="text-xs text-zinc-400">
-              Seu saldo atual: <span className="font-semibold">{saldo} créditos</span>
-            </p>
-          )}
+        <div className="space-y-4">
+          <ConteudoRodando statusTexto={statusTexto} progresso={progresso} erro={erro} />
+          <p className="text-xs text-zinc-500">
+            Fechou sem querer? Volte por{" "}
+            <Link href="/dashboard/ferramentas" className="underline">
+              Ferramentas → Continuar
+            </Link>
+            .
+          </p>
         </div>
       </WizardLayout>
     );
@@ -625,58 +607,24 @@ export function WizardRevisao({ jobIdInicial }: Props) {
 
   if (passo === 4) {
     if (!projectId || !jobId) return null;
+    const finalizada = revisaoEstado === "finalizada";
     const href = `/dashboard/revisao/${projectId}?avulso=${jobId}`;
     return (
       <WizardLayout
         ferramenta={FERRAMENTA_LABEL}
         passos={PASSOS}
         passoAtual={4}
-        titulo={statusTexto || "Revisão em andamento"}
-        descricao="Você pode acompanhar o progresso na tela de sugestões. Assim que estiver pronta, revise as alterações e volte aqui para gerar os arquivos."
+        titulo={finalizada ? "Sugestões revisadas" : "Revisão pronta"}
+        descricao={
+          finalizada
+            ? "Você já revisou as sugestões. Gere agora o DOCX revisado e o relatório em PDF."
+            : "Suas sugestões estão prontas. Aceite ou rejeite cada alteração e volte aqui para gerar os arquivos."
+        }
         rodape={{
-          primario: (
-            <CtaPrimario onClick={() => router.push(href)}>
-              Abrir tela de sugestões →
-            </CtaPrimario>
-          ),
-        }}
-      >
-        <div className="space-y-4">
-          {progresso > 0 && (
-            <div>
-              <div className="flex justify-between mb-1.5">
-                <span className="text-sm text-zinc-600">{statusTexto || "Analisando…"}</span>
-                <span className="text-sm text-zinc-400">{progresso}%</span>
-              </div>
-              <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-brand-gold transition-all duration-500"
-                  style={{ width: `${progresso}%` }}
-                />
-              </div>
-            </div>
-          )}
-          <p className="text-xs text-zinc-500">
-            Você pode fechar esta aba: o trabalho continua no servidor. Volte pelo painel
-            de ferramentas em <Link href="/dashboard/ferramentas" className="underline">Continuar</Link>.
-          </p>
-        </div>
-      </WizardLayout>
-    );
-  }
-
-  if (passo === 5) {
-    if (!projectId || !jobId) return null;
-    return (
-      <WizardLayout
-        ferramenta={FERRAMENTA_LABEL}
-        passos={PASSOS}
-        passoAtual={5}
-        titulo="Gerar arquivos da revisão"
-        descricao="Vamos montar o DOCX revisado (com suas alterações aceitas) e o relatório em PDF de todas as sugestões."
-        rodape={{
-          primario: (
+          primario: finalizada ? (
             <CtaPrimario onClick={gerarArquivos}>Gerar arquivos</CtaPrimario>
+          ) : (
+            <CtaPrimario onClick={() => router.push(href)}>Ver sugestões →</CtaPrimario>
           ),
         }}
       >
@@ -689,12 +637,14 @@ export function WizardRevisao({ jobIdInicial }: Props) {
               <span className="text-zinc-400">Você receberá:</span> DOCX revisado + relatório em PDF
             </li>
           </ul>
-          <Link
-            href={`/dashboard/revisao/${projectId}?avulso=${jobId}`}
-            className="text-xs text-zinc-500 underline underline-offset-4 hover:text-brand-primary"
-          >
-            Voltar para revisar sugestões
-          </Link>
+          {finalizada && (
+            <Link
+              href={href}
+              className="text-xs text-zinc-500 underline underline-offset-4 hover:text-brand-primary"
+            >
+              Voltar para revisar sugestões
+            </Link>
+          )}
         </div>
       </WizardLayout>
     );
