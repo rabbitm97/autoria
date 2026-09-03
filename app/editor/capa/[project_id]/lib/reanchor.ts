@@ -6,6 +6,7 @@ import {
   getUnicaRect,
   getCapaIaAnchoredRect,
   getCapaIaVersoAnchoredRect,
+  getFillRect,
   type RegionRect,
 } from "./region-rects";
 import { createSmartFieldElement, type SmartFieldContentMap, type PosicaoTitulo } from "./smart-field-layout";
@@ -128,6 +129,26 @@ export function reanchorFrenteElements(
   const duDx = duPrev && duCurr ? duCurr.x - duPrev.x : 0;
   const duDy = duPrev && duCurr ? duCurr.y - duPrev.y : 0;
 
+  // Rect PREV do VERSO INTEIRO — união contracapa + orelha_verso (quando
+  // existia). Adjacentes no mesmo fold, formam um rect contíguo. Usado para
+  // arrastar TODOS os elementos do verso (sinopse_curta, sinopse_longa, bio,
+  // lombada-como-texto, custom text/shape/logo) pelo mesmo dvDx/dvDy da
+  // contracapa quando a geometria muda. Em pages-only change, dvDx=0 e a
+  // translação vira no-op — safety net barato.
+  const orelhaVersoPrev = getFillRect("orelha_verso", prev.format, prev.pages, prev.orelhaMm);
+  const versoPrevUniao: RegionRect | null = dvPrev
+    ? orelhaVersoPrev
+      ? {
+          x: Math.min(dvPrev.x, orelhaVersoPrev.x),
+          y: 0,
+          width:
+            Math.max(dvPrev.x + dvPrev.width, orelhaVersoPrev.x + orelhaVersoPrev.width) -
+            Math.min(dvPrev.x, orelhaVersoPrev.x),
+          height: dvPrev.height,
+        }
+      : dvPrev
+    : null;
+
   elements.forEach((el) => {
     // IA frente — reset para fit-cover default se não manual; senão translada.
     if (el.id === CAPA_IA_FRENTE_ID && el.type === "image") {
@@ -209,6 +230,19 @@ export function reanchorFrenteElements(
         }
         return;
       }
+    }
+
+    // Verso acompanha o painel; reset é privilégio de smart field de frente
+    // intocado (:189-211). Qualquer elemento cujo centro caia na união prev
+    // contracapa+orelha_verso translada por dvDx/dvDy — TODOS os tipos (text
+    // com qualquer smartField, custom text, shape, logo). NUNCA tocar em
+    // width/height/fontSize — translação pura. CAPA_IA_VERSO_ID já foi
+    // tratado no branch dedicado acima (return), sem delta em dobro.
+    if (versoPrevUniao && isCenterInRect(el, versoPrevUniao)) {
+      if (dvDx !== 0 || dvDy !== 0) {
+        updateElement(el.id, { x_mm: el.x_mm + dvDx, y_mm: el.y_mm + dvDy });
+      }
+      return;
     }
 
     // Demais elementos: translada se o centro cai no rect prévio da frente.

@@ -92,6 +92,15 @@ export default async function EditorCapaPage({
     const n = Number((avulsoRow?.entrada as { paginas?: unknown } | null)?.paginas);
     if (Number.isInteger(n) && n >= 24 && n <= 1200) paginasInformadas = n;
   }
+  if (avulsoJob && paginasInformadas === null) {
+    // ?avulso= presente mas o job não é do usuário / não existe / sem
+    // páginas válidas: abrir o editor com geometria de fallback sob a
+    // bandeira de avulso contamina o editor_data (incidente 03/set —
+    // autosave persiste pages do fallback por cima do estado salvo).
+    // O wizard mostra "Não encontramos este trabalho." e não expõe o
+    // jobId, então redirecionar preserva a URL sem vazar acesso.
+    redirect(`/dashboard/ferramentas/capa?job=${encodeURIComponent(avulsoJob)}`);
+  }
   const pages = paginasInformadas
     ?? miolo?.paginas_reais
     ?? estimarPaginas(getFormatoDef(format).specs, undefined, textoBase.length);
