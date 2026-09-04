@@ -2,27 +2,20 @@
 
 // components/ferramentas/wizard-revisao.tsx
 //
-// Wizard da REVISÃO COMPLETA — avulsa (FERR-3.5e). Ordem alinhada à esteira:
-// revisar → aceitar → aprovar capítulos → gerar arquivos.
+// Wizard da REVISÃO COMPLETA — avulsa (FERR-3.5f). Fluxo enxuto:
+// revisar → aceitar sugestões → gerar arquivos. Capítulos ficam
+// invisíveis pro autor: o concluir/route.ts auto-aprova sobre o
+// texto_revisado antes de chamar gerar-docx.
 //
 // Passos: 0 Início · 1 Manuscrito · 2 Revisão (débito 150 + push pro fluxo)
 // · 3 Sugestões (destino de reidratação quando revisao_estado="concluida")
-// · 4 Capítulos (propor sobre texto_revisado + AprovacaoCapitulos)
-// · 5 Pronto (card "Gerar arquivos" → concluir → TelaPronto).
-//
-// Recuperação do 422 data_changed: `gerar-docx` grava um hash do texto no
-// aprovar-capitulos e recusa DOCX quando o texto muda. Jobs criados na
-// ordem antiga (capítulos ANTES da revisão) têm hash morto — a mudança 3
-// captura o erro no gerar-arquivos, joga o autor em Capítulos com aviso
-// âmbar e regrava a aprovação sem cobrar.
+// · 4 Pronto (card "Gerar arquivos" → concluir → TelaPronto).
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
 import { criarSombraEJob } from "@/lib/sombra-cliente";
-import type { CandidatoCapitulo } from "@/lib/chapter-detection";
-import { AprovacaoCapitulos } from "@/components/aprovacao-capitulos";
 import {
   ConteudoInicio,
   ConteudoManuscrito,
@@ -40,9 +33,9 @@ import {
 const FERRAMENTA_LABEL = "Revisão completa";
 const FERRAMENTA_ID = "revisao";
 const CUSTO = CUSTOS_CREDITOS.revisao_completa;
-const PASSOS = ["Início","Manuscrito","Revisão","Sugestões","Capítulos","Pronto"];
+const PASSOS = ["Início","Manuscrito","Revisão","Sugestões","Pronto"];
 
-type Passo = 0 | 1 | 2 | 3 | 4 | 5;
+type Passo = 0 | 1 | 2 | 3 | 4;
 
 interface ResultadoPronto {
   jobId: string;
@@ -75,9 +68,6 @@ export function WizardRevisao({ jobIdInicial }: Props) {
 
   const [projectId, setProjectId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(jobIdInicial);
-  const [candidatos, setCandidatos] = useState<CandidatoCapitulo[]>([]);
-  const [carregandoCapitulos, setCarregandoCapitulos] = useState(false);
-  const [precisaReaprovar, setPrecisaReaprovar] = useState(false);
 
   const [statusTexto, setStatusTexto] = useState("");
   const [progresso, setProgresso] = useState(0);
@@ -142,7 +132,6 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         };
         sombra:
           | {
-              tem_capitulos: boolean;
               revisao_estado: null | "processing" | "concluida" | "finalizada";
             }
           | null;
@@ -164,13 +153,12 @@ export function WizardRevisao({ jobIdInicial }: Props) {
           expiraEm: data.job.expira_em,
           entregaveis: Array.isArray(data.job.entregaveis) ? data.job.entregaveis : [],
         });
-        setPasso(5);
+        setPasso(4);
         setRetomando(false);
         return;
       }
 
       const r = data.sombra?.revisao_estado ?? null;
-      const temCapitulos = !!data.sombra?.tem_capitulos;
 
       if (r === "processing") {
         // Batch rodando — a tela do fluxo mostra o progresso ao vivo.
@@ -179,10 +167,8 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         return;
       }
       if (r === "finalizada") {
-        // Ordem nova (jobs criados a partir de 3.5e): !tem_capitulos → 4.
-        // Jobs antigos com aprovação pré-revisão (tem_capitulos=true) têm
-        // hash morto — vão pra 5, e o 422 do Gerar cura via mudança 3.
-        setPasso(temCapitulos ? 5 : 4);
+        // Sugestões já aceitas — pronto pra gerar arquivos.
+        setPasso(4);
       } else if (r === "concluida") {
         setPasso(3);
       } else {
@@ -266,66 +252,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     }
   }
 
-  // ── Passo 4: propor capítulos (auto-load) ───────────────────────────────
-  // propor-capitulos:35 lê texto_revisado ?? texto — os candidatos já
-  // vêm sobre a versão final quando dados_revisao.finalizado_em existe.
-  async function proporCapitulosDoSombra() {
-    if (!projectId) return;
-    setCarregandoCapitulos(true);
-    setErro(null);
-    try {
-      const res = await fetch("/api/agentes/miolo/propor-capitulos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
-      });
-      const data = (await res.json()) as { candidatos?: CandidatoCapitulo[]; error?: string };
-      if (!res.ok) {
-        setErro(data.error ?? "Erro ao detectar capítulos.");
-        return;
-      }
-      setCandidatos(data.candidatos ?? []);
-    } catch {
-      setErro("Erro de rede ao detectar capítulos.");
-    } finally {
-      setCarregandoCapitulos(false);
-    }
-  }
-
-  useEffect(() => {
-    if (passo === 4 && projectId && candidatos.length === 0 && !carregandoCapitulos && !erro) {
-      void proporCapitulosDoSombra();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passo, projectId]);
-
-  // ── Passo 4 → 5: aprovar capítulos ──────────────────────────────────────
-  async function aprovarCapitulosEIr(capitulosAprovados: { titulo: string; pos: number }[]) {
-    if (!projectId) return;
-    retryRef.current = () => aprovarCapitulosEIr(capitulosAprovados);
-    setErro(null);
-    setProcessando("Salvando capítulos…");
-    setStatusTexto("Salvando capítulos…");
-    setProgresso(50);
-    try {
-      const res = await fetch("/api/agentes/miolo/aprovar-capitulos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, capitulos_aprovados: capitulosAprovados }),
-      });
-      if (!res.ok) {
-        const d = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(d.error ?? "Falha ao aprovar capítulos.");
-      }
-      setPrecisaReaprovar(false);
-      setProcessando(null);
-      setPasso(5);
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro inesperado.");
-    }
-  }
-
-  // ── Passo 5 → gerar arquivos (com recuperação do 422 data_changed) ──────
+  // ── Passo 4 → gerar arquivos ────────────────────────────────────────────
   async function gerarArquivos() {
     if (!jobId) return;
     retryRef.current = gerarArquivos;
@@ -341,20 +268,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string };
-        const msg = d.error ?? "Falha ao gerar arquivos.";
-        // gerar-docx devolve 422 { reason: "text_changed" } quando o hash
-        // da aprovação de capítulos não bate o texto atual (jobs criados
-        // na ordem antiga — capítulos aprovados sobre o texto pré-revisão).
-        // concluir/route.ts reempacota como 500 mantendo só `error`; o guard
-        // aqui identifica pela substring.
-        if (/texto mudou|reaprove/i.test(msg)) {
-          setProcessando(null);
-          setCandidatos([]);
-          setPrecisaReaprovar(true);
-          setPasso(4);
-          return;
-        }
-        throw new Error(msg);
+        throw new Error(d.error ?? "Falha ao gerar arquivos.");
       }
       const data = (await res.json()) as {
         expira_em?: string | null;
@@ -367,7 +281,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         entregaveis: Array.isArray(data.entregaveis) ? data.entregaveis : [],
       });
       setProcessando(null);
-      setPasso(5);
+      setPasso(4);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao gerar arquivos.");
     }
@@ -428,7 +342,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         passos={PASSOS}
         passoAtual={0}
         titulo="Como funciona"
-        descricao="Envie seu manuscrito, deixe a IA revisar, aceite as sugestões, aprove os capítulos e receba um DOCX revisado + relatório em PDF."
+        descricao="Envie seu manuscrito, deixe a IA revisar, aceite as sugestões e receba um DOCX revisado + relatório em PDF."
         rodape={{ primario: <CtaInicio custo={CUSTO} saldo={saldo} onIniciar={() => setPasso(1)} /> }}
       >
         {ofertaRetomada && (
@@ -545,7 +459,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
         passos={PASSOS}
         passoAtual={3}
         titulo="Revisão pronta"
-        descricao="Suas sugestões estão prontas. Aceite ou rejeite cada alteração e depois aprove os capítulos para gerar os arquivos."
+        descricao="Suas sugestões estão prontas. Aceite ou rejeite cada alteração e depois gere os arquivos."
         rodape={{
           primario: (
             <CtaPrimario onClick={() => router.push(href)}>Ver sugestões →</CtaPrimario>
@@ -558,7 +472,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
               <span className="text-zinc-400">Livro:</span> {dados.titulo || "—"}
             </li>
             <li>
-              <span className="text-zinc-400">Depois disso:</span> aprovar capítulos e gerar DOCX + relatório
+              <span className="text-zinc-400">Depois disso:</span> gerar DOCX revisado + relatório em PDF
             </li>
           </ul>
         </div>
@@ -566,62 +480,7 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     );
   }
 
-  if (passo === 4) {
-    return (
-      <WizardLayout
-        ferramenta={FERRAMENTA_LABEL}
-        passos={PASSOS}
-        passoAtual={4}
-        titulo="Aprovar capítulos"
-        descricao="Com o texto revisado, aprove os capítulos para estruturar o DOCX."
-      >
-        {precisaReaprovar && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <p className="text-sm text-amber-900">
-              O texto foi revisado — reaprove os capítulos sobre a versão final (sem custo).
-            </p>
-          </div>
-        )}
-        {carregandoCapitulos ? (
-          <div className="flex items-center gap-3 text-sm text-zinc-500">
-            <span
-              aria-hidden
-              className="h-4 w-4 rounded-full border-2 border-zinc-200 border-t-brand-gold animate-spin"
-            />
-            Detectando capítulos…
-          </div>
-        ) : erro ? (
-          <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
-            {erro}
-            <button
-              type="button"
-              onClick={() => {
-                setErro(null);
-                if (candidatos.length === 0) void proporCapitulosDoSombra();
-              }}
-              className="mt-2 block text-xs underline"
-            >
-              Tentar novamente
-            </button>
-          </div>
-        ) : (
-          <AprovacaoCapitulos
-            candidatos={candidatos}
-            onConfirmar={aprovarCapitulosEIr}
-            onVoltar={() => {
-              if (projectId && jobId) {
-                router.push(`/dashboard/revisao/${projectId}?avulso=${jobId}`);
-              }
-            }}
-            loading={false}
-            acaoLabel="continuar"
-          />
-        )}
-      </WizardLayout>
-    );
-  }
-
-  // Passo 5: dois estados — se resultado carregado → TelaPronto; senão,
+  // Passo 4: dois estados — se resultado carregado → TelaPronto; senão,
   // card "Gerar arquivos" com CTA.
   if (resultado) {
     return (
@@ -638,9 +497,9 @@ export function WizardRevisao({ jobIdInicial }: Props) {
     <WizardLayout
       ferramenta={FERRAMENTA_LABEL}
       passos={PASSOS}
-      passoAtual={5}
+      passoAtual={4}
       titulo="Gerar arquivos da revisão"
-      descricao="Vamos montar o DOCX revisado (com suas alterações aceitas) e o relatório em PDF de todas as sugestões."
+      descricao="Sugestões aplicadas. Gere o DOCX revisado e o relatório de alterações."
       rodape={{
         primario: <CtaPrimario onClick={gerarArquivos}>Gerar arquivos</CtaPrimario>,
       }}

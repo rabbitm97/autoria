@@ -1,6 +1,7 @@
 export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import chromium from "@sparticuz/chromium";
 import { launchWithRetry } from "@/lib/puppeteer-launch";
 import { createClient } from "@supabase/supabase-js";
@@ -8,6 +9,7 @@ import { requireAuth } from "@/lib/supabase-server";
 import { BUCKET_FERRAMENTAS, concluirJob } from "@/lib/ferramenta-jobs";
 import { carregarJobDoUsuario, lerExpiraEm } from "@/lib/ferramenta-concluir";
 import { renderRelatorioRevisaoHtml } from "@/lib/relatorio-revisao";
+import { proporCapitulos } from "@/lib/chapter-detection";
 import type { EntregavelJob } from "@/lib/ferramenta-jobs";
 import type { RevisaoResult } from "@/lib/project-data";
 
@@ -69,19 +71,25 @@ export async function POST(request: NextRequest) {
 
   // Carrega sombra + manuscript (título/autor pro nome dos entregáveis e
   // pro cabeçalho do relatório) e dados_revisao (precisa estar finalizada).
+  // texto/texto_revisado são pra auto-aprovação de capítulos (FERR-3.5f).
   const { data: rawSombra } = await admin
     .from("projects")
-    .select("dados_revisao, manuscripts(titulo, nome, autor_primeiro_nome, autor_sobrenome)")
+    .select(
+      "dados_revisao, manuscript_id, manuscripts(titulo, nome, autor_primeiro_nome, autor_sobrenome, texto, texto_revisado)",
+    )
     .eq("id", job.projeto_sombra_id)
     .maybeSingle();
 
   const sombra = rawSombra as {
     dados_revisao: RevisaoResult | null;
+    manuscript_id: string | null;
     manuscripts: {
       titulo?: string | null;
       nome?: string | null;
       autor_primeiro_nome?: string | null;
       autor_sobrenome?: string | null;
+      texto?: string | null;
+      texto_revisado?: string | null;
     } | null;
   } | null;
 
@@ -101,6 +109,36 @@ export async function POST(request: NextRequest) {
   const titulo = ms?.titulo?.trim() || ms?.nome || "Livro";
   const autorPartes = [ms?.autor_primeiro_nome, ms?.autor_sobrenome].filter(Boolean).join(" ");
   const autor = autorPartes || null;
+
+  // ── Auto-aprovação de capítulos (FERR-3.5f) ─────────────────────────────
+  // Decisão 04/set: a revisão avulsa não usa capítulos como ferramenta —
+  // só o DOCX final estrutura. Rodamos a MESMA detecção do propor-capitulos
+  // sobre o texto_revisado (com fallback pro texto original) e persistimos
+  // no mesmo shape que aprovar-capitulos usa. O hash nasce do texto usado
+  // na detecção, então gerar-docx nunca dispara 422 data_changed aqui.
+  if (!sombra.manuscript_id) {
+    return NextResponse.json({ error: "Sombra sem manuscript_id." }, { status: 500 });
+  }
+  const textoFinal = ((ms?.texto_revisado ?? ms?.texto) ?? "") as string;
+  const capitulosAprovados = proporCapitulos(textoFinal)
+    .filter((c) => c.sugerido)
+    .map((c) => ({ titulo: c.titulo, pos: c.pos }))
+    .sort((a, b) => a.pos - b.pos);
+  const textoHash = createHash("md5").update(textoFinal).digest("hex");
+  const { error: capsErr } = await admin
+    .from("manuscripts")
+    .update({
+      capitulos_aprovados: capitulosAprovados,
+      capitulos_aprovados_texto_hash: textoHash,
+    })
+    .eq("id", sombra.manuscript_id);
+  if (capsErr) {
+    console.error("[revisao-avulsa/concluir] falha ao auto-aprovar capítulos:", capsErr.message);
+    return NextResponse.json(
+      { error: "Falha ao preparar capítulos. Tente novamente." },
+      { status: 500 },
+    );
+  }
 
   // ── 1. DOCX ─────────────────────────────────────────────────────────────
   // Fetch interno autenticado (mesmo padrão de preparar-capa-grafica →
