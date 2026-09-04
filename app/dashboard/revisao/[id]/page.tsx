@@ -233,6 +233,11 @@ export default function RevisaoPage() {
     iniciado_em?: string;
   } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // FERR-3.5g: em background (aba oculta), timers de setTimeout são
+  // throttlados/congelados pelo browser. Ao voltar pra aba, este ref
+  // dispara um poll imediato pra pegar batches que terminaram enquanto
+  // a página estava dormindo (o listener de visibilitychange chama).
+  const pollNowRef = useRef<null | (() => void)>(null);
 
   // ── Polling ───────────────────────────────────────────────────────────────────
 
@@ -245,7 +250,11 @@ export default function RevisaoPage() {
     async function poll() {
       try {
         const res = await fetch(`/api/agentes/revisao?project_id=${projectId}`);
-        if (!res.ok) { setError("Erro ao verificar status da revisão."); return; }
+        if (!res.ok) {
+          setError("Erro ao verificar status da revisão.");
+          pollNowRef.current = null;
+          return;
+        }
         const data = await res.json() as {
           status: string;
           done?: number;
@@ -259,6 +268,7 @@ export default function RevisaoPage() {
           setRevisao(data.revisao!);
           setAceitas(new Set());
           setRejeitadas(new Set());
+          pollNowRef.current = null;
         } else if (data.status === "processing") {
           setPollProgress({
             done: data.done ?? 0,
@@ -274,6 +284,7 @@ export default function RevisaoPage() {
           pollingRef.current = setTimeout(poll, interval);
         } else {
           setError("Estado inesperado da revisão. Tente novamente.");
+          pollNowRef.current = null;
         }
       } catch (e) {
         // Retry on network error
@@ -281,10 +292,20 @@ export default function RevisaoPage() {
         console.warn("[revisao] poll error:", e);
       }
     }
+    pollNowRef.current = () => {
+      if (pollingRef.current) { clearTimeout(pollingRef.current); pollingRef.current = null; }
+      void poll();
+    };
     poll();
   }, [projectId, stopPolling]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === "visible") pollNowRef.current?.(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   // ── Load ─────────────────────────────────────────────────────────────────────
 
