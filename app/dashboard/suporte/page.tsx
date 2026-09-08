@@ -1,259 +1,334 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { Ticket } from "@/app/api/agentes/suporte/route";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-// ─── FAQ rápido ───────────────────────────────────────────────────────────────
+// ─── SUP-1 · Suporte humano (beta) ────────────────────────────────────────────
+// Modelo novo: threads persistentes em suporte_conversas/suporte_mensagens.
+// Posicionamento: quem responde é uma pessoa da equipe Autoria (não uma IA).
+// SLA declarado: 2h em janela seg-sáb 10-20 (America/Sao_Paulo).
 
-const FAQ = [
-  "Como gerar o EPUB do meu livro?",
-  "Quanto tempo leva a publicação na Amazon?",
-  "Como obter um ISBN gratuito?",
-  "Meu PDF ficou com formatação incorreta, o que faço?",
-  "Qual plataforma paga mais royalties?",
-  "Como funciona o audiolivro?",
-];
+interface Mensagem {
+  id: string;
+  conversa_id: string;
+  autor: "usuario" | "equipe";
+  texto: string;
+  criado_em: string;
+  lida_em: string | null;
+}
+
+interface Conversa {
+  id: string;
+  status: "aberta" | "fechada";
+  criado_em: string;
+  atualizado_em: string;
+  mensagens: Mensagem[];
+}
+
+const MAX_TEXTO = 5000;
+const POLL_MS = 30_000;
+
+// ─── Janela de atendimento (America/Sao_Paulo) ────────────────────────────────
+// Regra: seg-sáb, 10h-20h. Domingo fechado. Cálculo em BRT via Intl para não
+// depender de bibliotecas (Autoria evita libs extras a menos que estritamente
+// necessário).
+
+interface HorarioBR {
+  weekday: number; // 0 = domingo … 6 = sábado
+  hour: number;    // 0-23
+  minute: number;  // 0-59
+}
+
+function agoraSaoPaulo(): HorarioBR {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const wd = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+  const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
+  const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
+  const weekdayMap: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+  return {
+    weekday: weekdayMap[wd] ?? 1,
+    hour: Number(hh) % 24,
+    minute: Number(mm),
+  };
+}
+
+function dentroDoHorario(t: HorarioBR): boolean {
+  // seg (1) a sáb (6), 10 ≤ hora < 20.
+  return t.weekday >= 1 && t.weekday <= 6 && t.hour >= 10 && t.hour < 20;
+}
+
+function proximaJanela(t: HorarioBR): string {
+  // Nomes dos dias para exibição.
+  const nomes = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+  // Se é seg-sáb antes das 10 → hoje às 10h.
+  if (t.weekday >= 1 && t.weekday <= 6 && t.hour < 10) {
+    return "hoje às 10h";
+  }
+  // Se é seg-sex (1-5) depois das 20 → amanhã às 10h.
+  if (t.weekday >= 1 && t.weekday <= 5 && t.hour >= 20) {
+    const prox = (t.weekday + 1) % 7;
+    return `${nomes[prox]} às 10h`;
+  }
+  // Sáb depois das 20 → segunda 10h.
+  if (t.weekday === 6 && t.hour >= 20) {
+    return "segunda às 10h";
+  }
+  // Domingo (0) → segunda 10h.
+  if (t.weekday === 0) {
+    return "segunda às 10h";
+  }
+  return "próximo horário útil";
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SuportePage() {
-  const [pergunta, setPergunta] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [historico, setHistorico] = useState<Ticket[]>([]);
-  const [loadingHistorico, setLoadingHistorico] = useState(true);
-  const [conversa, setConversa] = useState<{ role: "user" | "ia"; text: string }[]>([]);
+  const [conversas, setConversas] = useState<Conversa[] | null>(null);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [agora, setAgora] = useState<HorarioBR>(() => agoraSaoPaulo());
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const loadHistorico = useCallback(async () => {
-    setLoadingHistorico(true);
+  const conversaAberta = useMemo<Conversa | null>(() => {
+    if (!conversas) return null;
+    return conversas.find((c) => c.status === "aberta") ?? null;
+  }, [conversas]);
+
+  const conversasFechadas = useMemo<Conversa[]>(() => {
+    if (!conversas) return [];
+    return conversas.filter((c) => c.status === "fechada");
+  }, [conversas]);
+
+  const carregar = useCallback(async () => {
     try {
-      const res = await fetch("/api/agentes/suporte");
-      if (res.ok) setHistorico(await res.json());
-    } finally {
-      setLoadingHistorico(false);
+      const res = await fetch("/api/suporte");
+      if (!res.ok) return;
+      const data = (await res.json()) as Conversa[];
+      setConversas(Array.isArray(data) ? data : []);
+    } catch {
+      /* silencioso — o próximo poll tenta de novo */
     }
   }, []);
 
-  useEffect(() => { loadHistorico(); }, [loadHistorico]);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  // Poll a cada 30s + re-poll ao voltar à aba (V-FERR-13: timers congelam em
+  // background em muitos navegadores, então o visibilitychange resolve o gap).
+  useEffect(() => {
+    const iv = window.setInterval(carregar, POLL_MS);
+    const onVis = () => { if (document.visibilityState === "visible") carregar(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [carregar]);
+
+  // Relógio BR — recalcula minuto a minuto para o banner de fora-do-horário
+  // continuar coerente sem reload.
+  useEffect(() => {
+    const iv = window.setInterval(() => setAgora(agoraSaoPaulo()), 60_000);
+    return () => window.clearInterval(iv);
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversa]);
+  }, [conversaAberta?.mensagens.length]);
 
-  async function handleEnviar(texto?: string) {
-    const q = (texto ?? pergunta).trim();
-    if (!q || loading) return;
+  const noHorario = dentroDoHorario(agora);
+  const janela = proximaJanela(agora);
 
-    setConversa(prev => [...prev, { role: "user", text: q }]);
-    setPergunta("");
-    setLoading(true);
-
+  async function handleEnviar(e: React.FormEvent) {
+    e.preventDefault();
+    const t = texto.trim();
+    if (!t || enviando) return;
+    setEnviando(true);
+    setErro(null);
     try {
-      const res = await fetch("/api/agentes/suporte", {
+      const res = await fetch("/api/suporte", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pergunta: q }),
+        body: JSON.stringify({
+          conversa_id: conversaAberta?.id,
+          texto: t,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Erro no suporte");
-      setConversa(prev => [...prev, { role: "ia", text: data.resposta }]);
-      await loadHistorico();
-    } catch (e) {
-      setConversa(prev => [...prev, { role: "ia", text: "Desculpe, ocorreu um erro. Tente novamente ou entre em contato pelo suporte@autoria.com.br." }]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErro(typeof data?.error === "string" ? data.error : "Não foi possível enviar. Tente novamente.");
+        return;
+      }
+      setTexto("");
+      await carregar();
+    } catch {
+      setErro("Não foi possível enviar. Tente novamente.");
     } finally {
-      setLoading(false);
+      setEnviando(false);
     }
   }
 
-  async function handleResolver(id: string) {
-    await fetch(`/api/agentes/suporte?id=${id}`, { method: "PATCH" });
-    setHistorico(prev => prev.map(t => t.id === id ? { ...t, resolvido: true } : t));
-  }
+  const carregando = conversas === null;
 
   return (
-    <div>
+    <main className="max-w-3xl mx-auto px-6 sm:px-8 py-10">
 
-      <main className="max-w-4xl mx-auto px-8 py-10">
+      {/* Cabeçalho + posicionamento + SLA */}
+      <header className="mb-6">
+        <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">Ajuda</p>
+        <h1 className="font-heading text-3xl text-brand-primary">Suporte</h1>
+        <p className="text-zinc-600 mt-2 text-sm leading-relaxed">
+          Quem responde é uma pessoa da equipe Autoria — não um robô.
+        </p>
+        <p className="text-zinc-500 mt-1 text-sm leading-relaxed">
+          Respondemos em até 2 horas, de segunda a sábado, das 10h às 20h.
+        </p>
+      </header>
 
-        <div className="mb-8">
-          <p className="text-brand-gold text-sm font-medium tracking-wide uppercase mb-1">
-            Ajuda
-          </p>
-          <h1 className="font-heading text-3xl text-brand-primary">Suporte com IA</h1>
-          <p className="text-zinc-500 mt-1 text-sm leading-relaxed">
-            Tire dúvidas sobre a plataforma. O assistente responde instantaneamente com base na documentação da Autoria.
-          </p>
+      {/* Banner fora-do-horário */}
+      {!noHorario && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Estamos fora do horário de atendimento. Sua mensagem fica registrada e respondemos a partir de {janela}.
         </div>
+      )}
 
-        <div className="grid sm:grid-cols-3 gap-6">
+      {/* Thread */}
+      <section className="bg-white rounded-2xl border border-zinc-100 flex flex-col min-h-[420px] max-h-[620px] overflow-hidden">
 
-          {/* Chat panel */}
-          <div className="sm:col-span-2 flex flex-col">
-
-            {/* Conversation */}
-            <div className="bg-white rounded-2xl border border-zinc-100 flex flex-col min-h-[400px] max-h-[560px] overflow-hidden">
-
-              {conversa.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                  <div className="w-12 h-12 rounded-full bg-brand-gold/10 flex items-center justify-center mb-4">
-                    <BotIcon />
-                  </div>
-                  <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
-                    Olá! Sou o assistente da Autoria. Pergunte sobre o fluxo editorial, formatos, publicação ou royalties.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto scrollbar-brand p-5 space-y-4">
-                  {conversa.map((msg, i) => (
-                    <div key={i} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
-                      <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold
-                        ${msg.role === "user"
-                          ? "bg-brand-primary text-brand-gold"
-                          : "bg-brand-gold/10 text-brand-gold"}`}>
-                        {msg.role === "user" ? "V" : "A"}
-                      </div>
-                      <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed
-                        ${msg.role === "user"
-                          ? "bg-brand-primary text-white rounded-tr-sm"
-                          : "bg-zinc-50 border border-zinc-100 text-zinc-700 rounded-tl-sm"}`}>
-                        {msg.text}
-                      </div>
-                    </div>
-                  ))}
-                  {loading && (
-                    <div className="flex gap-3">
-                      <div className="w-7 h-7 rounded-full bg-brand-gold/10 flex items-center justify-center">
-                        <span className="text-brand-gold text-xs font-bold">A</span>
-                      </div>
-                      <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-zinc-50 border border-zinc-100">
-                        <span className="flex gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={bottomRef} />
-                </div>
-              )}
-
-              {/* Input */}
-              <div className="border-t border-zinc-100 p-4">
-                <form onSubmit={e => { e.preventDefault(); handleEnviar(); }} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={pergunta}
-                    onChange={e => setPergunta(e.target.value)}
-                    placeholder="Escreva sua dúvida…"
-                    disabled={loading}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-gold/30 disabled:opacity-50"
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading || !pergunta.trim()}
-                    className="px-4 py-2.5 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-40"
-                  >
-                    <SendIcon />
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            {/* FAQ chips */}
-            <div className="mt-4">
-              <p className="text-xs text-zinc-400 mb-2">Perguntas frequentes:</p>
-              <div className="flex flex-wrap gap-2">
-                {FAQ.map(q => (
-                  <button
-                    key={q}
-                    onClick={() => handleEnviar(q)}
-                    disabled={loading}
-                    className="text-xs px-3 py-1.5 rounded-full border border-zinc-200 bg-white text-zinc-600 hover:border-brand-gold/40 hover:text-brand-primary transition-colors disabled:opacity-50"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {carregando ? (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
           </div>
-
-          {/* History sidebar */}
-          <div>
-            <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">Histórico</p>
-            {loadingHistorico ? (
-              <div className="flex justify-center py-8">
-                <div className="w-6 h-6 rounded-full border-2 border-brand-gold border-t-transparent animate-spin" />
-              </div>
-            ) : historico.length === 0 ? (
-              <p className="text-xs text-zinc-400 text-center py-8">Nenhuma conversa ainda.</p>
-            ) : (
-              <div className="space-y-2">
-                {historico.map(t => (
-                  <div key={t.id} className={`bg-white rounded-xl border p-4 text-xs
-                    ${t.resolvido ? "border-zinc-100 opacity-60" : "border-zinc-200"}`}>
-                    <p className="font-medium text-zinc-700 leading-snug mb-1 line-clamp-2">{t.pergunta}</p>
-                    {t.resposta_ia && (
-                      <p className="text-zinc-400 line-clamp-2 mb-2">{t.resposta_ia}</p>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium
-                        ${t.resolvido
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-amber-50 text-amber-600"}`}>
-                        {t.resolvido ? "Resolvido" : "Aberto"}
-                      </span>
-                      {!t.resolvido && (
-                        <button
-                          onClick={() => handleResolver(t.id)}
-                          className="text-zinc-400 hover:text-emerald-600 transition-colors text-[10px] underline underline-offset-2"
-                        >
-                          Marcar resolvido
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-4 bg-zinc-50 rounded-xl border border-zinc-100 p-4">
-              <p className="text-xs font-medium text-zinc-500 mb-1">Suporte humano</p>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Questões não resolvidas:{" "}
-                <a href="mailto:suporte@autoria.com.br" className="text-brand-gold hover:underline">
-                  suporte@autoria.com.br
-                </a>
-                <br />SLA: 24h (Pro: 4h úteis)
-              </p>
-            </div>
+        ) : !conversaAberta ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <p className="text-zinc-500 text-sm leading-relaxed max-w-sm">
+              Escreva sua dúvida abaixo para iniciar uma nova conversa com a equipe Autoria.
+            </p>
           </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto scrollbar-brand p-5 space-y-4">
+            {conversaAberta.mensagens.map((m) => (
+              <MensagemBolha key={m.id} msg={m} />
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {/* Composer */}
+        <form onSubmit={handleEnviar} className="border-t border-zinc-100 p-4 flex flex-col gap-2">
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Escreva sua mensagem…"
+            maxLength={MAX_TEXTO}
+            rows={3}
+            disabled={enviando}
+            className="w-full resize-none px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-gold/30 disabled:opacity-50"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] text-zinc-400">{texto.length}/{MAX_TEXTO}</span>
+            <button
+              type="submit"
+              disabled={enviando || !texto.trim()}
+              className="px-4 py-2 rounded-xl bg-brand-primary text-brand-gold font-medium text-sm hover:bg-brand-primary/90 transition-colors disabled:opacity-40"
+            >
+              {enviando ? "Enviando…" : "Enviar"}
+            </button>
+          </div>
+          {erro && <p className="text-xs text-red-600">{erro}</p>}
+        </form>
+      </section>
+
+      {/* Conversas anteriores (fechadas) */}
+      {conversasFechadas.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">
+            Conversas anteriores
+          </h2>
+          <ul className="space-y-2">
+            {conversasFechadas.map((c) => (
+              <ConversaFechada key={c.id} conversa={c} />
+            ))}
+          </ul>
+        </section>
+      )}
+    </main>
+  );
+}
+
+// ─── Bolha de mensagem ────────────────────────────────────────────────────────
+
+function MensagemBolha({ msg }: { msg: Mensagem }) {
+  const isUser = msg.autor === "usuario";
+  const hora = new Date(msg.criado_em).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
+      <div className="max-w-[78%]">
+        {!isUser && (
+          <p className="text-[11px] font-medium text-zinc-500 mb-1 px-1">Equipe Autoria</p>
+        )}
+        <div
+          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
+            ${isUser
+              ? "bg-brand-primary text-white rounded-tr-sm"
+              : "bg-zinc-50 border border-zinc-100 text-zinc-700 rounded-tl-sm"}`}
+        >
+          {msg.texto}
         </div>
-      </main>
+        <p className={`text-[10px] text-zinc-400 mt-1 px-1 ${isUser ? "text-right" : ""}`}>{hora}</p>
+      </div>
     </div>
   );
 }
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
+// ─── Conversa fechada (somente-leitura, expansível) ───────────────────────────
 
-function BotIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      className="text-brand-gold">
-      <rect x="3" y="11" width="18" height="10" rx="2"/>
-      <circle cx="12" cy="5" r="2"/>
-      <path d="M12 7v4"/>
-      <line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/>
-    </svg>
-  );
-}
+function ConversaFechada({ conversa }: { conversa: Conversa }) {
+  const [aberta, setAberta] = useState(false);
+  const primeira = conversa.mensagens[0];
+  const data = new Date(conversa.criado_em).toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 
-function SendIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="22" y1="2" x2="11" y2="13"/>
-      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-    </svg>
+    <li className="bg-white rounded-xl border border-zinc-100">
+      <button
+        type="button"
+        onClick={() => setAberta((v) => !v)}
+        className="w-full text-left px-4 py-3 flex items-center justify-between gap-3"
+      >
+        <div className="min-w-0">
+          <p className="text-xs text-zinc-400">{data}</p>
+          <p className="text-sm text-zinc-700 truncate">
+            {primeira?.texto ?? "(conversa sem mensagens)"}
+          </p>
+        </div>
+        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 shrink-0">
+          {aberta ? "Ocultar" : "Ver"}
+        </span>
+      </button>
+      {aberta && (
+        <div className="border-t border-zinc-100 p-4 space-y-3">
+          {conversa.mensagens.map((m) => (
+            <MensagemBolha key={m.id} msg={m} />
+          ))}
+        </div>
+      )}
+    </li>
   );
 }

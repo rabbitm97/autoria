@@ -56,7 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     section: "SUPORTE",
     items: [
-      { href: "/dashboard/suporte", label: "Suporte IA", icon: SupportIcon },
+      { href: "/dashboard/suporte", label: "Suporte", icon: SupportIcon },
     ],
   },
 ];

@@ -17,6 +17,26 @@ export type SendEmailInput = {
   replyTo?: string;
 };
 
+// ─── SUP-1 · Template: resposta da equipe ao autor ───────────────────────────
+// Corpo curto + link para a tela de suporte. O disparo em si é do SUP-2 (rota
+// de resposta do admin). Definido aqui para manter o template versionado junto
+// com a lib de envio e evitar strings soltas na rota do inbox.
+
+export function buildRespostaSuporteEmail(input: {
+  nomeAutor?: string | null;
+}): { subject: string; text: string } {
+  const nome = input.nomeAutor?.trim() || "";
+  const saudacao = nome ? `Olá, ${nome}!` : "Olá!";
+  return {
+    subject: "Você recebeu uma resposta da equipe Autoria",
+    text:
+      `${saudacao}\n\n` +
+      `A equipe da Autoria respondeu à sua mensagem no suporte.\n\n` +
+      `Abra sua conversa: https://useautoria.com/dashboard/suporte\n\n` +
+      `— Equipe Autoria`,
+  };
+}
+
 export async function sendEmail(input: SendEmailInput): Promise<{ ok: boolean; id?: string; error?: string }> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
