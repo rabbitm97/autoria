@@ -518,6 +518,36 @@ function SimuladorBand() {
   );
 }
 
+function BetaBand() {
+  return (
+    <section className="bg-brand-primary py-16">
+      <div className="max-w-7xl mx-auto px-8">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
+          <div className="flex-1">
+            <p className="text-brand-gold text-xs font-semibold uppercase tracking-widest mb-3">
+              Beta fechado — inscrições abertas
+            </p>
+            <h2 className="font-heading text-4xl lg:text-5xl text-white leading-tight mb-3">
+              IA para publicar seu livro. Gente de verdade para te atender.
+            </h2>
+            <p className="text-white/60 text-lg leading-relaxed max-w-xl">
+              Estamos selecionando um grupo pequeno de autores para o beta —
+              com plano Pro de cortesia para a sua obra e suporte humano que
+              responde em até 2 horas, seg-sáb, 10h-20h.
+            </p>
+          </div>
+          <Link
+            href="/beta"
+            className="inline-flex items-center gap-2 bg-brand-gold text-brand-primary px-8 py-4 rounded-xl font-bold text-sm hover:bg-brand-gold-light active:scale-[0.98] transition-all shadow-xl shadow-black/20 shrink-0"
+          >
+            Quero participar →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Pricing() {
   return (
     <section id="precos" className="scroll-mt-24 bg-brand-primary py-20 lg:py-28">
@@ -898,6 +928,7 @@ export default function Home() {
         <FeatureFormatos />
         <ExpressSection />
         <SimuladorBand />
+        <BetaBand />
         <Pricing />
         <FerramentasHome />
         <div className="border-t border-brand-primary/8">

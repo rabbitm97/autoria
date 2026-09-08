@@ -13,9 +13,10 @@ interface NavLink {
 const NAV_LINKS: NavLink[] = [
   { label: "Como funciona", href: "/#como-funciona"               },
   { label: "Ferramentas",   href: "/ferramentas"                  },
-  { label: "Simulador",     href: "/simulador",   destaque: true  },
+  { label: "Simulador",     href: "/simulador"                    },
   { label: "Planos",        href: "/#precos"                      },
   { label: "Blog",          href: "/blog"                         },
+  { label: "Beta",          href: "/beta",        destaque: true  },
 ];
 
 type Tone = "dark" | "light";

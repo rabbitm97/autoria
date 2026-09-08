@@ -90,7 +90,7 @@ export default function FAQ() {
               Perguntas<br />frequentes
             </h2>
             <p className="text-zinc-500 text-base leading-relaxed mb-8">
-              Ainda tem dúvidas? Fale com a nossa equipe — respondemos em menos de 24 horas.
+              Ainda tem dúvidas? Fale com a nossa equipe — resposta em até 2 horas, seg-sáb, 10h-20h.
             </p>
             <a
               href="mailto:contato@useautoria.com"
