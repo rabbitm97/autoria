@@ -25,7 +25,7 @@ export default function BetaPage() {
         {/* Hero */}
         <section className="max-w-3xl mx-auto px-6 lg:px-8 pt-14 pb-8">
           <p className="text-xs font-semibold tracking-[0.2em] uppercase text-[#8F7226] mb-4">
-            Beta · Inscrições abertas
+            Beta fechado — vagas limitadas
           </p>
           <h1 className="font-heading text-4xl md:text-5xl leading-[1.05] tracking-tight">
             IA para publicar seu livro. Gente de verdade para te atender.
@@ -36,6 +36,11 @@ export default function BetaPage() {
           <p className="mt-3 text-base text-brand-primary/60">
             Durante o beta, quem responde é o fundador.
           </p>
+          <p className="mt-3 text-base text-brand-primary/60">
+            Estamos abrindo a esteira completa — diagnóstico, revisão, capa,
+            diagramação e impressão a partir de 1 exemplar — para um grupo
+            pequeno de autores. Em troca, queremos seu feedback de verdade.
+          </p>
         </section>
 
         {/* O que está incluído + ressalva impressão */}
@@ -43,14 +48,32 @@ export default function BetaPage() {
           <div className="rounded-xl border border-brand-primary/10 bg-white/70 p-6 md:p-7">
             <h2 className="font-heading text-2xl mb-4">O que você recebe no beta</h2>
             <ul className="space-y-2.5 text-brand-primary/80 leading-relaxed">
-              <li>· Ferramentas de IA para escrever, revisar e preparar o miolo do seu livro.</li>
-              <li>· Acompanhamento direto do fundador durante toda a fase beta.</li>
-              <li>· Suporte humano, de verdade — resposta em até 2 horas, seg-sáb, 10h-20h.</li>
-              <li>· Orientação sobre publicação (registro, ISBN, capa, distribuição).</li>
+              <li>
+                · Plano Pro de cortesia para a sua obra — a esteira completa:
+                diagnóstico, revisão, capa, diagramação, EPUB e arquivos finais
+                de impressão
+              </li>
+              <li>· Suporte humano com resposta em até 2 horas (seg-sáb, 10h-20h)</li>
+              <li>· Acompanhamento próximo do fundador durante todo o processo</li>
             </ul>
             <p className="mt-5 text-sm text-brand-primary/60 italic">
               A impressão do livro físico é contratada à parte, a partir de 1 exemplar.
             </p>
+          </div>
+        </section>
+
+        {/* O que esperamos de você */}
+        <section className="max-w-3xl mx-auto px-6 lg:px-8 pb-8">
+          <div className="rounded-xl border border-brand-primary/10 bg-white/70 p-6 md:p-7">
+            <h2 className="font-heading text-2xl mb-4">O que esperamos de você</h2>
+            <ul className="space-y-2.5 text-brand-primary/80 leading-relaxed">
+              <li>
+                · Manuscrito pronto ou em revisão final (é o nosso critério
+                principal de seleção)
+              </li>
+              <li>· Uma conversa de 30 minutos com a equipe durante o beta</li>
+              <li>· Respostas a formulários curtos conforme você avança</li>
+            </ul>
           </div>
         </section>
 
@@ -59,7 +82,10 @@ export default function BetaPage() {
           <div className="rounded-xl border border-brand-primary/10 bg-white p-6 md:p-8 shadow-sm">
             <h2 className="font-heading text-2xl mb-1">Inscreva-se</h2>
             <p className="text-sm text-brand-primary/60 mb-6">
-              Formulário curto. O papo mais fundo vem por e-mail, com o fundador.
+              Formulário de um minuto. A gente lê cada inscrição e responde
+              pessoalmente por e-mail — o papo mais fundo continua de lá.
+              Vagas limitadas; quem não entrar agora fica na lista de espera
+              do lançamento.
             </p>
             <BetaForm />
           </div>

@@ -6,6 +6,7 @@
 // como_soube (opcional). Campo `website` é honeypot — escondido a olho e a
 // leitor de tela; bot preenche e a rota devolve 200 silencioso.
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 type ManuscritoStatus = "" | "concluido" | "em_revisao" | "escrevendo";
@@ -71,8 +72,8 @@ export default function BetaForm() {
         </p>
         <p className="mt-2 text-emerald-800/85 leading-relaxed">
           {jaInscrito
-            ? "Seu e-mail já está na fila. Vamos te chamar assim que abrirmos a próxima onda."
-            : "Vamos te chamar por e-mail assim que abrirmos a próxima onda do beta. Responda esse e-mail quando chegar — quem escreve é o fundador."}
+            ? "Sua inscrição já está com a gente — a resposta vem por e-mail."
+            : "Vamos te responder pessoalmente por e-mail — fica de olho na caixa de entrada (e no spam). Quem escreve é o fundador."}
         </p>
       </div>
     );
@@ -184,8 +185,15 @@ export default function BetaForm() {
       </button>
 
       <p className="text-xs text-brand-primary/50 leading-relaxed">
-        Ao se inscrever, você concorda com nossos Termos e Política de Privacidade. Sem spam — só te
-        avisamos quando abrir a próxima onda.
+        Ao se inscrever, você concorda com nossos{" "}
+        <Link href="/termos" className="underline underline-offset-2 hover:text-brand-primary transition-colors">
+          Termos
+        </Link>{" "}
+        e{" "}
+        <Link href="/privacidade" className="underline underline-offset-2 hover:text-brand-primary transition-colors">
+          Política de Privacidade
+        </Link>
+        . Sem spam — a gente só te responde pessoalmente.
       </p>
     </form>
   );
