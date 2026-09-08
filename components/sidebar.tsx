@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/app/_components/brand-logo";
+import { ADMIN_EMAILS } from "@/lib/admin-agents";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -262,6 +263,12 @@ export function Sidebar({
                   <CartSidebarLink isActive={isActive("/carrinho", true)} onNavigate={onNavigate} />
                 </li>
               )}
+              {section === "SUPORTE" && (
+                <AdminSuporteLink
+                  isActive={isActive("/admin/suporte")}
+                  onNavigate={onNavigate}
+                />
+              )}
             </ul>
           </div>
         ))}
@@ -329,6 +336,68 @@ function SaldoCreditos() {
       <span>Créditos</span>
       <span className="font-semibold">{saldo}</span>
     </Link>
+  );
+}
+
+// ─── Admin: link para inbox de suporte (só admin vê) ─────────────────────────
+// SUP-2: descoberta rápida do inbox pelo painel do próprio Mateus. A checagem
+// espelha requireAdmin() do server: primeiro ADMIN_EMAILS (rápido, sem hop no
+// banco), depois users.role. Guard real é do layout admin — este componente
+// só decide se renderiza o item na navegação.
+
+function AdminSuporteLink({ isActive, onNavigate }: { isActive: boolean; onNavigate?: () => void }) {
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        if (ADMIN_EMAILS.includes(user.email ?? "")) {
+          if (vivo) setIsAdmin(true);
+          return;
+        }
+        const { data } = await supabase.from("users").select("role").eq("id", user.id).single();
+        if (vivo && (data as { role?: string } | null)?.role === "admin") setIsAdmin(true);
+      } catch { /* silencioso */ }
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  if (!isAdmin) return null;
+
+  return (
+    <li>
+      <Link
+        href="/admin/suporte"
+        onClick={onNavigate}
+        className={`
+          flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150
+          ${isActive
+            ? "bg-brand-gold/12 text-brand-gold border border-brand-gold/20"
+            : "text-white/55 hover:text-white/90 hover:bg-white/5 border border-transparent"
+          }
+        `}
+      >
+        <span className={`shrink-0 ${isActive ? "text-brand-gold" : "text-white/35"}`}>
+          <InboxIcon />
+        </span>
+        Inbox do suporte
+        {isActive && (
+          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-gold shrink-0" />
+        )}
+      </Link>
+    </li>
+  );
+}
+
+function InboxIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
   );
 }
 
