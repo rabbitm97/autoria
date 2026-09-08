@@ -9,6 +9,9 @@ import TypeField from "./_components/type-field";
 import { PLANO_PRECO_CENTAVOS, formatarPrecoPlano } from "@/lib/planos";
 import { FORMATOS_LIVRO } from "@/lib/formatos";
 import { TOOLS } from "@/components/ferramentas/registry";
+import { IMPRESSAO_STANDBY, CONTATO_IMPRESSAO_EMAIL } from "@/lib/impressao-standby";
+
+const MAILTO_ORCAMENTO_IMPRESSAO = `mailto:${CONTATO_IMPRESSAO_EMAIL}?subject=${encodeURIComponent("Orçamento de impressão")}`;
 
 const FERRAMENTAS_HOME = [
   "simulador-impressao",
@@ -394,12 +397,19 @@ function ExpressSection() {
         "Confira formato, sangria e marcas de corte do seu PDF antes mesmo de criar conta. O arquivo não sai do seu navegador.",
       link: { label: "Verificar meu PDF →", href: "/ferramentas/verificador-pdf" },
     },
-    {
-      titulo: "Preço na tela, em segundos",
-      texto:
-        "Formato, papel, capa e tiragem — o custo por exemplar aparece na hora, sem cadastro e sem surpresa no fim.",
-      link: { label: "Simular preço →", href: "/simulador" },
-    },
+    IMPRESSAO_STANDBY
+      ? {
+          titulo: "Orçamento direto com a equipe",
+          texto:
+            "Nos escreva com o formato, o número de páginas e a tiragem — respondemos com o orçamento por e-mail.",
+          link: { label: "Falar com a equipe →", href: MAILTO_ORCAMENTO_IMPRESSAO },
+        }
+      : {
+          titulo: "Preço na tela, em segundos",
+          texto:
+            "Formato, papel, capa e tiragem — o custo por exemplar aparece na hora, sem cadastro e sem surpresa no fim.",
+          link: { label: "Simular preço →", href: "/simulador" },
+        },
     {
       titulo: "Veja antes de pagar",
       texto:
@@ -451,12 +461,17 @@ function ExpressSection() {
             );
 
             if (c.link) {
+              const cardClass =
+                "group block bg-white rounded-2xl border border-zinc-100 p-7 hover:border-brand-gold/40 hover:shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer";
+              if (c.link.href.startsWith("mailto:")) {
+                return (
+                  <a key={c.titulo} href={c.link.href} className={cardClass}>
+                    {body}
+                  </a>
+                );
+              }
               return (
-                <Link
-                  key={c.titulo}
-                  href={c.link.href}
-                  className="group block bg-white rounded-2xl border border-zinc-100 p-7 hover:border-brand-gold/40 hover:shadow-sm hover:-translate-y-0.5 transition-all cursor-pointer"
-                >
+                <Link key={c.titulo} href={c.link.href} className={cardClass}>
                   {body}
                 </Link>
               );
@@ -493,25 +508,34 @@ function ExpressSection() {
 }
 
 function SimuladorBand() {
+  const ctaClass =
+    "inline-flex items-center gap-2 bg-brand-primary text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-[#2a2a4e] active:scale-[0.98] transition-all shadow-xl shadow-brand-primary/20 shrink-0";
+
   return (
     <section id="simulador" className="bg-brand-gold py-16">
       <div className="max-w-7xl mx-auto px-8">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
           <div className="flex-1">
             <h2 className="font-heading text-4xl lg:text-5xl text-brand-primary leading-tight mb-3">
-              Quanto custa imprimir seu livro?
+              {IMPRESSAO_STANDBY
+                ? "Quer imprimir seu livro?"
+                : "Quanto custa imprimir seu livro?"}
             </h2>
             <p className="text-brand-primary/70 text-lg leading-relaxed max-w-xl">
-              Escolha formato, papel, capa e tiragem — o preço aparece na tela
-              em segundos. Grátis, sem cadastro.
+              {IMPRESSAO_STANDBY
+                ? "Os orçamentos de impressão estão sendo feitos direto com a equipe — resposta em até 2 horas, seg-sáb, 10h-20h."
+                : "Escolha formato, papel, capa e tiragem — o preço aparece na tela em segundos. Grátis, sem cadastro."}
             </p>
           </div>
-          <Link
-            href="/simulador"
-            className="inline-flex items-center gap-2 bg-brand-primary text-white px-8 py-4 rounded-xl font-bold text-sm hover:bg-[#2a2a4e] active:scale-[0.98] transition-all shadow-xl shadow-brand-primary/20 shrink-0"
-          >
-            Simular agora →
-          </Link>
+          {IMPRESSAO_STANDBY ? (
+            <a href={MAILTO_ORCAMENTO_IMPRESSAO} className={ctaClass}>
+              Falar com a equipe →
+            </a>
+          ) : (
+            <Link href="/simulador" className={ctaClass}>
+              Simular agora →
+            </Link>
+          )}
         </div>
       </div>
     </section>

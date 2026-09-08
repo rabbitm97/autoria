@@ -7,6 +7,7 @@ import {
   type AcabamentoCapa,
 } from "@/lib/impressao-pricing";
 import type { FormatoLivro } from "@/lib/formatos";
+import { IMPRESSAO_STANDBY, MSG_STANDBY } from "@/lib/impressao-standby";
 
 // ─── Enums aceitos (batem com os tipos do motor) ─────────────────────────────
 
@@ -23,6 +24,13 @@ function isOneOf<T extends string>(v: unknown, allowed: readonly T[]): v is T {
 // PÚBLICO — não requer autenticação. Não persiste nada.
 
 export async function POST(request: NextRequest) {
+  if (IMPRESSAO_STANDBY) {
+    return Response.json(
+      { ok: false, codigo: "STANDBY", erro: MSG_STANDBY },
+      { status: 503 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

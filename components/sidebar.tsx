@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import BrandLogo from "@/app/_components/brand-logo";
 import { ADMIN_EMAILS } from "@/lib/admin-agents";
+import { IMPRESSAO_STANDBY } from "@/lib/impressao-standby";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -258,7 +259,7 @@ export function Sidebar({
                   </li>
                 );
               })}
-              {section === "PUBLICAÇÃO" && (
+              {section === "PUBLICAÇÃO" && !IMPRESSAO_STANDBY && (
                 <li>
                   <CartSidebarLink isActive={isActive("/carrinho", true)} onNavigate={onNavigate} />
                 </li>

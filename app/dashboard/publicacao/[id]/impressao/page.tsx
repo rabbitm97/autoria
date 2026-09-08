@@ -17,6 +17,7 @@ import {
   estimarLombadaCapaMm,
   lombadaPorPapelPedido,
 } from "@/lib/formatos";
+import { IMPRESSAO_STANDBY } from "@/lib/impressao-standby";
 
 /**
  * BLOCO-02-C — Orçamento de impressão POD.
@@ -105,6 +106,11 @@ export default function ImpressaoPage() {
   const [erroOrc, setErroOrc] = useState<string | null>(null);
   const [addStatus, setAddStatus] = useState<"idle" | "loading" | "ok" | "erro">("idle");
   const debounceRef = useRef<number | null>(null);
+
+  // IMP-STANDBY: pedido via equipe (envia p/ /api/suporte quando flag ligada).
+  const [pedidoStatus, setPedidoStatus] = useState<"idle" | "loading" | "ok" | "erro">("idle");
+  const [pedidoErro, setPedidoErro] = useState<string | null>(null);
+  const [pedidoConversaId, setPedidoConversaId] = useState<string | null>(null);
 
   // Carrega meta do projeto
   useEffect(() => {
@@ -246,6 +252,9 @@ export default function ImpressaoPage() {
 
   useEffect(() => {
     if (!meta) return;
+    // IMP-STANDBY: quando a flag está ligada, não calculamos preço — o
+    // pedido vai direto pra equipe pelo /api/suporte com o resumo do form.
+    if (IMPRESSAO_STANDBY) return;
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => {
       fetchOrcamento(form);
@@ -293,6 +302,50 @@ export default function ImpressaoPage() {
       setErroOrc("Falha de rede ao adicionar ao carrinho.");
     }
   }, [orcamento, id, form, router]);
+
+  const handleEnviarPedido = useCallback(async () => {
+    if (!meta) return;
+    setPedidoStatus("loading");
+    setPedidoErro(null);
+
+    const papelLabel = PAPEL_OPTIONS.find(p => p.value === form.papel_miolo)?.label ?? form.papel_miolo;
+    const acabLabel = ACABAMENTO_OPTIONS.find(a => a.value === form.acabamento_capa)?.label ?? form.acabamento_capa;
+    const formatoLabel = FORMATO_LABELS[meta.formato as FormatoLivro] ?? meta.formato;
+
+    const texto = [
+      `Pedido de impressão — ${meta.titulo}`,
+      `Autor: ${meta.autor}`,
+      `Projeto: ${id}`,
+      "",
+      `Tiragem: ${form.tiragem} exemplar${form.tiragem > 1 ? "es" : ""}`,
+      `Formato: ${formatoLabel}`,
+      `Páginas: ${meta.paginas}`,
+      `Papel do miolo: ${papelLabel}`,
+      `Cor do miolo: ${form.cor_miolo === "cor" ? "colorido" : "preto e branco"}`,
+      `Acabamento da capa: ${acabLabel}`,
+      `Orelhas: ${meta.com_orelhas_projeto ? "sim" : "não"}`,
+      `CEP de entrega: ${form.cep_entrega.trim() || "não informado"}`,
+    ].join("\n");
+
+    try {
+      const res = await fetch("/api/suporte", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texto }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setPedidoStatus("erro");
+        setPedidoErro(json.error ?? "Falha ao enviar pedido.");
+        return;
+      }
+      setPedidoConversaId((json.conversa_id as string) ?? null);
+      setPedidoStatus("ok");
+    } catch {
+      setPedidoStatus("erro");
+      setPedidoErro("Falha de rede ao enviar pedido.");
+    }
+  }, [meta, form, id]);
 
   const papelDisabled = useCallback((p: Papel): boolean => {
     return p === "couche_fosco_90g" && form.cor_miolo === "pb" ? false : false;
@@ -424,7 +477,9 @@ export default function ImpressaoPage() {
           {meta.com_orelhas_projeto && " • capa com orelhas"}
         </p>
         <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-          Configure a tiragem e o acabamento do seu livro. O orçamento é calculado em tempo real. Adicione ao carrinho quando estiver pronto.
+          {IMPRESSAO_STANDBY
+            ? "Configure a tiragem e o acabamento do seu livro. Ao enviar o pedido, a equipe responde com o orçamento em até 2 horas (seg-sáb, 10h-20h)."
+            : "Configure a tiragem e o acabamento do seu livro. O orçamento é calculado em tempo real. Adicione ao carrinho quando estiver pronto."}
         </p>
       </div>
 
@@ -638,70 +693,147 @@ export default function ImpressaoPage() {
           </section>
         </div>
 
-        {/* Coluna direita: sidebar sticky com orçamento */}
+        {/* Coluna direita: sidebar sticky com orçamento (ou pedido via equipe em STANDBY) */}
         <aside className="lg:sticky lg:top-6 lg:self-start">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">Orçamento</h3>
-            <p className="text-xs text-slate-500 mb-4">{summaryText || "Configurando…"}</p>
+          {IMPRESSAO_STANDBY ? (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">Pedido de impressão</h3>
+              <p className="text-xs text-slate-500 mb-4">
+                Durante o beta, os pedidos de impressão são fechados direto com a equipe — resposta em até 2 horas, seg-sáb, 10h-20h.
+              </p>
 
-            {calculando && (
-              <div className="text-sm text-slate-500 animate-pulse">Calculando…</div>
-            )}
-
-            {!calculando && erroOrc && (
-              <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
-                {erroOrc}
-              </div>
-            )}
-
-            {!calculando && !erroOrc && orcamento && (
-              <>
-                <dl className="text-sm space-y-1.5 mb-4">
-                  <div className="flex justify-between text-slate-700">
-                    <dt>Custo por exemplar</dt>
-                    <dd className="font-medium">{formatBRL(orcamento.custo_por_exemplar_reais)}</dd>
-                  </div>
-                  <div className="flex justify-between text-slate-700">
-                    <dt>Subtotal ({form.tiragem}×)</dt>
-                    <dd className="font-medium">{formatBRL(orcamento.subtotal_produtos_reais)}</dd>
-                  </div>
-                  <div className="flex justify-between text-slate-700">
-                    <dt>Frete estimado</dt>
-                    <dd className="font-medium">{formatBRL(orcamento.frete_estimado_reais)}</dd>
-                  </div>
-                </dl>
-                <div className="border-t border-slate-200 pt-3 mb-4">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm text-slate-700">Total</span>
-                    <span className="text-2xl font-semibold text-emerald-700">
-                      {formatBRL(orcamento.total_reais)}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Produção: até {orcamento.prazo_producao_dias} dias úteis · Frete: calculado pro seu CEP, somado no pedido
-                  </div>
+              <dl className="text-sm space-y-1.5 mb-4">
+                <div className="flex justify-between text-slate-700">
+                  <dt>Tiragem</dt>
+                  <dd className="font-medium">{form.tiragem} exemplar{form.tiragem > 1 ? "es" : ""}</dd>
                 </div>
+                <div className="flex justify-between text-slate-700">
+                  <dt>Papel do miolo</dt>
+                  <dd className="font-medium text-right">
+                    {PAPEL_OPTIONS.find(p => p.value === form.papel_miolo)?.label ?? form.papel_miolo}
+                  </dd>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <dt>Cor do miolo</dt>
+                  <dd className="font-medium">{form.cor_miolo === "cor" ? "colorido" : "preto e branco"}</dd>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <dt>Capa</dt>
+                  <dd className="font-medium text-right">
+                    {ACABAMENTO_OPTIONS.find(a => a.value === form.acabamento_capa)?.label ?? form.acabamento_capa}
+                  </dd>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <dt>Orelhas</dt>
+                  <dd className="font-medium">{meta.com_orelhas_projeto ? "sim" : "não"}</dd>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <dt>CEP</dt>
+                  <dd className="font-medium">{form.cep_entrega.trim() || "não informado"}</dd>
+                </div>
+              </dl>
 
-                <button
-                  type="button"
-                  onClick={handleAddCarrinho}
-                  disabled={addStatus === "loading" || lombadaDivergenteMm !== null}
-                  className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium text-sm transition"
-                  title={lombadaDivergenteMm !== null ? "Ajuste a capa para o papel escolhido antes de adicionar ao carrinho." : undefined}
-                >
-                  {addStatus === "loading" ? "Adicionando…"
-                    : addStatus === "ok" ? "Adicionado ✓"
-                    : lombadaDivergenteMm !== null ? "Ajuste a capa antes"
-                    : "Adicionar ao carrinho"}
-                </button>
+              {pedidoStatus === "ok" ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                  <p className="font-medium mb-1">Pedido enviado ✓</p>
+                  <p className="text-xs leading-relaxed">
+                    A equipe recebeu o seu pedido e responde por aqui em até 2 horas (seg-sáb, 10h-20h).
+                  </p>
+                  <Link
+                    href={pedidoConversaId ? `/dashboard/suporte?conversa=${pedidoConversaId}` : "/dashboard/suporte"}
+                    className="inline-block mt-2 text-xs font-semibold text-emerald-900 underline"
+                  >
+                    Ver conversa no suporte →
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  {pedidoErro && (
+                    <div className="mb-3 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
+                      {pedidoErro}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleEnviarPedido}
+                    disabled={pedidoStatus === "loading" || lombadaDivergenteMm !== null}
+                    className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium text-sm transition"
+                    title={lombadaDivergenteMm !== null ? "Ajuste a capa para o papel escolhido antes de enviar o pedido." : undefined}
+                  >
+                    {pedidoStatus === "loading" ? "Enviando…"
+                      : lombadaDivergenteMm !== null ? "Ajuste a capa antes"
+                      : "Enviar pedido à equipe"}
+                  </button>
+                  <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+                    A equipe responde por e-mail e pelo suporte com o orçamento e os próximos passos.
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">Orçamento</h3>
+              <p className="text-xs text-slate-500 mb-4">{summaryText || "Configurando…"}</p>
 
-                <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
-                  Valores estimados. O total definitivo é confirmado no checkout,
-                  após validação técnica pela gráfica parceira.
-                </p>
-              </>
-            )}
-          </div>
+              {calculando && (
+                <div className="text-sm text-slate-500 animate-pulse">Calculando…</div>
+              )}
+
+              {!calculando && erroOrc && (
+                <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
+                  {erroOrc}
+                </div>
+              )}
+
+              {!calculando && !erroOrc && orcamento && (
+                <>
+                  <dl className="text-sm space-y-1.5 mb-4">
+                    <div className="flex justify-between text-slate-700">
+                      <dt>Custo por exemplar</dt>
+                      <dd className="font-medium">{formatBRL(orcamento.custo_por_exemplar_reais)}</dd>
+                    </div>
+                    <div className="flex justify-between text-slate-700">
+                      <dt>Subtotal ({form.tiragem}×)</dt>
+                      <dd className="font-medium">{formatBRL(orcamento.subtotal_produtos_reais)}</dd>
+                    </div>
+                    <div className="flex justify-between text-slate-700">
+                      <dt>Frete estimado</dt>
+                      <dd className="font-medium">{formatBRL(orcamento.frete_estimado_reais)}</dd>
+                    </div>
+                  </dl>
+                  <div className="border-t border-slate-200 pt-3 mb-4">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm text-slate-700">Total</span>
+                      <span className="text-2xl font-semibold text-emerald-700">
+                        {formatBRL(orcamento.total_reais)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Produção: até {orcamento.prazo_producao_dias} dias úteis · Frete: calculado pro seu CEP, somado no pedido
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddCarrinho}
+                    disabled={addStatus === "loading" || lombadaDivergenteMm !== null}
+                    className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium text-sm transition"
+                    title={lombadaDivergenteMm !== null ? "Ajuste a capa para o papel escolhido antes de adicionar ao carrinho." : undefined}
+                  >
+                    {addStatus === "loading" ? "Adicionando…"
+                      : addStatus === "ok" ? "Adicionado ✓"
+                      : lombadaDivergenteMm !== null ? "Ajuste a capa antes"
+                      : "Adicionar ao carrinho"}
+                  </button>
+
+                  <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+                    Valores estimados. O total definitivo é confirmado no checkout,
+                    após validação técnica pela gráfica parceira.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
         </aside>
       </div>
 

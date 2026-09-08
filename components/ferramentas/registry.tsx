@@ -1,4 +1,5 @@
 import { CUSTOS_CREDITOS } from "@/lib/creditos-custos";
+import { IMPRESSAO_STANDBY } from "@/lib/impressao-standby";
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
@@ -163,7 +164,9 @@ export const TOOLS: readonly FerramentaCard[] = [
   {
     id: "simulador-impressao",
     label: "Simulador de preço",
-    desc: "Quanto custa imprimir seu livro: formato, papel, tiragem e frete na hora.",
+    desc: IMPRESSAO_STANDBY
+      ? "Orçamento de impressão direto com a equipe — fale com a gente."
+      : "Quanto custa imprimir seu livro: formato, papel, tiragem e frete na hora.",
     categoria: "Impressão",
     estado: "gratis",
     href: "/simulador",

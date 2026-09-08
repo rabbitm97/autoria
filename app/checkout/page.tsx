@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import type { ConfigImpressao } from "@/lib/impressao-pricing";
+import { IMPRESSAO_STANDBY } from "@/lib/impressao-standby";
 
 interface CartItemMinimo {
   id: string;
@@ -64,6 +65,27 @@ export default function CheckoutPage() {
   }
   // Evita warning de "declared but never used" enquanto o pagamento não é ligado.
   void registrarAceitesCheckout;
+
+  if (IMPRESSAO_STANDBY) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-10">
+        <div className="mb-6">
+          <h1 className="font-heading text-3xl text-brand-primary">Checkout</h1>
+        </div>
+        <div className="bg-white border border-zinc-100 rounded-2xl p-8">
+          <p className="text-zinc-600 leading-relaxed mb-5">
+            Durante o beta, os pedidos de impressão são enviados direto à equipe pela tela de impressão do seu projeto — resposta em até 2 horas, seg-sáb, 10h-20h.
+          </p>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-gold hover:underline"
+          >
+            ← Voltar ao dashboard
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-10">

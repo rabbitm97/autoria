@@ -10,6 +10,7 @@ import {
   type AcabamentoCapa,
 } from "@/lib/impressao-pricing";
 import type { FormatoLivro } from "@/lib/formatos";
+import { IMPRESSAO_STANDBY, MSG_STANDBY } from "@/lib/impressao-standby";
 
 /**
  * BLOCO-02-C — Endpoint de orçamento de impressão.
@@ -32,6 +33,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (IMPRESSAO_STANDBY) {
+    return NextResponse.json({ ok: false, error: MSG_STANDBY }, { status: 503 });
+  }
+
   const { id } = await params;
 
   let auth: Awaited<ReturnType<typeof requireAuth>>;

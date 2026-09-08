@@ -7,6 +7,7 @@ import {
   type ConfigImpressao,
 } from "@/lib/impressao-pricing";
 import type { FormatoLivro } from "@/lib/formatos";
+import { IMPRESSAO_STANDBY, MSG_STANDBY } from "@/lib/impressao-standby";
 
 /**
  * BLOCO-02-C — Carrinho de compras unificado.
@@ -53,6 +54,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (IMPRESSAO_STANDBY) {
+    return NextResponse.json({ ok: false, error: MSG_STANDBY }, { status: 503 });
+  }
+
   let auth: Awaited<ReturnType<typeof requireAuth>>;
   try {
     auth = await requireAuth();
